@@ -12,7 +12,7 @@ use std::{
     thread::{self, JoinHandle},
 };
 
-use objc2::MainThreadMarker;
+use objc2::{MainThreadMarker, rc::autoreleasepool};
 use objc2_app_kit::{
     NSApplicationActivationOptions, NSApplicationActivationPolicy, NSRunningApplication, NSScreen,
     NSWorkspace,
@@ -215,42 +215,49 @@ impl WindowEventMonitor {
                 let mut registrations = HashMap::<AppInstanceId, EventRegistration>::new();
                 let mut known_applications = HashSet::new();
                 while !thread_stopped.load(Ordering::Acquire) {
-                    let mut latest = None;
-                    while let Ok(pids) = receiver.try_recv() {
-                        latest = Some(pids);
-                    }
-                    if let Some(pids) = latest {
-                        let desired: HashSet<_> = pids.into_iter().collect();
-                        if desired != known_applications {
-                            thread_invalidation.dirty.store(true, Ordering::Release);
-                            known_applications.clone_from(&desired);
+                    autoreleasepool(|_| {
+                        let mut latest = None;
+                        while let Ok(pids) = receiver.try_recv() {
+                            latest = Some(pids);
                         }
-                        registrations.retain(|app, registration| {
-                            if desired.contains(app) {
-                                true
-                            } else {
-                                run_loop.remove_source(Some(&registration.source), unsafe {
-                                    kCFRunLoopDefaultMode
-                                });
-                                false
+                        if let Some(pids) = latest {
+                            let desired: HashSet<_> = pids.into_iter().collect();
+                            if desired != known_applications {
+                                thread_invalidation.dirty.store(true, Ordering::Release);
+                                known_applications.clone_from(&desired);
                             }
-                        });
-                        for app in desired {
-                            if !registrations.contains_key(&app)
-                                && let Some(registration) =
-                                    EventRegistration::new(app.pid, &thread_invalidation, &run_loop)
-                            {
-                                registrations.insert(app, registration);
+                            registrations.retain(|app, registration| {
+                                if desired.contains(app) {
+                                    true
+                                } else {
+                                    run_loop.remove_source(Some(&registration.source), unsafe {
+                                        kCFRunLoopDefaultMode
+                                    });
+                                    false
+                                }
+                            });
+                            for app in desired {
+                                if !registrations.contains_key(&app)
+                                    && let Some(registration) = EventRegistration::new(
+                                        app.pid,
+                                        &thread_invalidation,
+                                        &run_loop,
+                                    )
+                                {
+                                    registrations.insert(app, registration);
+                                }
                             }
                         }
-                    }
-                    CFRunLoop::run_in_mode(unsafe { kCFRunLoopDefaultMode }, 0.1, true);
-                }
-                for registration in registrations.into_values() {
-                    run_loop.remove_source(Some(&registration.source), unsafe {
-                        kCFRunLoopDefaultMode
+                        CFRunLoop::run_in_mode(unsafe { kCFRunLoopDefaultMode }, 0.1, true);
                     });
                 }
+                autoreleasepool(|_| {
+                    for registration in registrations.into_values() {
+                        run_loop.remove_source(Some(&registration.source), unsafe {
+                            kCFRunLoopDefaultMode
+                        });
+                    }
+                });
             })
             .expect("failed to start AX event thread");
         let monitor = Self {
@@ -402,30 +409,32 @@ fn subscribe_one_window(observer: &AXObserver, window: &AXUIElement, refcon: *mu
 }
 
 fn running_application_instances() -> Vec<AppInstanceId> {
-    let self_pid = std::process::id() as i32;
-    let applications = NSWorkspace::sharedWorkspace().runningApplications();
-    let mut seen_pids = HashSet::new();
-    let mut instances: Vec<_> = (0..applications.count())
-        .filter_map(|index| {
-            let application = applications.objectAtIndex(index);
-            let pid = application.processIdentifier();
-            (pid > 0 && pid != self_pid && seen_pids.insert(pid))
-                .then(|| app_instance_with_pid(&application, pid))
-        })
-        .collect();
-    if let Some(windows) = window_server_windows(CGWindowListOption::OptionAll) {
-        for window in windows {
-            if window.pid > 0
-                && window.pid != self_pid
-                && seen_pids.insert(window.pid)
-                && let Some(application) =
-                    NSRunningApplication::runningApplicationWithProcessIdentifier(window.pid)
-            {
-                instances.push(app_instance_with_pid(&application, window.pid));
+    autoreleasepool(|_| {
+        let self_pid = std::process::id() as i32;
+        let applications = NSWorkspace::sharedWorkspace().runningApplications();
+        let mut seen_pids = HashSet::new();
+        let mut instances: Vec<_> = (0..applications.count())
+            .filter_map(|index| {
+                let application = applications.objectAtIndex(index);
+                let pid = application.processIdentifier();
+                (pid > 0 && pid != self_pid && seen_pids.insert(pid))
+                    .then(|| app_instance_with_pid(&application, pid))
+            })
+            .collect();
+        if let Some(windows) = window_server_windows(CGWindowListOption::OptionAll) {
+            for window in windows {
+                if window.pid > 0
+                    && window.pid != self_pid
+                    && seen_pids.insert(window.pid)
+                    && let Some(application) =
+                        NSRunningApplication::runningApplicationWithProcessIdentifier(window.pid)
+                {
+                    instances.push(app_instance_with_pid(&application, window.pid));
+                }
             }
         }
-    }
-    instances
+        instances
+    })
 }
 
 pub fn snapshot_in_outputs(
@@ -436,26 +445,29 @@ pub fn snapshot_in_outputs(
 }
 
 pub fn outputs() -> Result<DisplayOutputs, SnapshotError> {
-    let marker = MainThreadMarker::new().ok_or(SnapshotError::MainThreadRequired)?;
-    let screens = NSScreen::screens(marker);
-    let primary_height = (0..screens.count())
-        .map(|index| screens.objectAtIndex(index).frame())
-        .find(|frame| frame.origin.x == 0.0 && frame.origin.y == 0.0)
-        .map(|frame| frame.size.height)
-        .ok_or(SnapshotError::MainScreenUnavailable)?;
-    let mut displays = Vec::with_capacity(screens.count());
-    for index in 0..screens.count() {
-        let screen = screens.objectAtIndex(index);
-        let frame = screen.frame();
-        let display_id = screen_display_id(&screen).ok_or(SnapshotError::MainScreenUnavailable)?;
-        displays.push(DisplayOutput {
-            id: display_uuid(display_id).unwrap_or_else(|| display_id.to_string()),
-            name: screen.localizedName().to_string(),
-            frame: screen_output(&screen, primary_height),
-            is_main: frame.origin.x == 0.0 && frame.origin.y == 0.0,
-        });
-    }
-    DisplayOutputs::new(displays)
+    autoreleasepool(|_| {
+        let marker = MainThreadMarker::new().ok_or(SnapshotError::MainThreadRequired)?;
+        let screens = NSScreen::screens(marker);
+        let primary_height = (0..screens.count())
+            .map(|index| screens.objectAtIndex(index).frame())
+            .find(|frame| frame.origin.x == 0.0 && frame.origin.y == 0.0)
+            .map(|frame| frame.size.height)
+            .ok_or(SnapshotError::MainScreenUnavailable)?;
+        let mut displays = Vec::with_capacity(screens.count());
+        for index in 0..screens.count() {
+            let screen = screens.objectAtIndex(index);
+            let frame = screen.frame();
+            let display_id =
+                screen_display_id(&screen).ok_or(SnapshotError::MainScreenUnavailable)?;
+            displays.push(DisplayOutput {
+                id: display_uuid(display_id).unwrap_or_else(|| display_id.to_string()),
+                name: screen.localizedName().to_string(),
+                frame: screen_output(&screen, primary_height),
+                is_main: frame.origin.x == 0.0 && frame.origin.y == 0.0,
+            });
+        }
+        DisplayOutputs::new(displays)
+    })
 }
 
 fn screen_display_id(screen: &NSScreen) -> Option<u32> {
@@ -504,48 +516,50 @@ pub fn snapshot_in_output(
     cycle: u64,
     output: Rect,
 ) -> Result<(NativeObservation, Settings), SnapshotError> {
-    if !accessibility_trusted() {
-        return Err(SnapshotError::AccessibilityPermissionRequired);
-    }
-    let onscreen = onscreen_windows().ok_or(SnapshotError::WindowListUnavailable)?;
-
-    let running = NSWorkspace::sharedWorkspace().runningApplications();
-    let screen_locked = is_screen_locked();
-    let mut observed_pids = HashSet::new();
-    let mut applications: Vec<_> = (0..running.count())
-        .filter_map(|index| {
-            let application = running.objectAtIndex(index);
-            let pid = application.processIdentifier();
-            let windows = onscreen.get(&pid)?;
-            observed_pids.insert(pid);
-            observe_application(&application, pid, windows, output, screen_locked)
-        })
-        .collect();
-    let mut extra_pids: Vec<_> = onscreen
-        .keys()
-        .copied()
-        .filter(|pid| *pid > 0 && !observed_pids.contains(pid))
-        .collect();
-    extra_pids.sort_unstable();
-    for pid in extra_pids {
-        if let Some(application) =
-            NSRunningApplication::runningApplicationWithProcessIdentifier(pid)
-            && let Some(windows) = onscreen.get(&pid)
-            && let Some(observed) =
-                observe_application(&application, pid, windows, output, screen_locked)
-        {
-            applications.push(observed);
+    autoreleasepool(|_| {
+        if !accessibility_trusted() {
+            return Err(SnapshotError::AccessibilityPermissionRequired);
         }
-    }
+        let onscreen = onscreen_windows().ok_or(SnapshotError::WindowListUnavailable)?;
 
-    Ok((
-        NativeObservation {
-            cycle,
-            mouse_down: mouse_down(),
-            applications,
-        },
-        Settings::for_output(output),
-    ))
+        let running = NSWorkspace::sharedWorkspace().runningApplications();
+        let screen_locked = is_screen_locked();
+        let mut observed_pids = HashSet::new();
+        let mut applications: Vec<_> = (0..running.count())
+            .filter_map(|index| {
+                let application = running.objectAtIndex(index);
+                let pid = application.processIdentifier();
+                let windows = onscreen.get(&pid)?;
+                observed_pids.insert(pid);
+                observe_application(&application, pid, windows, output, screen_locked)
+            })
+            .collect();
+        let mut extra_pids: Vec<_> = onscreen
+            .keys()
+            .copied()
+            .filter(|pid| *pid > 0 && !observed_pids.contains(pid))
+            .collect();
+        extra_pids.sort_unstable();
+        for pid in extra_pids {
+            if let Some(application) =
+                NSRunningApplication::runningApplicationWithProcessIdentifier(pid)
+                && let Some(windows) = onscreen.get(&pid)
+                && let Some(observed) =
+                    observe_application(&application, pid, windows, output, screen_locked)
+            {
+                applications.push(observed);
+            }
+        }
+
+        Ok((
+            NativeObservation {
+                cycle,
+                mouse_down: mouse_down(),
+                applications,
+            },
+            Settings::for_output(output),
+        ))
+    })
 }
 
 fn screen_output(screen: &NSScreen, primary_height: f64) -> Rect {
@@ -578,23 +592,25 @@ pub fn apply_while(
     settings: &Settings,
     mut should_continue: impl FnMut() -> bool,
 ) -> Vec<ApplyResult> {
-    let onscreen = onscreen_windows().unwrap_or_default();
-    placements
-        .iter()
-        .take_while(|_| should_continue())
-        .filter_map(|placement| {
-            placement.window.as_ref().map(|window| {
-                apply_window(window, placement.frame, settings, &onscreen).unwrap_or_else(|| {
-                    ApplyResult {
-                        window: window.clone(),
-                        target: placement.frame,
-                        actual: None,
-                        outcome: ApplyOutcome::Gone,
-                    }
+    autoreleasepool(|_| {
+        let onscreen = onscreen_windows().unwrap_or_default();
+        placements
+            .iter()
+            .take_while(|_| should_continue())
+            .filter_map(|placement| {
+                placement.window.as_ref().map(|window| {
+                    apply_window(window, placement.frame, settings, &onscreen).unwrap_or_else(
+                        || ApplyResult {
+                            window: window.clone(),
+                            target: placement.frame,
+                            actual: None,
+                            outcome: ApplyOutcome::Gone,
+                        },
+                    )
                 })
             })
-        })
-        .collect()
+            .collect()
+    })
 }
 
 pub fn apply_managed(
@@ -603,105 +619,107 @@ pub fn apply_managed(
     dragged: Option<&PhysicalWindowId>,
     mut should_continue: impl FnMut() -> bool,
 ) -> Vec<ApplyResult> {
-    let placements: Vec<_> = placements
-        .iter()
-        .take_while(|_| should_continue())
-        .filter_map(|placement| {
-            placement
-                .window
-                .as_ref()
-                .map(|window| (window, placement.frame))
-        })
-        .collect();
-    if mouse_down() && dragged.is_none() {
-        return placements
-            .into_iter()
-            .map(|(window, target)| ApplyResult {
-                window: window.clone(),
-                target,
-                actual: None,
-                outcome: ApplyOutcome::Deferred,
+    autoreleasepool(|_| {
+        let placements: Vec<_> = placements
+            .iter()
+            .take_while(|_| should_continue())
+            .filter_map(|placement| {
+                placement
+                    .window
+                    .as_ref()
+                    .map(|window| (window, placement.frame))
             })
             .collect();
-    }
-    let groups = group_placements_by_app(&placements);
-    let mut results: Vec<Option<ApplyResult>> = (0..placements.len()).map(|_| None).collect();
-    'applications: for (app_id, indices) in groups {
-        if !should_continue() {
-            break;
+        if mouse_down() && dragged.is_none() {
+            return placements
+                .into_iter()
+                .map(|(window, target)| ApplyResult {
+                    window: window.clone(),
+                    target,
+                    actual: None,
+                    outcome: ApplyOutcome::Deferred,
+                })
+                .collect();
         }
-        if !process_incarnation_matches(&app_id) {
-            fill_missing_results(&placements, &indices, &mut results, ApplyOutcome::Gone);
-            continue;
-        }
-        let app = application_element(app_id.pid);
-        let windows = match attribute::<CFArray>(&app, "AXWindows") {
-            Ok(windows) => windows,
-            Err(AXError::InvalidUIElement) => {
+        let groups = group_placements_by_app(&placements);
+        let mut results: Vec<Option<ApplyResult>> = (0..placements.len()).map(|_| None).collect();
+        'applications: for (app_id, indices) in groups {
+            if !should_continue() {
+                break;
+            }
+            if !process_incarnation_matches(&app_id) {
                 fill_missing_results(&placements, &indices, &mut results, ApplyOutcome::Gone);
                 continue;
             }
-            Err(_) => {
-                fill_missing_results(
-                    &placements,
-                    &indices,
-                    &mut results,
-                    ApplyOutcome::Unavailable,
-                );
-                continue;
-            }
-        };
-        let _animations = WindowAnimationGuard::new(&app);
-        let mut pending = HashMap::<u32, Vec<usize>>::new();
-        for index in &indices {
-            pending
-                .entry(placements[*index].0.window_id)
-                .or_default()
-                .push(*index);
-        }
-        let mut lookup_failed = false;
-        for window in cf_array_items::<AXUIElement>(&windows) {
-            let Some(window_id) = physical_window_id(&app_id, window) else {
-                lookup_failed = true;
-                continue;
-            };
-            let Some(placement_indices) = pending.remove(&window_id.window_id) else {
-                continue;
-            };
-            set_ax_timeout(window);
-            for placement_index in placement_indices {
-                if !should_continue() {
-                    break 'applications;
+            let app = application_element(app_id.pid);
+            let windows = match attribute::<CFArray>(&app, "AXWindows") {
+                Ok(windows) => windows,
+                Err(AXError::InvalidUIElement) => {
+                    fill_missing_results(&placements, &indices, &mut results, ApplyOutcome::Gone);
+                    continue;
                 }
-                let (id, target) = placements[placement_index];
-                cache_managed_window(id, window);
-                results[placement_index] = Some(if dragged == Some(id) {
-                    ApplyResult {
-                        window: id.clone(),
-                        target,
-                        actual: window_frame(window),
-                        outcome: ApplyOutcome::Deferred,
+                Err(_) => {
+                    fill_missing_results(
+                        &placements,
+                        &indices,
+                        &mut results,
+                        ApplyOutcome::Unavailable,
+                    );
+                    continue;
+                }
+            };
+            let _animations = WindowAnimationGuard::new(&app);
+            let mut pending = HashMap::<u32, Vec<usize>>::new();
+            for index in &indices {
+                pending
+                    .entry(placements[*index].0.window_id)
+                    .or_default()
+                    .push(*index);
+            }
+            let mut lookup_failed = false;
+            for window in cf_array_items::<AXUIElement>(&windows) {
+                let Some(window_id) = physical_window_id(&app_id, window) else {
+                    lookup_failed = true;
+                    continue;
+                };
+                let Some(placement_indices) = pending.remove(&window_id.window_id) else {
+                    continue;
+                };
+                set_ax_timeout(window);
+                for placement_index in placement_indices {
+                    if !should_continue() {
+                        break 'applications;
                     }
+                    let (id, target) = placements[placement_index];
+                    cache_managed_window(id, window);
+                    results[placement_index] = Some(if dragged == Some(id) {
+                        ApplyResult {
+                            window: id.clone(),
+                            target,
+                            actual: window_frame(window),
+                            outcome: ApplyOutcome::Deferred,
+                        }
+                    } else {
+                        apply_element(id, window, target, settings)
+                    });
+                }
+                if pending.is_empty() {
+                    break;
+                }
+            }
+            fill_missing_results(
+                &placements,
+                &pending.into_values().flatten().collect::<Vec<_>>(),
+                &mut results,
+                if lookup_failed {
+                    ApplyOutcome::Unavailable
                 } else {
-                    apply_element(id, window, target, settings)
-                });
-            }
-            if pending.is_empty() {
-                break;
-            }
+                    ApplyOutcome::Gone
+                },
+            );
         }
-        fill_missing_results(
-            &placements,
-            &pending.into_values().flatten().collect::<Vec<_>>(),
-            &mut results,
-            if lookup_failed {
-                ApplyOutcome::Unavailable
-            } else {
-                ApplyOutcome::Gone
-            },
-        );
-    }
-    results.into_iter().flatten().collect()
+        results.into_iter().flatten().collect()
+    })
 }
 
 fn group_placements_by_app(
@@ -785,12 +803,14 @@ pub fn focused_window() -> Option<PhysicalWindowId> {
 }
 
 pub fn frontmost_application() -> Option<AppInstanceId> {
-    let application = NSWorkspace::sharedWorkspace().frontmostApplication()?;
-    if is_lock_screen(&application) {
-        return None;
-    }
-    let pid = resolve_application_pid(&application)?;
-    Some(app_instance_with_pid(&application, pid))
+    autoreleasepool(|_| {
+        let application = NSWorkspace::sharedWorkspace().frontmostApplication()?;
+        if is_lock_screen(&application) {
+            return None;
+        }
+        let pid = resolve_application_pid(&application)?;
+        Some(app_instance_with_pid(&application, pid))
+    })
 }
 
 const LOCK_SCREEN_BUNDLE_ID: &str = "com.apple.loginwindow";
@@ -802,17 +822,21 @@ fn is_lock_screen(application: &NSRunningApplication) -> bool {
 }
 
 fn is_screen_locked() -> bool {
-    NSWorkspace::sharedWorkspace()
-        .frontmostApplication()
-        .is_some_and(|app| is_lock_screen(&app))
+    autoreleasepool(|_| {
+        NSWorkspace::sharedWorkspace()
+            .frontmostApplication()
+            .is_some_and(|app| is_lock_screen(&app))
+    })
 }
 
 pub fn focus_window(id: &PhysicalWindowId) -> bool {
-    let raised = raise_window_with_focus(id, true);
-    let activated = running_application(&id.app).is_some_and(|application| {
-        application.activateWithOptions(NSApplicationActivationOptions::empty())
-    });
-    raised && activated
+    autoreleasepool(|_| {
+        let raised = raise_window_with_focus(id, true);
+        let activated = running_application(&id.app).is_some_and(|application| {
+            application.activateWithOptions(NSApplicationActivationOptions::empty())
+        });
+        raised && activated
+    })
 }
 
 pub fn raise_window(id: &PhysicalWindowId) -> bool {
@@ -1052,12 +1076,14 @@ pub fn mouse_position() -> Option<(i32, i32)> {
 }
 
 fn running_application(id: &AppInstanceId) -> Option<objc2::rc::Retained<NSRunningApplication>> {
-    NSRunningApplication::runningApplicationWithProcessIdentifier(id.pid)
-        .filter(|application| launch_time(application) == id.launched_at)
+    autoreleasepool(|_| {
+        NSRunningApplication::runningApplicationWithProcessIdentifier(id.pid)
+            .filter(|application| launch_time(application) == id.launched_at)
+    })
 }
 
 fn process_incarnation_matches(id: &AppInstanceId) -> bool {
-    running_application(id).is_some()
+    autoreleasepool(|_| running_application(id).is_some())
 }
 
 pub fn is_process_incarnation_running(id: &AppInstanceId) -> bool {
@@ -1348,20 +1374,23 @@ pub fn window_server_frame(id: &PhysicalWindowId) -> Option<Rect> {
 /// Hit-test front-to-back window-server geometry, without synchronous AX calls
 /// or native handles crossing the main-thread/worker boundary.
 pub fn window_at_point(point: (i32, i32)) -> Option<(PhysicalWindowId, Rect)> {
-    let windows = window_server_windows(CGWindowListOption::OptionOnScreenOnly)?;
-    let window = top_window_at_point(&windows, point)?;
-    let application = NSRunningApplication::runningApplicationWithProcessIdentifier(window.pid)?;
-    let launched_at = launch_time(&application);
-    (launched_at != 0).then_some((
-        PhysicalWindowId {
-            app: AppInstanceId {
-                pid: window.pid,
-                launched_at,
+    autoreleasepool(|_| {
+        let windows = window_server_windows(CGWindowListOption::OptionOnScreenOnly)?;
+        let window = top_window_at_point(&windows, point)?;
+        let application =
+            NSRunningApplication::runningApplicationWithProcessIdentifier(window.pid)?;
+        let launched_at = launch_time(&application);
+        (launched_at != 0).then_some((
+            PhysicalWindowId {
+                app: AppInstanceId {
+                    pid: window.pid,
+                    launched_at,
+                },
+                window_id: window.id,
             },
-            window_id: window.id,
-        },
-        window.frame,
-    ))
+            window.frame,
+        ))
+    })
 }
 
 struct WindowServerWindow {
@@ -1676,6 +1705,50 @@ mod tests {
                 .resolve(&DisplaySelector::Preferred("missing".into()))
                 .id,
             "main-id"
+        );
+    }
+
+    fn current_phys_footprint() -> u64 {
+        let mut info = unsafe { std::mem::zeroed::<libc::rusage_info_v4>() };
+        let rc = unsafe {
+            libc::proc_pid_rusage(
+                libc::getpid(),
+                libc::RUSAGE_INFO_V4,
+                (&raw mut info).cast::<libc::rusage_info_t>(),
+            )
+        };
+        assert_eq!(rc, 0, "proc_pid_rusage failed");
+        info.ri_phys_footprint
+    }
+
+    #[test]
+    fn worker_thread_queries_drain_objective_c_autorelease_pool() {
+        let (baseline, after) = thread::spawn(|| {
+            for _ in 0..10 {
+                let apps = running_application_instances();
+                let _ = frontmost_application();
+                if let Some(first) = apps.first() {
+                    let _ = is_process_incarnation_running(first);
+                }
+            }
+            let baseline = current_phys_footprint();
+            for _ in 0..400 {
+                let apps = running_application_instances();
+                let _ = frontmost_application();
+                for app in &apps {
+                    let _ = is_process_incarnation_running(app);
+                }
+            }
+            let after = current_phys_footprint();
+            (baseline, after)
+        })
+        .join()
+        .expect("worker thread panicked");
+
+        let growth = after.saturating_sub(baseline);
+        assert!(
+            growth < 2 * 1024 * 1024,
+            "worker thread leaked {growth} bytes of phys_footprint across 400 cycles (baseline={baseline}, after={after})"
         );
     }
 }
