@@ -675,18 +675,21 @@ pub(super) fn spawn_worker(
 ) {
     thread::spawn(move || {
         let restore_on_start = workspace_state.is_none();
-        let mut runtime = WorkspaceRuntime::new(scope, parked, config, workspace_state);
-        runtime.restore_window_memory(load_window_memory());
-        runtime.journal_start(!restore_on_start);
-        // Windows still parked afterwards are retried by the paused loop's
-        // restore or, while tiling, by each cycle's unowned-window recovery.
-        if restore_on_start {
-            let requested = runtime.parked.len();
-            let failed = runtime.restore_all();
-            if requested > 0 {
-                runtime.journal_restore("startup without saved workspaces", requested, failed);
+        let mut runtime = objc2::rc::autoreleasepool(|_| {
+            let mut runtime = WorkspaceRuntime::new(scope, parked, config, workspace_state);
+            runtime.restore_window_memory(load_window_memory());
+            runtime.journal_start(!restore_on_start);
+            // Windows still parked afterwards are retried by the paused loop's
+            // restore or, while tiling, by each cycle's unowned-window recovery.
+            if restore_on_start {
+                let requested = runtime.parked.len();
+                let failed = runtime.restore_all();
+                if requested > 0 {
+                    runtime.journal_restore("startup without saved workspaces", requested, failed);
+                }
             }
-        }
+            runtime
+        });
         while let Ok(command) = commands.recv() {
             // Every command starts uncancelled: a cancellation aimed at previous
             // work must never abort a freshly dispatched command. Background
@@ -695,7 +698,8 @@ pub(super) fn spawn_worker(
             cancelled.store(false, Ordering::Release);
             let label = command.label();
             let started = Instant::now();
-            let Some(result) = runtime.execute(command, &cancelled) else {
+            let Some(result) = objc2::rc::autoreleasepool(|_| runtime.execute(command, &cancelled))
+            else {
                 return;
             };
             let elapsed = started.elapsed();
