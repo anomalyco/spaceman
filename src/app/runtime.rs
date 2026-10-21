@@ -67,6 +67,10 @@ pub(super) struct WorkspaceRuntime<B = MacWorkspaceBackend> {
     pub(super) known_apps: [HashMap<AppInstanceId, String>; WorkspaceId::COUNT],
     pub(super) constrained:
         [HashMap<crate::PhysicalWindowId, (crate::Rect, crate::Rect)>; WorkspaceId::COUNT],
+    /// Target frames reported as `Applied` on the latest layout pass, awaiting
+    /// observation readback. Electron apps accept `AXSize` writes synchronously
+    /// and clamp to their aspect-ratio or size limits asynchronously afterward.
+    pub(super) applied: [HashMap<crate::PhysicalWindowId, crate::Rect>; WorkspaceId::COUNT],
     pub(super) parked: HashMap<crate::PhysicalWindowId, crate::Rect>,
     /// When each window was last parked. Apps apply position writes
     /// asynchronously, so a fresh park must settle before an on-screen
@@ -236,6 +240,7 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
             workspaces,
             known_apps,
             constrained: std::array::from_fn(|_| HashMap::new()),
+            applied: std::array::from_fn(|_| HashMap::new()),
             parked,
             recently_parked: HashMap::new(),
             recent_heals: HashMap::new(),
@@ -533,6 +538,7 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
         self.clear_fullscreen_restore_if_inactive(workspace);
         self.workspaces.forget_floating(window);
         self.constrained[workspace.index()].remove(window);
+        self.applied[workspace.index()].remove(window);
         self.omitted_windows.remove(window);
         self.recently_parked.remove(window);
         self.recent_heals.remove(window);
@@ -568,16 +574,25 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
         workspace: WorkspaceId,
         results: &[macos::ApplyResult],
     ) {
-        let evidence = &mut self.constrained[workspace.index()];
+        let constrained = &mut self.constrained[workspace.index()];
+        let applied = &mut self.applied[workspace.index()];
         for result in results {
             match (result.outcome, result.actual) {
                 (macos::ApplyOutcome::Constrained, Some(actual)) => {
-                    evidence.insert(result.window.clone(), (result.target, actual));
+                    applied.remove(&result.window);
+                    constrained.insert(result.window.clone(), (result.target, actual));
                 }
-                (macos::ApplyOutcome::Applied | macos::ApplyOutcome::Gone, _) => {
-                    evidence.remove(&result.window);
+                (macos::ApplyOutcome::Applied, _) => {
+                    constrained.remove(&result.window);
+                    applied.insert(result.window.clone(), result.target);
                 }
-                _ => {}
+                (macos::ApplyOutcome::Gone, _) => {
+                    applied.remove(&result.window);
+                    constrained.remove(&result.window);
+                }
+                _ => {
+                    applied.remove(&result.window);
+                }
             }
         }
     }

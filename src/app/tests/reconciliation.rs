@@ -743,3 +743,76 @@ fn restored_slots_for_a_dead_application_are_retired() {
     );
     assert!(runtime.backend.workspace_state.is_some());
 }
+
+#[test]
+fn asynchronously_clamped_window_settles_without_reapplying_every_cycle() {
+    let main = window(10);
+    let huddle = window(11);
+    let settings = window(12);
+    let mut backend = FakeBackend {
+        observation: Some(observation_for_windows(
+            "com.tinyspeck.slackmacgap",
+            &settings,
+            &[
+                (main.clone(), frame(50)),
+                (huddle.clone(), frame(350)),
+                (settings.clone(), frame(650)),
+            ],
+        )),
+        ..FakeBackend::default()
+    };
+    backend.frames.insert(main.clone(), frame(50));
+    backend.frames.insert(huddle.clone(), frame(350));
+    backend.frames.insert(settings.clone(), frame(650));
+    let mut runtime = runtime(backend);
+    let outputs = outputs();
+    let cancelled = AtomicBool::new(false);
+
+    runtime.cycle(outputs.clone(), &cancelled).unwrap();
+    assert_eq!(runtime.backend.observed_apply_count, 1);
+    let target = runtime.backend.frames[&huddle];
+    assert_eq!(target.height, 800);
+
+    // Electron reports AXSize writes as Applied synchronously, then clamps the
+    // popped-out huddle window's height asynchronously before the next cycle.
+    let clamped = crate::Rect {
+        height: 520,
+        ..target
+    };
+    runtime.backend.frames.insert(huddle.clone(), clamped);
+
+    for _ in 0..3 {
+        runtime.cycle(outputs.clone(), &cancelled).unwrap();
+        assert_eq!(runtime.backend.observed_apply_count, 1);
+        assert_eq!(runtime.backend.frames[&huddle], clamped);
+        assert_eq!(
+            runtime.constrained[WorkspaceId::ONE.index()].get(&huddle),
+            Some(&(target, clamped))
+        );
+    }
+
+    let visible = runtime.visible_workspaces(&outputs);
+    let server = runtime.backend.window_server_frames().unwrap();
+    let windows = runtime.arranged_windows(&server);
+    assert!(
+        runtime
+            .anomalies(&outputs, &visible, &windows, &server)
+            .is_empty()
+    );
+
+    // Closing the third window widens the tile, so the old constraint is re-evaluated.
+    runtime.backend.frames.remove(&settings);
+    runtime.cycle(outputs.clone(), &cancelled).unwrap();
+    assert_eq!(runtime.backend.observed_apply_count, 2);
+    assert_eq!(
+        runtime.backend.frames[&huddle],
+        crate::Rect {
+            x: 500,
+            y: 0,
+            width: 500,
+            height: 800,
+        }
+    );
+    runtime.cycle(outputs, &cancelled).unwrap();
+    assert!(!runtime.constrained[WorkspaceId::ONE.index()].contains_key(&huddle));
+}

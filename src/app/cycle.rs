@@ -439,6 +439,8 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
     ) {
         self.constrained[source.index()].remove(window);
         self.constrained[target.index()].remove(window);
+        self.applied[source.index()].remove(window);
+        self.applied[target.index()].remove(window);
     }
 
     fn reconcile_display(
@@ -610,6 +612,7 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
             self.clear_fullscreen_restore_if_inactive(*target);
         }
         self.constrained[workspace.index()].retain(|window, _| bound.contains(window));
+        self.applied[workspace.index()].retain(|window, _| bound.contains(window));
         let observed_frames = live::observed_frames(&scoped_observation);
         let filter_unchanged = routes.is_empty();
         let mut placements = if filter_unchanged {
@@ -618,6 +621,31 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
             self.workspaces.engine(workspace).placements(&settings)
         };
         self.apply_fullscreen_layout(workspace, &mut placements, output);
+        if !scoped_observation.mouse_down {
+            for placement in &placements {
+                let Some(window) = placement.window.as_ref() else {
+                    continue;
+                };
+                let Some(&observed) = observed_frames.get(window) else {
+                    continue;
+                };
+                let target = placement.frame;
+                if observed.approximately_equals(target, settings.frame_tolerance) {
+                    self.applied[workspace.index()].remove(window);
+                    self.constrained[workspace.index()].remove(window);
+                    continue;
+                }
+                if self.constrained[workspace.index()]
+                    .get(window)
+                    .is_some_and(|(constrained_target, _)| *constrained_target != target)
+                {
+                    self.constrained[workspace.index()].remove(window);
+                }
+                if self.applied[workspace.index()].remove(window) == Some(target) {
+                    self.constrained[workspace.index()].insert(window.clone(), (target, observed));
+                }
+            }
+        }
         if filter_unchanged {
             placements.retain(|placement| {
                 live::needs_application(placement, &observed_frames, settings.frame_tolerance)

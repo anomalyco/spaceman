@@ -65,6 +65,8 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
         if self.workspaces.uses_fullscreen_layout(source) {
             return Ok(self.status(0, &outputs));
         }
+        self.constrained[source.index()].remove(&window);
+        self.applied[source.index()].remove(&window);
         let target = self
             .navigation_tiles(&outputs)
             .into_iter()
@@ -138,6 +140,8 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
         if self.workspaces.uses_fullscreen_layout(workspace) {
             return Ok(self.status(0, &outputs));
         }
+        self.constrained[workspace.index()].remove(&window);
+        self.applied[workspace.index()].remove(&window);
         let output = output_for(&self.workspaces, workspace, &outputs);
         let failed = if self
             .workspaces
