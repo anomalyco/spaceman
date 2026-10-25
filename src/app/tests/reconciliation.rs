@@ -549,6 +549,166 @@ fn omission_settling_ends_when_the_window_is_observed_again() {
     );
 }
 
+fn studio_display() -> macos::DisplayOutputs {
+    macos::DisplayOutputs::new(vec![macos::DisplayOutput {
+        id: "studio-display-id".into(),
+        name: "Studio Display".into(),
+        frame: crate::Rect {
+            x: 0,
+            y: 30,
+            width: 2560,
+            height: 1410,
+        },
+        is_main: true,
+    }])
+    .unwrap()
+}
+
+fn column(x: i32, width: i32) -> crate::Rect {
+    crate::Rect {
+        x,
+        y: 30,
+        width,
+        height: 1410,
+    }
+}
+
+fn apps_observation(
+    apps: &[(&str, &crate::PhysicalWindowId, crate::Rect)],
+) -> crate::NativeObservation {
+    crate::NativeObservation {
+        cycle: 0,
+        mouse_down: false,
+        applications: apps
+            .iter()
+            .map(
+                |(bundle_id, window, frame)| crate::AppObservation::Complete {
+                    app: crate::ObservedApplication {
+                        id: window.app.clone(),
+                        bundle_id: (*bundle_id).into(),
+                    },
+                    focused: None,
+                    windows: vec![crate::ObservedWindow {
+                        id: (*window).clone(),
+                        frame: *frame,
+                        resizable: true,
+                        title: None,
+                    }],
+                },
+            )
+            .collect(),
+    }
+}
+
+fn app_window(pid: i32, launched_at: u64, window_id: u32) -> crate::PhysicalWindowId {
+    crate::PhysicalWindowId {
+        app: AppInstanceId { pid, launched_at },
+        window_id,
+    }
+}
+
+#[test]
+fn closed_window_its_app_keeps_ordered_out_gives_up_its_tile() {
+    // Frames from a real report: three apps tiled in thirds on a 2560x1410
+    // display. The middle app closed its window by ordering it out, so it had
+    // no on-screen window and the snapshot omitted the app, but the window
+    // server still listed the hidden window, which kept its third empty.
+    let editor = app_window(681, 1, 54);
+    let voice = app_window(271, 1, 2515);
+    let agent = app_window(992, 1, 2583);
+    let outputs = studio_display();
+    let mut backend = FakeBackend {
+        observation: Some(apps_observation(&[
+            ("com.example.Editor", &editor, column(0, 853)),
+            ("com.example.Voice", &voice, column(853, 860)),
+            ("com.example.Agent", &agent, column(1706, 854)),
+        ])),
+        ..FakeBackend::default()
+    };
+    backend.frames.insert(editor.clone(), column(0, 853));
+    backend.frames.insert(voice.clone(), column(853, 860));
+    backend.frames.insert(agent.clone(), column(1706, 854));
+    let mut runtime = runtime(backend);
+    let workspace = WorkspaceId::ONE;
+    bind(&mut runtime, workspace, &editor);
+    bind(&mut runtime, workspace, &voice);
+    bind(&mut runtime, workspace, &agent);
+    let cancelled = AtomicBool::new(false);
+    runtime.cycle(outputs.clone(), &cancelled).unwrap();
+    assert_eq!(runtime.backend.frames[&voice].x, 853);
+
+    runtime.backend.observation = Some(apps_observation(&[
+        ("com.example.Editor", &editor, column(0, 853)),
+        ("com.example.Agent", &agent, column(1706, 854)),
+    ]));
+    runtime.backend.frames.remove(&voice);
+    runtime
+        .backend
+        .server_frames
+        .insert(voice.clone(), column(853, 860));
+    runtime.backend.ordered_out.insert(voice.window_id);
+    runtime.cycle(outputs.clone(), &cancelled).unwrap();
+    assert_eq!(
+        runtime.workspaces.workspace_of(&voice),
+        Some(workspace),
+        "a window that just left the screen settles before its tile is given up"
+    );
+
+    runtime
+        .omitted_windows
+        .insert(voice.clone(), Instant::now() - OMISSION_SETTLE * 2);
+    runtime.cycle(outputs.clone(), &cancelled).unwrap();
+
+    assert_eq!(runtime.workspaces.workspace_of(&voice), None);
+    assert_eq!(runtime.backend.frames[&editor], column(0, 1280));
+    assert_eq!(runtime.backend.frames[&agent], column(1280, 1280));
+}
+
+#[test]
+fn workspace_whose_windows_all_leave_the_screen_keeps_its_tiles() {
+    // Switching to another macOS Space or a native fullscreen Space orders out
+    // every window on the display; that is not every window closing.
+    let editor = app_window(681, 1, 54);
+    let agent = app_window(992, 1, 2583);
+    let outputs = studio_display();
+    let mut backend = FakeBackend {
+        observation: Some(apps_observation(&[
+            ("com.example.Editor", &editor, column(0, 1280)),
+            ("com.example.Agent", &agent, column(1280, 1280)),
+        ])),
+        ..FakeBackend::default()
+    };
+    backend.frames.insert(editor.clone(), column(0, 1280));
+    backend.frames.insert(agent.clone(), column(1280, 1280));
+    let mut runtime = runtime(backend);
+    let workspace = WorkspaceId::ONE;
+    bind(&mut runtime, workspace, &editor);
+    bind(&mut runtime, workspace, &agent);
+    let cancelled = AtomicBool::new(false);
+    runtime.cycle(outputs.clone(), &cancelled).unwrap();
+
+    runtime.backend.observation = Some(apps_observation(&[]));
+    for window in [&editor, &agent] {
+        let frame = runtime.backend.frames.remove(window).unwrap();
+        runtime.backend.server_frames.insert(window.clone(), frame);
+        runtime.backend.ordered_out.insert(window.window_id);
+    }
+    runtime.cycle(outputs.clone(), &cancelled).unwrap();
+    for window in [&editor, &agent] {
+        runtime
+            .omitted_windows
+            .insert(window.clone(), Instant::now() - OMISSION_SETTLE * 2);
+    }
+    runtime.cycle(outputs.clone(), &cancelled).unwrap();
+
+    assert_eq!(runtime.workspaces.workspace_of(&editor), Some(workspace));
+    assert_eq!(runtime.workspaces.workspace_of(&agent), Some(workspace));
+    assert!(
+        runtime.omitted_windows.is_empty(),
+        "time off screen on another Space does not count toward the settle"
+    );
+}
+
 #[test]
 fn floating_rule_owns_window_without_adding_it_to_layout() {
     let window = window(10);

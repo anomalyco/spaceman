@@ -31,6 +31,9 @@ enum BackendCall {
 struct FakeBackend {
     frames: HashMap<crate::PhysicalWindowId, crate::Rect>,
     server_frames: HashMap<crate::PhysicalWindowId, crate::Rect>,
+    /// Windows the window server still lists but has ordered out (closed
+    /// windows an app keeps alive, minimized windows, other Spaces).
+    ordered_out: HashSet<u32>,
     /// Simulates apps whose real window movement lags position writes.
     frozen_server_frames: bool,
     focused: Option<crate::PhysicalWindowId>,
@@ -137,7 +140,9 @@ impl WorkspaceBackend for FakeBackend {
     }
 
     fn onscreen_window_frames(&mut self) -> Option<HashMap<u32, crate::Rect>> {
-        self.window_server_frames()
+        let mut frames = self.window_server_frames()?;
+        frames.retain(|window_id, _| !self.ordered_out.contains(window_id));
+        Some(frames)
     }
 
     fn onscreen_window_order(&mut self) -> Option<Vec<u32>> {
