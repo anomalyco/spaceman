@@ -405,10 +405,10 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
                     .filter(|slot| slot.belongs_to(&app))
                     .map(|slot| slot.identity_window().clone())
                     .collect::<Vec<_>>();
+                self.workspaces.forget_app(workspace, &app);
                 for window in &windows {
                     self.forget_window(workspace, window);
                 }
-                self.workspaces.forget_app(workspace, &app);
                 self.known_apps[workspace.index()].remove(&app);
                 log_event!(
                     "workspace {workspace}: forgot {app:?}: app exited while hidden ({} tile(s))",
@@ -792,14 +792,10 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
                 .backend
                 .apply_observed(&placements, &settings, cancelled);
             self.record_results(workspace, &results);
-            if self.fit_minimum_sizes(workspace, output, &results) {
-                *failed += self
-                    .apply_layout(workspace, output, None, cancelled)
-                    .0
-                    .failed;
-            } else {
-                *failed += failed_results(&results);
-            }
+            let initially_failed = failed_results(&results);
+            *failed += self
+                .refit_minimum_sizes(workspace, output, results, cancelled)
+                .map_or(initially_failed, |status| status.failed);
         }
         for target in routed_targets {
             if affinity_policy.visible_workspaces.contains(&target) {

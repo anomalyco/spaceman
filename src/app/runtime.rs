@@ -502,10 +502,11 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
         cancelled: &AtomicBool,
     ) -> LayoutStatus {
         let (status, results) = self.apply_layout(workspace, output, dragged, cancelled);
-        if dragged.is_none() && self.fit_minimum_sizes(workspace, output, &results) {
-            return self.apply_layout(workspace, output, None, cancelled).0;
+        if dragged.is_some() {
+            return status;
         }
-        status
+        self.refit_minimum_sizes(workspace, output, results, cancelled)
+            .unwrap_or(status)
     }
 
     pub(super) fn apply_layout(

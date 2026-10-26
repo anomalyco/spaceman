@@ -120,6 +120,53 @@ fn several_minimums_are_fitted_together_from_the_tiles_with_room_to_spare() {
 }
 
 #[test]
+fn a_sibling_minimum_revealed_by_refitting_is_fitted_too() {
+    let (first, second, third) = (window(10), window(11), window(12));
+    let mut runtime = tiled(&[
+        (first.clone(), 500),
+        (second.clone(), 400),
+        (third.clone(), 0),
+    ]);
+    let output = outputs().main().frame;
+    // Start from [350, 450, 200]: only the first window refuses its tile.
+    let frames = tile_frames(&runtime);
+    let engine = runtime.workspaces.engine_mut(WorkspaceId::ONE);
+    engine.resize_window(
+        &first,
+        crate::Rect {
+            width: 350,
+            ..frames[0]
+        },
+        output,
+    );
+    engine.resize_window(
+        &second,
+        crate::Rect {
+            x: 350,
+            width: 450,
+            ..frames[1]
+        },
+        output,
+    );
+    assert_eq!(
+        tile_frames(&runtime)
+            .iter()
+            .map(|frame| frame.width)
+            .collect::<Vec<_>>(),
+        [350, 450, 200]
+    );
+
+    runtime.layout_workspace(WorkspaceId::ONE, output, &AtomicBool::new(false));
+
+    let widths = tile_frames(&runtime)
+        .iter()
+        .map(|frame| frame.width)
+        .collect::<Vec<_>>();
+    assert_eq!(widths, [500, 400, 100]);
+    assert!(runtime.constrained[WorkspaceId::ONE.index()].is_empty());
+}
+
+#[test]
 fn fullscreen_layout_ignores_minimum_widths() {
     let (left, right) = (window(10), window(11));
     let mut runtime = tiled(&[(left.clone(), 0), (right.clone(), 600)]);
