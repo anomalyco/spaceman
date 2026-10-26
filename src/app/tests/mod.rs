@@ -4,6 +4,7 @@ mod gestures;
 mod journal;
 mod layout;
 mod memory;
+mod minimums;
 mod parking;
 mod reconciliation;
 mod reliability;
@@ -44,6 +45,8 @@ struct FakeBackend {
     fail_persist: bool,
     frame_outcome: Option<macos::WindowAccessError>,
     managed_outcome: Option<macos::ApplyOutcome>,
+    /// Widths windows refuse to shrink below, clamped synchronously like AppKit.
+    minimum_widths: HashMap<crate::PhysicalWindowId, i32>,
     focus_outcome: Option<bool>,
     server_snapshot_unavailable: bool,
     running_apps: Option<HashSet<AppInstanceId>>,
@@ -206,7 +209,20 @@ impl WorkspaceBackend for FakeBackend {
                 let window = placement.window.clone()?;
                 self.calls
                     .push(BackendCall::Apply(window.clone(), placement.frame));
-                let outcome = self.managed_outcome.unwrap_or(macos::ApplyOutcome::Applied);
+                let mut outcome = self.managed_outcome.unwrap_or(macos::ApplyOutcome::Applied);
+                if let Some(&width) = self.minimum_widths.get(&window)
+                    && self.managed_outcome.is_none()
+                    && placement.frame.width < width
+                {
+                    outcome = macos::ApplyOutcome::Constrained;
+                    self.frames.insert(
+                        window.clone(),
+                        crate::Rect {
+                            width,
+                            ..placement.frame
+                        },
+                    );
+                }
                 if matches!(outcome, macos::ApplyOutcome::Applied) {
                     self.frames.insert(window.clone(), placement.frame);
                     if !self.frozen_server_frames && self.server_frames.contains_key(&window) {

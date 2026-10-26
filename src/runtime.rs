@@ -116,6 +116,27 @@ impl Engine {
         Some(slot)
     }
 
+    /// Remove every slot, bound or unresolved, whose identity belongs to `app`.
+    pub(crate) fn forget_app(&mut self, app: &crate::AppInstanceId) -> bool {
+        let before = self.model.workspace.slots.len();
+        self.model
+            .workspace
+            .slots
+            .retain(|slot| !slot.belongs_to(app));
+        self.model.continuity.remove(app);
+        if self.model.workspace.slots.len() == before {
+            return false;
+        }
+        let slots = &self.model.workspace.slots;
+        self.evidence
+            .previous_placements
+            .retain(|id, _| slots.iter().any(|slot| slot.id == *id));
+        self.layout
+            .sync(self.model.workspace.axis, &self.model.workspace.slots);
+        self.invalidate();
+        true
+    }
+
     pub(crate) fn insert_slot(&mut self, mut slot: Slot) {
         if self
             .model
@@ -158,6 +179,25 @@ impl Engine {
         output: crate::Rect,
     ) -> bool {
         self.edit_slot(window, |layout, slot| layout.resize(slot, current, output))
+    }
+
+    pub(crate) fn fit_minimums(
+        &mut self,
+        output: crate::Rect,
+        minimums: &std::collections::HashMap<PhysicalWindowId, (i32, i32)>,
+    ) -> bool {
+        let slots = self
+            .model
+            .workspace
+            .slots
+            .iter()
+            .filter_map(|slot| Some((slot.id, *minimums.get(slot.bound_window()?)?)))
+            .collect();
+        if !self.layout.fit_minimums(output, &slots) {
+            return false;
+        }
+        self.commit_layout();
+        true
     }
 
     pub(crate) fn resize_focused_tile(

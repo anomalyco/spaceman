@@ -251,6 +251,7 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
                 }
             }
         }
+        self.forget_exited_apps_on_hidden_workspaces(visible);
 
         self.close_recalls();
         let mut affinities = HashMap::new();
@@ -368,6 +369,58 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
             windows: affinities,
             visible_workspaces: visible.iter().map(|resolved| resolved.workspace).collect(),
         })
+    }
+
+    /// Hidden workspaces are not reconciled, so an app that quit while its
+    /// windows were parked would otherwise keep their tiles until the
+    /// workspace was shown again.
+    fn forget_exited_apps_on_hidden_workspaces(&mut self, visible: &[ResolvedWorkspace]) {
+        let mut running = HashMap::new();
+        for workspace in WorkspaceId::all() {
+            if visible
+                .iter()
+                .any(|resolved| resolved.workspace == workspace)
+            {
+                continue;
+            }
+            let apps = self
+                .workspaces
+                .app_instances(workspace)
+                .cloned()
+                .collect::<HashSet<_>>();
+            for app in apps {
+                let alive = *running
+                    .entry(app.clone())
+                    .or_insert_with(|| self.backend.is_process_running(&app));
+                if alive {
+                    continue;
+                }
+                let windows = self
+                    .workspaces
+                    .engine(workspace)
+                    .model()
+                    .workspace
+                    .slots
+                    .iter()
+                    .filter(|slot| slot.belongs_to(&app))
+                    .map(|slot| slot.identity_window().clone())
+                    .collect::<Vec<_>>();
+                self.workspaces.forget_app(workspace, &app);
+                for window in &windows {
+                    self.forget_window(workspace, window);
+                }
+                self.known_apps[workspace.index()].remove(&app);
+                log_event!(
+                    "workspace {workspace}: forgot {app:?}: app exited while hidden ({} tile(s))",
+                    windows.len()
+                );
+                let parked = windows
+                    .into_iter()
+                    .filter(|window| self.parked.contains_key(window))
+                    .collect();
+                self.restore_windows(parked);
+            }
+        }
     }
 
     /// A bound window the window server still shows on screen inside this
@@ -681,6 +734,9 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
         }
         self.constrained[workspace.index()].retain(|window, _| bound.contains(window));
         self.applied[workspace.index()].retain(|window, _| bound.contains(window));
+        let workspaces = &self.workspaces;
+        self.minimum_sizes
+            .retain(|window, _| workspaces.workspace_of(window).is_some());
         let observed_frames = live::observed_frames(&scoped_observation);
         let filter_unchanged = routes.is_empty();
         let mut placements = if filter_unchanged {
@@ -736,7 +792,10 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
                 .backend
                 .apply_observed(&placements, &settings, cancelled);
             self.record_results(workspace, &results);
-            *failed += failed_results(&results);
+            let initially_failed = failed_results(&results);
+            *failed += self
+                .refit_minimum_sizes(workspace, output, results, cancelled)
+                .map_or(initially_failed, |status| status.failed);
         }
         for target in routed_targets {
             if affinity_policy.visible_workspaces.contains(&target) {

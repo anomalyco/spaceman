@@ -29,7 +29,9 @@ Reorder                                                 // tile.reorder
 Size                                                    // tile.size
 ├── Option+- / Option+= / ctl resize shrink|grow -> 50 px at the immediate split
 ├── Pointer resize       -> split weights follow the new frame, preview during the gesture
-└── ctl balance          -> equalize the focused tile's immediate split (no default hotkey)
+├── ctl balance          -> equalize the focused tile's immediate split (no default hotkey)
+└── Window refuses its tile size (app minimum) -> its tile grows to fit and siblings give up
+    the space, unless the split cannot hold every known minimum
 
 Axis                                                    // tile.axis
 └── Option+/ / ctl layout -> flip the root split axis (also exits Fullscreen Layout)
@@ -62,14 +64,23 @@ pause, quit, or hotkey loss.
 - Unit (FakeBackend), `src/app/tests/reconciliation.rs`:
   `closed_window_its_app_keeps_ordered_out_gives_up_its_tile` (an app closes its window by ordering it out),
   `workspace_whose_windows_all_leave_the_screen_keeps_its_tiles` (another Space is showing).
+- Unit (FakeBackend), `src/app/tests/minimums.rs`: a window that refuses its tile width gets a wider
+  tile (middle, last, several at once, and observation-cycle cases); neighbors whose minimums cannot
+  both fit keep their tiles; Fullscreen Layout ignores minimums. `src/layout_tree.rs`:
+  `fitting_minimums_reaches_into_nested_splits_and_leaves_impossible_splits_alone`.
 - Fixture replay: `cargo run -- replay fixtures/ghostty-tab-replacement.json` (reconciliation of a
   native-tab replacement, without the runtime).
 - Live harness (not run): `scripts/live-ghostty-tabs.sh` for native-tab slot preservation.
 
 ## Gotchas
 
-- Tests check requested frames; apps with minimum sizes may refuse them. Spaceman records such
-  windows as constrained instead of fighting every cycle, so a "misplaced" tile can be intentional.
+- Tests check requested frames; apps with minimum sizes may refuse them. Spaceman grows such a
+  window's tile to the size it kept, taking the space from its siblings in proportion to what each
+  can spare, and logs a `minimum size:` line in `agent.log`. Minimums are learned per window, only
+  from refusals visible right after the write, and kept until the window closes or Spaceman
+  restarts. Apps that clamp
+  later (Electron aspect ratios) are still recorded as constrained instead of fought every cycle.
+  When minimums cannot all fit, the window keeps overlapping its neighbor.
 - Some apps (many SwiftUI apps) close a window by ordering it out; the window server keeps
   listing it. Once its app has no window on screen, its tile is released after two seconds instead
   of staying as an empty gap. Minimizing an app's only window or hiding the app (Command-H) does the
