@@ -9,6 +9,7 @@ navigate, reorder, nest, resize, and balance them from the keyboard or the point
 Automatic tiling                                        // tile.auto
 ├── New managed window -> inserted into the workspace's split tree, everything reflows
 ├── Window closes -> its slot retires, siblings reflow
+│   └── App keeps the closed window alive off screen -> slot retires after two seconds
 └── Ghostty native tab replaces its window -> same slot, order, weight, nesting
 
 Focus                                                   // tile.focus
@@ -58,6 +59,9 @@ pause, quit, or hotkey loss.
 - Unit (FakeBackend), `src/app/tests/gestures.rs`: drag swap preview, edge-nesting preview,
   cross-display drop; `startup.rs` covers gesture classification and `src/app/input.rs` covers
   queued final gestures.
+- Unit (FakeBackend), `src/app/tests/reconciliation.rs`:
+  `closed_window_its_app_keeps_ordered_out_gives_up_its_tile` (an app closes its window by ordering it out),
+  `workspace_whose_windows_all_leave_the_screen_keeps_its_tiles` (another Space is showing).
 - Fixture replay: `cargo run -- replay fixtures/ghostty-tab-replacement.json` (reconciliation of a
   native-tab replacement, without the runtime).
 - Live harness (not run): `scripts/live-ghostty-tabs.sh` for native-tab slot preservation.
@@ -66,6 +70,11 @@ pause, quit, or hotkey loss.
 
 - Tests check requested frames; apps with minimum sizes may refuse them. Spaceman records such
   windows as constrained instead of fighting every cycle, so a "misplaced" tile can be intentional.
+- Some apps (many SwiftUI apps) close a window by ordering it out; the window server keeps
+  listing it. Once its app has no window on screen, its tile is released after two seconds instead
+  of staying as an empty gap. Minimizing an app's only window or hiding the app (Command-H) does the
+  same; the window comes back as a new tile at the end of the layout. While nothing on the display
+  is observed (another macOS Space is showing), tiles are kept.
 - `balance` has no default hotkey; it is CLI-only.
 - A window that enters macOS native fullscreen (for example browser video) loses its slot after two
   seconds and returns as a new tile at the end of the layout

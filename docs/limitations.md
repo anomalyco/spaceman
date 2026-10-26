@@ -17,6 +17,9 @@ Spaceman is an experimental public preview, not a broadly qualified release.
 - Configuration supports ordered exact-match `float`/`route`/`ignore` rules and display assignment. It
   intentionally does not support orthogonal named app spaces or regex title matching.
 - Configuration is loaded only at process startup. `ctl restart` exits safely but does not relaunch.
+- Spaceman assumes one macOS Space per display. Windows on another Space are adopted into the active
+  workspace when that Space is shown, and tiles whose windows are ordered out while it is shown may
+  be released.
 - `secondary` selects the first non-main display; display ordering and duplicate names may surprise.
 - Global shortcuts may collide with other applications or fail on keyboard layouts that cannot
   produce required characters.

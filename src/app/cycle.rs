@@ -430,6 +430,86 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
         }
     }
 
+    /// Apps the snapshot omitted entirely keep their slots while the window
+    /// server still lists one of their bound windows. The window server also
+    /// lists windows that are ordered out (a closed window its app keeps
+    /// alive, a minimized window), and keeping those slots leaves an empty
+    /// tile. So while another window of this workspace is observed, meaning
+    /// the display is not showing another Space, an ordered-out window keeps
+    /// its app's slots only until the omission outlasts [`OMISSION_SETTLE`].
+    /// Unresolved replacement candidates keep the plain window-server rule.
+    fn apps_with_window_server_evidence(
+        &mut self,
+        workspace: WorkspaceId,
+        observation: &crate::NativeObservation,
+        server_frames: Option<&HashMap<u32, crate::Rect>>,
+        onscreen_frames: Option<&HashMap<u32, crate::Rect>>,
+    ) -> HashSet<AppInstanceId> {
+        let mut apps = HashSet::new();
+        let Some(server_frames) = server_frames else {
+            return apps;
+        };
+        let present: HashSet<_> = observation
+            .applications
+            .iter()
+            .map(|app| app.app_id().clone())
+            .collect();
+        let workspace_observed = live::observed_frames(observation)
+            .keys()
+            .any(|window| self.workspaces.workspace_of(window) == Some(workspace));
+        let onscreen_frames = onscreen_frames.filter(|_| workspace_observed);
+        let windows: Vec<_> = self
+            .workspaces
+            .engine(workspace)
+            .model()
+            .workspace
+            .slots
+            .iter()
+            .flat_map(|slot| match &slot.binding {
+                BindingState::Bound(window) => vec![(window.clone(), true)],
+                BindingState::Unresolved {
+                    previous,
+                    candidates,
+                    ..
+                } => std::iter::once((previous.clone(), true))
+                    .chain(candidates.iter().map(|window| (window.clone(), false)))
+                    .collect(),
+            })
+            .filter(|(window, _)| {
+                !present.contains(&window.app) && server_frames.contains_key(&window.window_id)
+            })
+            .collect();
+        let now = Instant::now();
+        for (window, settles) in windows {
+            let Some(onscreen_frames) = onscreen_frames.filter(|_| settles) else {
+                // Off-screen time spent on another Space must not count
+                // toward the settle once the display shows this workspace.
+                self.omitted_windows.remove(&window);
+                apps.insert(window.app);
+                continue;
+            };
+            if onscreen_frames.contains_key(&window.window_id) {
+                self.omitted_windows.remove(&window);
+                apps.insert(window.app);
+                continue;
+            }
+            let since = *self
+                .omitted_windows
+                .entry(window.clone())
+                .or_insert_with(|| {
+                    log_event!(
+                        "observation omitted {:?}: window server lists it off screen; releasing its slot unless it returns",
+                        window
+                    );
+                    now
+                });
+            if now.duration_since(since) < OMISSION_SETTLE {
+                apps.insert(window.app);
+            }
+        }
+        apps
+    }
+
     /// Bookkeeping shared by every path that moves a window between workspaces.
     pub(super) fn clear_relocation_evidence(
         &mut self,
@@ -511,29 +591,12 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
             }
         }
         self.guard_omitted_windows(workspace, output, &mut scoped_observation, onscreen_frames);
-        let mut apps_with_window_server_evidence = HashSet::new();
-        if let Some(server_frames) = server_frames {
-            for slot in &self.workspaces.engine(workspace).model().workspace.slots {
-                match &slot.binding {
-                    BindingState::Bound(window) => {
-                        if server_frames.contains_key(&window.window_id) {
-                            apps_with_window_server_evidence.insert(window.app.clone());
-                        }
-                    }
-                    BindingState::Unresolved {
-                        previous,
-                        candidates,
-                        ..
-                    } => {
-                        for window in std::iter::once(previous).chain(candidates) {
-                            if server_frames.contains_key(&window.window_id) {
-                                apps_with_window_server_evidence.insert(window.app.clone());
-                            }
-                        }
-                    }
-                }
-            }
-        }
+        let apps_with_window_server_evidence = self.apps_with_window_server_evidence(
+            workspace,
+            &scoped_observation,
+            server_frames,
+            onscreen_frames,
+        );
         live::add_absent_applications_with(
             &mut scoped_observation,
             &mut self.known_apps[workspace.index()],
