@@ -46,6 +46,10 @@ pub(super) trait WorkspaceBackend {
     ) -> macos::ApplyOutcome;
     fn focused_window(&mut self) -> Option<crate::PhysicalWindowId>;
     fn frontmost_application(&mut self) -> Option<AppInstanceId>;
+    /// Diagnostics only: recent user input timing for focus-follow logs.
+    fn recent_input(&mut self) -> Option<macos::RecentInput> {
+        None
+    }
     fn raise_window(&mut self, window: &crate::PhysicalWindowId) -> bool;
     fn focus_window(&mut self, window: &crate::PhysicalWindowId) -> bool;
     fn apply_managed(
@@ -129,6 +133,10 @@ impl WorkspaceBackend for MacWorkspaceBackend {
 
     fn frontmost_application(&mut self) -> Option<AppInstanceId> {
         macos::frontmost_application()
+    }
+
+    fn recent_input(&mut self) -> Option<macos::RecentInput> {
+        Some(macos::recent_input())
     }
 
     fn raise_window(&mut self, window: &crate::PhysicalWindowId) -> bool {
