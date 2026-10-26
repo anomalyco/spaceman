@@ -5,7 +5,7 @@ native window, including a selected Ghostty native tab, can change physical Acce
 without creating a new tile. Spaceman keeps the logical slot and replaces its physical binding when
 the evidence is unambiguous.
 
-[Website](https://spaceman.kitlangton.dev) · [Download for Apple silicon](https://pub-6f85d683ffe0419cad0a71508904053a.r2.dev/releases/Spaceman-v0.1.2-macos-arm64.zip)
+[Website](https://spaceman.kitlangton.dev) · [Download for Apple silicon](https://pub-6f85d683ffe0419cad0a71508904053a.r2.dev/releases/Spaceman-v0.1.3-macos-arm64.zip)
 
 > [!WARNING]
 > Disable AeroSpace, yabai, Amethyst, and every other window manager before first opening Spaceman
@@ -41,9 +41,9 @@ The current preview is a Developer ID-signed, notarized arm64 build for Apple si
 experimental; read [Known limitations](docs/limitations.md) before installing it.
 
 1. Disable every other window manager. For AeroSpace: `aerospace enable off`.
-2. Download [Spaceman 0.1.2 for Apple silicon](https://pub-6f85d683ffe0419cad0a71508904053a.r2.dev/releases/Spaceman-v0.1.2-macos-arm64.zip)
-   and its [SHA-256 checksum](https://pub-6f85d683ffe0419cad0a71508904053a.r2.dev/releases/Spaceman-v0.1.2-macos-arm64.zip.sha256).
-3. In the download directory, run `shasum -a 256 -c Spaceman-v0.1.2-macos-arm64.zip.sha256`.
+2. Download [Spaceman 0.1.3 for Apple silicon](https://pub-6f85d683ffe0419cad0a71508904053a.r2.dev/releases/Spaceman-v0.1.3-macos-arm64.zip)
+   and its [SHA-256 checksum](https://pub-6f85d683ffe0419cad0a71508904053a.r2.dev/releases/Spaceman-v0.1.3-macos-arm64.zip.sha256).
+3. In the download directory, run `shasum -a 256 -c Spaceman-v0.1.3-macos-arm64.zip.sha256`.
 4. Unzip it, move `Spaceman.app` to `/Applications`, and open it.
 5. Link the bundled CLI: `mkdir -p "$HOME/.local/bin" && ln -sf "/Applications/Spaceman.app/Contents/MacOS/spaceman" "$HOME/.local/bin/spaceman"`.
 6. Complete the Accessibility setup shown by Spaceman.
