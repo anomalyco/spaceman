@@ -90,6 +90,8 @@ pub(super) struct WorkspaceRuntime<B = MacWorkspaceBackend> {
     /// Owned windows Accessibility reports gone while the window server still
     /// lists them, and when that began.
     pub(super) inaccessible_since: HashMap<crate::PhysicalWindowId, Instant>,
+    /// Smallest width and height each window has refused to shrink below.
+    pub(super) minimum_sizes: HashMap<crate::PhysicalWindowId, (i32, i32)>,
     pub(super) config: Config,
     pub(super) foreground_lanes: HashMap<String, DisplaySelector>,
     pub(super) suppressed_focus: Option<crate::PhysicalWindowId>,
@@ -248,6 +250,7 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
             parking_exempt: HashSet::new(),
             omitted_windows: HashMap::new(),
             inaccessible_since: HashMap::new(),
+            minimum_sizes: HashMap::new(),
             config,
             foreground_lanes: HashMap::new(),
             suppressed_focus: None,
@@ -498,6 +501,20 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
         dragged: Option<&crate::PhysicalWindowId>,
         cancelled: &AtomicBool,
     ) -> LayoutStatus {
+        let (status, results) = self.apply_layout(workspace, output, dragged, cancelled);
+        if dragged.is_none() && self.fit_minimum_sizes(workspace, output, &results) {
+            return self.apply_layout(workspace, output, None, cancelled).0;
+        }
+        status
+    }
+
+    pub(super) fn apply_layout(
+        &mut self,
+        workspace: WorkspaceId,
+        output: crate::Rect,
+        dragged: Option<&crate::PhysicalWindowId>,
+        cancelled: &AtomicBool,
+    ) -> (LayoutStatus, Vec<macos::ApplyResult>) {
         let settings = Settings::for_output(output);
         let mut placements = self.workspaces.engine(workspace).placements(&settings);
         self.apply_fullscreen_layout(workspace, &mut placements, output);
@@ -526,7 +543,7 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
                     macos::ApplyOutcome::Gone | macos::ApplyOutcome::Unavailable
                 )
             });
-        LayoutStatus { failed, blocked }
+        (LayoutStatus { failed, blocked }, results)
     }
 
     pub(super) fn forget_window(
@@ -544,6 +561,7 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
         self.recent_heals.remove(window);
         self.repark_attempts.remove(window);
         self.inaccessible_since.remove(window);
+        self.minimum_sizes.remove(window);
     }
 
     pub(super) fn clear_fullscreen_restore_if_inactive(&mut self, workspace: WorkspaceId) {

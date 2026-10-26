@@ -782,6 +782,12 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
                 .apply_observed(&placements, &settings, cancelled);
             self.record_results(workspace, &results);
             *failed += failed_results(&results);
+            if self.fit_minimum_sizes(workspace, output, &results) {
+                *failed += self
+                    .apply_layout(workspace, output, None, cancelled)
+                    .0
+                    .failed;
+            }
         }
         for target in routed_targets {
             if affinity_policy.visible_workspaces.contains(&target) {

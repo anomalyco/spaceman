@@ -51,6 +51,7 @@ mod cycle;
 mod input;
 mod journal;
 mod memory;
+mod minimums;
 mod parking;
 mod runtime;
 mod switching;
