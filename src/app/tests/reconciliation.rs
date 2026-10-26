@@ -905,6 +905,56 @@ fn restored_slots_for_a_dead_application_are_retired() {
 }
 
 #[test]
+fn an_app_that_quits_while_hidden_releases_its_tiles_and_recovery_metadata() {
+    let survivor = window(10);
+    let dead = crate::PhysicalWindowId {
+        app: AppInstanceId {
+            pid: 2,
+            launched_at: 2,
+        },
+        window_id: 20,
+    };
+    let backend = FakeBackend {
+        observation: Some(crate::NativeObservation {
+            cycle: 0,
+            mouse_down: false,
+            applications: Vec::new(),
+        }),
+        running_apps: Some(HashSet::from([survivor.app.clone()])),
+        ..FakeBackend::default()
+    };
+    let mut runtime = runtime_with_parked(
+        backend,
+        [(survivor.clone(), frame(50)), (dead.clone(), frame(500))],
+    );
+    let hidden = WorkspaceId::new(3).unwrap();
+    bind(&mut runtime, hidden, &survivor);
+    bind(&mut runtime, hidden, &dead);
+    runtime.backend.frames.insert(survivor.clone(), frame(50));
+    let cancelled = AtomicBool::new(false);
+
+    runtime.cycle(outputs(), &cancelled).unwrap();
+
+    assert_eq!(runtime.workspaces.workspace_of(&dead), None);
+    assert_eq!(runtime.workspaces.workspace_of(&survivor), Some(hidden));
+    assert_eq!(
+        runtime
+            .workspaces
+            .engine(hidden)
+            .model()
+            .workspace
+            .slots
+            .len(),
+        1
+    );
+    assert!(runtime.backend.workspace_state.is_some());
+
+    runtime.cycle(outputs(), &cancelled).unwrap();
+    assert!(!runtime.parked.contains_key(&dead));
+    assert!(runtime.parked.contains_key(&survivor));
+}
+
+#[test]
 fn asynchronously_clamped_window_settles_without_reapplying_every_cycle() {
     let main = window(10);
     let huddle = window(11);

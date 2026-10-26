@@ -549,6 +549,18 @@ impl Workspaces {
             || self.floating_owners.keys().any(|window| &window.app == app)
     }
 
+    pub(crate) fn forget_app(
+        &mut self,
+        workspace: WorkspaceId,
+        app: &crate::AppInstanceId,
+    ) -> bool {
+        let removed = self.engine_mut(workspace).forget_app(app);
+        if removed {
+            self.prune_intents(workspace);
+        }
+        removed
+    }
+
     pub(crate) fn floating_windows_for_app(
         &self,
         app: &crate::AppInstanceId,

@@ -251,6 +251,7 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
                 }
             }
         }
+        self.forget_exited_apps_on_hidden_workspaces(visible);
 
         self.close_recalls();
         let mut affinities = HashMap::new();
@@ -368,6 +369,50 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
             windows: affinities,
             visible_workspaces: visible.iter().map(|resolved| resolved.workspace).collect(),
         })
+    }
+
+    /// Hidden workspaces are not reconciled, so an app that quit while its
+    /// windows were parked would otherwise keep their tiles until the
+    /// workspace was shown again.
+    fn forget_exited_apps_on_hidden_workspaces(&mut self, visible: &[ResolvedWorkspace]) {
+        let mut running = HashMap::new();
+        for workspace in WorkspaceId::all() {
+            if visible
+                .iter()
+                .any(|resolved| resolved.workspace == workspace)
+            {
+                continue;
+            }
+            let apps = self
+                .workspaces
+                .app_instances(workspace)
+                .cloned()
+                .collect::<HashSet<_>>();
+            for app in apps {
+                let alive = *running
+                    .entry(app.clone())
+                    .or_insert_with(|| self.backend.is_process_running(&app));
+                if alive {
+                    continue;
+                }
+                let windows = self
+                    .workspaces
+                    .engine(workspace)
+                    .bound_windows()
+                    .into_iter()
+                    .filter(|window| window.app == app)
+                    .collect::<Vec<_>>();
+                for window in &windows {
+                    self.forget_window(workspace, window);
+                }
+                self.workspaces.forget_app(workspace, &app);
+                self.known_apps[workspace.index()].remove(&app);
+                log_event!(
+                    "workspace {workspace}: forgot {app:?}: app exited while hidden ({} tile(s))",
+                    windows.len()
+                );
+            }
+        }
     }
 
     /// A bound window the window server still shows on screen inside this

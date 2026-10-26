@@ -76,6 +76,9 @@ on the same letter.
 - Unit (FakeBackend), `src/app/tests/parking.rs`: parking without minimizing, re-parking windows that
   drift back, honoring windows that keep un-parking (parking exemption, working tree), and keeping
   slots when Accessibility briefly cannot find a hidden window.
+- Unit (FakeBackend), `src/app/tests/reconciliation.rs`:
+  `an_app_that_quits_while_hidden_releases_its_tiles_and_recovery_metadata` (an app that quits
+  while its windows are parked frees their tiles without the workspace being shown).
 - Live harness (not run): `scripts/live-workspaces.sh` switches 6/7/8 by real hotkeys, moves without
   switching, rapid-switch coalescing, and hard-kill recovery. Needs two displays and AeroSpace.
 
