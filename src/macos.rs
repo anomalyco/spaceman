@@ -25,7 +25,7 @@ use objc2_core_foundation::{
     CFType, CFUUID, CGPoint, CGRect, CGSize, ConcreteType, kCFRunLoopDefaultMode,
 };
 use objc2_core_graphics::{
-    CGEvent, CGEventSource, CGEventSourceStateID, CGMouseButton,
+    CGEvent, CGEventFlags, CGEventSource, CGEventSourceStateID, CGEventType, CGMouseButton,
     CGRectMakeWithDictionaryRepresentation, CGWindowID, CGWindowListCopyWindowInfo,
     CGWindowListOption, kCGWindowBounds, kCGWindowLayer, kCGWindowNumber, kCGWindowOwnerPID,
 };
@@ -1067,6 +1067,41 @@ fn prune_managed_app(app: &AppInstanceId, current: &HashSet<PhysicalWindowId>) {
 
 pub fn mouse_down() -> bool {
     CGEventSource::button_state(CGEventSourceStateID::HIDSystemState, CGMouseButton::Left)
+}
+
+/// How long ago the user last typed, clicked, or changed modifiers, and
+/// whether Command is held. Tells Command-Tab apart from an app activating
+/// itself in focus-follow logs, without recording which keys were pressed.
+#[derive(Clone, Copy, Debug)]
+pub struct RecentInput {
+    pub key_down: f64,
+    pub mouse_down: f64,
+    pub modifiers_changed: f64,
+    pub command_held: bool,
+}
+
+impl std::fmt::Display for RecentInput {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "key {:.2}s ago, click {:.2}s ago, modifiers {:.2}s ago, command {}",
+            self.key_down,
+            self.mouse_down,
+            self.modifiers_changed,
+            if self.command_held { "held" } else { "up" }
+        )
+    }
+}
+
+pub fn recent_input() -> RecentInput {
+    let state = CGEventSourceStateID::HIDSystemState;
+    let since = |event| CGEventSource::seconds_since_last_event_type(state, event);
+    RecentInput {
+        key_down: since(CGEventType::KeyDown),
+        mouse_down: since(CGEventType::LeftMouseDown).min(since(CGEventType::RightMouseDown)),
+        modifiers_changed: since(CGEventType::FlagsChanged),
+        command_held: CGEventSource::flags_state(state).contains(CGEventFlags::MaskCommand),
+    }
 }
 
 pub fn mouse_position() -> Option<(i32, i32)> {

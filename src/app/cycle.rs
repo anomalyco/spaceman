@@ -127,11 +127,16 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
                     .iter()
                     .any(|resolved| resolved.workspace == workspace)
             {
+                let input = self
+                    .backend
+                    .recent_input()
+                    .map_or_else(|| "input unknown".into(), |input| input.to_string());
                 log_event!(
-                    "focus follow: {:?} (frontmost {:?}) -> workspace {}",
+                    "focus follow: {:?} (frontmost {:?}) -> workspace {} ({})",
                     focused,
                     frontmost,
-                    workspace
+                    workspace,
+                    input
                 );
                 return self.switch(workspace, outputs, cancelled);
             }

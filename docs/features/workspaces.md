@@ -89,7 +89,8 @@ on the same letter.
   working tree, a window that does so twice in five minutes stays tiled but is no longer hidden
   across switches (`parking_exempt`).
 - Focus-follow switches workspaces as a side effect of any app activation, including ones the user
-  did not intend (an app raising itself).
+  did not intend (an app raising itself). Each `focus follow` line in `agent.log` records recent
+  input timing and whether Command was held, so Command-Tab can be told apart from self-activation.
 - Panels and non-standard windows are never parked, so they show on every workspace; an empty
   workspace exposes whatever unmanaged windows sit behind managed ones.
 - Rules and display assignments are read only at startup; `ctl restart` exits but does not relaunch.
