@@ -35,7 +35,7 @@ fn a_window_that_refuses_its_tile_width_gets_a_wider_tile_from_its_neighbor() {
 
     let frames = tile_frames(&runtime);
     assert_eq!(frames[1].width, 400);
-    assert_eq!(frames[0].width, 333);
+    assert!((299..=301).contains(&frames[0].width));
     assert_eq!(frames[1].x, frames[0].x + frames[0].width);
     assert_eq!(frames[2].x, frames[1].x + frames[1].width);
     assert_eq!(frames[2].x + frames[2].width, output.width);
@@ -83,20 +83,40 @@ fn the_last_tile_grows_toward_its_leading_neighbor() {
 }
 
 #[test]
-fn neighbors_whose_minimums_cannot_both_fit_do_not_trade_space_forever() {
+fn neighbors_whose_minimums_cannot_both_fit_keep_their_tiles() {
     let (left, right) = (window(10), window(11));
     let mut runtime = tiled(&[(left.clone(), 600), (right.clone(), 600)]);
     let output = outputs().main().frame;
     let cancelled = AtomicBool::new(false);
+    let before = tile_frames(&runtime);
 
     runtime.layout_workspace(WorkspaceId::ONE, output, &cancelled);
     runtime.layout_workspace(WorkspaceId::ONE, output, &cancelled);
-    let settled = tile_frames(&runtime);
-    runtime.layout_workspace(WorkspaceId::ONE, output, &cancelled);
-    runtime.layout_workspace(WorkspaceId::ONE, output, &cancelled);
 
-    assert_eq!(tile_frames(&runtime), settled);
-    assert_eq!(settled[0].width, 600);
+    assert_eq!(tile_frames(&runtime), before);
+}
+
+#[test]
+fn several_minimums_are_fitted_together_from_the_tiles_with_room_to_spare() {
+    let (first, second, third) = (window(10), window(11), window(12));
+    let mut runtime = tiled(&[
+        (first.clone(), 450),
+        (second.clone(), 400),
+        (third.clone(), 0),
+    ]);
+
+    runtime.layout_workspace(
+        WorkspaceId::ONE,
+        outputs().main().frame,
+        &AtomicBool::new(false),
+    );
+
+    let widths = tile_frames(&runtime)
+        .iter()
+        .map(|frame| frame.width)
+        .collect::<Vec<_>>();
+    assert_eq!(widths, [450, 400, 150]);
+    assert!(runtime.constrained[WorkspaceId::ONE.index()].is_empty());
 }
 
 #[test]

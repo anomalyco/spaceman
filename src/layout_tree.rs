@@ -1,4 +1,4 @@
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 
 use serde::{Deserialize, Serialize};
 
@@ -312,6 +312,17 @@ impl LayoutTree {
             child.weight = pixel_weight(extent);
         }
         true
+    }
+
+    /// Give every tile at least its window's known minimum `(width, height)`,
+    /// taking the space from siblings in proportion to what each can spare.
+    /// Splits whose minimums cannot all fit are left unchanged.
+    pub(crate) fn fit_minimums(
+        &mut self,
+        output: Rect,
+        minimums: &HashMap<SlotId, (i32, i32)>,
+    ) -> bool {
+        fit_node(&mut self.root, output, minimums)
     }
 
     fn take_slot(&self, slot: SlotId) -> Option<(Node, Node)> {
@@ -739,6 +750,102 @@ fn minimum_extent(node: &Node, axis: Axis) -> i32 {
     }
 }
 
+/// Shortfalls this small are readback noise, not a refused size.
+const MINIMUM_TOLERANCE: i32 = 2;
+
+fn fit_node(node: &mut Node, frame: Rect, minimums: &HashMap<SlotId, (i32, i32)>) -> bool {
+    let Node::Split { axis, children } = node else {
+        return false;
+    };
+    let extents = partition_children(frame, *axis, children)
+        .iter()
+        .map(|child| extent(*child, *axis))
+        .collect::<Vec<_>>();
+    let required = children
+        .iter()
+        .map(|child| required_extent(&child.node, *axis, minimums))
+        .collect::<Vec<_>>();
+    let mut changed = false;
+    if let Some(fitted) = redistribute(&extents, &required) {
+        for (child, extent) in children.iter_mut().zip(fitted) {
+            child.weight = pixel_weight(extent);
+        }
+        changed = true;
+    }
+    let frames = partition_children(frame, *axis, children);
+    for (child, child_frame) in children.iter_mut().zip(frames) {
+        changed |= fit_node(&mut child.node, child_frame, minimums);
+    }
+    changed
+}
+
+fn required_extent(node: &Node, axis: Axis, minimums: &HashMap<SlotId, (i32, i32)>) -> i32 {
+    match node {
+        Node::Leaf(slot) => {
+            let known = minimums.get(slot).map_or(0, |&(width, height)| match axis {
+                Axis::Horizontal => width,
+                Axis::Vertical => height,
+            });
+            known.max(MIN_TILE_EXTENT)
+        }
+        Node::Split {
+            axis: split_axis,
+            children,
+        } if *split_axis == axis => children
+            .iter()
+            .map(|child| required_extent(&child.node, axis, minimums))
+            .sum(),
+        Node::Split { children, .. } => children
+            .iter()
+            .map(|child| required_extent(&child.node, axis, minimums))
+            .max()
+            .unwrap_or(0),
+    }
+}
+
+/// Raise each extent short of its requirement and take the difference from
+/// the others in proportion to their slack. `None` when nothing is short or
+/// the requirements do not fit.
+fn redistribute(extents: &[i32], required: &[i32]) -> Option<Vec<i32>> {
+    if !extents
+        .iter()
+        .zip(required)
+        .any(|(extent, required)| extent + MINIMUM_TOLERANCE < *required)
+        || required.iter().sum::<i32>() > extents.iter().sum::<i32>()
+    {
+        return None;
+    }
+    let mut fitted = extents
+        .iter()
+        .zip(required)
+        .map(|(extent, required)| (*extent).max(*required))
+        .collect::<Vec<_>>();
+    let mut deficit = fitted.iter().sum::<i32>() - extents.iter().sum::<i32>();
+    let slack = fitted
+        .iter()
+        .zip(required)
+        .map(|(extent, required)| extent - required)
+        .collect::<Vec<_>>();
+    let total_slack = i64::from(slack.iter().sum::<i32>());
+    let mut taken = 0;
+    for (extent, slack) in fitted.iter_mut().zip(&slack) {
+        let share = (i64::from(deficit) * i64::from(*slack) / total_slack) as i32;
+        *extent -= share;
+        taken += share;
+    }
+    deficit -= taken;
+    for (extent, required) in fitted.iter_mut().zip(required) {
+        if deficit == 0 {
+            break;
+        }
+        if *extent > *required {
+            *extent -= 1;
+            deficit -= 1;
+        }
+    }
+    Some(fitted)
+}
+
 const fn extent(frame: Rect, axis: Axis) -> i32 {
     match axis {
         Axis::Horizontal => frame.width,
@@ -1009,6 +1116,51 @@ mod tests {
             height: 800,
             ..Rect::default()
         }
+    }
+
+    #[test]
+    fn fitting_minimums_reaches_into_nested_splits_and_leaves_impossible_splits_alone() {
+        let mut layout = LayoutTree {
+            root: Node::Split {
+                axis: Axis::Horizontal,
+                children: vec![
+                    Child {
+                        weight: 1,
+                        node: Node::Leaf(SlotId(1)),
+                    },
+                    Child {
+                        weight: 1,
+                        node: Node::Split {
+                            axis: Axis::Vertical,
+                            children: vec![
+                                Child {
+                                    weight: 1,
+                                    node: Node::Leaf(SlotId(2)),
+                                },
+                                Child {
+                                    weight: 1,
+                                    node: Node::Leaf(SlotId(3)),
+                                },
+                            ],
+                        },
+                    },
+                ],
+            },
+        };
+        let minimums = HashMap::from([(SlotId(3), (700, 500))]);
+
+        assert!(layout.fit_minimums(output(), &minimums));
+        let frames = layout.placements(output());
+        assert_eq!(frames[0].1.width, 300);
+        assert_eq!(frames[2].1.width, 700);
+        assert_eq!(frames[2].1.height, 500);
+        assert_eq!(frames[1].1.height, 300);
+        assert!(!layout.fit_minimums(output(), &minimums));
+
+        let before = layout.clone();
+        let impossible = HashMap::from([(SlotId(1), (600, 0)), (SlotId(3), (700, 0))]);
+        assert!(!layout.fit_minimums(output(), &impossible));
+        assert_eq!(layout, before);
     }
 
     #[test]

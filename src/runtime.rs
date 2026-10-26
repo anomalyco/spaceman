@@ -181,6 +181,25 @@ impl Engine {
         self.edit_slot(window, |layout, slot| layout.resize(slot, current, output))
     }
 
+    pub(crate) fn fit_minimums(
+        &mut self,
+        output: crate::Rect,
+        minimums: &std::collections::HashMap<PhysicalWindowId, (i32, i32)>,
+    ) -> bool {
+        let slots = self
+            .model
+            .workspace
+            .slots
+            .iter()
+            .filter_map(|slot| Some((slot.id, *minimums.get(slot.bound_window()?)?)))
+            .collect();
+        if !self.layout.fit_minimums(output, &slots) {
+            return false;
+        }
+        self.commit_layout();
+        true
+    }
+
     pub(crate) fn resize_focused_tile(
         &mut self,
         window: &PhysicalWindowId,

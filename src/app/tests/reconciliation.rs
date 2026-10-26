@@ -948,9 +948,9 @@ fn an_app_that_quits_while_hidden_releases_its_tiles_and_recovery_metadata() {
         1
     );
     assert!(runtime.backend.workspace_state.is_some());
-
-    runtime.cycle(outputs(), &cancelled).unwrap();
     assert!(!runtime.parked.contains_key(&dead));
+    assert!(!runtime.backend.persisted.contains_key(&dead));
+    assert!(runtime.backend.persisted.contains_key(&survivor));
     assert!(runtime.parked.contains_key(&survivor));
 }
 

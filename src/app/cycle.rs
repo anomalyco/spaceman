@@ -398,9 +398,12 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
                 let windows = self
                     .workspaces
                     .engine(workspace)
-                    .bound_windows()
-                    .into_iter()
-                    .filter(|window| window.app == app)
+                    .model()
+                    .workspace
+                    .slots
+                    .iter()
+                    .filter(|slot| slot.belongs_to(&app))
+                    .map(|slot| slot.identity_window().clone())
                     .collect::<Vec<_>>();
                 for window in &windows {
                     self.forget_window(workspace, window);
@@ -411,6 +414,11 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
                     "workspace {workspace}: forgot {app:?}: app exited while hidden ({} tile(s))",
                     windows.len()
                 );
+                let parked = windows
+                    .into_iter()
+                    .filter(|window| self.parked.contains_key(window))
+                    .collect();
+                self.restore_windows(parked);
             }
         }
     }
@@ -726,6 +734,9 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
         }
         self.constrained[workspace.index()].retain(|window, _| bound.contains(window));
         self.applied[workspace.index()].retain(|window, _| bound.contains(window));
+        let workspaces = &self.workspaces;
+        self.minimum_sizes
+            .retain(|window, _| workspaces.workspace_of(window).is_some());
         let observed_frames = live::observed_frames(&scoped_observation);
         let filter_unchanged = routes.is_empty();
         let mut placements = if filter_unchanged {
@@ -781,12 +792,13 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
                 .backend
                 .apply_observed(&placements, &settings, cancelled);
             self.record_results(workspace, &results);
-            *failed += failed_results(&results);
             if self.fit_minimum_sizes(workspace, output, &results) {
                 *failed += self
                     .apply_layout(workspace, output, None, cancelled)
                     .0
                     .failed;
+            } else {
+                *failed += failed_results(&results);
             }
         }
         for target in routed_targets {
