@@ -8,7 +8,7 @@ import {
 } from "motion/react";
 import { useEffect, useId, useMemo, useRef, useState } from "react";
 
-const RELEASE_VERSION = "0.1.3";
+const RELEASE_VERSION = "0.1.4";
 const DOWNLOAD_URL = `https://pub-6f85d683ffe0419cad0a71508904053a.r2.dev/releases/Spaceman-v${RELEASE_VERSION}-macos-arm64.zip`;
 
 type Rect = { x: number; y: number; w: number; h: number };
