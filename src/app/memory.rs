@@ -7,6 +7,9 @@ use super::*;
 /// How long a newly launched application's windows may claim its remembered
 /// placements. Windows it opens later are adopted normally.
 pub(super) const RECALL_WINDOW: Duration = Duration::from_secs(60);
+/// How soon after an application quits a new instance of it counts as a
+/// relaunch (an update or restart) that returns to its remembered placements.
+pub(super) const RELAUNCH_WINDOW: Duration = Duration::from_secs(30);
 /// How long a changed arrangement must hold before it replaces an
 /// application's memory. Quitting closes windows one by one before the
 /// process exits; those intermediate states must not overwrite the memory.
@@ -32,9 +35,15 @@ pub(super) struct MemoryState {
     /// When window memory was restored for this agent run. Placement recall
     /// applies only during the startup window after Spaceman launches.
     pub(super) started_at: Option<Instant>,
-    /// Bundles already seen in this session; mid-session relaunches open on
+    /// Bundles already seen in this session; mid-session launches open on
     /// the active workspace instead of recalling historical placements.
     pub(super) seen_bundles: HashSet<String>,
+    /// When an instance of each bundle last quit. A new instance within
+    /// [`RELAUNCH_WINDOW`] is a relaunch and recalls the placements.
+    pub(super) departed: HashMap<String, Instant>,
+    /// Instances already considered for a recall, on their first observation
+    /// with windows.
+    pub(super) considered: HashSet<AppInstanceId>,
 }
 
 impl MemoryState {
@@ -88,8 +97,9 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
         if windows.is_empty() {
             return;
         }
-        if self.memory.seen_bundles.insert(app.bundle_id.clone()) {
-            self.open_recall(app);
+        if self.memory.considered.insert(app.id.clone()) {
+            let first_seen = self.memory.seen_bundles.insert(app.bundle_id.clone());
+            self.open_recall(app, first_seen);
         }
         let Some(recall) = self.memory.recalls.get_mut(&app.id) else {
             return;
@@ -148,20 +158,51 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
         }
     }
 
-    /// Open a recall for an instance seen for the first time during startup if
-    /// it owns no windows yet and its bundle has remembered placements it may claim.
-    fn open_recall(&mut self, app: &crate::ObservedApplication) {
-        if self
-            .memory
-            .started_at
-            .is_none_or(|started| started.elapsed() >= RECALL_WINDOW)
-            || self.config.has_bundle_route(&app.bundle_id)
-        {
+    /// Record that an instance quit, so a new instance of its bundle soon
+    /// after is treated as a relaunch.
+    pub(super) fn note_departure(&mut self, app: &AppInstanceId) {
+        self.memory.considered.remove(app);
+        if let Some(bundle_id) = self.memory.bundles.get(app) {
+            self.memory
+                .departed
+                .insert(bundle_id.clone(), Instant::now());
+        }
+    }
+
+    /// Whether a new instance replaces one of its bundle: another instance
+    /// quit within [`RELAUNCH_WINDOW`], or still owns windows (a relaunch that
+    /// starts the new process before quitting the old one).
+    fn relaunched(&mut self, app: &crate::ObservedApplication) -> bool {
+        self.memory
+            .departed
+            .retain(|_, quit| quit.elapsed() < RELAUNCH_WINDOW);
+        if self.workspaces.app_owns_windows(&app.id) {
+            return false;
+        }
+        self.memory.departed.contains_key(&app.bundle_id)
+            || self.memory.bundles.iter().any(|(other, bundle_id)| {
+                other != &app.id
+                    && bundle_id == &app.bundle_id
+                    && self.workspaces.app_owns_windows(other)
+            })
+    }
+
+    /// Open a recall for an instance that owns no windows yet and whose bundle
+    /// has remembered placements it may claim: one seen for the first time
+    /// during startup, or a relaunch at any time.
+    fn open_recall(&mut self, app: &crate::ObservedApplication, first_seen: bool) {
+        let startup = first_seen
+            && self
+                .memory
+                .started_at
+                .is_some_and(|started| started.elapsed() < RECALL_WINDOW);
+        if !(startup || self.relaunched(app)) || self.config.has_bundle_route(&app.bundle_id) {
             return;
         }
         if self.workspaces.app_owns_windows(&app.id) {
             return;
         }
+        self.memory.departed.remove(&app.bundle_id);
         let remembered = self
             .memory
             .memory

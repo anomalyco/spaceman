@@ -270,25 +270,88 @@ fn apps_launched_after_the_startup_recall_window_open_on_the_active_workspace() 
     assert!(recalls(&runtime).is_empty());
 }
 
-#[test]
-fn quitting_and_relaunching_an_already_seen_app_opens_on_the_active_workspace() {
-    let first = relaunched(10);
-    let mut runtime = runtime(backend_with(&[(first.clone(), frame(50))]));
-    runtime.restore_window_memory(memory(&[(3, frame(50))]));
-    let cancelled = AtomicBool::new(false);
-    runtime.cycle(outputs(), &cancelled).unwrap();
-    assert_eq!(runtime.workspaces.workspace_of(&first), Some(workspace(3)));
-
-    // The app quits and relaunches as a new process during the same session:
-    // it should open on the active workspace rather than recalling again.
-    let second = crate::PhysicalWindowId {
+fn second_instance(id: u32) -> crate::PhysicalWindowId {
+    crate::PhysicalWindowId {
         app: AppInstanceId {
             pid: 3,
             launched_at: 3,
         },
-        window_id: 20,
-    };
+        window_id: id,
+    }
+}
+
+/// A runtime past its startup recall window whose app instance `first`
+/// lives on workspace 3, as remembered.
+fn settled_on_three(first: &crate::PhysicalWindowId) -> WorkspaceRuntime<FakeBackend> {
+    let mut runtime = runtime(backend_with(&[(first.clone(), frame(50))]));
+    runtime.restore_window_memory(memory(&[(3, frame(50))]));
+    runtime.memory.started_at = Some(Instant::now() - crate::app::memory::RECALL_WINDOW);
+    bind(&mut runtime, workspace(3), first);
+    runtime.cycle(outputs(), &AtomicBool::new(false)).unwrap();
+    assert_eq!(runtime.workspaces.workspace_of(first), Some(workspace(3)));
+    runtime
+}
+
+fn terminated(app: &AppInstanceId) -> crate::AppObservation {
+    crate::AppObservation::Terminated { app: app.clone() }
+}
+
+#[test]
+fn an_app_relaunched_right_after_quitting_returns_to_its_workspace() {
+    // An update quits the app and opens the new build while workspace 1 is
+    // active: the old process's exit and the new window arrive together.
+    let first = relaunched(10);
+    let second = second_instance(20);
+    let mut runtime = settled_on_three(&first);
     runtime.backend.frames.remove(&first);
+    runtime.backend.frames.insert(second.clone(), frame(50));
+    runtime.backend.running_apps = Some(HashSet::from([second.app.clone()]));
+    let mut observation = observation_for(BUNDLE, &second, frame(50));
+    observation.applications.push(terminated(&first.app));
+    runtime.backend.observation = Some(observation);
+    runtime.cycle(outputs(), &AtomicBool::new(false)).unwrap();
+
+    assert_eq!(runtime.workspaces.workspace_of(&second), Some(workspace(3)));
+    assert!(runtime.parked.contains_key(&second));
+    assert_eq!(recalls(&runtime), vec![(20, workspace(3))]);
+}
+
+#[test]
+fn a_new_instance_started_before_the_old_one_quits_takes_its_workspace() {
+    // scripts that swap builds start the new process first.
+    let first = relaunched(10);
+    let second = second_instance(20);
+    let mut runtime = settled_on_three(&first);
+    runtime.backend.frames.insert(second.clone(), frame(50));
+    let mut observation = observation_for(BUNDLE, &first, frame(50));
+    observation
+        .applications
+        .extend(observation_for(BUNDLE, &second, frame(50)).applications);
+    runtime.backend.observation = Some(observation);
+    runtime.cycle(outputs(), &AtomicBool::new(false)).unwrap();
+
+    assert_eq!(runtime.workspaces.workspace_of(&second), Some(workspace(3)));
+    assert_eq!(recalls(&runtime), vec![(20, workspace(3))]);
+}
+
+#[test]
+fn an_app_reopened_long_after_quitting_opens_on_the_active_workspace() {
+    let first = relaunched(10);
+    let second = second_instance(20);
+    let mut runtime = settled_on_three(&first);
+    let cancelled = AtomicBool::new(false);
+    runtime.backend.frames.remove(&first);
+    runtime.backend.running_apps = Some(HashSet::new());
+    runtime.backend.observation = Some(crate::NativeObservation {
+        cycle: 0,
+        mouse_down: false,
+        applications: vec![terminated(&first.app)],
+    });
+    runtime.cycle(outputs(), &cancelled).unwrap();
+    for quit in runtime.memory.departed.values_mut() {
+        *quit -= crate::app::memory::RELAUNCH_WINDOW;
+    }
+
     runtime.backend.frames.insert(second.clone(), frame(50));
     runtime.backend.running_apps = Some(HashSet::from([second.app.clone()]));
     runtime.backend.observation = Some(observation_for(BUNDLE, &second, frame(50)));
@@ -299,6 +362,7 @@ fn quitting_and_relaunching_an_already_seen_app_opens_on_the_active_workspace() 
         Some(WorkspaceId::ONE)
     );
     assert!(!runtime.parked.contains_key(&second));
+    assert!(recalls(&runtime).is_empty());
 }
 
 #[test]

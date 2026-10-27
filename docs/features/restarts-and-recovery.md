@@ -19,14 +19,16 @@ Crash or hard kill                                         // recover.crash
 ├── Next launch, invalid/missing state -> every parked window restored first
 └── Parked entry with no owner -> restored before automatic tiling resumes
 
-Startup placement recall (reboot or fresh start)            // recover.memory
+Placement recall (reboot, fresh start, or app relaunch)     // recover.memory
 ├── Old slots for dead processes retire
 ├── During the first 60 s after Spaceman starts, each unseen bundle's first instance may claim
 │   remembered placements
 │   ├── recall closes early once every placement is claimed or the app quits
 │   ├── frame match (8 px) first, then creation order
 │   ├── route/ignore rules win; disabled/unmanaged workspaces skipped
-│   └── apps launched after the startup window or relaunched mid-session open on the active workspace
+│   └── apps launched after the startup window open on the active workspace
+├── An app relaunched mid-session (an update or restart) recalls its placements too: its new
+│   instance appears within 30 s of the old one quitting, or while the old one still owns windows
 └── Arrangement changes recorded after holding 10 s (quitting does not shrink the memory)
 
 Diagnose                                                   // recover.doctor  (journal: working tree only)
@@ -60,7 +62,8 @@ See [Recovery](../recovery.md) for the safe manual procedure; never delete `park
   `startup.rs` `invalid_startup_metadata_falls_back_so_parked_recovery_can_start`.
 - Unit (FakeBackend), `memory.rs`: startup recall by frame then order, no recall for instances that
   already own windows, route precedence, recall expiry, recall closing when the app quits,
-  mid-session launches and relaunches opening on the active workspace, and settle-before-record. Pure tests in
+  mid-session launches opening on the active workspace, mid-session relaunches (quit first or
+  start first) returning to their workspace, and settle-before-record. Pure tests in
   `src/window_memory.rs` and `src/journal.rs` cover matching, eviction, diffing, debouncing,
   rotation, and the doctor summary. None involves a real reboot.
 - Live harness (not run): `scripts/live-workspaces.sh` hard-kills the agent with a parked window and
@@ -77,7 +80,7 @@ See [Recovery](../recovery.md) for the safe manual procedure; never delete `park
   save their window positions at shutdown, or memory recall after login. On 2026-10-01 apps
   relaunched at Spaceman's off-screen parking edge after a reboot, suggesting they saved parked
   frames; read `spaceman doctor` after the next reboot.
-- Memory restores the workspace and floating state during the startup recall window, not tile position
+- Memory restores the workspace and floating state during a recall, not tile position
   or weight; multi-window apps reopening with identical frames are matched by creation order and can
   swap workspaces.
 - `ctl restart` exits without relaunching.

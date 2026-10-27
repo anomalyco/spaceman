@@ -254,6 +254,14 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
         self.forget_exited_apps_on_hidden_workspaces(visible);
 
         self.close_recalls();
+        // Before any new instance below is considered: a relaunch's new
+        // process can appear in the same observation that reports the old
+        // one terminated.
+        for application in &observation.applications {
+            if let crate::AppObservation::Terminated { app } = application {
+                self.note_departure(app);
+            }
+        }
         let mut affinities = HashMap::new();
         for application in &observation.applications {
             let crate::AppObservation::Complete { app, windows, .. } = application else {
@@ -405,6 +413,7 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
                     .filter(|slot| slot.belongs_to(&app))
                     .map(|slot| slot.identity_window().clone())
                     .collect::<Vec<_>>();
+                self.note_departure(&app);
                 self.workspaces.forget_app(workspace, &app);
                 for window in &windows {
                     self.forget_window(workspace, window);
