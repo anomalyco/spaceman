@@ -11,19 +11,25 @@ use std::{
     time::Duration,
 };
 
-use crate::{ResizeDirection, WorkspaceId, app::WorkerAction};
+use crate::{
+    ResizeDirection, WorkspaceId,
+    app::{Action, WorkerAction},
+};
 
 const MAX_REQUEST_BYTES: u64 = 4 * 1024;
 const REQUEST_READ_TIMEOUT: Duration = Duration::from_millis(250);
 const RESPONSE_TIMEOUT: Duration = Duration::from_secs(5);
 const CLIENT_TIMEOUT: Duration = Duration::from_secs(6);
 
-pub const COMMAND_USAGE: &str = "status|debug|switch WORKSPACE|back-and-forth|move WORKSPACE|move-app ID WORKSPACE|focus DIR|focus next|move-direction DIR|layout|fullscreen|resize shrink|resize grow|balance|pause|resume|retile|restart|quit";
+pub const COMMAND_USAGE: &str = "status|debug|settings|open-settings|open-accessibility|check-for-updates|toggle-launch-at-login|switch WORKSPACE|back-and-forth|move WORKSPACE|move-app ID WORKSPACE|focus DIR|focus next|move-direction DIR|layout|fullscreen|resize shrink|resize grow|balance|pause|resume|retile|restart|quit";
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub(crate) enum Command {
     Status,
     Debug,
+    /// What the settings window shows that only the agent knows.
+    Settings,
+    App(crate::app::Action),
     Queue(WorkerAction),
     Pause,
     Resume,
@@ -178,6 +184,11 @@ fn parse_line(line: &str) -> Result<Command, String> {
     let action = match parts.as_slice() {
         ["status"] => return Ok(Command::Status),
         ["debug"] => return Ok(Command::Debug),
+        ["settings"] => return Ok(Command::Settings),
+        ["open-settings"] => return Ok(Command::App(Action::OpenSettings)),
+        ["open-accessibility"] => return Ok(Command::App(Action::OpenAccessibility)),
+        ["check-for-updates"] => return Ok(Command::App(Action::CheckForUpdates)),
+        ["toggle-launch-at-login"] => return Ok(Command::App(Action::ToggleLaunchAtLogin)),
         ["pause"] => return Ok(Command::Pause),
         ["resume"] => return Ok(Command::Resume),
         ["restart"] => return Ok(Command::Restart),

@@ -323,7 +323,7 @@ pub fn run() -> Result<(), String> {
         status_item::set_workspace_numbers(&workspace_numbers);
         if !macos::accessibility_trusted() {
             status_item::set_status("Paused · Accessibility required");
-            if let Err(error) = settings::open(actions_sender.clone(), cx) {
+            if let Err(error) = settings::open() {
                 status_item::set_status(&format!("Could not open Settings: {error}"));
             }
         }

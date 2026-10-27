@@ -8,8 +8,8 @@ cd "$(dirname "$0")/.."
 step() { printf '\n== %s\n' "$*"; }
 step fmt; cargo fmt --all -- --check
 step release metadata; scripts/validate-release.sh --metadata-only
-step clippy; cargo clippy --locked --all-targets -- -D warnings
-step test; cargo test --locked --all-targets
+step clippy; cargo clippy --locked --workspace --all-targets -- -D warnings
+step test; cargo test --locked --workspace --all-targets
 step audit
 if cargo audit --version >/dev/null 2>&1; then cargo audit; else echo "cargo-audit isn't installed here; skipped (CI runs it)"; fi
 step ca roots; cargo build --locked && scripts/check-ca-roots.sh target/debug/spaceman

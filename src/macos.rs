@@ -108,6 +108,12 @@ pub fn snapshot(cycle: u64) -> Result<(NativeObservation, Settings), SnapshotErr
     snapshot_in_output(cycle, main_output()?)
 }
 
+/// Spaceman's own settings window runs in a process of its own; it is never managed.
+fn is_settings_application(application: &NSRunningApplication, pid: i32) -> bool {
+    let bundle_id = application.bundleIdentifier().map(|id| id.to_string());
+    crate::settings::is_settings_process(pid, bundle_id.as_deref())
+}
+
 pub fn accessibility_trusted() -> bool {
     unsafe { AXIsProcessTrusted() }
 }
@@ -417,8 +423,11 @@ fn running_application_instances() -> Vec<AppInstanceId> {
             .filter_map(|index| {
                 let application = applications.objectAtIndex(index);
                 let pid = application.processIdentifier();
-                (pid > 0 && pid != self_pid && seen_pids.insert(pid))
-                    .then(|| app_instance_with_pid(&application, pid))
+                (pid > 0
+                    && pid != self_pid
+                    && !is_settings_application(&application, pid)
+                    && seen_pids.insert(pid))
+                .then(|| app_instance_with_pid(&application, pid))
             })
             .collect();
         if let Some(windows) = window_server_windows(CGWindowListOption::OptionAll) {
@@ -428,6 +437,7 @@ fn running_application_instances() -> Vec<AppInstanceId> {
                     && seen_pids.insert(window.pid)
                     && let Some(application) =
                         NSRunningApplication::runningApplicationWithProcessIdentifier(window.pid)
+                    && !is_settings_application(&application, window.pid)
                 {
                     instances.push(app_instance_with_pid(&application, window.pid));
                 }
@@ -1241,7 +1251,11 @@ fn observe_application(
     output: Rect,
     screen_locked: bool,
 ) -> Option<AppObservation> {
-    if pid <= 0 || pid == std::process::id() as i32 || application.isHidden() {
+    if pid <= 0
+        || pid == std::process::id() as i32
+        || is_settings_application(application, pid)
+        || application.isHidden()
+    {
         return None;
     }
 

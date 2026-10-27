@@ -191,7 +191,13 @@ impl WindowMatcher {
     }
 }
 
-fn config_path() -> Option<PathBuf> {
+/// When the config file last changed, or `None` while it doesn't exist.
+#[must_use]
+pub fn modified() -> Option<std::time::SystemTime> {
+    std::fs::metadata(config_path()?).ok()?.modified().ok()
+}
+
+pub fn config_path() -> Option<PathBuf> {
     std::env::var_os("SPACEMAN_CONFIG")
         .map(PathBuf::from)
         .or_else(|| application_support_path("config.toml"))
