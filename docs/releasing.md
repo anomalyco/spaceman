@@ -33,7 +33,8 @@ skill, and website. Commit and push a clean release revision, then prepare the e
 The script auto-detects the first `Developer ID Application` identity and uses the
 `spaceman-notary` Keychain profile. Override those choices with `SPACEMAN_CODESIGN_IDENTITY` and
 `SPACEMAN_NOTARY_KEYCHAIN_PROFILE`. Preparation requires release notes at
-`docs/releases/<version>.md`; set `SPACEMAN_RELEASE_NOTES` to use another file.
+`changelog/<version>.md` (frontmatter `date` and `summary`, then `## Major`, `## Improvements` and
+`## Fixes`); set `SPACEMAN_RELEASE_NOTES` to use another file.
 `SPACEMAN_RELEASE_ARCH` defaults to the host architecture, must be `arm64` or `x86_64`, and cannot
 request a cross-architecture build. Preparation builds, signs, notarizes, staples, validates,
 archives, checksums, and signs a local Sparkle appcast. Artifacts are written to `dist/` but are not
@@ -57,6 +58,15 @@ Sparkle update archives and the appcast are signed with the Ed25519 private key 
 under service `https://sparkle-project.org`, account `ed25519`. Only its public key is embedded in
 `Info.plist`; release preparation derives the Keychain key's public half and refuses to continue if it
 does not match. Installed builds require a valid signed feed as well as a valid signed archive.
+
+## Where Releases Run
+
+Only the MacBook Pro (`ssh pro`) has the Developer ID identity, the `spaceman-notary` profile, the
+Sparkle key and `wrangler` auth. Push the release commit from any Mac, then on the Pro, in a fresh
+worktree of that commit, run `./scripts/release-app.sh`, test, run `./scripts/release-app.sh publish`
+and `bun run deploy` in `website/`. Notarization needs the login keychain, so run those from a
+LaunchAgent (or a logged-in terminal) rather than a plain `ssh` session. Tag the release `vX.Y.Z`
+after publishing.
 
 ## Source Build
 

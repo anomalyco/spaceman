@@ -1,0 +1,21 @@
+#!/usr/bin/env bash
+# The one check: formatting, release metadata, clippy, tests, dependency audit, CA roots, fixture
+# replay, example config and the website build. Run it before merging.
+#   scripts/check            everything
+#   scripts/check --no-web   skip the website
+set -euo pipefail
+cd "$(dirname "$0")/.."
+step() { printf '\n== %s\n' "$*"; }
+step fmt; cargo fmt --all -- --check
+step release metadata; scripts/validate-release.sh --metadata-only
+step clippy; cargo clippy --locked --all-targets -- -D warnings
+step test; cargo test --locked --all-targets
+step audit
+if cargo audit --version >/dev/null 2>&1; then cargo audit; else echo "cargo-audit isn't installed here; skipped (CI runs it)"; fi
+step ca roots; cargo build --locked && scripts/check-ca-roots.sh target/debug/spaceman
+step replay; cargo run --locked -- replay fixtures/ghostty-tab-replacement.json
+step config; cargo run --locked -- config-check config.example.toml
+if [ "${1:-}" != "--no-web" ]; then
+  step website; (cd website && bun install --frozen-lockfile && bun audit && bun run build)
+fi
+step diff; git diff --check
