@@ -1113,7 +1113,7 @@ pub fn mouse_position() -> Option<(i32, i32)> {
 fn running_application(id: &AppInstanceId) -> Option<objc2::rc::Retained<NSRunningApplication>> {
     autoreleasepool(|_| {
         NSRunningApplication::runningApplicationWithProcessIdentifier(id.pid)
-            .filter(|application| launch_time(application) == id.launched_at)
+            .filter(|application| launch_time(application, id.pid) == id.launched_at)
     })
 }
 
@@ -1132,7 +1132,7 @@ pub fn is_process_incarnation_running(id: &AppInstanceId) -> bool {
 fn app_instance_with_pid(application: &NSRunningApplication, pid: i32) -> AppInstanceId {
     AppInstanceId {
         pid,
-        launched_at: launch_time(application),
+        launched_at: launch_time(application, pid),
     }
 }
 
@@ -1161,10 +1161,40 @@ fn resolve_application_pid(application: &NSRunningApplication) -> Option<i32> {
     None
 }
 
-fn launch_time(application: &NSRunningApplication) -> u64 {
-    application.launchDate().map_or(0, |date| {
-        (date.timeIntervalSince1970() * 1000.0).round() as u64
-    })
+/// Processes started outside LaunchServices (a bare executable run from a
+/// terminal) have no `launchDate`; their kernel start time identifies the
+/// process incarnation instead.
+fn launch_time(application: &NSRunningApplication, pid: i32) -> u64 {
+    application.launchDate().map_or_else(
+        || process_start_time(pid).unwrap_or(0),
+        |date| (date.timeIntervalSince1970() * 1000.0).round() as u64,
+    )
+}
+
+fn process_start_time(pid: i32) -> Option<u64> {
+    if pid <= 0 {
+        return None;
+    }
+    let mut info = std::mem::MaybeUninit::<libc::proc_bsdinfo>::zeroed();
+    let size = std::mem::size_of::<libc::proc_bsdinfo>() as i32;
+    // SAFETY: `info` is a writable buffer of exactly `size` bytes, and
+    // `PROC_PIDTBSDINFO` writes at most one `proc_bsdinfo` into it.
+    let written = unsafe {
+        libc::proc_pidinfo(
+            pid,
+            libc::PROC_PIDTBSDINFO,
+            0,
+            info.as_mut_ptr().cast(),
+            size,
+        )
+    };
+    if written != size {
+        return None;
+    }
+    // SAFETY: the kernel filled the whole struct.
+    let info = unsafe { info.assume_init() };
+    let millis = info.pbi_start_tvsec * 1000 + info.pbi_start_tvusec / 1000;
+    (millis > 0).then_some(millis)
 }
 
 fn set_position(window: &AXUIElement, frame: Rect) -> AXError {
@@ -1414,7 +1444,7 @@ pub fn window_at_point(point: (i32, i32)) -> Option<(PhysicalWindowId, Rect)> {
         let window = top_window_at_point(&windows, point)?;
         let application =
             NSRunningApplication::runningApplicationWithProcessIdentifier(window.pid)?;
-        let launched_at = launch_time(&application);
+        let launched_at = launch_time(&application, window.pid);
         (launched_at != 0).then_some((
             PhysicalWindowId {
                 app: AppInstanceId {
@@ -1630,6 +1660,18 @@ fn ax_size(element: &AXUIElement, name: &'static str) -> Option<CGSize> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn processes_without_a_launch_date_are_identified_by_their_kernel_start_time() {
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_millis() as u64;
+        let started = process_start_time(std::process::id() as i32).unwrap();
+        assert!(started <= now && now - started < 3_600_000);
+        assert_eq!(process_start_time(std::process::id() as i32), Some(started));
+        assert_eq!(process_start_time(0), None);
+    }
 
     #[test]
     fn pointer_hit_testing_uses_front_to_back_geometry_without_ax_focus() {
