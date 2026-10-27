@@ -4,19 +4,24 @@ Read the root [AGENTS.md](../AGENTS.md) before changing implementation. It defin
 safety invariants. [PLAN.md](../PLAN.md) and [RESEARCH.md](RESEARCH.md) are historical design records,
 not current product documentation.
 
+## Dev Loop
+
+```sh
+scripts/dev          # build and install now, then again on every save
+scripts/dev --once   # build and install once
+```
+
+Each install restores every window, swaps `/Applications/Spaceman.app`, and resumes tiling, so
+workspaces and layouts come back. `scripts/install-app.sh --bundle PATH --wait-idle SECS` installs a
+built bundle once the keyboard and mouse have been idle; the updater
+(`scripts/spaceman-updater`, set up with `scripts/install-updater`) uses it to keep the installed
+app on `main`.
+
 ## Verify
 
 ```sh
-cargo fmt --check
-scripts/validate-release.sh --metadata-only
-cargo check --locked --all-targets
-cargo clippy --locked --all-targets -- -D warnings
-cargo test --locked --all-targets
-cargo audit
-cargo run --locked -- replay fixtures/ghostty-tab-replacement.json
-cargo run --locked -- config-check config.example.toml
-(cd website && bun install --frozen-lockfile && bun audit && bun run build)
-git diff --check
+scripts/check            # fmt, release metadata, clippy, tests, audit, CA roots, replay, config, website
+scripts/check --no-web   # the same without the website
 ```
 
 ### Focused Reliability Checks

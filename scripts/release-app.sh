@@ -9,7 +9,7 @@ feed_url=$(/usr/bin/plutil -extract SUFeedURL raw "$root/app/Info.plist")
 base_url=${feed_url%/appcast.xml}
 version=$(/usr/bin/plutil -extract CFBundleShortVersionString raw "$root/app/Info.plist")
 build_number=$(/usr/bin/plutil -extract CFBundleVersion raw "$root/app/Info.plist")
-release_notes=${SPACEMAN_RELEASE_NOTES:-$root/docs/releases/$version.md}
+release_notes=${SPACEMAN_RELEASE_NOTES:-$root/changelog/$version.md}
 expected_sparkle_key=$(/usr/bin/plutil -extract SUPublicEDKey raw "$root/app/Info.plist")
 host_arch=$(uname -m)
 arch=${SPACEMAN_RELEASE_ARCH:-$host_arch}
@@ -159,7 +159,12 @@ SPACEMAN_RELEASE_ARCH="$arch" "$root/scripts/validate-release.sh" "$bundle" "$di
 (cd "$dist" && /usr/bin/shasum -a 256 -c "$checksum")
 
 cp "$dist/$artifact" "$updates/$artifact"
-cp "$release_notes" "$updates/${artifact%.zip}.md"
+# The update prompt shows the changelog entry without its frontmatter or icon and link lines.
+{
+  printf '# Spaceman %s\n\n' "$version"
+  awk 'NR == 1 && $0 == "---" { front = 1; next } front && $0 == "---" { front = 0; next } !front' \
+    "$release_notes" | grep -v -E '^(Icon|Media|Links):'
+} >"$updates/${artifact%.zip}.md"
 if [ -f "$published_appcast" ]; then
   cp "$published_appcast" "$updates/appcast.xml"
 fi

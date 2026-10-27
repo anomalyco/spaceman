@@ -3,6 +3,25 @@
 This file is the current engineering contract. README and `docs/` describe current user behavior;
 `PLAN.md` and `docs/RESEARCH.md` are historical records.
 
+## Working Here
+
+- Agents merge their own Spaceman PRs and redeploy (release, publish, install) without asking
+  (Kit, Oct 27). The repo stays private under `kitlangton`.
+- GitHub Actions don't start on this repo while the account's billing is blocked, so run
+  `scripts/check` locally before merging and say so in the PR.
+- The installed app follows `main`: `scripts/spaceman-updater` (LaunchAgent
+  `dev.kit.spaceman-updater`, set up with `scripts/install-updater`, log in
+  `~/.local/share/spaceman/updater.log`) builds a merged `main` once pushes stop for 3 minutes, or
+  after 10 at most, and installs it when the keyboard and mouse have been idle for 2 minutes. You
+  don't need to install by hand after a merge.
+- Dev loop: `scripts/dev` rebuilds and reinstalls on every save; restart restores every window and
+  resumes tiling. GPUI has no in-place patching, so every edit is a restart. The updater puts `main`
+  back on its next build.
+- Release notes are one file per version in `changelog/<version>.md`, in Abattoir's changelog format.
+  Releases run on the MacBook Pro (`ssh pro`), which has the `spaceman-notary` profile, the Sparkle
+  key and `wrangler`; see [docs/releasing.md](docs/releasing.md).
+- Shared skills are pinned in `.agents/skills`; refresh with `abattoir-skills pin .`.
+
 ## Architecture Map
 
 - `src/bin/spaceman-agent.rs`, `src/app.rs`, `src/app/app_loop.rs`: owner-only capped logging,
@@ -105,16 +124,8 @@ This file is the current engineering contract. README and `docs/` describe curre
 ## Verification
 
 ```sh
-cargo fmt --check
-scripts/validate-release.sh --metadata-only
-cargo check --locked --all-targets
-cargo clippy --locked --all-targets -- -D warnings
-cargo test --locked --all-targets
-cargo audit
-cargo run --locked -- replay fixtures/ghostty-tab-replacement.json
-cargo run --locked -- config-check config.example.toml
-(cd website && bun install --frozen-lockfile && bun audit && bun run build)
-git diff --check
+scripts/check            # fmt, release metadata, clippy, tests, audit, CA roots, replay, config, website
+scripts/check --no-web   # the same without the website
 ```
 
 Run `./scripts/live-ghostty-tabs.sh` and `./scripts/live-workspaces.sh` only when the change reaches
