@@ -25,10 +25,10 @@ if [[ -e "/Applications/Spaceman.app" ]]; then
   echo "Spaceman is already installed; upgrade through Spaceman Settings." >&2
   exit 1
 fi
-curl -fLO "https://pub-6f85d683ffe0419cad0a71508904053a.r2.dev/releases/Spaceman-v0.1.5-macos-arm64.zip"
-curl -fLO "https://pub-6f85d683ffe0419cad0a71508904053a.r2.dev/releases/Spaceman-v0.1.5-macos-arm64.zip.sha256"
-shasum -a 256 -c Spaceman-v0.1.5-macos-arm64.zip.sha256
-ditto -x -k Spaceman-v0.1.5-macos-arm64.zip .
+curl -fLO "https://pub-6f85d683ffe0419cad0a71508904053a.r2.dev/releases/Spaceman-v0.1.6-macos-arm64.zip"
+curl -fLO "https://pub-6f85d683ffe0419cad0a71508904053a.r2.dev/releases/Spaceman-v0.1.6-macos-arm64.zip.sha256"
+shasum -a 256 -c Spaceman-v0.1.6-macos-arm64.zip.sha256
+ditto -x -k Spaceman-v0.1.6-macos-arm64.zip .
 mv Spaceman.app "/Applications/"
 open "/Applications/Spaceman.app"
 ```
