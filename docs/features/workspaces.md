@@ -29,7 +29,8 @@ Where a new window goes (first match wins)                 // ws.adoption
 ├── route rule         -> that workspace (parked if hidden); bundle-only route rules apply to the
 │                         app's initial window while secondary windows stay on the active workspace
 ├── float rule / dialog / non-resizable -> floating on the workspace where first seen
-├── remembered placement (startup window, first 60 s) -> remembered workspace
+├── remembered placement (startup window, first 60 s, or the app relaunched within 30 s of
+│   quitting) -> remembered workspace
 └── otherwise          -> active workspace of the display under the window's center
 
 Displays                                                    // ws.displays
