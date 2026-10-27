@@ -44,6 +44,10 @@ revealed so normal workspace adoption can recover an app that relaunched with st
 Other windows an application keeps off screen itself are left alone rather than parked, and never
 recorded as recovery frames.
 
+Apps run as a bare executable rather than opened as an `.app` (for example a development build
+started from a terminal) have no LaunchServices launch date; Spaceman tells their process
+incarnations apart by kernel process start time instead and manages their windows like any other.
+
 Ghostty native tabs are the primary stable-logical-window target. Replacement is conservative: when
 the evidence is ambiguous, Spaceman preserves existing logical state rather than guessing. Other apps
 with physical-window identity churn are not implicitly guaranteed to behave like Ghostty.
