@@ -196,6 +196,13 @@ pub(super) async fn run_app_loop(cx: &mut gpui::AsyncApp, app: AppLoop) {
                     "active_workspaces": active_workspaces,
                 })
                 .to_string()),
+                ControlCommand::Settings => {
+                    Ok(
+                        settings_state(automatic, &active_workspaces, last_error.as_deref())
+                            .to_string(),
+                    )
+                }
+                ControlCommand::App(ref action) => queue(&actions_sender, action.clone(), "queued"),
                 ControlCommand::Debug => latest_debug
                     .as_ref()
                     .ok_or_else(|| "runtime debug state is not ready".into())
@@ -293,24 +300,15 @@ pub(super) async fn run_app_loop(cx: &mut gpui::AsyncApp, app: AppLoop) {
                     }
                 }
                 Action::OpenSettings => {
-                    let actions = actions_sender.clone();
-                    let result = cx
-                        .update(|cx| settings::open(actions, cx))
-                        .map_err(|error| error.to_string())
-                        .and_then(|result| result);
-                    if let Err(error) = result {
+                    if let Err(error) = settings::open() {
                         status_item::set_status(&format!("Could not open Settings: {error}"));
                     }
                 }
                 Action::OpenAccessibility => permission_guide::show(),
-                Action::CheckForUpdates => {
-                    sparkle::check_for_updates();
-                    let _ = cx.update(settings::refresh);
-                }
+                Action::CheckForUpdates => sparkle::check_for_updates(),
                 Action::ToggleLaunchAtLogin => match login_item::toggle() {
                     Ok(status) => {
                         status_item::set_launch_at_login(status);
-                        let _ = cx.update(settings::refresh);
                         if status == login_item::Status::RequiresApproval {
                             status_item::set_status(
                                 "Launch at Login requires approval in System Settings",
@@ -674,6 +672,7 @@ pub(super) fn spawn_worker(
     workspace_state: Option<crate::workspace::WorkspaceState>,
 ) {
     thread::spawn(move || {
+        let mut config_stamp = crate::config::modified();
         let restore_on_start = workspace_state.is_none();
         let mut runtime = objc2::rc::autoreleasepool(|_| {
             let mut runtime = WorkspaceRuntime::new(scope, parked, config, workspace_state);
@@ -696,6 +695,17 @@ pub(super) fn spawn_worker(
             // cycles and previews remain interruptible; explicit user
             // commands are atomic once native writes begin.
             cancelled.store(false, Ordering::Release);
+            let stamp = crate::config::modified();
+            if stamp != config_stamp {
+                config_stamp = stamp;
+                match Config::load() {
+                    Ok(config) => {
+                        runtime.replace_config(config);
+                        log_event!("reloaded config");
+                    }
+                    Err(error) => log_event!("kept the previous config: {error}"),
+                }
+            }
             let label = command.label();
             let started = Instant::now();
             let Some(result) = objc2::rc::autoreleasepool(|_| runtime.execute(command, &cancelled))
@@ -714,4 +724,34 @@ pub(super) fn spawn_worker(
             }
         }
     });
+}
+
+/// The agent's half of the settings window: what only this process can read.
+fn settings_state(
+    automatic: bool,
+    active_workspaces: &[WorkspaceId],
+    last_error: Option<&str>,
+) -> serde_json::Value {
+    let launch_at_login = match login_item::status() {
+        Ok(login_item::Status::Enabled) => "enabled".to_string(),
+        Ok(login_item::Status::Disabled) => "disabled".to_string(),
+        Ok(login_item::Status::RequiresApproval) => "requires-approval".to_string(),
+        Err(error) => format!("error: {error}"),
+    };
+    let update = match sparkle::status() {
+        sparkle::UpdateStatus::Unavailable => "unavailable",
+        sparkle::UpdateStatus::Idle => "idle",
+        sparkle::UpdateStatus::Checking => "checking",
+        sparkle::UpdateStatus::UpToDate => "up-to-date",
+        sparkle::UpdateStatus::UpdateAvailable => "available",
+    };
+    serde_json::json!({
+        "version": env!("CARGO_PKG_VERSION"),
+        "accessibility": macos::accessibility_trusted(),
+        "automatic": automatic,
+        "launch_at_login": launch_at_login,
+        "update": update,
+        "active_workspaces": active_workspaces,
+        "last_error": last_error,
+    })
 }

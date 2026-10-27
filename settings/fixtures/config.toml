@@ -1,0 +1,90 @@
+# Spaceman configuration.
+version = 1
+
+[[rules]]
+bundle_id = "anomaly.hex"
+action = "float"
+
+[[rules]]
+bundle_id = "com.kitlangton.hex2"
+action = "float"
+
+[[rules]]
+# OpenCode Browser's agent window (its pinned placeholder tab sets this title when it opens).
+bundle_id = "com.brave.Browser"
+title = "OpenCode Browser agents - Brave"
+action = "route"
+workspace = 9
+
+[[rules]]
+bundle_id = "com.brave.Browser"
+action = "route"
+workspace = 1
+
+[[rules]]
+bundle_id = "net.imput.helium"
+action = "route"
+workspace = 1
+
+[[rules]]
+bundle_id = "ai.opencode.desktop"
+action = "route"
+workspace = 3
+
+[[rules]]
+bundle_id = "ai.opencode.desktop.beta"
+action = "route"
+workspace = 3
+
+[[rules]]
+bundle_id = "com.apple.MobileSMS"
+action = "route"
+workspace = "M"
+
+[[rules]]
+bundle_id = "com.tinyspeck.slackmacgap"
+action = "route"
+workspace = 2
+
+[[rules]]
+bundle_id = "local.lamplight.arachnid"
+action = "route"
+workspace = "5"
+
+[[rules]]
+bundle_id = "local.lamplight.paper-study"
+action = "route"
+workspace = "5"
+
+[[rules]]
+bundle_id = "local.lamplight.paper-proof"
+action = "route"
+workspace = "5"
+
+[[rules]]
+bundle_id = "local.lamplight.paper-escape"
+action = "route"
+workspace = "5"
+
+[[rules]]
+bundle_id = "local.lamplight.run-study"
+action = "route"
+workspace = "5"
+
+[[rules]]
+bundle_id = "local.lamplight.creature-prototype"
+action = "route"
+workspace = "5"
+
+[[workspaces]]
+workspace = "5"
+monitor = "main"
+
+
+[[workspaces]]
+workspace = "M"
+monitor = "main"
+
+[[workspaces]]
+workspace = 9
+monitor = "main"

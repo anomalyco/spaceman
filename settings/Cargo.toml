@@ -1,0 +1,40 @@
+[package]
+name = "spaceman-settings"
+version = "0.1.6"
+edition = "2024"
+rust-version = "1.95"
+license = "MIT"
+description = "Spaceman's settings window"
+publish = false
+
+[dependencies]
+spaceman = { path = ".." }
+rune = { git = "https://github.com/anomalyco/rune", rev = "6ce68a78481ae9746e408ceac199ca6640219626" }
+rune-kit = { git = "https://github.com/anomalyco/rune", rev = "6ce68a78481ae9746e408ceac199ca6640219626" }
+rune-theme-opencode = { git = "https://github.com/anomalyco/rune", rev = "6ce68a78481ae9746e408ceac199ca6640219626" }
+serde_json = "1"
+toml_edit = "0.23"
+atomic-write-file = "0.3"
+
+[target.'cfg(target_os = "macos")'.dependencies]
+objc2 = "0.6"
+objc2-app-kit = { version = "0.3.2", default-features = false, features = [
+  "std",
+  "objc2-core-foundation",
+  "NSApplication",
+  "NSBitmapImageRep",
+  "NSGraphics",
+  "NSGraphicsContext",
+  "NSImage",
+  "NSImageRep",
+  "NSRunningApplication",
+  "NSWorkspace",
+] }
+objc2-foundation = { version = "0.3.2", default-features = false, features = [
+  "std",
+  "NSArray",
+  "NSFileManager",
+  "NSGeometry",
+  "NSString",
+  "NSURL",
+] }

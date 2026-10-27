@@ -3,8 +3,6 @@ pub mod app;
 pub mod config;
 #[cfg(target_os = "macos")]
 pub mod control;
-#[cfg(target_os = "macos")]
-mod desktop_ui;
 pub mod geometry;
 #[cfg(target_os = "macos")]
 #[allow(unsafe_code)]

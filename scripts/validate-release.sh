@@ -128,6 +128,7 @@ for required in \
   Spaceman.app/Contents/Info.plist \
   Spaceman.app/Contents/MacOS/spaceman \
   Spaceman.app/Contents/MacOS/spaceman-agent \
+  Spaceman.app/Contents/MacOS/spaceman-settings \
   Spaceman.app/Contents/Resources/AppIcon.icns \
   Spaceman.app/Contents/Resources/Assets.car \
   Spaceman.app/Contents/Frameworks/Sparkle.framework/Versions/B/Sparkle \
@@ -141,6 +142,7 @@ for relative_path in \
   Contents/Info.plist \
   Contents/MacOS/spaceman \
   Contents/MacOS/spaceman-agent \
+  Contents/MacOS/spaceman-settings \
   Contents/Resources/AppIcon.icns \
   Contents/Resources/Assets.car \
   Contents/Frameworks/Sparkle.framework/Versions/B/Sparkle \
