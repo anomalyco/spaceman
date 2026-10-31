@@ -1,6 +1,13 @@
-use std::{cell::RefCell, sync::mpsc::Sender};
+use std::{
+    cell::{Cell, RefCell},
+    sync::mpsc::Sender,
+};
 
-use objc2::{MainThreadMarker, ffi, runtime::AnyClass, sel};
+use objc2::{
+    MainThreadMarker, ffi, msg_send,
+    runtime::{AnyClass, AnyObject},
+    sel,
+};
 use objc2_app_kit::{NSApplication, NSApplicationTerminateReply};
 
 use crate::app::Action;
@@ -13,40 +20,57 @@ enum Gate {
 
 thread_local! {
     static GATE: RefCell<Option<Gate>> = const { RefCell::new(None) };
+    static HOOKED: Cell<*const AnyClass> = const { Cell::new(std::ptr::null()) };
 }
 
 pub(crate) fn install(actions: Sender<Action>) -> Result<(), String> {
-    MainThreadMarker::new().ok_or("termination gate requires the main thread")?;
-    let class = AnyClass::get(c"GPUIApplicationDelegate")
-        .ok_or("GPUI application delegate class is unavailable")?;
-    let selector = sel!(applicationShouldTerminate:);
-    if class.instance_method(selector).is_some() {
-        return Err("GPUI already implements applicationShouldTerminate:".into());
-    }
-    // SAFETY: Objective-C's `IMP` slot uses `unsafe extern "C-unwind" fn()` as an erased
-    // function pointer; AppKit dispatches `applicationShouldTerminate:` with `(id, SEL, NSApplication*) -> NSApplicationTerminateReply`.
-    let implementation: unsafe extern "C-unwind" fn() = unsafe {
-        std::mem::transmute::<
-            unsafe extern "C-unwind" fn(
-                *mut objc2::runtime::AnyObject,
-                objc2::runtime::Sel,
-                *mut NSApplication,
-            ) -> NSApplicationTerminateReply,
-            unsafe extern "C-unwind" fn(),
-        >(application_should_terminate)
-    };
-    // SAFETY: `class` is a valid Objective-C class, `selector` is not yet implemented on it, and
-    // `"Q@:@"` matches `(NSUInteger)(id, SEL, id)` on 64-bit macOS.
-    let added = unsafe {
-        ffi::class_addMethod(
-            class as *const AnyClass as *mut AnyClass,
-            selector,
-            implementation,
-            c"Q@:@".as_ptr(),
-        )
-    };
-    if !added.as_bool() {
-        return Err("could not install application termination gate".into());
+    let marker = MainThreadMarker::new().ok_or("termination gate requires the main thread")?;
+    let app = NSApplication::sharedApplication(marker);
+    // SAFETY: `delegate` returns AppKit's unretained pointer to winit's installed delegate.
+    let delegate: *mut AnyObject = unsafe { msg_send![&app, delegate] };
+    // SAFETY: Checked for null; the event loop owns the delegate on the main thread.
+    let delegate = unsafe { delegate.as_ref() }.ok_or("application delegate is unavailable")?;
+    let class = delegate.class();
+    if !HOOKED.with(|slot| std::ptr::eq(slot.get(), class)) {
+        let selector = sel!(applicationShouldTerminate:);
+        // SAFETY: `respondsToSelector:` queries the valid Objective-C object without side effects.
+        let exists: bool = unsafe { msg_send![delegate, respondsToSelector: selector] };
+        if exists {
+            return Err(
+                "application delegate already implements applicationShouldTerminate:".into(),
+            );
+        }
+        // SAFETY: Objective-C's `IMP` slot uses `unsafe extern "C-unwind" fn()` as an erased
+        // function pointer; AppKit dispatches `applicationShouldTerminate:` with `(id, SEL, NSApplication*) -> NSApplicationTerminateReply`.
+        let implementation: unsafe extern "C-unwind" fn() = unsafe {
+            std::mem::transmute::<
+                unsafe extern "C-unwind" fn(
+                    *mut AnyObject,
+                    objc2::runtime::Sel,
+                    *mut NSApplication,
+                ) -> NSApplicationTerminateReply,
+                unsafe extern "C-unwind" fn(),
+            >(application_should_terminate)
+        };
+        // SAFETY: `class` is a valid Objective-C class, `selector` is not yet implemented on it, and
+        // `"Q@:@"` matches `(NSUInteger)(id, SEL, id)` on 64-bit macOS.
+        let added = unsafe {
+            ffi::class_addMethod(
+                class as *const AnyClass as *mut AnyClass,
+                selector,
+                implementation,
+                c"Q@:@".as_ptr(),
+            )
+        };
+        if !added.as_bool() {
+            return Err("could not install application termination gate".into());
+        }
+        HOOKED.with(|slot| slot.set(class));
+        // Refresh AppKit's optional-selector cache, retaining the exact winit delegate.
+        // SAFETY: Re-assigns the currently installed delegate on the main thread.
+        unsafe {
+            let _: () = msg_send![&app, setDelegate: delegate];
+        }
     }
     GATE.with(|gate| *gate.borrow_mut() = Some(Gate::Idle(actions)));
     Ok(())
@@ -81,7 +105,7 @@ pub(crate) fn cancel_pending() {
 }
 
 unsafe extern "C-unwind" fn application_should_terminate(
-    _delegate: *mut objc2::runtime::AnyObject,
+    _delegate: *mut AnyObject,
     _selector: objc2::runtime::Sel,
     _application: *mut NSApplication,
 ) -> NSApplicationTerminateReply {

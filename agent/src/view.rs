@@ -145,7 +145,7 @@ fn update_status(ui: &Ui, p: Paint) -> El {
             .press(c.pressed)
             .focusable(true)
             .focus_ring(2.0, -2.0, c.border_focus)
-            .on_press(|_: &mut Ui| crate::agent::send("check-for-updates"));
+            .on_press(|ui: &mut Ui| ui.check_for_updates());
     }
     status
 }

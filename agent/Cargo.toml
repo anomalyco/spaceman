@@ -1,22 +1,26 @@
 [package]
-name = "spaceman-settings"
+name = "spaceman-agent"
 version = "0.1.6"
 edition = "2024"
 rust-version = "1.95"
 license = "MIT"
-description = "Spaceman's settings window"
+description = "Spaceman's macOS menu-bar and Rune host"
 publish = false
 
 [dependencies]
 spaceman = { path = ".." }
-rune = { git = "https://github.com/anomalyco/rune", rev = "6ce68a78481ae9746e408ceac199ca6640219626" }
-rune-kit = { git = "https://github.com/anomalyco/rune", rev = "6ce68a78481ae9746e408ceac199ca6640219626" }
-rune-theme-opencode = { git = "https://github.com/anomalyco/rune", rev = "6ce68a78481ae9746e408ceac199ca6640219626" }
+procwatch = { git = "https://github.com/anomalyco/rune", rev = "c8554efe04ab540ecd02df14eb1bea1d299df932" }
+rune = { git = "https://github.com/anomalyco/rune", rev = "c8554efe04ab540ecd02df14eb1bea1d299df932" }
+rune-kit = { git = "https://github.com/anomalyco/rune", rev = "c8554efe04ab540ecd02df14eb1bea1d299df932" }
+rune-mac = { git = "https://github.com/anomalyco/rune", rev = "c8554efe04ab540ecd02df14eb1bea1d299df932" }
+rune-theme-opencode = { git = "https://github.com/anomalyco/rune", rev = "c8554efe04ab540ecd02df14eb1bea1d299df932" }
 serde_json = "1"
 toml_edit = "0.23"
 atomic-write-file = "0.3"
 
 [target.'cfg(target_os = "macos")'.dependencies]
+block2 = "0.6"
+libc = "0.2"
 objc2 = "0.6"
 objc2-app-kit = { version = "0.3.2", default-features = false, features = [
   "std",
@@ -32,10 +36,13 @@ objc2-app-kit = { version = "0.3.2", default-features = false, features = [
 ] }
 objc2-foundation = { version = "0.3.2", default-features = false, features = [
   "std",
+  "block2",
   "NSArray",
   "NSFileManager",
   "NSGeometry",
+  "NSRunLoop",
   "NSString",
+  "NSTimer",
   "NSURL",
 ] }
 

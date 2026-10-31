@@ -92,10 +92,9 @@ objc2-service-management = { version = "0.3.2", default-features = false, featur
   "objc2-foundation",
   "std",
 ] }
-gpui = { version = "0.2.2", default-features = false, features = ["font-kit"] }
 
 [workspace]
-members = ["settings"]
+members = ["agent"]
 
 [workspace.lints.rust]
 # abattoir-lints begin

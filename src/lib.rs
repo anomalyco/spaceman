@@ -30,8 +30,6 @@ pub mod reconcile;
 pub mod runtime;
 mod serde_map;
 #[cfg(target_os = "macos")]
-mod settings;
-#[cfg(target_os = "macos")]
 #[allow(unsafe_code)]
 mod sparkle;
 #[cfg(target_os = "macos")]

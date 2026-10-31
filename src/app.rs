@@ -11,17 +11,13 @@ use std::{
     time::{Duration, Instant},
 };
 
-use gpui::{Application, Timer};
-use objc2::MainThreadMarker;
-use objc2_app_kit::{NSApplication, NSApplicationActivationPolicy};
-
 use crate::{
     AppInstanceId, BindingState, Decision, Direction, DisplaySelector, NavigationTile,
     ResizeDirection, Settings, WorkspaceId, Workspaces,
     config::{Config, WindowDisposition},
     control::{self, Command as ControlCommand, Request as ControlRequest},
     hotkeys::{HotkeyPlan, Hotkeys},
-    live, login_item, macos, permission_guide, settings, sparkle, status_item, termination,
+    live, login_item, macos, permission_guide, sparkle, status_item, termination,
 };
 
 /// Timestamped diagnostic line on stderr (redirected to `agent.log` in bundle
@@ -45,6 +41,7 @@ macro_rules! log_event {
 
 mod app_loop;
 mod backend;
+mod bridge;
 mod commands;
 mod cycle;
 mod input;
@@ -54,14 +51,20 @@ mod minimums;
 mod parking;
 mod runtime;
 mod switching;
+mod worker;
 
-use app_loop::{AppLoop, is_window_drag, is_window_resize, run_app_loop, spawn_worker};
+pub use app_loop::{MainThreadAgent, TickOutcome};
+pub use bridge::{UiAction, UiAgentSnapshot, UiBridge, UiLaunchAtLogin, UiNews, UiUpdateStatus};
+
+use app_loop::AppLoopInit;
 use backend::*;
 use input::{GestureTracker, InputQueue, QueuedInput};
 use journal::JournalState;
 use memory::MemoryState;
 use runtime::*;
-const TICK_INTERVAL: Duration = Duration::from_millis(25);
+use worker::{is_window_drag, is_window_resize, spawn_worker};
+
+pub const TICK_INTERVAL: Duration = Duration::from_millis(25);
 const FALLBACK_REFRESH_INTERVAL: Duration = Duration::from_secs(1);
 const APPLICATION_REFRESH_INTERVAL: Duration = Duration::from_secs(1);
 const RESTORE_RETRY_INTERVAL: Duration = Duration::from_secs(1);
@@ -245,7 +248,22 @@ enum WorkerResult {
     },
 }
 
-pub fn run() -> Result<(), String> {
+/// Startup state initialized before the Rune event loop starts: single-agent
+/// lock, control socket, signal handler, and the window-management worker.
+pub struct PreparedAgent {
+    actions: Receiver<Action>,
+    actions_sender: Sender<Action>,
+    commands: Sender<WorkerCommand>,
+    results: Receiver<WorkerResult>,
+    cancelled: Arc<AtomicBool>,
+    scope: ManagementScope,
+    hotkey_workspaces: Vec<WorkspaceId>,
+    controls: Receiver<ControlRequest>,
+    control_server: control::Server,
+    bridge: UiBridge,
+}
+
+pub fn prepare() -> Result<(PreparedAgent, UiBridge), String> {
     log_event!(
         "agent started (pid {}, version {})",
         std::process::id(),
@@ -291,69 +309,94 @@ pub fn run() -> Result<(), String> {
         config,
         workspace_state,
     );
+    let bridge = UiBridge::new(actions_sender.clone());
+    Ok((
+        PreparedAgent {
+            actions,
+            actions_sender,
+            commands,
+            results,
+            cancelled,
+            scope,
+            hotkey_workspaces,
+            controls,
+            control_server,
+            bridge: bridge.clone(),
+        },
+        bridge,
+    ))
+}
 
-    let application = Application::new();
-    application.run(move |cx| {
-        if let Some(marker) = MainThreadMarker::new() {
-            NSApplication::sharedApplication(marker)
-                .setActivationPolicy(NSApplicationActivationPolicy::Accessory);
-        }
-        if let Err(error) = termination::install(actions_sender.clone()) {
+impl PreparedAgent {
+    /// Installs main-thread AppKit hooks (termination gate, status item, Sparkle,
+    /// AX event monitor) once winit's `NSApplication` delegate is active.
+    pub fn start_main_thread(
+        self,
+        mut open_settings: Box<dyn FnMut() -> Result<(), String>>,
+    ) -> Result<MainThreadAgent, String> {
+        if let Err(error) = termination::install(self.actions_sender.clone()) {
             log_event!("failed to install application termination gate: {error}");
-            cx.quit();
-            return;
+            return Err(format!(
+                "failed to install application termination gate: {error}"
+            ));
         }
-        if let Err(error) = status_item::install(actions_sender.clone()) {
+        if let Err(error) = status_item::install(self.actions_sender.clone()) {
             log_event!("failed to install Spaceman status item: {error}");
-            quit_app(cx);
-            return;
+            termination::allow_next();
+            return Err(format!("failed to install Spaceman status item: {error}"));
         }
-        if let Err(error) = sparkle::start(actions_sender.clone()) {
+        if let Err(error) = sparkle::start(self.actions_sender.clone()) {
             log_event!("Sparkle unavailable: {error}");
         }
-        match login_item::status() {
-            Ok(status) => status_item::set_launch_at_login(status),
-            Err(error) => status_item::set_status(&format!("Launch at Login unavailable: {error}")),
+        let launch_status = login_item::status();
+        match &launch_status {
+            Ok(status) => status_item::set_launch_at_login(*status),
+            Err(error) => {
+                status_item::set_status(&format!("Launch at Login unavailable: {error}"));
+            }
         }
-        let workspace_numbers = scope
+        let workspace_numbers = self
+            .scope
             .initial_workspaces()
             .iter()
             .filter_map(|workspace| workspace.number())
             .collect::<Vec<_>>();
         status_item::set_workspace_numbers(&workspace_numbers);
-        if !macos::accessibility_trusted() {
+        let trusted = macos::accessibility_trusted();
+        let events = macos::WindowEventMonitor::new();
+        let agent = MainThreadAgent::new(
+            AppLoopInit {
+                actions: self.actions,
+                actions_sender: self.actions_sender,
+                commands: self.commands,
+                results: self.results,
+                cancelled: self.cancelled,
+                scope: self.scope,
+                events,
+                hotkey_workspaces: self.hotkey_workspaces,
+                controls: self.controls,
+                control_server: self.control_server,
+                bridge: self.bridge,
+                open_settings: Box::new(|| Ok(())),
+            },
+            launch_status,
+        );
+        if !trusted {
             status_item::set_status("Paused · Accessibility required");
-            if let Err(error) = settings::open() {
+            if let Err(error) = open_settings() {
                 status_item::set_status(&format!("Could not open Settings: {error}"));
             }
         }
-        let events = macos::WindowEventMonitor::new();
-        cx.spawn(async move |cx| {
-            run_app_loop(
-                cx,
-                AppLoop {
-                    actions,
-                    actions_sender,
-                    commands,
-                    results,
-                    cancelled,
-                    scope,
-                    events,
-                    hotkey_workspaces,
-                    controls,
-                    _control_server: control_server,
-                },
-            )
-            .await;
-        })
-        .detach();
-    });
-    Ok(())
+        Ok(agent.with_open_settings(open_settings))
+    }
 }
 
-fn quit_app(cx: &mut gpui::App) {
+pub fn allow_immediate_termination() {
     termination::allow_next();
-    cx.quit();
+}
+
+pub fn finish_appkit_termination() {
+    termination::reply(true);
 }
 
 fn queue(actions: &Sender<Action>, action: Action, ack: &str) -> Result<String, String> {
