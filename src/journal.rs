@@ -85,7 +85,45 @@ pub enum JournalEvent {
         requested: usize,
         failed: usize,
     },
+    /// Kit moved a window to another workspace by hand within
+    /// [`CORRECTION_WINDOW`] of Spaceman placing it: the placement was wrong.
+    WrongPlacement {
+        bundle_id: String,
+        window: u32,
+        source: PlacementSource,
+        placed: WorkspaceId,
+        moved_to: WorkspaceId,
+        after_ms: u64,
+    },
+    /// Kit ran `spaceman ctl wrong` when something looked wrong; a full
+    /// snapshot follows.
+    MarkedWrong,
     Stop,
+}
+
+/// A hand move this soon after Spaceman placed a window corrects that placement.
+pub const CORRECTION_WINDOW: Duration = Duration::from_secs(120);
+
+/// Why Spaceman put a newly seen window on its workspace.
+#[derive(Clone, Copy, Debug, Deserialize, Eq, Hash, Ord, PartialEq, PartialOrd, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum PlacementSource {
+    /// No rule or memory applied: the workspace showing where it opened.
+    Active,
+    /// A remembered placement from an earlier instance of its app.
+    Recall,
+    /// A configured route rule.
+    Rule,
+}
+
+impl PlacementSource {
+    const fn label(self) -> &'static str {
+        match self {
+            Self::Active => "opened on the active workspace",
+            Self::Recall => "recalled from memory",
+            Self::Rule => "routed by a rule",
+        }
+    }
 }
 
 #[derive(Clone, Copy, Debug, Deserialize, Eq, Hash, PartialEq, Serialize)]
@@ -402,6 +440,8 @@ pub fn summarize(lines: &[JournalLine], since_ms: u64, now_ms: u64, skipped: usi
     let mut restores = Vec::new();
     let mut stops = 0;
     let mut recalls: BTreeMap<&str, usize> = BTreeMap::new();
+    let mut wrong: BTreeMap<PlacementSource, BTreeMap<&str, usize>> = BTreeMap::new();
+    let mut marked = Vec::new();
     let mut expired: BTreeMap<&str, usize> = BTreeMap::new();
     let mut kinds: BTreeMap<AnomalyKind, KindSummary> = BTreeMap::new();
     let mut open: HashMap<(AnomalyKind, u32), u64> = HashMap::new();
@@ -436,6 +476,15 @@ pub fn summarize(lines: &[JournalLine], since_ms: u64, now_ms: u64, skipped: usi
                 ago(now_ms, line.t)
             )),
             JournalEvent::Recall { bundle_id, .. } => *recalls.entry(bundle_id).or_default() += 1,
+            JournalEvent::WrongPlacement {
+                bundle_id, source, ..
+            } => {
+                *wrong
+                    .entry(*source)
+                    .or_default()
+                    .entry(bundle_id)
+                    .or_default() += 1;
+            }
             JournalEvent::RecallExpired {
                 bundle_id,
                 unclaimed,
@@ -476,6 +525,7 @@ pub fn summarize(lines: &[JournalLine], since_ms: u64, now_ms: u64, skipped: usi
                     apply_diff(current, active.as_ref(), displays.as_ref(), changes);
                 }
             }
+            JournalEvent::MarkedWrong => marked.push(line.t),
             JournalEvent::Remembered { .. } => {}
         }
     }
@@ -515,6 +565,40 @@ pub fn summarize(lines: &[JournalLine], since_ms: u64, now_ms: u64, skipped: usi
         for (bundle, count) in &expired {
             out.push_str(&format!("  {bundle}: {count} unclaimed\n"));
         }
+    }
+
+    out.push_str(&format!(
+        "\nWrong placements (moved by hand within {}s of being placed): {}\n",
+        CORRECTION_WINDOW.as_secs(),
+        wrong.values().flat_map(BTreeMap::values).sum::<usize>()
+    ));
+    for (source, bundles) in &wrong {
+        let mut bundles: Vec<_> = bundles.iter().collect();
+        bundles.sort_by(|a, b| b.1.cmp(a.1).then(a.0.cmp(b.0)));
+        out.push_str(&format!(
+            "  {:>3}x {}: {}\n",
+            bundles.iter().map(|(_, count)| **count).sum::<usize>(),
+            source.label(),
+            bundles
+                .iter()
+                .take(4)
+                .map(|(bundle, count)| format!("{bundle} ({count})"))
+                .collect::<Vec<_>>()
+                .join(", ")
+        ));
+    }
+
+    if !marked.is_empty() {
+        out.push_str(&format!(
+            "Marked wrong by hand (spaceman ctl wrong): {}\n",
+            marked
+                .iter()
+                .rev()
+                .take(5)
+                .map(|t| ago(now_ms, *t))
+                .collect::<Vec<_>>()
+                .join(", ")
+        ));
     }
 
     out.push_str("\nAnomalies (lasting at least 3s):\n");
@@ -857,8 +941,35 @@ mod tests {
                     duration_ms: Some(5_000),
                 },
             },
+            JournalLine {
+                t: base + 6_000,
+                event: JournalEvent::WrongPlacement {
+                    bundle_id: "com.example.App".into(),
+                    window: 2,
+                    source: PlacementSource::Active,
+                    placed: WorkspaceId::ONE,
+                    moved_to: WorkspaceId::new(3).unwrap(),
+                    after_ms: 4_000,
+                },
+            },
+            JournalLine {
+                t: base + 7_000,
+                event: JournalEvent::MarkedWrong,
+            },
         ];
         let summary = summarize(&lines, 0, base + 65_000, 0);
+        assert!(
+            summary.contains("Wrong placements (moved by hand within 120s of being placed): 1"),
+            "{summary}"
+        );
+        assert!(
+            summary.contains("1x opened on the active workspace: com.example.App (1)"),
+            "{summary}"
+        );
+        assert!(
+            summary.contains("Marked wrong by hand (spaceman ctl wrong): 58s ago"),
+            "{summary}"
+        );
         assert!(summary.contains("Agent starts: 1"), "{summary}");
         assert!(summary.contains("leaked"), "{summary}");
         assert!(summary.contains("1x"), "{summary}");

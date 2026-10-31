@@ -1,4 +1,5 @@
 use super::*;
+use crate::journal::PlacementSource;
 
 /// How long a bound window may be missing from its app's Accessibility snapshot
 /// while the window server still shows it on screen before the omission is
@@ -257,11 +258,7 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
         // Before any new instance below is considered: a relaunch's new
         // process can appear in the same observation that reports the old
         // one terminated.
-        for application in &observation.applications {
-            if let crate::AppObservation::Terminated { app } = application {
-                self.note_departure(app);
-            }
-        }
+        self.note_absent_departures(observation);
         let mut affinities = HashMap::new();
         for application in &observation.applications {
             let crate::AppObservation::Complete { app, windows, .. } = application else {
@@ -321,6 +318,7 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
                     app_owns_window = true;
                     self.workspaces
                         .own_floating(window.id.clone(), placement.workspace);
+                    self.note_placement(&window.id, PlacementSource::Recall, placement.workspace);
                     FrozenWindowAffinity::Floating
                 } else if floating {
                     visible
@@ -335,6 +333,11 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
                             );
                             self.workspaces
                                 .own_floating(window.id.clone(), resolved.workspace);
+                            self.note_placement(
+                                &window.id,
+                                PlacementSource::Active,
+                                resolved.workspace,
+                            );
                             FrozenWindowAffinity::Floating
                         })
                 } else {
@@ -716,6 +719,20 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
                 continue;
             }
             routed_targets.insert(*target);
+        }
+        for decision in &reconciliation.decisions {
+            let Decision::WindowInserted { window, .. } = decision else {
+                continue;
+            };
+            let source = match affinity_policy.windows.get(window) {
+                Some(FrozenWindowAffinity::ExplicitRoute(_)) => PlacementSource::Rule,
+                Some(FrozenWindowAffinity::Inferred(_)) => PlacementSource::Recall,
+                Some(FrozenWindowAffinity::CurrentDisplay) | None => PlacementSource::Active,
+                Some(_) => continue,
+            };
+            if let Some(owner) = self.workspaces.workspace_of(window) {
+                self.note_placement(window, source, owner);
+            }
         }
         let inserted_here = reconciliation.decisions.iter().any(|decision| {
             matches!(

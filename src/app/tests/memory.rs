@@ -380,3 +380,190 @@ fn app_with_no_manageable_windows_does_not_open_or_expire_a_recall() {
     assert!(runtime.memory.recalls.is_empty());
     assert!(recalls(&runtime).is_empty());
 }
+
+#[test]
+fn an_app_relaunched_from_a_visible_workspace_returns_to_it() {
+    // The native snapshot never lists a quit app: its instance is simply
+    // absent and no longer running. Kit was looking at it on workspace 3,
+    // so its exit is seen there, while the new build's window opens after
+    // focus has moved to workspace 1.
+    let first = relaunched(10);
+    let second = second_instance(20);
+    let mut runtime = settled_on_three(&first);
+    let cancelled = AtomicBool::new(false);
+    runtime.switch(workspace(3), outputs(), &cancelled).unwrap();
+    runtime.backend.frames.remove(&first);
+    runtime.backend.running_apps = Some(HashSet::new());
+    runtime.backend.observation = Some(crate::NativeObservation {
+        cycle: 0,
+        mouse_down: false,
+        applications: Vec::new(),
+    });
+    runtime.cycle(outputs(), &cancelled).unwrap();
+    runtime
+        .switch(WorkspaceId::ONE, outputs(), &cancelled)
+        .unwrap();
+
+    runtime.backend.frames.insert(second.clone(), frame(50));
+    runtime.backend.running_apps = Some(HashSet::from([second.app.clone()]));
+    runtime.backend.observation = Some(observation_for(BUNDLE, &second, frame(50)));
+    runtime.cycle(outputs(), &cancelled).unwrap();
+
+    assert_eq!(runtime.workspaces.workspace_of(&second), Some(workspace(3)));
+    assert_eq!(recalls(&runtime), vec![(20, workspace(3))]);
+}
+
+fn wrong_placements(
+    runtime: &WorkspaceRuntime<FakeBackend>,
+) -> Vec<(
+    u32,
+    crate::journal::PlacementSource,
+    WorkspaceId,
+    WorkspaceId,
+)> {
+    runtime
+        .backend
+        .journal
+        .iter()
+        .filter_map(|event| match event {
+            crate::journal::JournalEvent::WrongPlacement {
+                window,
+                source,
+                placed,
+                moved_to,
+                ..
+            } => Some((*window, *source, *placed, *moved_to)),
+            _ => None,
+        })
+        .collect()
+}
+
+/// `first` quit long ago; `next` opens now on the active workspace 1.
+fn reopened_long_after(
+    first: &crate::PhysicalWindowId,
+    next: &crate::PhysicalWindowId,
+) -> WorkspaceRuntime<FakeBackend> {
+    let mut runtime = settled_on_three(first);
+    let cancelled = AtomicBool::new(false);
+    runtime.backend.frames.remove(first);
+    runtime.backend.running_apps = Some(HashSet::new());
+    runtime.backend.observation = Some(crate::NativeObservation {
+        cycle: 0,
+        mouse_down: false,
+        applications: Vec::new(),
+    });
+    runtime.cycle(outputs(), &cancelled).unwrap();
+    runtime.memory.departed.clear();
+    runtime.backend.frames.insert(next.clone(), frame(50));
+    runtime.backend.running_apps = Some(HashSet::from([next.app.clone()]));
+    runtime.backend.observation = Some(observation_for(BUNDLE, next, frame(50)));
+    runtime.cycle(outputs(), &cancelled).unwrap();
+    assert_eq!(
+        runtime.workspaces.workspace_of(next),
+        Some(WorkspaceId::ONE)
+    );
+    runtime
+}
+
+#[test]
+fn moving_a_window_back_right_after_it_opened_is_a_wrong_placement_and_its_app_returns_next_time() {
+    let first = relaunched(10);
+    let second = second_instance(20);
+    let mut runtime = reopened_long_after(&first, &second);
+    let cancelled = AtomicBool::new(false);
+
+    runtime
+        .move_window(second.clone(), workspace(3), outputs(), &cancelled)
+        .unwrap();
+
+    assert_eq!(
+        wrong_placements(&runtime),
+        vec![(
+            20,
+            crate::journal::PlacementSource::Active,
+            WorkspaceId::ONE,
+            workspace(3)
+        )]
+    );
+    assert!(runtime.memory.memory.returns(BUNDLE));
+    assert!(
+        runtime
+            .backend
+            .window_memory
+            .as_ref()
+            .is_some_and(|memory| memory.returns(BUNDLE))
+    );
+
+    // Hours later the app opens again: it returns to workspace 3 even though
+    // this is no relaunch.
+    let third = crate::PhysicalWindowId {
+        app: AppInstanceId {
+            pid: 4,
+            launched_at: 4,
+        },
+        window_id: 30,
+    };
+    runtime.backend.frames.remove(&second);
+    runtime.backend.running_apps = Some(HashSet::new());
+    runtime.backend.observation = Some(crate::NativeObservation {
+        cycle: 0,
+        mouse_down: false,
+        applications: Vec::new(),
+    });
+    runtime.cycle(outputs(), &cancelled).unwrap();
+    runtime.memory.departed.clear();
+    runtime.backend.frames.insert(third.clone(), frame(50));
+    runtime.backend.running_apps = Some(HashSet::from([third.app.clone()]));
+    runtime.backend.observation = Some(observation_for(BUNDLE, &third, frame(50)));
+    runtime.cycle(outputs(), &cancelled).unwrap();
+
+    assert_eq!(runtime.workspaces.workspace_of(&third), Some(workspace(3)));
+    assert_eq!(recalls(&runtime), vec![(30, workspace(3))]);
+}
+
+#[test]
+fn a_window_moved_long_after_it_was_placed_is_not_a_wrong_placement() {
+    let first = relaunched(10);
+    let second = second_instance(20);
+    let mut runtime = reopened_long_after(&first, &second);
+    for placement in runtime.memory.placements.values_mut() {
+        placement.at -= crate::journal::CORRECTION_WINDOW;
+    }
+
+    runtime
+        .move_window(
+            second.clone(),
+            workspace(3),
+            outputs(),
+            &AtomicBool::new(false),
+        )
+        .unwrap();
+
+    assert!(wrong_placements(&runtime).is_empty());
+    assert!(!runtime.memory.memory.returns(BUNDLE));
+}
+
+#[test]
+fn moving_a_recalled_window_journals_a_wrong_recall_without_marking_the_app() {
+    let window = relaunched(10);
+    let mut runtime = runtime(backend_with(&[(window.clone(), frame(50))]));
+    runtime.restore_window_memory(memory(&[(3, frame(50))]));
+    let cancelled = AtomicBool::new(false);
+    runtime.cycle(outputs(), &cancelled).unwrap();
+    assert_eq!(runtime.workspaces.workspace_of(&window), Some(workspace(3)));
+
+    runtime
+        .move_window(window.clone(), workspace(4), outputs(), &cancelled)
+        .unwrap();
+
+    assert_eq!(
+        wrong_placements(&runtime),
+        vec![(
+            10,
+            crate::journal::PlacementSource::Recall,
+            workspace(3),
+            workspace(4)
+        )]
+    );
+    assert!(!runtime.memory.memory.returns(BUNDLE));
+}

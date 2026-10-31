@@ -1,6 +1,9 @@
 use std::collections::BTreeMap;
 
-use crate::window_memory::{RememberedWindow, WindowMemory};
+use crate::{
+    journal::{CORRECTION_WINDOW, PlacementSource},
+    window_memory::{RememberedWindow, WindowMemory},
+};
 
 use super::*;
 
@@ -24,6 +27,14 @@ pub(super) struct Recall {
     claimed: HashMap<crate::PhysicalWindowId, RememberedWindow>,
 }
 
+/// Where and why Spaceman put a window it just saw, kept for
+/// [`CORRECTION_WINDOW`] so a hand move can be recognized as a correction.
+pub(super) struct Placement {
+    source: PlacementSource,
+    workspace: WorkspaceId,
+    pub(super) at: Instant,
+}
+
 #[derive(Default)]
 pub(super) struct MemoryState {
     pub(super) memory: WindowMemory,
@@ -44,6 +55,8 @@ pub(super) struct MemoryState {
     /// Instances already considered for a recall, on their first observation
     /// with windows.
     pub(super) considered: HashSet<AppInstanceId>,
+    /// Recent placements of newly seen windows.
+    pub(super) placements: HashMap<crate::PhysicalWindowId, Placement>,
 }
 
 impl MemoryState {
@@ -162,10 +175,92 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
     /// after is treated as a relaunch.
     pub(super) fn note_departure(&mut self, app: &AppInstanceId) {
         self.memory.considered.remove(app);
-        if let Some(bundle_id) = self.memory.bundles.get(app) {
-            self.memory
-                .departed
-                .insert(bundle_id.clone(), Instant::now());
+        if let Some(bundle_id) = self.memory.bundles.remove(app) {
+            self.memory.departed.insert(bundle_id, Instant::now());
+        }
+    }
+
+    /// The native snapshot never reports a quit app; it simply stops listing
+    /// it. Note the departure of every known instance that is absent and no
+    /// longer running, whichever workspace its windows were on.
+    pub(super) fn note_absent_departures(&mut self, observation: &crate::NativeObservation) {
+        let present: HashSet<_> = observation
+            .applications
+            .iter()
+            .map(crate::AppObservation::app_id)
+            .collect();
+        let absent: Vec<_> = self
+            .memory
+            .bundles
+            .keys()
+            .filter(|app| !present.contains(app))
+            .cloned()
+            .collect();
+        for app in absent {
+            if !self.backend.is_process_running(&app) {
+                self.note_departure(&app);
+            }
+        }
+    }
+
+    /// Remember why a newly seen window landed on `workspace`.
+    pub(super) fn note_placement(
+        &mut self,
+        window: &crate::PhysicalWindowId,
+        source: PlacementSource,
+        workspace: WorkspaceId,
+    ) {
+        self.memory
+            .placements
+            .retain(|_, placement| placement.at.elapsed() < CORRECTION_WINDOW);
+        self.memory.placements.insert(
+            window.clone(),
+            Placement {
+                source,
+                workspace,
+                at: Instant::now(),
+            },
+        );
+    }
+
+    /// Kit moved `window` from `from` to `to` by hand. Soon after Spaceman
+    /// placed it there, that placement was wrong: journal it, and when the
+    /// window had opened on the active workspace, make its app return to its
+    /// remembered placements from now on.
+    pub(super) fn note_hand_move(
+        &mut self,
+        window: &crate::PhysicalWindowId,
+        from: WorkspaceId,
+        to: WorkspaceId,
+    ) {
+        let Some(placement) = self.memory.placements.remove(window) else {
+            return;
+        };
+        let elapsed = placement.at.elapsed();
+        if elapsed >= CORRECTION_WINDOW || placement.workspace != from {
+            return;
+        }
+        let bundle_id = self.bundle_id(&window.app).unwrap_or_default().to_owned();
+        log_event!(
+            "wrong placement: {window:?} ({bundle_id}, {:?}) moved by hand {from} -> {to} after {}ms",
+            placement.source,
+            elapsed.as_millis()
+        );
+        self.journal_event(crate::journal::JournalEvent::WrongPlacement {
+            bundle_id: bundle_id.clone(),
+            window: window.window_id,
+            source: placement.source,
+            placed: from,
+            moved_to: to,
+            after_ms: u64::try_from(elapsed.as_millis()).unwrap_or(u64::MAX),
+        });
+        if placement.source == PlacementSource::Active
+            && self.memory.memory.mark_returning(&bundle_id)
+        {
+            log_event!("{bundle_id} now returns to its remembered workspace on every launch");
+            if let Err(error) = self.backend.persist_window_memory(&self.memory.memory) {
+                log_event!("failed to persist window memory: {error}");
+            }
         }
     }
 
@@ -189,14 +284,17 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
 
     /// Open a recall for an instance that owns no windows yet and whose bundle
     /// has remembered placements it may claim: one seen for the first time
-    /// during startup, or a relaunch at any time.
+    /// during startup, a relaunch, or any new instance of a returning app.
     fn open_recall(&mut self, app: &crate::ObservedApplication, first_seen: bool) {
         let startup = first_seen
             && self
                 .memory
                 .started_at
                 .is_some_and(|started| started.elapsed() < RECALL_WINDOW);
-        if !(startup || self.relaunched(app)) || self.config.has_bundle_route(&app.bundle_id) {
+        let returning = self.memory.memory.returns(&app.bundle_id);
+        if !(startup || returning || self.relaunched(app))
+            || self.config.has_bundle_route(&app.bundle_id)
+        {
             return;
         }
         if self.workspaces.app_owns_windows(&app.id) {
