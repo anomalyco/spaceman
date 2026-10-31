@@ -137,7 +137,7 @@ pub(super) async fn run_app_loop(cx: &mut gpui::AsyncApp, app: AppLoop) {
                         }
                         Err(error) => {
                             log_event!("Sparkle continuation failed after restoration: {error}");
-                            let _ = cx.update(quit_app);
+                            drop(cx.update(quit_app));
                             return;
                         }
                     }
@@ -145,13 +145,13 @@ pub(super) async fn run_app_loop(cx: &mut gpui::AsyncApp, app: AppLoop) {
                 WorkerResult::Restored { failed: 0 }
                     if exit_intent == Some(ExitIntent::Terminate) =>
                 {
-                    let _ = commands.send(WorkerCommand::Stop);
+                    drop(commands.send(WorkerCommand::Stop));
                     termination::reply(true);
                     return;
                 }
                 WorkerResult::Restored { failed: 0 } if exit_intent.is_some() => {
-                    let _ = commands.send(WorkerCommand::Stop);
-                    let _ = cx.update(quit_app);
+                    drop(commands.send(WorkerCommand::Stop));
+                    drop(cx.update(quit_app));
                     return;
                 }
                 WorkerResult::Restored { failed: 0 } => {
@@ -239,7 +239,7 @@ pub(super) async fn run_app_loop(cx: &mut gpui::AsyncApp, app: AppLoop) {
         for action in actions.try_iter() {
             if exit_intent.is_some() {
                 if action == Action::Terminate {
-                    let _ = cx.update(|_| termination::cancel_pending());
+                    drop(cx.update(|_| termination::cancel_pending()));
                 }
                 continue;
             }
@@ -596,7 +596,7 @@ fn cancel_unavailable_exit(
     last_error: &mut Option<String>,
 ) {
     if exit_intent.take() == Some(ExitIntent::Terminate) {
-        let _ = cx.update(|_| termination::cancel_pending());
+        drop(cx.update(|_| termination::cancel_pending()));
     }
     *last_error = Some("Exit blocked because window restoration is unavailable".into());
     status_item::set_status("Exit blocked · restoration unavailable");

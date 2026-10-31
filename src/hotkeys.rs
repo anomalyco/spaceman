@@ -246,6 +246,8 @@ impl Hotkeys {
             event_kind: EVENT_HOTKEY_PRESSED,
         };
         let mut handler = ptr::null_mut();
+        // SAFETY: `event_type` lives across installation, `context` stays heap-pinned in `self`
+        // (or is leaked if removal fails), and `handler` is a valid out-pointer.
         let status = unsafe {
             InstallEventHandler(
                 GetApplicationEventTarget(),
@@ -280,6 +282,8 @@ impl Hotkeys {
 
     fn register(&mut self, key_code: u32, modifiers: u32, id: u32) -> Result<(), String> {
         let mut registration = ptr::null_mut();
+        // SAFETY: Carbon's application event target is valid on the main thread and `registration`
+        // is a valid out-pointer.
         let status = unsafe {
             RegisterEventHotKey(
                 key_code,
@@ -304,8 +308,10 @@ impl Hotkeys {
 impl Drop for Hotkeys {
     fn drop(&mut self) {
         for registration in self.registrations.drain(..) {
+            // SAFETY: Each registration handle came from a successful `RegisterEventHotKey` call.
             unsafe { UnregisterEventHotKey(registration) };
         }
+        // SAFETY: `self.handler` came from a successful `InstallEventHandler` call.
         let removed = unsafe { RemoveEventHandler(self.handler) };
         if removed != 0
             && let Some(context) = self.context.take()
@@ -320,11 +326,15 @@ unsafe extern "C" fn hotkey_handler(
     event: *mut c_void,
     user_data: *mut c_void,
 ) -> i32 {
+    // SAFETY: `user_data` points to the `HandlerContext` boxed in `Hotkeys::install`, which
+    // outlives the installed Carbon event handler.
     let context = unsafe { &*user_data.cast::<HandlerContext>() };
     let mut hotkey_id = EventHotKeyId {
         signature: 0,
         id: 0,
     };
+    // SAFETY: `event` is provided by Carbon for `EVENT_HOTKEY_PRESSED`, and `hotkey_id` matches
+    // the expected `EventHotKeyId` layout and byte count.
     let status = unsafe {
         GetEventParameter(
             event,
@@ -342,7 +352,7 @@ unsafe extern "C" fn hotkey_handler(
             .ok()
             .and_then(|index| context.actions.get(index))
     {
-        let _ = context.sender.send(Action::Worker(action.clone()));
+        drop(context.sender.send(Action::Worker(action.clone())));
     }
     0
 }

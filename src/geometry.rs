@@ -78,8 +78,14 @@ pub fn parked_frame(output: Rect, displays: &[Rect], window: Rect) -> Rect {
             })
         })
         .min_by_key(|(_, distance)| *distance)
-        .map(|(frame, _)| frame)
-        .expect("an outer display edge always provides a parking position")
+        .map_or(
+            Rect {
+                x: output.x + output.width,
+                y: output.y,
+                ..window
+            },
+            |(frame, _)| frame,
+        )
 }
 
 #[cfg(test)]

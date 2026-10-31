@@ -31,16 +31,15 @@ use crate::{
 /// than panicking the calling thread, and each line is written in one call.
 macro_rules! log_event {
     ($($arg:tt)*) => {{
-        let now = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .unwrap_or_default();
+        let now = $crate::config::now();
         let line = format!(
             "[{}.{:03}] {}\n",
             now.as_secs(),
             now.subsec_millis(),
             format_args!($($arg)*)
         );
-        let _ = std::io::Write::write_all(&mut std::io::stderr().lock(), line.as_bytes());
+        // Writing to stderr itself has no fallback sink when the pipe or disk is full.
+        drop(std::io::Write::write_all(&mut std::io::stderr().lock(), line.as_bytes()));
     }};
 }
 
@@ -102,12 +101,9 @@ impl ManagementScope {
     }
 
     fn from_environment() -> Result<Self, String> {
-        match std::env::var("SPACEMAN_MANAGED_DISPLAY") {
-            Ok(value) => Self::parse(&value),
-            Err(std::env::VarError::NotPresent) => Ok(Self::Both),
-            Err(std::env::VarError::NotUnicode(_)) => {
-                Err("SPACEMAN_MANAGED_DISPLAY must be valid UTF-8".into())
-            }
+        match crate::config::managed_display_env()? {
+            Some(value) => Self::parse(&value),
+            None => Ok(Self::Both),
         }
     }
 
@@ -281,7 +277,8 @@ pub fn run() -> Result<(), String> {
     let control_server = control::listen(control_requests)?;
     let signal_actions = actions_sender.clone();
     ctrlc::set_handler(move || {
-        let _ = signal_actions.send(Action::Quit);
+        // Receiver disconnection means the main loop has already exited.
+        drop(signal_actions.send(Action::Quit));
     })
     .map_err(|error| format!("failed to install app signal handler: {error}"))?;
     let cancelled = Arc::new(AtomicBool::new(false));

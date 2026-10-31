@@ -1,0 +1,4 @@
+base = "main"
+check = "scripts/check"
+deps = ["website/node_modules"]
+lockfiles = ["Cargo.lock", "website/bun.lock"]

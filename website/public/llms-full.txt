@@ -1,0 +1,81 @@
+# Spaceman
+
+> Spaceman is a macOS tiling window manager for Apple silicon built around stable logical windows.
+
+Spaceman treats a logical tile slot as product identity rather than tying layout state to a single physical `AXWindow`. When a native tabbed window (such as Ghostty) replaces its physical Accessibility window identity on tab switch, Spaceman keeps the logical slot, split tree weight, workspace, and focus intent intact.
+
+## Requirements and Installation
+
+- **Platform:** Apple silicon Mac running macOS 14 or later. No System Integrity Protection (SIP) changes are required.
+- **Before launching:** Disable AeroSpace (`aerospace enable off`), yabai, Amethyst, or any other window manager so two managers do not move the same windows.
+- **Download:** `https://pub-6f85d683ffe0419cad0a71508904053a.r2.dev/releases/Spaceman-v0.1.6-macos-arm64.zip` (verify against `Spaceman-v0.1.6-macos-arm64.zip.sha256`).
+- **Setup:** Move `Spaceman.app` to `/Applications`, open it, grant **System Settings > Privacy & Security > Accessibility**, and optionally link `/Applications/Spaceman.app/Contents/MacOS/spaceman` to `~/.local/bin/spaceman`.
+
+## Keyboard Shortcuts
+
+- `Option+1` … `Option+9`, `Option+0`: switch to workspace `1` … `10` (`1`–`5` default to the main display; `6`–`10` default to the secondary display)
+- `Option+Shift+1` … `Option+Shift+0`: move the focused window to workspace `1` … `10`
+- `Option+A` … `Option+Z`: switch to an opt-in named workspace (`A`–`Z`)
+- `Option+Shift+A` … `Option+Shift+Z`: move the focused window to a named workspace
+- `Option+Tab`: toggle back and forth to the previous workspace on the focused display
+- `Option+\``: focus the next tiled window in the workspace
+- `Option+H/J/K/L`: focus left / down / up / right across tiles and displays
+- `Option+Shift+H/J/K/L`: move or nest the focused tile left / down / up / right
+- `Option+/`: toggle the workspace's root split axis (horizontal / vertical)
+- `Option+-` / `Option+=`: shrink or grow the focused tile by 50 pixels
+- `Option+Shift+F`: toggle workspace-wide Fullscreen Layout without entering macOS native fullscreen Spaces
+
+## Configuration (`~/.config/spaceman/config.toml`)
+
+Spaceman reads ordered first-match rules and workspace display assignments from `~/.config/spaceman/config.toml`:
+
+```toml
+version = 1
+
+[[workspaces]]
+workspace = 1
+monitor = "main"
+
+[[workspaces]]
+workspace = "C"
+monitor = "Studio Display"
+
+[[rules]]
+bundle_id = "com.tinyspeck.slackmacgap"
+action = "route"
+workspace = "C"
+
+[[rules]]
+bundle_id = "com.apple.systempreferences"
+action = "float"
+
+[[rules]]
+bundle_id = "com.example.Overlay"
+title = "Quick Open"
+action = "ignore"
+```
+
+Rule actions:
+
+- `route`: send matching windows to `workspace` (`1`–`10` or `"A"`–`"Z"`). Bundle-only routes apply to an app's initial window while keeping secondary windows on the active workspace; title-scoped routes also match secondary windows.
+- `float`: keep matching windows associated with their workspace without tiling or resizing them.
+- `ignore`: never adopt, tile, or park matching windows.
+
+Validate a config file with `spaceman config-check ~/.config/spaceman/config.toml`.
+
+## CLI and Diagnostics
+
+The bundled `spaceman` CLI communicates with the running agent over an owner-only (`0600`) Unix domain socket in `~/Library/Application Support/Spaceman/control.sock`:
+
+- `spaceman ctl status`: print active workspaces, tiling state, and window counts
+- `spaceman ctl switch <workspace>` / `spaceman ctl move <workspace>`: switch workspaces or move the focused window
+- `spaceman ctl focus <left|down|up|right|next>` / `spaceman ctl move-direction <left|down|up|right>`
+- `spaceman ctl layout` / `spaceman ctl fullscreen` / `spaceman ctl balance` / `spaceman ctl resize <shrink|grow>`
+- `spaceman ctl pause` / `spaceman ctl resume` / `spaceman ctl retile` / `spaceman ctl quit`
+- `spaceman doctor`: summarize the local arrangement and anomaly journal
+
+## Recovery and Privacy Guarantees
+
+- **Durable restoration:** Spaceman persists each window's original on-screen frame to `parked-windows.json` before parking it for an inactive workspace, and restores parked windows before pausing, quitting, or installing a Sparkle update.
+- **Relaunch recall:** Per-bundle window placements are remembered across app restarts and reboots without storing window titles.
+- **Privacy:** Window titles are used only in memory for optional `title` rule matching and never enter persisted state, logs, journals, debug snapshots, or CLI output. Spaceman sends no telemetry.

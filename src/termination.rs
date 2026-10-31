@@ -23,6 +23,8 @@ pub(crate) fn install(actions: Sender<Action>) -> Result<(), String> {
     if class.instance_method(selector).is_some() {
         return Err("GPUI already implements applicationShouldTerminate:".into());
     }
+    // SAFETY: Objective-C's `IMP` slot uses `unsafe extern "C-unwind" fn()` as an erased
+    // function pointer; AppKit dispatches `applicationShouldTerminate:` with `(id, SEL, NSApplication*) -> NSApplicationTerminateReply`.
     let implementation: unsafe extern "C-unwind" fn() = unsafe {
         std::mem::transmute::<
             unsafe extern "C-unwind" fn(
@@ -33,6 +35,8 @@ pub(crate) fn install(actions: Sender<Action>) -> Result<(), String> {
             unsafe extern "C-unwind" fn(),
         >(application_should_terminate)
     };
+    // SAFETY: `class` is a valid Objective-C class, `selector` is not yet implemented on it, and
+    // `"Q@:@"` matches `(NSUInteger)(id, SEL, id)` on 64-bit macOS.
     let added = unsafe {
         ffi::class_addMethod(
             class as *const AnyClass as *mut AnyClass,
@@ -90,7 +94,7 @@ unsafe extern "C-unwind" fn application_should_terminate(
             }
             Some(Gate::Idle(actions)) => {
                 let actions = actions.clone();
-                let _ = actions.send(Action::Terminate);
+                drop(actions.send(Action::Terminate));
                 *gate = Some(Gate::Pending(actions));
                 NSApplicationTerminateReply::TerminateLater
             }

@@ -47,22 +47,22 @@ objc2::define_class!(
     impl Target {
         #[unsafe(method(toggleAutomatic:))]
         fn toggle_automatic(&self, _sender: &NSObject) {
-            let _ = self.ivars().actions.send(Action::ToggleAutomatic);
+            drop(self.ivars().actions.send(Action::ToggleAutomatic));
         }
 
         #[unsafe(method(openSettings:))]
         fn open_settings(&self, _sender: &NSObject) {
-            let _ = self.ivars().actions.send(Action::OpenSettings);
+            drop(self.ivars().actions.send(Action::OpenSettings));
         }
 
         #[unsafe(method(toggleLaunchAtLogin:))]
         fn toggle_launch_at_login(&self, _sender: &NSObject) {
-            let _ = self.ivars().actions.send(Action::ToggleLaunchAtLogin);
+            drop(self.ivars().actions.send(Action::ToggleLaunchAtLogin));
         }
 
         #[unsafe(method(quit:))]
         fn quit(&self, _sender: &NSObject) {
-            let _ = self.ivars().actions.send(Action::Quit);
+            drop(self.ivars().actions.send(Action::Quit));
         }
     }
 );
@@ -70,6 +70,7 @@ objc2::define_class!(
 impl Target {
     fn new(actions: Sender<Action>, marker: MainThreadMarker) -> Retained<Self> {
         let this = Self::alloc(marker).set_ivars(TargetIvars { actions });
+        // SAFETY: `NSObject`'s `-init` takes no arguments and returns an initialized `Self`.
         unsafe { msg_send![super(this), init] }
     }
 }
@@ -240,7 +241,10 @@ fn workspace_layout_image(layouts: &[WorkspaceLayout]) -> Retained<NSImage> {
         .collect::<Vec<_>>();
     let label_widths = labels
         .iter()
-        .map(|label| unsafe { label.sizeWithAttributes(None) }.width.ceil())
+        .map(|label| {
+            // SAFETY: `sizeWithAttributes(None)` measures `label` using AppKit's default font.
+            unsafe { label.sizeWithAttributes(None) }.width.ceil()
+        })
         .collect::<Vec<_>>();
     let width = label_widths.iter().sum::<f64>() + layouts.len() as f64 * 24.0 - 6.0;
     let layouts = layouts.to_vec();
@@ -296,12 +300,14 @@ fn draw_workspace_layouts(
                 }
             }
         }
+        // SAFETY: Called inside `NSImage` drawing handler with a active graphics context.
         unsafe { label.drawAtPoint_withAttributes(NSPoint::new(x + 19.0, 0.5), None) };
         x += 24.0 + label_width;
     }
 }
 
 fn plain_item(title: &str, marker: MainThreadMarker) -> Retained<NSMenuItem> {
+    // SAFETY: `NSMenuItem` is allocated on the main thread with no target/action selector.
     unsafe {
         NSMenuItem::initWithTitle_action_keyEquivalent(
             NSMenuItem::alloc(marker),
@@ -318,6 +324,7 @@ fn action_item(
     action: objc2::runtime::Sel,
     marker: MainThreadMarker,
 ) -> Retained<NSMenuItem> {
+    // SAFETY: `action` matches a method declared on `Target` taking a single sender object.
     let item = unsafe {
         NSMenuItem::initWithTitle_action_keyEquivalent(
             NSMenuItem::alloc(marker),
@@ -326,6 +333,7 @@ fn action_item(
             &NSString::new(),
         )
     };
+    // SAFETY: `target` is retained inside `Controller` for the lifetime of the menu.
     unsafe { item.setTarget(Some(target)) };
     item
 }

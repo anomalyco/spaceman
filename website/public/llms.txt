@@ -1,0 +1,16 @@
+# Spaceman
+
+> Spaceman is a macOS tiling window manager for Apple silicon built around stable logical windows, native tab replacement, workspace routing rules, durable window restoration, and a local CLI.
+
+Spaceman uses macOS Accessibility APIs with no SIP changes required. It provides ten numbered workspaces (`1`–`10`) plus opt-in named workspaces (`A`–`Z`), nested weighted split layouts, drag-to-reorder and resize, and automatic window restoration on pause, quit, or update.
+
+## Documentation
+
+- [Full documentation](https://spaceman.kitlangton.dev/llms-full.txt): installation, keyboard shortcuts, configuration rules, CLI commands, and recovery guarantees
+- [Website](https://spaceman.kitlangton.dev/): overview and Apple silicon preview download
+
+## Downloads
+
+- [Spaceman 0.1.6 for Apple silicon](https://pub-6f85d683ffe0419cad0a71508904053a.r2.dev/releases/Spaceman-v0.1.6-macos-arm64.zip): Developer ID-signed, notarized macOS 14+ preview archive
+- [SHA-256 checksum](https://pub-6f85d683ffe0419cad0a71508904053a.r2.dev/releases/Spaceman-v0.1.6-macos-arm64.zip.sha256): checksum for `Spaceman-v0.1.6-macos-arm64.zip`
+- [Sparkle appcast](https://pub-6f85d683ffe0419cad0a71508904053a.r2.dev/appcast.xml): signed software update feed

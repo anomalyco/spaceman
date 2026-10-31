@@ -306,12 +306,14 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
             self.restore_window(&window);
         }
         for window in revealed {
-            if let Some(&original) = incoming_originals.get(window) {
-                let _ = self.mark_parked(window.clone(), original);
+            if let Some(&original) = incoming_originals.get(window)
+                && !self.mark_parked(window.clone(), original)
+            {
+                log_event!("rollback mark_parked failed for {:?}", window);
             }
             // A pending restore may land after rollback. Supersede that write
             // even when its recovery entry has not yet been retired.
-            let _ = self.park_window(window, output, outputs);
+            let _: macos::ApplyOutcome = self.park_window(window, output, outputs);
         }
     }
 
@@ -440,7 +442,9 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
                 let layout = self.layout_workspace(target, target_output, cancelled);
                 failed += layout.failed;
             }
-            let _ = self.backend.focus_window(&window);
+            if !self.backend.focus_window(&window) {
+                log_event!("move focus follow failed for {:?}", window);
+            }
         }
         self.persist_workspace_state_if_changed()?;
         Ok(self.status(failed, &outputs))

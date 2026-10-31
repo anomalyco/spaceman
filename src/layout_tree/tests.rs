@@ -1,0 +1,400 @@
+use std::collections::HashMap;
+
+use crate::{Axis, Direction, Rect, ResizeDirection, SlotId};
+
+use super::{Child, LayoutTree, MIN_TILE_EXTENT, Node};
+
+#[test]
+fn edge_insertion_after_resize_uses_the_destination_weight_scale() {
+    let output = Rect {
+        width: 1000,
+        height: 800,
+        ..Rect::default()
+    };
+    for direction in [Direction::Left, Direction::Right] {
+        let mut tree = LayoutTree::flat(Axis::Horizontal, [SlotId(1), SlotId(2), SlotId(3)]);
+        assert!(tree.resize_by(SlotId(1), ResizeDirection::Grow, 50, output));
+        assert!(tree.move_relative(SlotId(3), SlotId(2), direction));
+        let placements = tree.placements(output);
+        assert!(
+            placements
+                .iter()
+                .all(|(_, frame)| frame.width >= MIN_TILE_EXTENT),
+            "{placements:?}"
+        );
+        let restored: LayoutTree =
+            serde_json::from_slice(&serde_json::to_vec(&tree).unwrap()).unwrap();
+        assert_eq!(restored.placements(output), placements);
+    }
+}
+
+#[test]
+fn implicit_split_preserves_the_remaining_layout() {
+    let mut tree = LayoutTree::flat(Axis::Horizontal, [SlotId(1), SlotId(2), SlotId(3)]);
+
+    assert!(tree.create_implicit_split(SlotId(2), Direction::Up));
+
+    assert_eq!(tree.slots(), vec![SlotId(2), SlotId(1), SlotId(3)]);
+    assert_eq!(
+        tree.placements(Rect {
+            x: 0,
+            y: 0,
+            width: 1200,
+            height: 800,
+        }),
+        vec![
+            (
+                SlotId(2),
+                Rect {
+                    x: 0,
+                    y: 0,
+                    width: 1200,
+                    height: 400
+                }
+            ),
+            (
+                SlotId(1),
+                Rect {
+                    x: 0,
+                    y: 400,
+                    width: 600,
+                    height: 400
+                }
+            ),
+            (
+                SlotId(3),
+                Rect {
+                    x: 600,
+                    y: 400,
+                    width: 600,
+                    height: 400
+                }
+            ),
+        ]
+    );
+}
+
+#[test]
+fn persisted_layout_validation_rejects_duplicate_leaves_and_zero_weights() {
+    let slots = [crate::Slot {
+        id: SlotId(1),
+        weight: 1,
+        binding: crate::BindingState::Bound(crate::PhysicalWindowId {
+            app: crate::AppInstanceId {
+                pid: 1,
+                launched_at: 1,
+            },
+            window_id: 1,
+        }),
+    }];
+    let duplicate: LayoutTree = serde_json::from_value(serde_json::json!({
+        "root": {"Split": {"axis": "horizontal", "children": [
+            {"weight": 1, "node": {"Leaf": 1}},
+            {"weight": 1, "node": {"Leaf": 1}}
+        ]}}
+    }))
+    .unwrap();
+    let zero_weight: LayoutTree = serde_json::from_value(serde_json::json!({
+        "root": {"Split": {"axis": "horizontal", "children": [
+            {"weight": 0, "node": {"Leaf": 1}}
+        ]}}
+    }))
+    .unwrap();
+    let nested_empty: LayoutTree = serde_json::from_value(serde_json::json!({
+        "root": {"Split": {"axis": "horizontal", "children": [
+            {"weight": 1, "node": {"Leaf": 1}},
+            {"weight": 1, "node": {"Split": {
+                "axis": "vertical",
+                "children": []
+            }}}
+        ]}}
+    }))
+    .unwrap();
+
+    assert!(duplicate.validate(&slots).is_err());
+    assert!(zero_weight.validate(&slots).is_err());
+    assert_eq!(
+        nested_empty.validate(&slots).unwrap_err(),
+        "layout contains an empty nested split"
+    );
+    assert!(LayoutTree::default().validate(&[]).is_ok());
+}
+
+#[test]
+fn edge_insertion_creates_a_split_at_the_target() {
+    let mut tree = LayoutTree::flat(Axis::Horizontal, [SlotId(1), SlotId(2), SlotId(3)]);
+
+    assert!(tree.move_relative(SlotId(1), SlotId(2), Direction::Up));
+
+    assert_eq!(
+        tree.placements(Rect {
+            x: 0,
+            y: 0,
+            width: 1000,
+            height: 800
+        }),
+        vec![
+            (
+                SlotId(1),
+                Rect {
+                    x: 0,
+                    y: 0,
+                    width: 500,
+                    height: 400
+                }
+            ),
+            (
+                SlotId(2),
+                Rect {
+                    x: 0,
+                    y: 400,
+                    width: 500,
+                    height: 400
+                }
+            ),
+            (
+                SlotId(3),
+                Rect {
+                    x: 500,
+                    y: 0,
+                    width: 500,
+                    height: 800
+                }
+            ),
+        ]
+    );
+}
+
+#[test]
+fn resize_updates_the_nearest_nested_boundary() {
+    let mut tree = LayoutTree::flat(Axis::Horizontal, [SlotId(1), SlotId(2), SlotId(3)]);
+    assert!(tree.move_relative(SlotId(1), SlotId(2), Direction::Up));
+
+    assert!(tree.resize(
+        SlotId(1),
+        Rect {
+            x: 0,
+            y: 0,
+            width: 500,
+            height: 500
+        },
+        Rect {
+            x: 0,
+            y: 0,
+            width: 1000,
+            height: 800
+        },
+    ));
+
+    let placements = tree.placements(Rect {
+        x: 0,
+        y: 0,
+        width: 1000,
+        height: 800,
+    });
+    assert_eq!(placements[0].1.height, 500);
+    assert_eq!(placements[1].1.y, 500);
+    assert_eq!(
+        placements[2].1,
+        Rect {
+            x: 500,
+            y: 0,
+            width: 500,
+            height: 800
+        }
+    );
+}
+
+#[test]
+fn resize_ignores_splits_too_small_for_both_minimums() {
+    let mut tree = LayoutTree::flat(Axis::Horizontal, [SlotId(1), SlotId(2)]);
+
+    assert!(!tree.resize(
+        SlotId(1),
+        Rect {
+            width: 60,
+            height: 100,
+            ..Rect::default()
+        },
+        Rect {
+            width: 80,
+            height: 100,
+            ..Rect::default()
+        },
+    ));
+}
+
+fn output() -> Rect {
+    Rect {
+        width: 1000,
+        height: 800,
+        ..Rect::default()
+    }
+}
+
+#[test]
+fn fitting_minimums_reaches_into_nested_splits_and_leaves_impossible_splits_alone() {
+    let mut layout = LayoutTree {
+        root: Node::Split {
+            axis: Axis::Horizontal,
+            children: vec![
+                Child {
+                    weight: 1,
+                    node: Node::Leaf(SlotId(1)),
+                },
+                Child {
+                    weight: 1,
+                    node: Node::Split {
+                        axis: Axis::Vertical,
+                        children: vec![
+                            Child {
+                                weight: 1,
+                                node: Node::Leaf(SlotId(2)),
+                            },
+                            Child {
+                                weight: 1,
+                                node: Node::Leaf(SlotId(3)),
+                            },
+                        ],
+                    },
+                },
+            ],
+        },
+    };
+    let minimums = HashMap::from([(SlotId(3), (700, 500))]);
+
+    assert!(layout.fit_minimums(output(), &minimums));
+    let frames = layout.placements(output());
+    assert_eq!(frames[0].1.width, 300);
+    assert_eq!(frames[2].1.width, 700);
+    assert_eq!(frames[2].1.height, 500);
+    assert_eq!(frames[1].1.height, 300);
+    assert!(!layout.fit_minimums(output(), &minimums));
+
+    let before = layout.clone();
+    let impossible = HashMap::from([(SlotId(1), (600, 0)), (SlotId(3), (700, 0))]);
+    assert!(!layout.fit_minimums(output(), &impossible));
+    assert_eq!(layout, before);
+}
+
+#[test]
+fn keyboard_resize_grows_and_shrinks_a_flat_tile_by_fifty_pixels() {
+    let mut tree = LayoutTree::flat(Axis::Horizontal, [SlotId(1), SlotId(2)]);
+
+    assert!(tree.resize_by(SlotId(1), ResizeDirection::Grow, 50, output()));
+    assert_eq!(tree.placements(output())[0].1.width, 550);
+    assert!(tree.resize_by(SlotId(1), ResizeDirection::Shrink, 50, output()));
+    assert_eq!(tree.placements(output())[0].1.width, 500);
+}
+
+#[test]
+fn keyboard_resize_uses_the_immediate_nested_parent() {
+    let mut tree = LayoutTree::flat(Axis::Horizontal, [SlotId(1), SlotId(2), SlotId(3)]);
+    assert!(tree.move_relative(SlotId(1), SlotId(2), Direction::Up));
+
+    assert!(tree.resize_by(SlotId(1), ResizeDirection::Grow, 50, output()));
+
+    let placements = tree.placements(output());
+    assert_eq!(placements[0].1.height, 450);
+    assert_eq!(placements[1].1.height, 350);
+    assert_eq!(placements[2].1.width, 500);
+}
+
+#[test]
+fn keyboard_resize_stops_at_recursive_tile_minimums() {
+    let mut tree = LayoutTree::flat(Axis::Horizontal, [SlotId(1), SlotId(2), SlotId(3)]);
+    assert!(tree.create_implicit_split(SlotId(2), Direction::Right));
+
+    for _ in 0..20 {
+        tree.resize_by(SlotId(2), ResizeDirection::Grow, 50, output());
+    }
+
+    let placements = tree.placements(output());
+    assert_eq!(placements[0].1.width, 50);
+    assert_eq!(placements[1].1.width, 50);
+    assert_eq!(placements[2].1.width, 900);
+    assert!(!tree.resize_by(SlotId(2), ResizeDirection::Grow, 50, output()));
+}
+
+#[test]
+fn balance_equalizes_the_focused_tiles_immediate_parent() {
+    let mut tree = LayoutTree::flat(Axis::Horizontal, [SlotId(1), SlotId(2), SlotId(3)]);
+    assert!(tree.move_relative(SlotId(1), SlotId(2), Direction::Up));
+    assert!(tree.resize_by(SlotId(1), ResizeDirection::Grow, 50, output()));
+
+    assert!(tree.balance(SlotId(1), output()));
+
+    let placements = tree.placements(output());
+    assert_eq!(placements[0].1.height, 400);
+    assert_eq!(placements[1].1.height, 400);
+    assert_eq!(placements[2].1.width, 500);
+}
+
+#[test]
+fn newly_discovered_slot_uses_existing_weight_scale() {
+    let mut tree = LayoutTree::flat(Axis::Horizontal, [SlotId(1)]);
+    if let Node::Split { children, .. } = &mut tree.root {
+        children[0].weight = 1480;
+    }
+    let slots = [
+        crate::Slot {
+            id: SlotId(1),
+            weight: 1480,
+            binding: crate::BindingState::Unresolved {
+                previous: test_window(1),
+                candidates: Vec::new(),
+                since: 0,
+            },
+        },
+        crate::Slot {
+            id: SlotId(2),
+            weight: 1,
+            binding: crate::BindingState::Unresolved {
+                previous: test_window(2),
+                candidates: Vec::new(),
+                since: 0,
+            },
+        },
+    ];
+
+    tree.sync(Axis::Horizontal, &slots);
+
+    assert_eq!(
+        tree.placements(Rect {
+            x: 0,
+            y: 0,
+            width: 1000,
+            height: 800,
+        }),
+        vec![
+            (
+                SlotId(1),
+                Rect {
+                    x: 0,
+                    y: 0,
+                    width: 500,
+                    height: 800,
+                },
+            ),
+            (
+                SlotId(2),
+                Rect {
+                    x: 500,
+                    y: 0,
+                    width: 500,
+                    height: 800,
+                },
+            ),
+        ]
+    );
+}
+
+fn test_window(window_id: u32) -> crate::PhysicalWindowId {
+    crate::PhysicalWindowId {
+        app: crate::AppInstanceId {
+            pid: 1,
+            launched_at: 1,
+        },
+        window_id,
+    }
+}

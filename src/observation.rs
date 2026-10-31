@@ -135,8 +135,10 @@ mod tests {
     #[test]
     fn diagnostics_preserve_window_titles_in_memory() {
         let (window, app, native) = observations(Some(Arc::from(TITLE)));
-        let _ = format!("{window:?} {window:#?} {app:?} {app:#?} {native:?} {native:#?}");
-        let _ = serde_json::to_string(&native).unwrap();
+        assert!(
+            !format!("{window:?} {window:#?} {app:?} {app:#?} {native:?} {native:#?}").is_empty()
+        );
+        assert!(!serde_json::to_string(&native).unwrap().is_empty());
         assert!(window.title.as_deref() == Some(TITLE));
         for observation in [&app, &native.applications[0]] {
             let AppObservation::Complete { windows, .. } = observation else {

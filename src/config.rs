@@ -191,6 +191,33 @@ impl WindowMatcher {
     }
 }
 
+/// Wall-clock duration since the Unix epoch.
+#[must_use]
+#[expect(
+    clippy::disallowed_methods,
+    reason = "config::now is the central wall-clock adapter"
+)]
+pub fn now() -> std::time::Duration {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+}
+
+/// Optional `SPACEMAN_MANAGED_DISPLAY` override read at startup.
+#[expect(
+    clippy::disallowed_methods,
+    reason = "startup environment variables are read in config.rs"
+)]
+pub fn managed_display_env() -> Result<Option<String>, String> {
+    match std::env::var("SPACEMAN_MANAGED_DISPLAY") {
+        Ok(value) => Ok(Some(value)),
+        Err(std::env::VarError::NotPresent) => Ok(None),
+        Err(std::env::VarError::NotUnicode(_)) => {
+            Err("SPACEMAN_MANAGED_DISPLAY must be valid UTF-8".into())
+        }
+    }
+}
+
 /// When the config file last changed, or `None` while it doesn't exist.
 #[must_use]
 pub fn modified() -> Option<std::time::SystemTime> {
