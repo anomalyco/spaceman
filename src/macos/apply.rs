@@ -1,0 +1,493 @@
+use std::{
+    cell::RefCell,
+    collections::{HashMap, HashSet},
+    ptr::NonNull,
+};
+
+use objc2::rc::autoreleasepool;
+use objc2_app_kit::{NSApplicationActivationOptions, NSApplicationActivationPolicy};
+use objc2_application_services::{AXError, AXUIElement};
+use objc2_core_foundation::{CFArray, CFBoolean, CFRetained, CFString};
+use objc2_core_graphics::CGWindowID;
+
+use crate::{AppInstanceId, PhysicalWindowId, Placement, Rect, Settings};
+
+use super::{
+    WindowObservation,
+    ax::{
+        application_element, attribute, cf_array_items, onscreen_windows, optional_bool_attribute,
+        physical_window_id, set_attribute, set_ax_timeout, set_position, set_size, window_frame,
+    },
+    mouse_down, observe_window, process_incarnation_matches, running_application,
+};
+
+#[derive(Debug, serde::Serialize)]
+pub struct ApplyResult {
+    pub window: PhysicalWindowId,
+    pub target: Rect,
+    pub actual: Option<Rect>,
+    pub outcome: ApplyOutcome,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, serde::Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ApplyOutcome {
+    Applied,
+    Constrained,
+    Gone,
+    Unavailable,
+    Deferred,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum WindowAccessError {
+    Gone,
+    Unavailable,
+}
+
+thread_local! {
+    static MANAGED_WINDOWS: RefCell<HashMap<PhysicalWindowId, CFRetained<AXUIElement>>> =
+        RefCell::new(HashMap::new());
+}
+
+pub fn apply(placements: &[Placement], settings: &Settings) -> Vec<ApplyResult> {
+    apply_while(placements, settings, || true)
+}
+
+pub fn apply_while(
+    placements: &[Placement],
+    settings: &Settings,
+    mut should_continue: impl FnMut() -> bool,
+) -> Vec<ApplyResult> {
+    autoreleasepool(|_| {
+        let onscreen = onscreen_windows().unwrap_or_default();
+        placements
+            .iter()
+            .take_while(|_| should_continue())
+            .filter_map(|placement| {
+                placement.window.as_ref().map(|window| {
+                    apply_window(window, placement.frame, settings, &onscreen).unwrap_or_else(
+                        || ApplyResult {
+                            window: window.clone(),
+                            target: placement.frame,
+                            actual: None,
+                            outcome: ApplyOutcome::Gone,
+                        },
+                    )
+                })
+            })
+            .collect()
+    })
+}
+
+pub fn apply_managed(
+    placements: &[Placement],
+    settings: &Settings,
+    dragged: Option<&PhysicalWindowId>,
+    mut should_continue: impl FnMut() -> bool,
+) -> Vec<ApplyResult> {
+    autoreleasepool(|_| {
+        let placements: Vec<_> = placements
+            .iter()
+            .take_while(|_| should_continue())
+            .filter_map(|placement| {
+                placement
+                    .window
+                    .as_ref()
+                    .map(|window| (window, placement.frame))
+            })
+            .collect();
+        if mouse_down() && dragged.is_none() {
+            return placements
+                .into_iter()
+                .map(|(window, target)| ApplyResult {
+                    window: window.clone(),
+                    target,
+                    actual: None,
+                    outcome: ApplyOutcome::Deferred,
+                })
+                .collect();
+        }
+        let groups = group_placements_by_app(&placements);
+        let mut results: Vec<Option<ApplyResult>> = (0..placements.len()).map(|_| None).collect();
+        'applications: for (app_id, indices) in groups {
+            if !should_continue() {
+                break;
+            }
+            if !process_incarnation_matches(&app_id) {
+                fill_missing_results(&placements, &indices, &mut results, ApplyOutcome::Gone);
+                continue;
+            }
+            let app = application_element(app_id.pid);
+            let windows = match attribute::<CFArray>(&app, "AXWindows") {
+                Ok(windows) => windows,
+                Err(AXError::InvalidUIElement) => {
+                    fill_missing_results(&placements, &indices, &mut results, ApplyOutcome::Gone);
+                    continue;
+                }
+                Err(_) => {
+                    fill_missing_results(
+                        &placements,
+                        &indices,
+                        &mut results,
+                        ApplyOutcome::Unavailable,
+                    );
+                    continue;
+                }
+            };
+            let _animations = WindowAnimationGuard::new(&app);
+            let mut pending = HashMap::<u32, Vec<usize>>::new();
+            for index in &indices {
+                pending
+                    .entry(placements[*index].0.window_id)
+                    .or_default()
+                    .push(*index);
+            }
+            let mut lookup_failed = false;
+            for window in cf_array_items::<AXUIElement>(&windows) {
+                let Some(window_id) = physical_window_id(&app_id, window) else {
+                    lookup_failed = true;
+                    continue;
+                };
+                let Some(placement_indices) = pending.remove(&window_id.window_id) else {
+                    continue;
+                };
+                set_ax_timeout(window);
+                for placement_index in placement_indices {
+                    if !should_continue() {
+                        break 'applications;
+                    }
+                    let (id, target) = placements[placement_index];
+                    cache_managed_window(id, window);
+                    results[placement_index] = Some(if dragged == Some(id) {
+                        ApplyResult {
+                            window: id.clone(),
+                            target,
+                            actual: window_frame(window),
+                            outcome: ApplyOutcome::Deferred,
+                        }
+                    } else {
+                        apply_element(id, window, target, settings)
+                    });
+                }
+                if pending.is_empty() {
+                    break;
+                }
+            }
+            fill_missing_results(
+                &placements,
+                &pending.into_values().flatten().collect::<Vec<_>>(),
+                &mut results,
+                if lookup_failed {
+                    ApplyOutcome::Unavailable
+                } else {
+                    ApplyOutcome::Gone
+                },
+            );
+        }
+        results.into_iter().flatten().collect()
+    })
+}
+
+pub(super) fn group_placements_by_app(
+    placements: &[(&PhysicalWindowId, Rect)],
+) -> Vec<(AppInstanceId, Vec<usize>)> {
+    let mut groups = Vec::<(AppInstanceId, Vec<usize>)>::new();
+    let mut group_indices = HashMap::<AppInstanceId, usize>::new();
+    for (index, (window, _)) in placements.iter().enumerate() {
+        let group = *group_indices.entry(window.app.clone()).or_insert_with(|| {
+            groups.push((window.app.clone(), Vec::new()));
+            groups.len() - 1
+        });
+        groups[group].1.push(index);
+    }
+    groups
+}
+
+fn fill_missing_results(
+    placements: &[(&PhysicalWindowId, Rect)],
+    indices: &[usize],
+    results: &mut [Option<ApplyResult>],
+    outcome: ApplyOutcome,
+) {
+    for index in indices {
+        let (window, target) = placements[*index];
+        if matches!(outcome, ApplyOutcome::Gone) {
+            evict_managed_window(window);
+        }
+        results[*index] = Some(ApplyResult {
+            window: window.clone(),
+            target,
+            actual: None,
+            outcome,
+        });
+    }
+}
+
+pub fn frame(id: &PhysicalWindowId) -> Result<Rect, WindowAccessError> {
+    with_managed_window_result(id, |window| {
+        window_frame(window).ok_or(WindowAccessError::Unavailable)
+    })
+}
+
+pub fn set_position_only(id: &PhysicalWindowId, target: Rect) -> ApplyOutcome {
+    match with_managed_window_result(id, |window| {
+        let result = without_window_animations(&id.app, || set_position(window, target));
+        if window_frame(window).is_some_and(|actual| position_matches(actual, target)) {
+            Ok(())
+        } else if matches!(result, AXError::InvalidUIElement) {
+            Err(WindowAccessError::Gone)
+        } else {
+            Err(WindowAccessError::Unavailable)
+        }
+    }) {
+        Ok(()) => ApplyOutcome::Applied,
+        Err(WindowAccessError::Gone) => ApplyOutcome::Gone,
+        Err(WindowAccessError::Unavailable) => ApplyOutcome::Unavailable,
+    }
+}
+
+pub(super) fn position_matches(actual: Rect, target: Rect) -> bool {
+    actual.position_approximately_equals(target, POSITION_CONFIRM_TOLERANCE)
+}
+
+const POSITION_CONFIRM_TOLERANCE: i32 = 64;
+
+pub fn focus_window(id: &PhysicalWindowId) -> bool {
+    autoreleasepool(|_| {
+        let raised = raise_window_with_focus(id, true);
+        let activated = running_application(&id.app).is_some_and(|application| {
+            application.activateWithOptions(NSApplicationActivationOptions::empty())
+        });
+        raised && activated
+    })
+}
+
+pub fn raise_window(id: &PhysicalWindowId) -> bool {
+    raise_window_with_focus(id, false)
+}
+
+fn raise_window_with_focus(id: &PhysicalWindowId, focus: bool) -> bool {
+    with_managed_window_result(id, |window| {
+        if focus {
+            // Best-effort attribute before `AXRaise`; some apps ignore `AXFocused` writes.
+            let _: AXError = set_attribute(window, "AXFocused", CFBoolean::new(true));
+        }
+        // SAFETY: `window` is a live `AXUIElement` and `"AXRaise"` is a standard AX action.
+        if (unsafe { window.perform_action(&CFString::from_static_str("AXRaise")) })
+            == AXError::Success
+        {
+            Ok(())
+        } else {
+            Err(WindowAccessError::Unavailable)
+        }
+    })
+    .is_ok()
+}
+
+fn apply_window(
+    id: &PhysicalWindowId,
+    target: Rect,
+    settings: &Settings,
+    onscreen: &HashMap<i32, HashMap<CGWindowID, i64>>,
+) -> Option<ApplyResult> {
+    if mouse_down() {
+        return Some(ApplyResult {
+            window: id.clone(),
+            target,
+            actual: None,
+            outcome: ApplyOutcome::Deferred,
+        });
+    }
+    let Some(application) = running_application(&id.app) else {
+        return Some(ApplyResult {
+            window: id.clone(),
+            target,
+            actual: None,
+            outcome: ApplyOutcome::Gone,
+        });
+    };
+    if !onscreen
+        .get(&id.app.pid)
+        .is_some_and(|windows| windows.contains_key(&id.window_id))
+    {
+        return Some(ApplyResult {
+            window: id.clone(),
+            target,
+            actual: None,
+            outcome: ApplyOutcome::Gone,
+        });
+    }
+    let accessory = application.activationPolicy() == NSApplicationActivationPolicy::Accessory;
+    let app = application_element(id.app.pid);
+    let windows = attribute::<CFArray>(&app, "AXWindows").ok()?;
+    for window in cf_array_items::<AXUIElement>(&windows) {
+        set_ax_timeout(window);
+        if physical_window_id(&id.app, window).as_ref() != Some(id) {
+            continue;
+        }
+        if !matches!(
+            observe_window(
+                id.clone(),
+                accessory,
+                window,
+                onscreen.get(&id.app.pid)?,
+                settings.output,
+            ),
+            Ok(WindowObservation::Observed(_))
+        ) {
+            return Some(ApplyResult {
+                window: id.clone(),
+                target,
+                actual: window_frame(window),
+                outcome: ApplyOutcome::Unavailable,
+            });
+        }
+
+        let _animations = WindowAnimationGuard::new(&app);
+        return Some(apply_element(id, window, target, settings));
+    }
+    None
+}
+
+fn apply_element(
+    id: &PhysicalWindowId,
+    window: &AXUIElement,
+    target: Rect,
+    settings: &Settings,
+) -> ApplyResult {
+    let before = window_frame(window);
+    if before.is_some_and(|frame| frame.approximately_equals(target, settings.frame_tolerance)) {
+        return ApplyResult {
+            window: id.clone(),
+            target,
+            actual: before,
+            outcome: ApplyOutcome::Applied,
+        };
+    }
+    let wrote = set_size(window, target) == AXError::Success
+        && set_position(window, target) == AXError::Success
+        && set_size(window, target) == AXError::Success;
+    let actual = window_frame(window);
+    let outcome = match (wrote, actual) {
+        (_, Some(actual)) if actual.approximately_equals(target, settings.frame_tolerance) => {
+            ApplyOutcome::Applied
+        }
+        (true, Some(_)) => ApplyOutcome::Constrained,
+        _ => ApplyOutcome::Unavailable,
+    };
+    ApplyResult {
+        window: id.clone(),
+        target,
+        actual,
+        outcome,
+    }
+}
+
+fn without_window_animations<T>(app: &AppInstanceId, operation: impl FnOnce() -> T) -> T {
+    let application = application_element(app.pid);
+    let _animations = WindowAnimationGuard::new(&application);
+    operation()
+}
+
+struct WindowAnimationGuard<'a> {
+    application: &'a AXUIElement,
+    restore_enhanced_ui: bool,
+}
+
+impl<'a> WindowAnimationGuard<'a> {
+    fn new(application: &'a AXUIElement) -> Self {
+        let restore_enhanced_ui = optional_bool_attribute(application, "AXEnhancedUserInterface")
+            .ok()
+            .unwrap_or(false);
+        if restore_enhanced_ui {
+            let _: AXError = set_attribute(
+                application,
+                "AXEnhancedUserInterface",
+                CFBoolean::new(false),
+            );
+        }
+        Self {
+            application,
+            restore_enhanced_ui,
+        }
+    }
+}
+
+impl Drop for WindowAnimationGuard<'_> {
+    fn drop(&mut self) {
+        if self.restore_enhanced_ui {
+            let _: AXError = set_attribute(
+                self.application,
+                "AXEnhancedUserInterface",
+                CFBoolean::new(true),
+            );
+        }
+    }
+}
+
+fn with_managed_window_result<T>(
+    id: &PhysicalWindowId,
+    mut operation: impl FnMut(&AXUIElement) -> Result<T, WindowAccessError>,
+) -> Result<T, WindowAccessError> {
+    if let Some(window) = MANAGED_WINDOWS.with(|windows| windows.borrow().get(id).cloned()) {
+        match operation(&window) {
+            Ok(value) => return Ok(value),
+            Err(WindowAccessError::Gone) => {
+                evict_managed_window(id);
+                return Err(WindowAccessError::Gone);
+            }
+            Err(WindowAccessError::Unavailable) => {
+                evict_managed_window(id);
+            }
+        }
+    }
+    if !process_incarnation_matches(&id.app) {
+        evict_managed_app(&id.app);
+        return Err(WindowAccessError::Gone);
+    }
+    let app = application_element(id.app.pid);
+    let windows = attribute::<CFArray>(&app, "AXWindows").map_err(|error| match error {
+        AXError::InvalidUIElement => WindowAccessError::Gone,
+        _ => WindowAccessError::Unavailable,
+    })?;
+    for window in cf_array_items::<AXUIElement>(&windows) {
+        set_ax_timeout(window);
+        if physical_window_id(&id.app, window).as_ref() == Some(id) {
+            let result = operation(window);
+            if result.is_ok() {
+                cache_managed_window(id, window);
+            }
+            return result;
+        }
+    }
+    Err(WindowAccessError::Gone)
+}
+
+pub(super) fn cache_managed_window(id: &PhysicalWindowId, window: &AXUIElement) {
+    // SAFETY: `window` is a valid `AXUIElement` reference backed by Core Foundation refcounting.
+    let retained = unsafe { CFRetained::retain(NonNull::from(window)) };
+    MANAGED_WINDOWS.with(|windows| {
+        windows.borrow_mut().insert(id.clone(), retained);
+    });
+}
+
+fn evict_managed_window(id: &PhysicalWindowId) {
+    MANAGED_WINDOWS.with(|windows| {
+        windows.borrow_mut().remove(id);
+    });
+}
+
+pub(super) fn evict_managed_app(app: &AppInstanceId) {
+    MANAGED_WINDOWS.with(|windows| {
+        windows.borrow_mut().retain(|window, _| &window.app != app);
+    });
+}
+
+pub(super) fn prune_managed_app(app: &AppInstanceId, current: &HashSet<PhysicalWindowId>) {
+    MANAGED_WINDOWS.with(|windows| {
+        windows
+            .borrow_mut()
+            .retain(|window, _| &window.app != app || current.contains(window));
+    });
+}

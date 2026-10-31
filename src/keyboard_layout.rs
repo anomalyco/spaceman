@@ -228,8 +228,8 @@ mod macos {
             copy: unsafe extern "C" fn() -> InputSource,
             description: &str,
         ) -> Result<Self, ResolveError> {
-            // TIS Copy functions follow the Core Foundation create rule. The non-null
-            // reference remains alive until this wrapper releases it.
+            // SAFETY: TIS Copy functions follow the Core Foundation create rule. The non-null
+            // reference remains alive until `Drop` releases it.
             let source = unsafe { copy() };
             if source.is_null() {
                 Err(ResolveError::System(format!(
@@ -241,6 +241,8 @@ mod macos {
         }
 
         fn id(&self) -> Result<String, ResolveError> {
+            // SAFETY: `self.0` is a retained TIS input source and `kTISPropertyInputSourceID` is
+            // a valid Carbon property key.
             let value = unsafe { TISGetInputSourceProperty(self.0, kTISPropertyInputSourceID) };
             cf_string(value).ok_or_else(|| {
                 ResolveError::System("keyboard input source has no valid identifier".into())
@@ -248,14 +250,16 @@ mod macos {
         }
 
         fn layout_data(&self) -> Result<Option<(*const u8, usize)>, ResolveError> {
-            // TIS owns the property value. Its CFData storage stays valid while this retained
-            // input source is alive; callers consume the pointer before `self` can be dropped.
+            // SAFETY: TIS owns the property value, and its CFData storage stays valid while this
+            // retained input source is alive.
             let data =
                 unsafe { TISGetInputSourceProperty(self.0, kTISPropertyUnicodeKeyLayoutData) };
             if data.is_null() {
                 return Ok(None);
             }
+            // SAFETY: `data` is a non-null `CFDataRef` returned for the Unicode key layout key.
             let length = unsafe { CFDataGetLength(data) };
+            // SAFETY: `data` is a non-null `CFDataRef` owned by `self.0`.
             let layout = unsafe { CFDataGetBytePtr(data) };
             if length <= 0 || layout.is_null() {
                 return Err(ResolveError::System(
@@ -290,8 +294,8 @@ mod macos {
             let Some((bytes, length)) = self.layout_data()? else {
                 return Ok(0);
             };
-            // `layout_data` validated the pointer and length, and the retained source owns the
-            // backing CFData for this borrow.
+            // SAFETY: `layout_data` validated the pointer and length, and the retained source owns
+            // the backing CFData for this borrow.
             let bytes = unsafe { slice::from_raw_parts(bytes, length) };
             Ok(bytes.iter().fold(0xcbf2_9ce4_8422_2325, |hash, byte| {
                 (hash ^ u64::from(*byte)).wrapping_mul(0x0000_0100_0000_01b3)
@@ -301,6 +305,7 @@ mod macos {
 
     impl Drop for OwnedInputSource {
         fn drop(&mut self) {
+            // SAFETY: `self.0` was non-null and retained by a TIS Copy function.
             unsafe { CFRelease(self.0) };
         }
     }
@@ -401,6 +406,8 @@ mod macos {
         let mut dead_key_state = 0;
         let mut actual_length = 0;
         let mut utf16 = [0_u16; 16];
+        // SAFETY: `layout` points to retained `UCKeyboardLayout` bytes and all out-pointers
+        // reference stack storage valid for the call.
         let status = unsafe {
             UCKeyTranslate(
                 layout,
@@ -442,6 +449,7 @@ mod macos {
     }
 
     fn cf_string(value: *const c_void) -> Option<String> {
+        // SAFETY: `value` is either null or a Core Foundation property object owned by TIS.
         unsafe { value.cast::<CFType>().as_ref() }?
             .downcast_ref::<CFString>()
             .map(CFString::to_string)

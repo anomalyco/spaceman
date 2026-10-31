@@ -343,10 +343,7 @@ fn duration_ms(duration: Duration) -> u64 {
 
 #[must_use]
 pub fn unix_millis() -> u64 {
-    std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map(duration_ms)
-        .unwrap_or_default()
+    duration_ms(crate::config::now())
 }
 
 /// Append one line to the journal at `path`, rotating it to `rotated` first
@@ -421,10 +418,9 @@ struct KindSummary {
 pub fn summarize(lines: &[JournalLine], since_ms: u64, now_ms: u64, skipped: usize) -> String {
     let lines: Vec<_> = lines.iter().filter(|line| line.t >= since_ms).collect();
     let mut out = String::new();
-    let Some(first) = lines.first() else {
+    let (Some(first), Some(last)) = (lines.first(), lines.last()) else {
         return "No journal events in this period.".into();
     };
-    let last = lines.last().expect("non-empty");
     out.push_str(&format!(
         "{} events from {} to {}",
         lines.len(),

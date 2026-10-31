@@ -90,7 +90,7 @@ pub type Shared = Arc<Mutex<Inbox>>;
 pub fn start(waker: Waker) -> Shared {
     let shared = Shared::default();
     let inbox = shared.clone();
-    std::thread::Builder::new()
+    if let Err(error) = std::thread::Builder::new()
         .name("spaceman-agent-poll".into())
         .spawn(move || {
             let mut last: Option<Option<Agent>> = None;
@@ -103,7 +103,9 @@ pub fn start(waker: Waker) -> Shared {
                 let config_changed = now != stamp;
                 stamp = now;
                 if last.as_ref() != Some(&agent) || config_changed {
-                    let mut inbox = inbox.lock().unwrap();
+                    let mut inbox = inbox
+                        .lock()
+                        .unwrap_or_else(std::sync::PoisonError::into_inner);
                     if last.as_ref() != Some(&agent) {
                         inbox.agent = Some(agent.clone());
                     }
@@ -115,14 +117,16 @@ pub fn start(waker: Waker) -> Shared {
                 std::thread::sleep(POLL);
             }
         })
-        .expect("could not start the agent poll");
+    {
+        eprintln!("could not start the agent poll: {error}");
+    }
     shared
 }
 
 /// Sends `command` to the agent without waiting for it.
 pub fn send(command: &'static str) {
     std::thread::spawn(move || {
-        let _ = spaceman::control::send(&[command.into()]);
+        drop(spaceman::control::send(&[command.into()]));
     });
 }
 

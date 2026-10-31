@@ -158,7 +158,11 @@ fn poll(ui: &mut Ui, _clock: f64, _tx: &mut Tx) -> bool {
     let Some(inbox) = &ui.inbox else {
         return false;
     };
-    let news = std::mem::take(&mut *inbox.lock().unwrap());
+    let news = std::mem::take(
+        &mut *inbox
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner),
+    );
     let mut changed = false;
     if let Some(agent) = news.agent {
         if !ui.navigated

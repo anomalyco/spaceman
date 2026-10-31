@@ -150,18 +150,19 @@ pub fn reconcile(
                     if replacement {
                         let previous = &stale[0];
                         let current = &new[0];
-                        let slot = next
+                        if let Some(slot) = next
                             .workspace
                             .slots
                             .iter_mut()
                             .find(|slot| slot.bound_window() == Some(previous))
-                            .expect("stale window came from a bound slot");
-                        slot.binding = BindingState::Bound(current.clone());
-                        decisions.push(Decision::NativeTabReplaced {
-                            slot: slot.id,
-                            previous: previous.clone(),
-                            current: current.clone(),
-                        });
+                        {
+                            slot.binding = BindingState::Bound(current.clone());
+                            decisions.push(Decision::NativeTabReplaced {
+                                slot: slot.id,
+                                previous: previous.clone(),
+                                current: current.clone(),
+                            });
+                        }
                     } else if app.bundle_id == "com.mitchellh.ghostty"
                         && !stale.is_empty()
                         && !new.is_empty()

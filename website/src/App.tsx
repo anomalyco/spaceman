@@ -61,9 +61,16 @@ export function App() {
       <Starfield />
 
       <header className="relative flex flex-col items-center gap-5">
-        <img src="/mark.svg" alt="" className="size-14 rounded-[14px] shadow-lg" />
+        <img
+          src="/mark.svg"
+          alt=""
+          width={56}
+          height={56}
+          className="size-14 rounded-[14px] shadow-lg"
+        />
         <div className="flex flex-col items-center gap-3 text-center">
           <h1>
+            <span className="sr-only">Spaceman</span>
             <Wordmark />
           </h1>
           <p className="text-base text-[#87888e]">
@@ -128,8 +135,7 @@ function Wordmark() {
     <svg
       viewBox={`-4 -5 ${total + 8} 90`}
       className="h-6"
-      role="img"
-      aria-label="Spaceman"
+      aria-hidden="true"
     >
       {placed.map((entry) => (
         <path
@@ -272,12 +278,14 @@ function Starfield() {
 /* ------------------------------------------------------------------ */
 
 function useTicker(stepMs: number) {
-  const [, force] = useState(0);
+  const [tick, setTick] = useState(0);
   useEffect(() => {
-    const interval = window.setInterval(() => force((value) => value + 1), stepMs);
+    const sync = () => setTick(Math.floor(performance.now() / stepMs));
+    sync();
+    const interval = window.setInterval(sync, stepMs);
     return () => window.clearInterval(interval);
   }, [stepMs]);
-  return Math.floor(performance.now() / stepMs);
+  return tick;
 }
 
 /* ------------------------------------------------------------------ */

@@ -39,9 +39,11 @@ pub(crate) fn toggle() -> Result<Status, String> {
     let service = unsafe { SMAppService::mainAppService() };
     match toggle_action(current) {
         ToggleAction::Register => {
+            // SAFETY: Synchronous registration call on `mainAppService` with autoreleased NSError.
             unsafe { service.registerAndReturnError() }.map_err(|error| error.to_string())?
         }
         ToggleAction::Unregister => {
+            // SAFETY: Synchronous unregistration call on `mainAppService` with autoreleased NSError.
             unsafe { service.unregisterAndReturnError() }.map_err(|error| error.to_string())?
         }
         ToggleAction::OpenSettings => {

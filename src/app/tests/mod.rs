@@ -8,6 +8,7 @@ mod minimums;
 mod parking;
 mod reconciliation;
 mod reliability;
+mod rules;
 mod startup;
 mod switching;
 use crate::{BindingState, Slot, SlotId};

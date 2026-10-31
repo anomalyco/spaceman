@@ -70,7 +70,7 @@ objc2::define_class!(
                 }
             });
             if accepted {
-                let _ = self.ivars().actions.send(Action::InstallUpdate);
+                drop(self.ivars().actions.send(Action::InstallUpdate));
             }
             Bool::YES
         }
@@ -80,6 +80,7 @@ objc2::define_class!(
 impl SparkleDelegate {
     fn new(actions: Sender<Action>, marker: MainThreadMarker) -> Retained<Self> {
         let this = Self::alloc(marker).set_ivars(DelegateIvars { actions });
+        // SAFETY: `NSObject`'s `-init` takes no arguments and returns an initialized `Self`.
         unsafe { msg_send![super(this), init] }
     }
 }
@@ -97,6 +98,7 @@ impl Drop for SparkleUpdater {
     fn drop(&mut self) {
         let center = NSNotificationCenter::defaultCenter();
         for observer in &self.observers {
+            // SAFETY: Each observer token was returned by `defaultCenter` in `start`.
             unsafe { center.removeObserver(observer.as_ref()) };
         }
     }
@@ -112,6 +114,7 @@ pub(crate) fn start(actions: Sender<Action>) -> Result<(), String> {
     let Some(framework_path) = framework_path()? else {
         return Ok(());
     };
+    // SAFETY: Loads the signed Sparkle framework embedded inside Spaceman's own app bundle.
     let framework = unsafe { Library::new(&framework_path) }
         .map_err(|error| format!("could not load {}: {error}", framework_path.display()))?;
     let center = NSNotificationCenter::defaultCenter();
@@ -129,6 +132,7 @@ pub(crate) fn start(actions: Sender<Action>) -> Result<(), String> {
     .map(|(name, status)| {
         let name = NSString::from_str(name);
         let block = RcBlock::new(move |_: NonNull<NSNotification>| set_status(status));
+        // SAFETY: `block` only writes an atomic `u8` and owns no borrowed stack references.
         unsafe {
             center.addObserverForName_object_queue_usingBlock(Some(&name), None, None, &block)
         }
@@ -137,6 +141,8 @@ pub(crate) fn start(actions: Sender<Action>) -> Result<(), String> {
     let class = AnyClass::get(c"SPUStandardUpdaterController")
         .ok_or("Sparkle updater class is unavailable")?;
     let delegate = SparkleDelegate::new(actions, marker);
+    // SAFETY: `SPUStandardUpdaterController` is allocated and initialized on the main thread
+    // with a retained `delegate` kept alive alongside `controller` in `SparkleUpdater`.
     let controller: Retained<AnyObject> = unsafe {
         let allocated: *mut AnyObject = msg_send![class, alloc];
         let controller: *mut AnyObject = msg_send![
@@ -170,6 +176,7 @@ pub(crate) fn check_for_updates() {
             return;
         };
         set_status(UpdateStatus::Checking);
+        // SAFETY: Invokes standard `SPUStandardUpdaterController` selectors on the main thread.
         unsafe {
             #[allow(deprecated)]
             NSApplication::sharedApplication(marker).activateIgnoringOtherApps(true);

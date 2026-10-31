@@ -30,9 +30,11 @@ pub fn general(ui: &Ui, p: Paint) -> El {
                     p.muted(),
                 )),
                 controls::button(p, "open", "Open Spaceman", ButtonKind::Primary, |_, _| {
-                    let _ = std::process::Command::new("open")
-                        .args(["-b", "com.kitlangton.spaceman"])
-                        .spawn();
+                    drop(
+                        std::process::Command::new("open")
+                            .args(["-b", "com.kitlangton.spaceman"])
+                            .spawn(),
+                    );
                 }),
             )],
         )),
@@ -125,10 +127,12 @@ pub fn general(ui: &Ui, p: Paint) -> El {
                 ButtonKind::Secondary,
                 |_: &mut Ui, _: &mut Tx| {
                     if let Some(path) = spaceman::config::config_path() {
-                        let _ = std::process::Command::new("open")
-                            .arg("-R")
-                            .arg(path)
-                            .spawn();
+                        drop(
+                            std::process::Command::new("open")
+                                .arg("-R")
+                                .arg(path)
+                                .spawn(),
+                        );
                     }
                 },
             ),

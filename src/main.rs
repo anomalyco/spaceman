@@ -510,7 +510,9 @@ impl WindowScope {
                 self.authorized_window_ids.insert(selected.window_id);
                 *focused = focused.take().filter(|focused| focused == &selected);
                 self.missing_cycles = 0;
-                observation.applications = vec![scoped.expect("complete observation present")];
+                if let Some(scoped) = scoped {
+                    observation.applications = vec![scoped];
+                }
                 return;
             }
         }

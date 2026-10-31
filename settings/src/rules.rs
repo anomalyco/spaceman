@@ -158,11 +158,17 @@ impl Doc {
     }
 
     fn rule_tables(&mut self) -> &mut ArrayOfTables {
-        self.doc
+        let entry = self
+            .doc
             .entry("rules")
-            .or_insert_with(|| Item::ArrayOfTables(ArrayOfTables::new()))
-            .as_array_of_tables_mut()
-            .expect("rules is an array of tables")
+            .or_insert_with(|| Item::ArrayOfTables(ArrayOfTables::new()));
+        if !entry.is_array_of_tables() {
+            *entry = Item::ArrayOfTables(ArrayOfTables::new());
+        }
+        let Item::ArrayOfTables(tables) = entry else {
+            unreachable!()
+        };
+        tables
     }
 
     pub fn source(&self) -> String {

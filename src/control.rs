@@ -44,7 +44,8 @@ pub(crate) struct Request {
 
 impl Request {
     pub(crate) fn respond(self, response: Result<String, String>) {
-        let _ = self.response.send(response);
+        // Client timed out or closed its socket before the reply was ready.
+        drop(self.response.send(response));
     }
 }
 
@@ -55,7 +56,7 @@ pub(crate) struct Server {
 
 impl Drop for Server {
     fn drop(&mut self) {
-        let _ = fs::remove_file(&self.path);
+        drop(fs::remove_file(&self.path));
     }
 }
 
@@ -99,7 +100,7 @@ fn listen_at(path: PathBuf, requests: Sender<Request>) -> Result<Server, String>
         .name("spaceman-control".into())
         .spawn(move || serve(listener, requests))
     {
-        let _ = fs::remove_file(&path);
+        drop(fs::remove_file(&path));
         return Err(format!("failed to start control server: {error}"));
     }
     Ok(Server { path, _lock: lock })
@@ -140,8 +141,8 @@ fn serve(listener: UnixListener, requests: Sender<Request>) {
         let Ok(mut stream) = connection else {
             continue;
         };
-        let _ = stream.set_read_timeout(Some(REQUEST_READ_TIMEOUT));
-        let _ = stream.set_write_timeout(Some(REQUEST_READ_TIMEOUT));
+        drop(stream.set_read_timeout(Some(REQUEST_READ_TIMEOUT)));
+        drop(stream.set_write_timeout(Some(REQUEST_READ_TIMEOUT)));
         let response = read_command(&stream).and_then(|line| {
             let command = parse_line(line.trim())?;
             let (response, receiver) = channel();
@@ -156,7 +157,7 @@ fn serve(listener: UnixListener, requests: Sender<Request>) {
             Ok(message) => ("ok", message),
             Err(error) => ("error", error),
         };
-        let _ = writeln!(stream, "{prefix}\n{message}");
+        drop(writeln!(stream, "{prefix}\n{message}"));
     }
 }
 
@@ -218,7 +219,6 @@ fn parse_line(line: &str) -> Result<Command, String> {
 mod tests {
     use super::*;
     use crate::Direction;
-    use std::time::{SystemTime, UNIX_EPOCH};
 
     #[test]
     fn parses_control_commands() {
@@ -292,8 +292,8 @@ mod tests {
         }
 
         drop(server);
-        let _ = fs::remove_file(lock_path);
-        let _ = fs::remove_dir(path.parent().unwrap());
+        drop(fs::remove_file(lock_path));
+        drop(fs::remove_dir(path.parent().unwrap()));
     }
 
     #[test]
@@ -323,10 +323,7 @@ mod tests {
     }
 
     fn temporary_socket_path(label: &str) -> PathBuf {
-        let nonce = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .unwrap()
-            .as_nanos();
+        let nonce = crate::config::now().as_nanos();
         std::env::temp_dir()
             .join(format!("spaceman-{label}-{}-{nonce}", std::process::id()))
             .join("control.sock")

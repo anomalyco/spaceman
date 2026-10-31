@@ -71,12 +71,20 @@ impl WorkspaceId {
     }
 
     pub(crate) fn from_index(index: usize) -> Self {
-        Self(u8::try_from(index + 1).expect("workspace index fits u8"))
+        Self(
+            u8::try_from(index.saturating_add(1))
+                .unwrap_or(Self::COUNT as u8)
+                .clamp(1, Self::COUNT as u8),
+        )
     }
 
     #[must_use]
     pub(crate) const fn index(self) -> usize {
         (self.0 - 1) as usize
+    }
+
+    const fn named_letter(self) -> char {
+        (b'A' + self.0.saturating_sub(11)) as char
     }
 }
 
@@ -84,11 +92,7 @@ impl fmt::Display for WorkspaceId {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self.number() {
             Some(number) => write!(formatter, "{number}"),
-            None => write!(
-                formatter,
-                "{}",
-                self.letter().expect("named workspace has a letter")
-            ),
+            None => write!(formatter, "{}", self.named_letter()),
         }
     }
 }
@@ -105,7 +109,7 @@ impl Serialize for WorkspaceId {
     fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
         match self.number() {
             Some(number) => serializer.serialize_u8(number),
-            None => serializer.serialize_char(self.letter().expect("named workspace has a letter")),
+            None => serializer.serialize_char(self.named_letter()),
         }
     }
 }

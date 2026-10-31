@@ -172,7 +172,14 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
             frame,
             target
         );
-        let _ = self.backend.set_position(window, target);
+        let outcome = self.backend.set_position(window, target);
+        if !matches!(outcome, macos::ApplyOutcome::Applied) {
+            log_event!(
+                "stale parked focus recovery incomplete for {:?}: {:?}",
+                window,
+                outcome
+            );
+        }
     }
 
     pub(super) fn park_inactive(
@@ -501,7 +508,7 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
         if matches!(outcome, macos::ApplyOutcome::Applied) {
             self.recently_parked.insert(window.clone(), Instant::now());
         } else if !was_parked {
-            let _ = self.restore_window(window);
+            let _: macos::ApplyOutcome = self.restore_window(window);
         }
         outcome
     }

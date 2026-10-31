@@ -20,33 +20,36 @@ This file is the current engineering contract. README and `docs/` describe curre
 - Release notes are one file per version in `changelog/<version>.md`, in Abattoir's changelog format.
   Releases run on the MacBook Pro (`ssh pro`), which has the `spaceman-notary` profile, the Sparkle
   key and `wrangler`; see [docs/releasing.md](docs/releasing.md).
-- Shared skills are pinned in `.agents/skills`; refresh with `abattoir-skills pin .`.
+- Code shape: keep Rust files under 800 non-test lines (1,500 hard cap, 1,000 for test files;
+  `scripts/file-size.sh`) and move prefix families (`x.rs` + 2+ `x_*.rs`, or 3+ `x_*.rs`) into `x/`
+  (`scripts/folder-shape.sh`).
 
 ## Architecture Map
 
 - `src/bin/spaceman-agent.rs`, `src/app.rs`, `src/app/app_loop.rs`: owner-only capped logging,
   GPUI/AppKit foreground lifecycle, action queue, status, restore-before-exit coordination, and the
   worker boundary.
-- `src/app/runtime.rs`, `src/app/cycle.rs`, `src/app/switching.rs`, `src/app/parking.rs`,
-  `src/app/commands.rs`, `src/app/backend.rs`: the worker-thread `WorkspaceRuntime` — observation
-  cycles and affinity, workspace switches, durable parking/restoration, focused-window commands, and
-  the native/persistence backend seam. Tests live in `src/app/tests/`.
+- `src/app/runtime.rs`, `src/app/cycle.rs`, `src/app/cycle/affinity.rs`, `src/app/switching.rs`,
+  `src/app/parking.rs`, `src/app/commands.rs`, `src/app/backend.rs`: the worker-thread
+  `WorkspaceRuntime` — observation cycles and affinity, workspace switches, durable
+  parking/restoration, focused-window commands, and the native/persistence backend seam. Tests live
+  in `src/app/tests/`.
 - `src/window_memory.rs`, `src/app/memory.rs`: advisory, title-free per-bundle placement memory and
   relaunch recall. `src/journal.rs`, `src/app/journal.rs`: bounded arrangement/anomaly journal and
   the `spaceman doctor` summary.
 - `src/app/input.rs`: bounded ordered user input and geometry-based gesture tracking, independent
   of preview-worker availability. Main-thread pointer sampling must not make synchronous AX calls.
-- `src/desktop_ui.rs`, `src/status_item.rs`, `src/settings.rs`, `src/login_item.rs`, `src/sparkle.rs`,
-  `src/termination.rs`: main-thread UI primitives, menu/settings, login registration, signed updates,
-  and asynchronous AppKit termination coordination.
+- `src/status_item.rs`, `src/settings.rs`, `settings/`, `src/login_item.rs`, `src/sparkle.rs`,
+  `src/termination.rs`: main-thread menu bar status item, Rune Settings window, login registration,
+  signed updates, and asynchronous AppKit termination coordination.
 - `src/hotkeys.rs`, `src/keyboard_layout.rs`: Carbon global shortcut adapters.
-- `src/macos.rs`: Accessibility/Core Graphics observation and writes, display discovery, native event
-  monitor, and native handle cache.
+- `src/macos.rs`, `src/macos/`: Accessibility/Core Graphics observation and writes, display
+  discovery, native event monitor, and native handle cache.
 - `src/observation.rs`, `src/model.rs`, `src/reconcile.rs`: immutable observations, stable logical slots,
   and conservative physical-window reconciliation.
-- `src/workspace.rs`, `src/runtime.rs`, `src/layout_tree.rs`, `src/navigation.rs`: ten default numbered
-  workspaces, opt-in named workspaces A-Z,
-  ownership, nested weighted layouts, directional operations, and persistence representation.
+- `src/workspace.rs`, `src/runtime.rs`, `src/layout_tree.rs`, `src/layout_tree/`, `src/navigation.rs`:
+  ten default numbered workspaces, opt-in named workspaces A-Z, ownership, nested weighted layouts,
+  directional operations, and persistence representation.
 - `src/config.rs`, `src/serde_map.rs`: strict version-1 TOML parsing, first-match window disposition,
   state-path selection, and deterministic persisted-map serialization.
 - `src/control.rs`, `src/main.rs`: mode-`0600` local Unix control protocol, CLI, dry-run/live probes,
@@ -124,7 +127,7 @@ This file is the current engineering contract. README and `docs/` describe curre
 ## Verification
 
 ```sh
-scripts/check            # fmt, release metadata, clippy, tests, audit, CA roots, replay, config, website
+scripts/check            # fmt, file-size, folder-shape, metadata, clippy, tests, audit, CA roots, replay, config, website
 scripts/check --no-web   # the same without the website
 ```
 
