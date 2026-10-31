@@ -1,16 +1,15 @@
 #!/usr/bin/env bash
-# Dev loop: every save under src/, native/, app/ or the Cargo files rebuilds the signed bundle and
-# swaps it into /Applications with install-app.sh, which restores every window before the old agent
-# quits and resumes tiling in the new one, so workspaces and layouts come back as they were.
-# Spaceman is GPUI, so there is no in-place function patching like Seer's rune-hot; every edit is a
-# restart. Builds go through the ~/bin cargo wrapper (HiveMind) when it is on PATH.
+# Dev loop: every save under src/, agent/, native/, app/ or the Cargo files rebuilds the signed
+# bundle and swaps it into /Applications with install-app.sh, which restores every window before
+# the old agent quits and resumes tiling in the new one, so workspaces and layouts come back as
+# they were. Builds go through the ~/bin cargo wrapper (HiveMind) when it is on PATH.
 #   scripts/dev            build and install once, then on every save
 #   scripts/dev --once     build and install once
 set -uo pipefail
 root=$(cd "$(dirname "$0")/.." && pwd)
 cd "$root"
 export PATH="$HOME/bin:$PATH"
-stamp() { find src native app Cargo.toml Cargo.lock build.rs -type f -exec stat -f '%m %N' {} + 2>/dev/null | md5; }
+stamp() { find src agent native app Cargo.toml Cargo.lock build.rs -type f -exec stat -f '%m %N' {} + 2>/dev/null | md5; }
 install() {
   echo "$(date '+%H:%M:%S') building"
   if bundle=$(scripts/build-app.sh | tail -n 1) && [ -d "$bundle/Contents" ] \

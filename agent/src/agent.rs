@@ -1,15 +1,7 @@
-//! The running Spaceman agent, over its control socket: what it reports each second, and the
-//! requests the window sends it. Calls block, so they run off the main thread.
+//! Agent state shown in the Rune window, fed directly by the in-process runtime bridge.
 
-use std::{
-    sync::{Arc, Mutex},
-    time::Duration,
-};
-
-use rune::Waker;
+#[cfg(test)]
 use serde_json::Value;
-
-const POLL: Duration = Duration::from_secs(1);
 
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct Agent {
@@ -18,6 +10,7 @@ pub struct Agent {
     pub launch_at_login: LaunchAtLogin,
     pub update: Update,
     pub active: Vec<String>,
+    pub last_error: Option<String>,
 }
 
 #[derive(Clone, Debug, Default, PartialEq)]
@@ -41,6 +34,37 @@ pub enum Update {
 }
 
 impl Agent {
+    #[cfg(target_os = "macos")]
+    #[must_use]
+    pub fn from_snapshot(snapshot: spaceman::app::UiAgentSnapshot) -> Self {
+        use spaceman::app::{UiLaunchAtLogin, UiUpdateStatus};
+
+        Self {
+            accessibility: snapshot.accessibility,
+            automatic: snapshot.automatic,
+            launch_at_login: match snapshot.launch_at_login {
+                UiLaunchAtLogin::Off => LaunchAtLogin::Off,
+                UiLaunchAtLogin::On => LaunchAtLogin::On,
+                UiLaunchAtLogin::NeedsApproval => LaunchAtLogin::NeedsApproval,
+                UiLaunchAtLogin::Failed(error) => LaunchAtLogin::Failed(error),
+            },
+            update: match snapshot.update {
+                UiUpdateStatus::Unavailable => Update::Unavailable,
+                UiUpdateStatus::Idle => Update::Idle,
+                UiUpdateStatus::Checking => Update::Checking,
+                UiUpdateStatus::UpToDate => Update::UpToDate,
+                UiUpdateStatus::Available => Update::Available,
+            },
+            active: snapshot
+                .active_workspaces
+                .into_iter()
+                .map(|workspace| workspace.to_string())
+                .collect(),
+            last_error: snapshot.last_error,
+        }
+    }
+
+    #[cfg(test)]
     fn parse(json: &str) -> Option<Agent> {
         let value: Value = serde_json::from_str(json).ok()?;
         let launch = value["launch_at_login"].as_str().unwrap_or_default();
@@ -71,63 +95,9 @@ impl Agent {
                     other => other.to_string(),
                 })
                 .collect(),
+            last_error: value["last_error"].as_str().map(str::to_owned),
         })
     }
-}
-
-/// What the poller found since the last frame.
-#[derive(Default)]
-pub struct Inbox {
-    /// `Some(None)`: the agent isn't running.
-    pub agent: Option<Option<Agent>>,
-    /// config.toml changed on disk.
-    pub config_changed: bool,
-}
-
-pub type Shared = Arc<Mutex<Inbox>>;
-
-/// Polls the agent and the config file's timestamp, waking the window when either changes.
-pub fn start(waker: Waker) -> Shared {
-    let shared = Shared::default();
-    let inbox = shared.clone();
-    if let Err(error) = std::thread::Builder::new()
-        .name("spaceman-agent-poll".into())
-        .spawn(move || {
-            let mut last: Option<Option<Agent>> = None;
-            let mut stamp = spaceman::config::modified();
-            loop {
-                let agent = spaceman::control::send(&["settings".into()])
-                    .ok()
-                    .and_then(|json| Agent::parse(&json));
-                let now = spaceman::config::modified();
-                let config_changed = now != stamp;
-                stamp = now;
-                if last.as_ref() != Some(&agent) || config_changed {
-                    let mut inbox = inbox
-                        .lock()
-                        .unwrap_or_else(std::sync::PoisonError::into_inner);
-                    if last.as_ref() != Some(&agent) {
-                        inbox.agent = Some(agent.clone());
-                    }
-                    inbox.config_changed |= config_changed;
-                    last = Some(agent);
-                    drop(inbox);
-                    waker();
-                }
-                std::thread::sleep(POLL);
-            }
-        })
-    {
-        eprintln!("could not start the agent poll: {error}");
-    }
-    shared
-}
-
-/// Sends `command` to the agent without waiting for it.
-pub fn send(command: &'static str) {
-    std::thread::spawn(move || {
-        drop(spaceman::control::send(&[command.into()]));
-    });
 }
 
 #[cfg(test)]
@@ -145,5 +115,28 @@ mod tests {
         assert_eq!(agent.launch_at_login, LaunchAtLogin::NeedsApproval);
         assert_eq!(agent.update, Update::Checking);
         assert_eq!(agent.active, vec!["3".to_string(), "M".to_string()]);
+    }
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn converts_in_process_snapshot() {
+        use spaceman::{
+            WorkspaceId,
+            app::{UiAgentSnapshot, UiLaunchAtLogin, UiUpdateStatus},
+        };
+
+        let agent = Agent::from_snapshot(UiAgentSnapshot {
+            accessibility: true,
+            automatic: true,
+            launch_at_login: UiLaunchAtLogin::On,
+            update: UiUpdateStatus::UpToDate,
+            active_workspaces: vec![WorkspaceId::ONE, WorkspaceId::SIX],
+            last_error: None,
+        });
+        assert!(agent.accessibility);
+        assert!(agent.automatic);
+        assert_eq!(agent.launch_at_login, LaunchAtLogin::On);
+        assert_eq!(agent.update, Update::UpToDate);
+        assert_eq!(agent.active, vec!["1".to_string(), "6".to_string()]);
     }
 }

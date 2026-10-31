@@ -15,8 +15,7 @@ This file is the current engineering contract. README and `docs/` describe curre
   after 10 at most, and installs it when the keyboard and mouse have been idle for 2 minutes. You
   don't need to install by hand after a merge.
 - Dev loop: `scripts/dev` rebuilds and reinstalls on every save; restart restores every window and
-  resumes tiling. GPUI has no in-place patching, so every edit is a restart. The updater puts `main`
-  back on its next build.
+  resumes tiling. The updater puts `main` back on its next build.
 - Release notes are one file per version in `changelog/<version>.md`, in Abattoir's changelog format.
   Releases run on the MacBook Pro (`ssh pro`), which has the `spaceman-notary` profile, the Sparkle
   key and `wrangler`; see [docs/releasing.md](docs/releasing.md).
@@ -26,8 +25,9 @@ This file is the current engineering contract. README and `docs/` describe curre
 
 ## Architecture Map
 
-- `src/bin/spaceman-agent.rs`, `src/app.rs`, `src/app/app_loop.rs`: owner-only capped logging,
-  GPUI/AppKit foreground lifecycle, action queue, status, restore-before-exit coordination, and the
+- `agent/`, `src/app.rs`, `src/app/app_loop.rs`, `src/app/bridge.rs`: single-process Rune host
+  (`spaceman-agent`), owner-only capped logging, 25 ms `NSTimer` foreground pump, action queue,
+  status, restore-before-exit coordination, in-process Settings window + Playground (`⇧⌘D`), and the
   worker boundary.
 - `src/app/runtime.rs`, `src/app/cycle.rs`, `src/app/cycle/affinity.rs`, `src/app/switching.rs`,
   `src/app/parking.rs`, `src/app/commands.rs`, `src/app/backend.rs`: the worker-thread
@@ -39,9 +39,9 @@ This file is the current engineering contract. README and `docs/` describe curre
   the `spaceman doctor` summary.
 - `src/app/input.rs`: bounded ordered user input and geometry-based gesture tracking, independent
   of preview-worker availability. Main-thread pointer sampling must not make synchronous AX calls.
-- `src/status_item.rs`, `src/settings.rs`, `settings/`, `src/login_item.rs`, `src/sparkle.rs`,
-  `src/termination.rs`: main-thread menu bar status item, Rune Settings window, login registration,
-  signed updates, and asynchronous AppKit termination coordination.
+- `src/status_item.rs`, `src/login_item.rs`, `src/sparkle.rs`, `src/termination.rs`: main-thread
+  menu bar status item, login registration, signed updates, and asynchronous AppKit termination
+  coordination on winit's application delegate.
 - `src/hotkeys.rs`, `src/keyboard_layout.rs`: Carbon global shortcut adapters.
 - `src/macos.rs`, `src/macos/`: Accessibility/Core Graphics observation and writes, display
   discovery, native event monitor, and native handle cache.

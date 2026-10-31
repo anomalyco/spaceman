@@ -24,7 +24,7 @@ use crate::AppInstanceId;
 use super::{
     app_instance_with_pid,
     ax::{application_element, attribute, cf_array_items, window_server_windows},
-    is_settings_application,
+    is_own_application,
 };
 
 pub struct WindowEventMonitor {
@@ -280,7 +280,7 @@ pub(super) fn running_application_instances() -> Vec<AppInstanceId> {
                 let pid = application.processIdentifier();
                 (pid > 0
                     && pid != self_pid
-                    && !is_settings_application(&application, pid)
+                    && !is_own_application(&application)
                     && seen_pids.insert(pid))
                 .then(|| app_instance_with_pid(&application, pid))
             })
@@ -292,7 +292,7 @@ pub(super) fn running_application_instances() -> Vec<AppInstanceId> {
                     && seen_pids.insert(window.pid)
                     && let Some(application) =
                         NSRunningApplication::runningApplicationWithProcessIdentifier(window.pid)
-                    && !is_settings_application(&application, window.pid)
+                    && !is_own_application(&application)
                 {
                     instances.push(app_instance_with_pid(&application, window.pid));
                 }

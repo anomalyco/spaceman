@@ -15,9 +15,9 @@ use crate::{BindingState, Slot, SlotId};
 
 use super::*;
 use super::{
-    app_loop::{request_restore, send_worker_command},
     cycle::OMISSION_SETTLE,
     parking::REPARK_ATTEMPT_LIMIT,
+    worker::{request_restore, send_worker_command},
 };
 
 #[derive(Clone, Debug, Eq, PartialEq)]

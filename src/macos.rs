@@ -80,10 +80,14 @@ pub fn snapshot(cycle: u64) -> Result<(NativeObservation, Settings), SnapshotErr
     snapshot_in_output(cycle, main_output()?)
 }
 
-/// Spaceman's own settings window runs in a process of its own; it is never managed.
-pub(super) fn is_settings_application(application: &NSRunningApplication, pid: i32) -> bool {
-    let bundle_id = application.bundleIdentifier().map(|id| id.to_string());
-    crate::settings::is_settings_process(pid, bundle_id.as_deref())
+const OWN_BUNDLE_ID: &str = "com.kitlangton.spaceman";
+
+/// Spaceman's own windows (Settings, Onboarding, HUD) are never managed, even when `spaceman` CLI
+/// observes `Spaceman.app` from a second process.
+pub(super) fn is_own_application(application: &NSRunningApplication) -> bool {
+    application
+        .bundleIdentifier()
+        .is_some_and(|id| id.to_string() == OWN_BUNDLE_ID)
 }
 
 #[must_use]
@@ -503,7 +507,7 @@ fn observe_application(
 ) -> Option<AppObservation> {
     if pid <= 0
         || pid == std::process::id() as i32
-        || is_settings_application(application, pid)
+        || is_own_application(application)
         || application.isHidden()
     {
         return None;

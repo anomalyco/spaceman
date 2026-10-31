@@ -44,7 +44,7 @@ CARGO_TARGET_DIR="$root/target" \
 # A global MACOSX_DEPLOYMENT_TARGET also applies to host-side proc-macro
 # dylibs, which must remain loadable by the build host. Set the deployment
 # command only on the final app executables before they are signed.
-for executable in spaceman-agent spaceman spaceman-settings; do
+for executable in spaceman-agent spaceman; do
   path="$root/target/release/$executable"
   patched="$path.deployment-target"
   /usr/bin/vtool -set-build-version macos "$deployment_target" "$sdk_version" \
@@ -56,7 +56,6 @@ rm -rf "$bundle"
 mkdir -p "$bundle/Contents/MacOS" "$bundle/Contents/Resources" "$bundle/Contents/Frameworks"
 cp "$root/target/release/spaceman-agent" "$bundle/Contents/MacOS/spaceman-agent"
 cp "$root/target/release/spaceman" "$bundle/Contents/MacOS/spaceman"
-cp "$root/target/release/spaceman-settings" "$bundle/Contents/MacOS/spaceman-settings"
 cp "$root/app/Info.plist" "$bundle/Contents/Info.plist"
 rm -rf "$icon_output"
 mkdir -p "$icon_output"
@@ -86,8 +85,6 @@ codesign --force --timestamp --options runtime --sign "$identity" \
   "$bundle/Contents/MacOS/spaceman-agent"
 codesign --force --timestamp --options runtime --sign "$identity" \
   "$bundle/Contents/MacOS/spaceman"
-codesign --force --timestamp --options runtime --sign "$identity" \
-  "$bundle/Contents/MacOS/spaceman-settings"
 codesign --force --timestamp --options runtime --sign "$identity" \
   --identifier com.kitlangton.spaceman \
   "$bundle"

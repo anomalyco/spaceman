@@ -14,7 +14,7 @@ step clippy; cargo clippy --locked --workspace --all-targets -- -D warnings
 step test; cargo test --locked --workspace --all-targets
 step audit
 if cargo audit --version >/dev/null 2>&1; then cargo audit; else echo "cargo-audit isn't installed here; skipped (CI runs it)"; fi
-step ca roots; cargo build --locked && scripts/check-ca-roots.sh target/debug/spaceman
+step ca roots; cargo build --locked --workspace --bins && scripts/check-ca-roots.sh target/debug/spaceman target/debug/spaceman-agent
 step replay; cargo run --locked -- replay fixtures/ghostty-tab-replacement.json
 step config; cargo run --locked -- config-check config.example.toml
 if [ "${1:-}" != "--no-web" ]; then

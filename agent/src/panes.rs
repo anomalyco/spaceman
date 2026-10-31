@@ -7,7 +7,7 @@ use spaceman::WorkspaceId;
 
 use crate::{
     Ui,
-    agent::{self, LaunchAtLogin},
+    agent::LaunchAtLogin,
     controls::{self, ButtonKind, Paint},
     view::scroll_body,
 };
@@ -62,28 +62,38 @@ pub fn general(ui: &Ui, p: Paint) -> El {
                         "grant",
                         "Open System Settings",
                         ButtonKind::Primary,
-                        |_, _| agent::send("open-accessibility"),
+                        |ui, _| ui.open_accessibility(),
                     ),
                 )
             };
-            let tiling = controls::setting_row(
-                p,
-                "tiling",
-                "Automatic tiling",
-                Some((
-                    if agent.automatic {
-                        "On. New windows tile as they open.".into()
-                    } else {
-                        "Starts once Accessibility is granted and the hotkeys register.".into()
-                    },
-                    p.muted(),
-                )),
-                controls::status_dot(if agent.automatic {
-                    c.success.fg
-                } else {
-                    c.border_strong
-                }),
-            );
+            let tiling = if agent.accessibility {
+                controls::toggle_row(
+                    p,
+                    "tiling",
+                    "Automatic tiling",
+                    Some((
+                        if agent.automatic {
+                            "On. New windows tile as they open.".into()
+                        } else {
+                            "Paused. Parked windows are restored.".into()
+                        },
+                        p.muted(),
+                    )),
+                    agent.automatic,
+                    |ui| ui.toggle_automatic(),
+                )
+            } else {
+                controls::setting_row(
+                    p,
+                    "tiling",
+                    "Automatic tiling",
+                    Some((
+                        "Starts once Accessibility is granted and the hotkeys register.".into(),
+                        p.muted(),
+                    )),
+                    controls::status_dot(c.border_strong),
+                )
+            };
             let (on, description) = match &agent.launch_at_login {
                 LaunchAtLogin::On => (true, None),
                 LaunchAtLogin::Off => (false, None),
@@ -97,8 +107,8 @@ pub fn general(ui: &Ui, p: Paint) -> El {
                 LaunchAtLogin::Failed(error) => (false, Some((error.clone(), c.danger.fg))),
             };
             let login =
-                controls::toggle_row(p, "login", "Launch at Login", description, on, |_| {
-                    agent::send("toggle-launch-at-login");
+                controls::toggle_row(p, "login", "Launch at Login", description, on, |ui| {
+                    ui.toggle_launch_at_login();
                 });
             sections.push(controls::section(
                 p,
