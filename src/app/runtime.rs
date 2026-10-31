@@ -191,6 +191,10 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
             WorkerAction::ToggleFullscreenLayout => {
                 self.toggle_fullscreen_layout(outputs, cancelled)
             }
+            WorkerAction::MarkWrong => {
+                self.mark_wrong();
+                Ok(self.status(0, &outputs))
+            }
         }
     }
 

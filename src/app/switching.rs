@@ -418,6 +418,7 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
         }
         self.clear_fullscreen_restore_if_inactive(source);
         self.clear_relocation_evidence(source, target, &window);
+        self.note_hand_move(&window, source, target);
         if !target_is_active {
             self.suppressed_focus = Some(window.clone());
         }

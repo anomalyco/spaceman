@@ -29,10 +29,15 @@ Placement recall (reboot, fresh start, or app relaunch)     // recover.memory
 │   └── apps launched after the startup window open on the active workspace
 ├── An app relaunched mid-session (an update or restart) recalls its placements too: its new
 │   instance appears within 30 s of the old one quitting, or while the old one still owns windows
+│   (a quit is noticed whichever workspace the app was on, visible or hidden)
+├── Kit moves a window back by hand within 120 s of it opening on the active workspace
+│   -> journaled as a wrong placement; its app then recalls its placements on every launch
 └── Arrangement changes recorded after holding 10 s (quitting does not shrink the memory)
 
 Diagnose                                                   // recover.doctor  (journal: working tree only)
-├── spaceman doctor [hours] -> starts, restorations, recalls, anomalies, last arrangement
+├── spaceman doctor [hours] -> starts, restorations, recalls, wrong placements, anomalies,
+│                                last arrangement
+├── spaceman ctl wrong -> marks the journal and snapshots the arrangement right now
 ├── spaceman ctl debug / spaceman hud -> live sanitized model
 └── agent.log (+ .1) -> decisions, slow worker commands, worker errors (not routine cancellations)
 ```

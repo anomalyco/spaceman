@@ -21,7 +21,7 @@ const REQUEST_READ_TIMEOUT: Duration = Duration::from_millis(250);
 const RESPONSE_TIMEOUT: Duration = Duration::from_secs(5);
 const CLIENT_TIMEOUT: Duration = Duration::from_secs(6);
 
-pub const COMMAND_USAGE: &str = "status|debug|settings|open-settings|open-accessibility|check-for-updates|toggle-launch-at-login|switch WORKSPACE|back-and-forth|move WORKSPACE|move-app ID WORKSPACE|focus DIR|focus next|move-direction DIR|layout|fullscreen|resize shrink|resize grow|balance|pause|resume|retile|restart|quit";
+pub const COMMAND_USAGE: &str = "status|debug|settings|open-settings|open-accessibility|check-for-updates|toggle-launch-at-login|switch WORKSPACE|back-and-forth|move WORKSPACE|move-app ID WORKSPACE|focus DIR|focus next|move-direction DIR|layout|fullscreen|resize shrink|resize grow|balance|pause|resume|retile|wrong|restart|quit";
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub(crate) enum Command {
@@ -208,6 +208,7 @@ fn parse_line(line: &str) -> Result<Command, String> {
         ["resize", "grow"] => WorkerAction::Resize(ResizeDirection::Grow),
         ["balance"] => WorkerAction::Balance,
         ["retile"] => WorkerAction::Retile,
+        ["wrong"] => WorkerAction::MarkWrong,
         _ => return Err(format!("expected {COMMAND_USAGE}")),
     };
     Ok(Command::Queue(action))
@@ -226,6 +227,7 @@ mod tests {
             command => panic!("{line:?} parsed as {command:?}"),
         };
         assert_eq!(parse_line("status").unwrap(), Command::Status);
+        assert_eq!(queued("wrong"), WorkerAction::MarkWrong);
         assert_eq!(
             queued("back-and-forth"),
             WorkerAction::WorkspaceBackAndForth

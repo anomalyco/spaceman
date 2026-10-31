@@ -7,11 +7,17 @@
 //! last on-screen frame. A relaunched application's new windows claim those
 //! placements in order: exact frame matches first, then window creation order.
 //!
+//! Normally only a relaunch (an update or restart) recalls these placements;
+//! an app Kit opens mid-session opens where he is. Once Kit moves one of an
+//! app's windows back by hand right after Spaceman opened it on the active
+//! workspace, that app is marked returning and every new instance of it
+//! recalls its placements, however long it was closed.
+//!
 //! The memory is advisory. It never proves a window exists, never moves a
 //! window on its own, and an invalid file is ignored rather than blocking
 //! recovery.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 
 use serde::{Deserialize, Serialize};
 
@@ -46,6 +52,9 @@ pub struct RememberedApp {
 pub struct WindowMemory {
     #[serde(default)]
     apps: BTreeMap<String, RememberedApp>,
+    /// Bundles whose new instances always recall their placements.
+    #[serde(default, skip_serializing_if = "BTreeSet::is_empty")]
+    returning: BTreeSet<String>,
 }
 
 impl WindowMemory {
@@ -65,7 +74,47 @@ impl WindowMemory {
                 ));
             }
         }
+        if self.returning.len() > MAX_APPS {
+            return Err(format!(
+                "window memory marks more than {MAX_APPS} applications as returning"
+            ));
+        }
+        if self
+            .returning
+            .iter()
+            .any(|bundle_id| bundle_id.is_empty() || bundle_id.len() > MAX_BUNDLE_ID_LEN)
+        {
+            return Err("window memory has an invalid returning bundle identifier".into());
+        }
         Ok(())
+    }
+
+    /// Whether every new instance of `bundle_id` recalls its placements.
+    #[must_use]
+    pub fn returns(&self, bundle_id: &str) -> bool {
+        self.returning.contains(bundle_id)
+    }
+
+    /// Mark `bundle_id` as returning. Returns whether the memory changed.
+    pub fn mark_returning(&mut self, bundle_id: &str) -> bool {
+        if bundle_id.is_empty()
+            || bundle_id.len() > MAX_BUNDLE_ID_LEN
+            || self.returning.contains(bundle_id)
+        {
+            return false;
+        }
+        if self.returning.len() >= MAX_APPS {
+            let Some(stale) = self
+                .returning
+                .iter()
+                .find(|candidate| !self.apps.contains_key(*candidate))
+                .cloned()
+            else {
+                return false;
+            };
+            self.returning.remove(&stale);
+        }
+        self.returning.insert(bundle_id.to_owned())
     }
 
     #[must_use]
@@ -121,6 +170,7 @@ impl WindowMemory {
                 break;
             };
             self.apps.remove(&oldest);
+            self.returning.remove(&oldest);
         }
         true
     }
@@ -247,6 +297,32 @@ mod tests {
         assert!(memory.get("com.example.1").is_none());
         assert!(memory.get("com.example.new").is_some());
         memory.validate().unwrap();
+    }
+
+    #[test]
+    fn returning_marks_persist_and_older_files_still_load() {
+        let mut memory = WindowMemory::default();
+        memory.record("com.example.App", vec![placed(3, 0)], 1);
+        assert!(!memory.returns("com.example.App"));
+        assert!(memory.mark_returning("com.example.App"));
+        assert!(!memory.mark_returning("com.example.App"));
+        assert!(!memory.mark_returning(""));
+        let json = serde_json::to_string(&memory).unwrap();
+        assert!(
+            json.ends_with(r#""returning":["com.example.App"]}"#),
+            "{json}"
+        );
+        let restored: WindowMemory = serde_json::from_str(&json).unwrap();
+        restored.validate().unwrap();
+        assert!(restored.returns("com.example.App"));
+
+        // Files written before returning marks existed load unchanged.
+        let older: WindowMemory = serde_json::from_str(
+            r#"{"apps":{"com.example.App":{"updated_at":1,"windows":[{"workspace":3,"frame":{"x":0,"y":0,"width":400,"height":300}}]}}}"#,
+        )
+        .unwrap();
+        older.validate().unwrap();
+        assert!(!older.returns("com.example.App"));
     }
 
     #[test]

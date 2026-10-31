@@ -103,6 +103,7 @@ spaceman ctl balance
 spaceman ctl pause
 spaceman ctl resume
 spaceman ctl retile
+spaceman ctl wrong
 spaceman ctl restart
 spaceman ctl quit
 spaceman hud
@@ -113,7 +114,8 @@ spaceman doctor 24
 Directions are `left`, `down`, `up`, and `right`. `focus next` is Option-backtick and `fullscreen`
 toggles the focused workspace's Fullscreen Layout, like `Option+Shift+F`. `balance` equalizes the focused tile's immediate
 split while respecting nested minimum sizes. `hud` repeatedly renders sanitized runtime geometry in
-the terminal until interrupted.
+the terminal until interrupted. `ctl wrong` marks the journal the moment something looks wrong and
+writes a full arrangement snapshot, so `doctor` shows what the screen held then.
 
 `ctl debug` excludes window titles. It reports each display's Fullscreen Layout state and tiled
 geometry plus floating-window workspace, parked state, and original recovery frame so workspace leaks
@@ -121,7 +123,9 @@ can be diagnosed safely. Its `parking_exempt` list names managed windows that re
 parking positions and are therefore left visible across workspace switches for the current session.
 
 `doctor` summarizes the arrangement journal (all of it, or the last N hours): agent starts and their
-loaded state, exit restorations, remembered placements recalled or left unclaimed, and every
+loaded state, exit restorations, remembered placements recalled or left unclaimed, wrong placements
+(windows Kit moved to another workspace by hand within 120 seconds of Spaceman placing them, by
+placement source: active workspace, recall, or rule), the times `ctl wrong` was run, and every
 model/screen disagreement that lasted at least three seconds, grouped by kind with counts, total and
 longest durations, and the applications involved. It ends with the last known per-workspace
 arrangement. It reads files directly and works while the agent is stopped. The journaled kinds are:
