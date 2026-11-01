@@ -34,10 +34,14 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
                 self.workspaces.remember_focus(workspace, focused);
                 self.pending_fullscreen_focus_restore.remove(&workspace);
                 self.persist_workspace_state_if_changed()?;
-                return Ok(self.status(0, &outputs));
+                let mut status = self.status(0, &outputs);
+                status.hud = Some(self.hud_for(workspace, UiHudKind::Workspace));
+                return Ok(status);
             }
             self.focus_workspace_entry(workspace, &windows, focused);
-            return Ok(self.status(0, &outputs));
+            let mut status = self.status(0, &outputs);
+            status.hud = Some(self.hud_for(workspace, UiHudKind::Workspace));
+            return Ok(status);
         }
         let switch_started = Instant::now();
         let mut outgoing = self.workspaces.windows(previous);
@@ -177,7 +181,9 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
             workspace,
             switch_started.elapsed().as_millis()
         );
-        Ok(self.status(layout.failed, &outputs))
+        let mut status = self.status(layout.failed, &outputs);
+        status.hud = Some(self.hud_for(workspace, UiHudKind::Workspace));
+        Ok(status)
     }
 
     fn focus_workspace_entry(
@@ -447,6 +453,8 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
             }
         }
         self.persist_workspace_state_if_changed()?;
-        Ok(self.status(failed, &outputs))
+        let mut status = self.status(failed, &outputs);
+        status.hud = Some(self.hud_for(target, UiHudKind::Moved));
+        Ok(status)
     }
 }

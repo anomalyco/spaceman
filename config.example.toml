@@ -1,6 +1,10 @@
 # Spaceman configuration schema version. Only version 1 is accepted.
 version = 1
 
+# Optional UI preferences. The non-activating Workspace HUD capsule is on by default.
+[settings]
+hud = true
+
 # Rules are optional, ordered, and first-match wins. Every matcher present in a
 # rule must match exactly. Valid actions are "float", "route", and "ignore".
 [[rules]]

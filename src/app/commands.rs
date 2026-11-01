@@ -275,7 +275,10 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
             self.pending_fullscreen_focus_restore.remove(&workspace);
         }
         self.workspaces.engine_mut(workspace).toggle_axis();
-        self.relayout_persist(workspace, &outputs, cancelled)
+        let axis = self.workspaces.engine(workspace).root_axis();
+        let mut status = self.relayout_persist(workspace, &outputs, cancelled)?;
+        status.hud = Some(self.hud_for(workspace, UiHudKind::Layout { axis }));
+        Ok(status)
     }
 
     pub(super) fn resize_focused(
@@ -330,7 +333,9 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
         let enabled = !self.workspaces.uses_fullscreen_layout(workspace);
         self.workspaces.set_fullscreen_layout(workspace, enabled);
         self.pending_fullscreen_focus_restore.remove(&workspace);
-        self.relayout_persist(workspace, &outputs, cancelled)
+        let mut status = self.relayout_persist(workspace, &outputs, cancelled)?;
+        status.hud = Some(self.hud_for(workspace, UiHudKind::Fullscreen { enabled }));
+        Ok(status)
     }
 
     fn relayout_persist(

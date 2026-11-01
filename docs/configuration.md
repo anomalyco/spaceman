@@ -1,15 +1,18 @@
 # Configuration
 
-Spaceman loads configuration once, when `spaceman-agent` starts, from:
+Spaceman loads configuration when `spaceman-agent` starts and reloads it automatically whenever the
+file changes on disk:
 
 ```text
 ~/Library/Application Support/Spaceman/config.toml
 ```
 
 Set `SPACEMAN_CONFIG` in the agent's environment to replace that path. A missing file means default
-configuration. Invalid configuration is reported to stderr for terminal launches and to
-`~/Library/Application Support/Spaceman/agent.log` for app-bundle launches. Spaceman falls back to
-defaults and ignores workspace state so it can prioritize restoring parked windows.
+configuration. Invalid configuration at startup is reported to stderr for terminal launches and to
+`~/Library/Application Support/Spaceman/agent.log` for app-bundle launches; Spaceman falls back to
+defaults and ignores workspace state so it can prioritize restoring parked windows. If an edit saved
+while running fails validation, the running agent logs the error and keeps the previous valid
+configuration.
 
 Validate a file before replacing or restarting the app:
 
@@ -21,11 +24,14 @@ The complete example is [config.example.toml](../config.example.toml).
 
 ## Current Schema
 
-The parser rejects unknown fields. The root must contain `version = 1` and may contain repeated
-`[[rules]]` and `[[workspaces]]` tables.
+The parser rejects unknown fields. The root must contain `version = 1` and may contain an optional
+`[settings]` table plus repeated `[[rules]]` and `[[workspaces]]` tables.
 
 ```toml
 version = 1
+
+[settings]
+hud = true                            # optional (default: true); non-activating Workspace HUD
 
 [[rules]]
 bundle_id = "com.example.Application" # optional exact match
@@ -131,7 +137,9 @@ normal recovery data.
 
 ## Applying Changes
 
-There is no live config reload. Pause or quit and confirm restoration, then open the app again:
+Edits saved in Spaceman Settings or in an external editor take effect automatically: rule changes,
+workspace display assignments, and `settings.hud` reload without restarting. Global shortcuts for a
+newly added named workspace letter (`Option+A` ... `Option+Z`) register on the next app start:
 
 ```sh
 spaceman ctl pause

@@ -110,6 +110,17 @@ pub fn general(ui: &Ui, p: Paint) -> El {
                 controls::toggle_row(p, "login", "Launch at Login", description, on, |ui| {
                     ui.toggle_launch_at_login();
                 });
+            let hud = controls::toggle_row(
+                p,
+                "hud",
+                "Workspace HUD",
+                Some((
+                    "Show a non-activating capsule when switching workspaces or layouts.".into(),
+                    p.muted(),
+                )),
+                ui.doc.hud(),
+                |ui| ui.toggle_hud(),
+            );
             let setup_tour = controls::setting_row(
                 p,
                 "setup-tour",
@@ -130,7 +141,7 @@ pub fn general(ui: &Ui, p: Paint) -> El {
                 p,
                 "agent",
                 "Spaceman",
-                vec![access, tiling, login, setup_tour],
+                vec![access, tiling, hud, login, setup_tour],
             ));
         }
     }

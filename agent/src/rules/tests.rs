@@ -121,3 +121,20 @@ fn set_app_place_updates_bundle_rule_without_touching_title_rules() {
             && rule.title.as_deref() == Some("OpenCode Browser agents - Brave")
     }));
 }
+
+#[test]
+fn hud_setting_round_trips_and_cleans_up_default_table() {
+    let mut doc = Doc::parse(SOURCE);
+    assert!(doc.hud());
+    doc.set_hud(false);
+    assert!(!doc.hud());
+    let disabled = doc.source();
+    assert!(!spaceman::config::Config::parse(&disabled).unwrap().hud());
+    assert!(disabled.contains("# OpenCode Browser's agent window."));
+
+    doc.set_hud(true);
+    assert!(doc.hud());
+    let enabled = doc.source();
+    assert!(spaceman::config::Config::parse(&enabled).unwrap().hud());
+    assert!(!enabled.contains("[settings]"));
+}

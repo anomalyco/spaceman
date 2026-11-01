@@ -4,8 +4,20 @@ use serde::Deserialize;
 
 use crate::{DisplaySelector, ObservedWindow, WorkspaceId, Workspaces};
 
+#[derive(Clone, Copy, Debug)]
+struct AppSettings {
+    hud: bool,
+}
+
+impl Default for AppSettings {
+    fn default() -> Self {
+        Self { hud: true }
+    }
+}
+
 #[derive(Clone, Debug, Default)]
 pub struct Config {
+    settings: AppSettings,
     rules: Vec<WindowRule>,
     workspace_monitors: Vec<(WorkspaceId, DisplaySelector)>,
 }
@@ -37,9 +49,28 @@ struct WindowMatcher {
 struct RawConfig {
     version: u32,
     #[serde(default)]
+    settings: RawSettings,
+    #[serde(default)]
     rules: Vec<RawWindowRule>,
     #[serde(default)]
     workspaces: Vec<RawWorkspace>,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct RawSettings {
+    #[serde(default = "default_hud")]
+    hud: bool,
+}
+
+impl Default for RawSettings {
+    fn default() -> Self {
+        Self { hud: true }
+    }
+}
+
+const fn default_hud() -> bool {
+    true
 }
 
 #[derive(Deserialize)]
@@ -110,9 +141,17 @@ impl Config {
             workspace_monitors.push((id, DisplaySelector::parse(&workspace.monitor)));
         }
         Ok(Self {
+            settings: AppSettings {
+                hud: raw.settings.hud,
+            },
             rules,
             workspace_monitors,
         })
+    }
+
+    #[must_use]
+    pub const fn hud(&self) -> bool {
+        self.settings.hud
     }
 
     pub fn load() -> Result<Self, String> {
@@ -350,5 +389,18 @@ monitor = "main"
     #[test]
     fn rejects_obsolete_keyboard_mapping_override() {
         assert!(Config::parse("version = 1\nkey_mapping = 'dvorak'").is_err());
+    }
+
+    #[test]
+    fn parses_hud_setting_with_enabled_default() {
+        assert!(Config::default().hud());
+        assert!(Config::parse("version = 1").unwrap().hud());
+        assert!(Config::parse("version = 1\n[settings]\n").unwrap().hud());
+        assert!(
+            !Config::parse("version = 1\n[settings]\nhud = false\n")
+                .unwrap()
+                .hud()
+        );
+        assert!(Config::parse("version = 1\n[settings]\nunknown = true\n").is_err());
     }
 }

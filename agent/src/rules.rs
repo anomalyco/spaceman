@@ -139,6 +139,42 @@ impl Doc {
         }
     }
 
+    /// Whether the Workspace HUD overlay is enabled in `[settings]` (defaults to `true`).
+    pub fn hud(&self) -> bool {
+        self.doc
+            .get("settings")
+            .and_then(Item::as_table_like)
+            .and_then(|table| table.get("hud"))
+            .and_then(Item::as_bool)
+            .unwrap_or(true)
+    }
+
+    pub fn set_hud(&mut self, enabled: bool) {
+        if enabled {
+            let empty =
+                if let Some(table) = self.doc.get_mut("settings").and_then(Item::as_table_mut) {
+                    table.remove("hud");
+                    table.is_empty()
+                } else {
+                    false
+                };
+            if empty {
+                self.doc.remove("settings");
+            }
+            return;
+        }
+        let entry = self
+            .doc
+            .entry("settings")
+            .or_insert_with(|| Item::Table(Table::new()));
+        if !entry.is_table() {
+            *entry = Item::Table(Table::new());
+        }
+        if let Some(table) = entry.as_table_mut() {
+            table.insert("hud", value(false));
+        }
+    }
+
     /// The display a workspace asks for in `[[workspaces]]`, if it names one.
     pub fn monitor(&self, workspace: WorkspaceId) -> Option<String> {
         self.doc

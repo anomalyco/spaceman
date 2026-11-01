@@ -1,8 +1,16 @@
 use std::sync::{Arc, Mutex, mpsc::Sender};
 
-use crate::{WorkspaceId, login_item, sparkle};
+use crate::{Axis, Rect, WorkspaceId, login_item, sparkle};
 
-use super::Action;
+use super::{Action, WorkerAction};
+
+/// Normalized preview coordinate space for HUD split rectangles.
+pub const HUD_PREVIEW_RECT: Rect = Rect {
+    x: 0,
+    y: 0,
+    width: 1500,
+    height: 1100,
+};
 
 /// Actions the in-process Rune window can send to the agent loop.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -11,6 +19,8 @@ pub enum UiAction {
     OpenAccessibility,
     CheckForUpdates,
     ToggleLaunchAtLogin,
+    SetHud(bool),
+    MarkWrong,
 }
 
 impl From<UiAction> for Action {
@@ -20,8 +30,33 @@ impl From<UiAction> for Action {
             UiAction::OpenAccessibility => Self::OpenAccessibility,
             UiAction::CheckForUpdates => Self::CheckForUpdates,
             UiAction::ToggleLaunchAtLogin => Self::ToggleLaunchAtLogin,
+            UiAction::SetHud(enabled) => Self::SetHud(enabled),
+            UiAction::MarkWrong => Self::Worker(WorkerAction::MarkWrong),
         }
     }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum UiHudKind {
+    Workspace,
+    Moved,
+    Layout { axis: Axis },
+    Fullscreen { enabled: bool },
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum UiHudLayout {
+    Split(Vec<Rect>),
+    Fullscreen,
+}
+
+/// Title-free Workspace HUD event emitted on explicit user actions.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct UiHudEvent {
+    pub workspace: WorkspaceId,
+    pub kind: UiHudKind,
+    pub preview: UiHudLayout,
+    pub windows: usize,
 }
 
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
@@ -70,6 +105,7 @@ impl From<sparkle::UpdateStatus> for UiUpdateStatus {
 pub struct UiAgentSnapshot {
     pub accessibility: bool,
     pub automatic: bool,
+    pub hud: bool,
     pub launch_at_login: UiLaunchAtLogin,
     pub update: UiUpdateStatus,
     pub active_workspaces: Vec<WorkspaceId>,
@@ -79,6 +115,7 @@ pub struct UiAgentSnapshot {
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
 pub struct UiNews {
     pub snapshot: Option<UiAgentSnapshot>,
+    pub hud: Option<UiHudEvent>,
     pub config_changed: bool,
 }
 
@@ -86,6 +123,7 @@ pub struct UiNews {
 struct SharedState {
     last: Option<UiAgentSnapshot>,
     pending_snapshot: Option<UiAgentSnapshot>,
+    pending_hud: Option<UiHudEvent>,
     config_changed: bool,
     waker: Option<Arc<dyn Fn() + Send + Sync>>,
 }
@@ -113,7 +151,9 @@ impl UiBridge {
         if shared.pending_snapshot.is_none() {
             shared.pending_snapshot = shared.last.clone();
         }
-        let has_news = shared.pending_snapshot.is_some() || shared.config_changed;
+        let has_news = shared.pending_snapshot.is_some()
+            || shared.pending_hud.is_some()
+            || shared.config_changed;
         shared.waker = Some(Arc::clone(&waker));
         drop(shared);
         if has_news {
@@ -129,12 +169,27 @@ impl UiBridge {
             .unwrap_or_else(std::sync::PoisonError::into_inner);
         UiNews {
             snapshot: shared.pending_snapshot.take(),
+            hud: shared.pending_hud.take(),
             config_changed: std::mem::take(&mut shared.config_changed),
         }
     }
 
     pub fn send(&self, action: UiAction) {
         drop(self.actions.send(action.into()));
+    }
+
+    pub(super) fn publish_hud(&self, event: UiHudEvent) {
+        let waker = {
+            let mut shared = self
+                .shared
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
+            shared.pending_hud = Some(event);
+            shared.waker.clone()
+        };
+        if let Some(waker) = waker {
+            waker();
+        }
     }
 
     pub(super) fn publish(&self, snapshot: UiAgentSnapshot, config_changed: bool) {
@@ -178,6 +233,7 @@ mod tests {
         let initial = UiAgentSnapshot {
             accessibility: true,
             automatic: true,
+            hud: true,
             launch_at_login: UiLaunchAtLogin::On,
             update: UiUpdateStatus::Idle,
             active_workspaces: vec![WorkspaceId::ONE],
@@ -194,6 +250,7 @@ mod tests {
             bridge.take_news(),
             UiNews {
                 snapshot: Some(initial.clone()),
+                hud: None,
                 config_changed: false,
             }
         );
@@ -209,7 +266,25 @@ mod tests {
             bridge.take_news(),
             UiNews {
                 snapshot: None,
+                hud: None,
                 config_changed: true,
+            }
+        );
+
+        let hud_event = UiHudEvent {
+            workspace: WorkspaceId::ONE,
+            kind: UiHudKind::Workspace,
+            preview: UiHudLayout::Fullscreen,
+            windows: 2,
+        };
+        bridge.publish_hud(hud_event.clone());
+        assert_eq!(wakes.load(Ordering::SeqCst), 3);
+        assert_eq!(
+            bridge.take_news(),
+            UiNews {
+                snapshot: None,
+                hud: Some(hud_event),
+                config_changed: false,
             }
         );
 

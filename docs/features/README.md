@@ -20,8 +20,8 @@ Source baseline: `main` at `7ad30eb` plus the uncommitted working tree of 2026-1
 | Surface | Status |
 | --- | --- |
 | Workspaces, tiling, Fullscreen Layout, parking/restoration | Source builds and the notarized preview artifact |
-| Parking exemption for windows that keep un-parking themselves | Uncommitted working tree only |
-| Remembered placements (`window-memory.json`), arrangement journal, `spaceman doctor` | Uncommitted working tree only |
+| Parking exemption, remembered placements (`window-memory.json`), arrangement journal, `spaceman doctor` | On `main` (source builds) |
+| Single-process Rune Settings (`Activity`), first-run setup tour, non-activating Workspace HUD (`[settings] hud`) | On `main` (source builds) |
 | Named workspaces A-Z | Opt-in: enabled by a `route` rule or `[[workspaces]]` entry |
 | Secondary-display workspaces 6-10 | Require a second display; with one display they fall back to `main` |
 

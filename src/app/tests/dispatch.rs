@@ -294,3 +294,56 @@ fn failure_count_keeps_all_non_applied_outcomes() {
         assert_eq!(failed_results(&results), usize::from(outcome != Applied));
     }
 }
+
+#[test]
+fn hud_emits_only_for_workspace_move_and_layout_actions() {
+    let cancelled = AtomicBool::new(false);
+    let mut runtime = fixture();
+
+    assert_eq!(runtime.cycle(outputs(), &cancelled).unwrap().hud, None);
+    assert_eq!(
+        runtime.cycle_focus(outputs(), &cancelled).unwrap().hud,
+        None
+    );
+
+    let toggled = runtime
+        .toggle_layout(outputs(), &cancelled)
+        .unwrap()
+        .hud
+        .unwrap();
+    assert_eq!(toggled.workspace, WorkspaceId::ONE);
+    assert_eq!(
+        toggled.kind,
+        UiHudKind::Layout {
+            axis: crate::Axis::Vertical
+        }
+    );
+    assert_eq!(toggled.windows, 2);
+
+    let fullscreen = runtime
+        .toggle_fullscreen_layout(outputs(), &cancelled)
+        .unwrap()
+        .hud
+        .unwrap();
+    assert_eq!(fullscreen.workspace, WorkspaceId::ONE);
+    assert_eq!(fullscreen.kind, UiHudKind::Fullscreen { enabled: true });
+    assert_eq!(fullscreen.preview, UiHudLayout::Fullscreen);
+
+    let moved = runtime
+        .move_focused(WorkspaceId::TWO, outputs(), &cancelled)
+        .unwrap()
+        .hud
+        .unwrap();
+    assert_eq!(moved.workspace, WorkspaceId::TWO);
+    assert_eq!(moved.kind, UiHudKind::Moved);
+    assert_eq!(moved.windows, 1);
+
+    let switched = runtime
+        .switch(WorkspaceId::TWO, outputs(), &cancelled)
+        .unwrap()
+        .hud
+        .unwrap();
+    assert_eq!(switched.workspace, WorkspaceId::TWO);
+    assert_eq!(switched.kind, UiHudKind::Workspace);
+    assert_eq!(switched.windows, 1);
+}

@@ -4,10 +4,10 @@
 use rune::{Anim, Cx, El, Icon, ScrollSpec, Tx, col, el, icon, row, text};
 
 use crate::{
-    Pane, Ui,
+    Pane, Ui, activity,
     agent::Update,
     controls::{self, Paint},
-    map, onboarding, panes,
+    hud, map, onboarding, panes,
 };
 
 static GENERAL_ICON: Icon = Icon {
@@ -25,6 +25,11 @@ static WORKSPACES_ICON: Icon = Icon {
     view: 16.0,
     body: include_str!("../assets/workspaces.svg"),
 };
+static ACTIVITY_ICON: Icon = Icon {
+    name: "spaceman-activity",
+    view: 24.0,
+    body: include_str!("../assets/activity.svg"),
+};
 
 fn pane_icon(pane: Pane) -> &'static Icon {
     match pane {
@@ -32,6 +37,7 @@ fn pane_icon(pane: Pane) -> &'static Icon {
         Pane::Rules => &RULES_ICON,
         Pane::Workspaces => &WORKSPACES_ICON,
         Pane::Shortcuts => &rune_theme_opencode::icons::KEYBOARD,
+        Pane::Activity => &ACTIVITY_ICON,
     }
 }
 
@@ -55,6 +61,7 @@ pub fn view(ui: &Ui, cx: &mut Cx<Ui>) -> El {
         Pane::Rules => (None, map::pane(ui, p, &mut layer)),
         Pane::Workspaces => (None, panes::workspaces(ui, p)),
         Pane::Shortcuts => (None, panes::shortcuts(p)),
+        Pane::Activity => (Some(activity::header_actions(ui, p)), activity::pane(ui, p)),
     };
     let panel = col()
         .key("panel")
@@ -80,6 +87,9 @@ pub fn view(ui: &Ui, cx: &mut Cx<Ui>) -> El {
         .child(panel);
     if let Some(tour) = onboarding::overlay(ui, p) {
         layer.push(tour);
+    }
+    if let Some(hud_preview) = &ui.hud_preview {
+        layer.push(hud::stage(hud_preview, p));
     }
     rune_kit::root(window, layer)
 }
