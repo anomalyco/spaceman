@@ -457,7 +457,7 @@ fn add_menu(
         }
         for app in &ui.running {
             let bundle_id = app.bundle_id.clone();
-            let lead = icon_or_initial(p, ui.apps.cached(&bundle_id), &app.name, 16.0);
+            let lead = controls::icon_or_initial(p, ui.apps.cached(&bundle_id), &app.name, 16.0);
             menu = menu.item(MenuItem::new(app.name.clone()).lead(lead).on_select(
                 move |ui: &mut Ui| {
                     let bundle_id = bundle_id.clone();
@@ -642,7 +642,7 @@ fn rule_help(ui: &Ui, rule: &Rule) -> String {
 }
 
 fn app_icon(ui: &Ui, p: Paint, rule: &Rule, size: f32) -> El {
-    let icon = icon_or_initial(p, rule_app(ui, rule), &rule_name(ui, rule), size);
+    let icon = controls::icon_or_initial(p, rule_app(ui, rule), &rule_name(ui, rule), size);
     if rule.title.is_none() {
         return icon;
     }
@@ -656,22 +656,6 @@ fn app_icon(ui: &Ui, p: Paint, rule: &Rule, size: f32) -> El {
             .border(1.5, c.layer_01)
             .absolute(size - 6.0, -2.0),
     )
-}
-
-fn icon_or_initial(p: Paint, app: Option<&App>, name: &str, size: f32) -> El {
-    match app.and_then(|app| app.icon.as_ref()) {
-        Some(pixels) => el().size(size, size).pixels(pixels),
-        None => el()
-            .size(size, size)
-            .radius(size * 0.25)
-            .fill(p.k.c.layer_03)
-            .center()
-            .child(
-                text(name.chars().next().map(String::from).unwrap_or_default())
-                    .font(p.k.ty.small_medium)
-                    .color(p.muted()),
-            ),
-    }
 }
 
 #[cfg(test)]

@@ -101,3 +101,23 @@ fn a_broken_file_is_never_saved_over() {
     assert!(doc.error.is_some());
     assert!(doc.save().is_err());
 }
+
+#[test]
+fn set_app_place_updates_bundle_rule_without_touching_title_rules() {
+    let mut doc = Doc::parse(SOURCE);
+    assert_eq!(doc.app_place("com.brave.Browser"), None);
+    doc.set_app_place("com.brave.Browser", Some(Place::Workspace(ws("1"))));
+    assert_eq!(
+        doc.app_place("com.brave.Browser"),
+        Some(Place::Workspace(ws("1")))
+    );
+    doc.set_app_place("com.brave.Browser", Some(Place::Float));
+    assert_eq!(doc.app_place("com.brave.Browser"), Some(Place::Float));
+    doc.set_app_place("com.brave.Browser", None);
+    assert_eq!(doc.app_place("com.brave.Browser"), None);
+    // Title-specific rule on com.brave.Browser stays intact.
+    assert!(doc.rules().iter().any(|rule| {
+        rule.bundle_id.as_deref() == Some("com.brave.Browser")
+            && rule.title.as_deref() == Some("OpenCode Browser agents - Brave")
+    }));
+}

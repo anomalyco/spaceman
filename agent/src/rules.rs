@@ -104,6 +104,9 @@ impl Doc {
         if index < rules.len() {
             rules.remove(index);
         }
+        if rules.is_empty() {
+            self.doc.remove("rules");
+        }
     }
 
     pub fn add(&mut self, bundle_id: &str, place: Place) {
@@ -111,6 +114,29 @@ impl Doc {
         table.insert("bundle_id", value(bundle_id));
         set_place(&mut table, place);
         self.rule_tables().push(table);
+    }
+
+    /// Where `bundle_id`'s app-wide rule sends windows, if one is set.
+    pub fn app_place(&self, bundle_id: &str) -> Option<Place> {
+        self.rules()
+            .into_iter()
+            .find(|rule| rule.title.is_none() && rule.bundle_id.as_deref() == Some(bundle_id))
+            .map(|rule| rule.place)
+    }
+
+    /// Sets or removes `bundle_id`'s app-wide rule, leaving title-specific rules untouched.
+    pub fn set_app_place(&mut self, bundle_id: &str, place: Option<Place>) {
+        let existing = self
+            .rules()
+            .into_iter()
+            .find(|rule| rule.title.is_none() && rule.bundle_id.as_deref() == Some(bundle_id))
+            .map(|rule| rule.index);
+        match (existing, place) {
+            (Some(index), Some(place)) => self.place(index, place),
+            (Some(index), None) => self.remove(index),
+            (None, Some(place)) => self.add(bundle_id, place),
+            (None, None) => {}
+        }
     }
 
     /// The display a workspace asks for in `[[workspaces]]`, if it names one.

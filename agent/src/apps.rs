@@ -74,6 +74,63 @@ pub fn running() -> Vec<Running> {
     Vec::new()
 }
 
+const KNOWN_WINDOW_MANAGERS: &[(&str, &str)] = &[
+    ("bobko.aerospace", "AeroSpace"),
+    ("com.amethyst.Amethyst", "Amethyst"),
+    ("com.knollsoft.Rectangle", "Rectangle"),
+    ("com.knollsoft.Hookshot", "Rectangle Pro"),
+    ("com.crowdcafe.windowmagnet", "Magnet"),
+    ("com.hegenberg.BetterSnapTool", "BetterSnapTool"),
+    ("com.KaiMrgn.Loop", "Loop"),
+    ("co.soffes.Swish", "Swish"),
+    ("com.highlyopinionated.swish", "Swish"),
+];
+
+pub fn window_manager_name(
+    bundle_id: Option<&str>,
+    executable: Option<&str>,
+) -> Option<&'static str> {
+    if let Some(bundle_id) = bundle_id {
+        for &(known_id, name) in KNOWN_WINDOW_MANAGERS {
+            if bundle_id.eq_ignore_ascii_case(known_id) {
+                return Some(name);
+            }
+        }
+    }
+    if executable.is_some_and(|name| name.eq_ignore_ascii_case("yabai")) {
+        return Some("yabai");
+    }
+    None
+}
+
+/// Other macOS window managers currently running alongside Spaceman.
+#[cfg(target_os = "macos")]
+pub fn conflicting_window_managers() -> Vec<String> {
+    use objc2_app_kit::NSWorkspace;
+    objc2::rc::autoreleasepool(|_| {
+        let apps = NSWorkspace::sharedWorkspace().runningApplications();
+        let mut names: Vec<String> = apps
+            .iter()
+            .filter_map(|app| {
+                let bundle_id = app.bundleIdentifier().map(|id| id.to_string());
+                let executable = app
+                    .executableURL()
+                    .and_then(|url| url.lastPathComponent())
+                    .map(|name| name.to_string());
+                window_manager_name(bundle_id.as_deref(), executable.as_deref()).map(str::to_owned)
+            })
+            .collect();
+        names.sort();
+        names.dedup();
+        names
+    })
+}
+
+#[cfg(not(target_os = "macos"))]
+pub fn conflicting_window_managers() -> Vec<String> {
+    Vec::new()
+}
+
 #[cfg(target_os = "macos")]
 fn lookup(bundle_id: &str) -> App {
     use objc2_app_kit::NSWorkspace;

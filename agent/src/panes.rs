@@ -110,11 +110,27 @@ pub fn general(ui: &Ui, p: Paint) -> El {
                 controls::toggle_row(p, "login", "Launch at Login", description, on, |ui| {
                     ui.toggle_launch_at_login();
                 });
+            let setup_tour = controls::setting_row(
+                p,
+                "setup-tour",
+                "Setup tour",
+                Some((
+                    "Walk through permissions, app rules, and shortcuts.".into(),
+                    p.muted(),
+                )),
+                controls::button(
+                    p,
+                    "run-tour",
+                    "Run Setup Tour…",
+                    ButtonKind::Secondary,
+                    |ui, _| ui.start_tour(),
+                ),
+            );
             sections.push(controls::section(
                 p,
                 "agent",
                 "Spaceman",
-                vec![access, tiling, login],
+                vec![access, tiling, login, setup_tour],
             ));
         }
     }
