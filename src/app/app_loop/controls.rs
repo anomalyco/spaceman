@@ -20,6 +20,7 @@ impl MainThreadAgent {
                 })
                 .to_string()),
                 ControlCommand::Settings => {
+                    self.accessibility = macos::accessibility_trusted();
                     self.launch_at_login = UiLaunchAtLogin::from_result(login_item::status());
                     Ok(self.snapshot().to_settings_json().to_string())
                 }

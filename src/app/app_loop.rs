@@ -28,6 +28,7 @@ pub(super) struct AppLoopInit {
     pub(super) events: macos::WindowEventMonitor,
     pub(super) hotkey_workspaces: Vec<WorkspaceId>,
     pub(super) hud: bool,
+    pub(super) trusted: bool,
     pub(super) controls: Receiver<ControlRequest>,
     pub(super) control_server: control::Server,
     pub(super) bridge: UiBridge,
@@ -48,6 +49,7 @@ pub struct MainThreadAgent {
     bridge: UiBridge,
     callbacks: HostCallbacks,
     hotkeys: Option<Hotkeys>,
+    accessibility: bool,
     automatic: bool,
     hud: bool,
     awaiting_accessibility: bool,
@@ -75,7 +77,7 @@ impl MainThreadAgent {
         init: AppLoopInit,
         launch_status: Result<login_item::Status, String>,
     ) -> Self {
-        let trusted = macos::accessibility_trusted();
+        let trusted = init.trusted;
         let (hotkeys, hotkey_error) = if trusted {
             match HotkeyPlan::current(&init.hotkey_workspaces)
                 .and_then(|plan| Hotkeys::install(init.actions_sender.clone(), plan))
@@ -114,6 +116,7 @@ impl MainThreadAgent {
             bridge: init.bridge,
             callbacks: init.callbacks,
             hotkeys,
+            accessibility: trusted,
             automatic,
             hud: init.hud,
             awaiting_accessibility: !trusted,
@@ -318,6 +321,7 @@ impl MainThreadAgent {
         }
         self.ui_dirty = false;
         let trusted = macos::accessibility_trusted();
+        self.accessibility = trusted;
         status_item::set_accessibility(trusted);
         if self.awaiting_accessibility
             && trusted
@@ -331,13 +335,13 @@ impl MainThreadAgent {
         self.publish_ui(config_changed);
     }
 
-    fn publish_ui(&self, config_changed: bool) {
+    pub(super) fn publish_ui(&self, config_changed: bool) {
         self.bridge.publish(self.snapshot(), config_changed);
     }
 
-    fn snapshot(&self) -> UiAgentSnapshot {
+    pub(super) fn snapshot(&self) -> UiAgentSnapshot {
         UiAgentSnapshot {
-            accessibility: macos::accessibility_trusted(),
+            accessibility: self.accessibility,
             automatic: self.automatic,
             hud: self.hud,
             launch_at_login: self.launch_at_login.clone(),

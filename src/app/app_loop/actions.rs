@@ -23,7 +23,9 @@ impl MainThreadAgent {
                     status_item::set_status("Restoring windows...");
                 }
                 Action::ToggleAutomatic => {
-                    if !macos::accessibility_trusted() {
+                    let trusted = macos::accessibility_trusted();
+                    self.accessibility = trusted;
+                    if !trusted {
                         self.awaiting_accessibility = true;
                         self.last_error = Some("Accessibility permission is required".into());
                         self.ui_dirty = true;

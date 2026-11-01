@@ -66,7 +66,6 @@ pub(crate) fn blank_fixture() -> Ui {
         window: None,
         hud_driver: None,
         hud_preview: None,
-        waker: None,
         frame_remembered: true,
         tour: None,
         drag: None,
