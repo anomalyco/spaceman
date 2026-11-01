@@ -1,11 +1,25 @@
-//! Rune Playground (`⇧⌘D` and `--playground`) for auditing Spaceman's scenes
-//! on isolated fixture state without touching `config.toml` or live windows.
+//! Rune Playground (`⇧⌘D` and `--playground`) and headless `--scene` registry,
+//! assembling scenes registered by each feature module on isolated fixture state.
 
 use std::sync::OnceLock;
 
 use rune::{App, Playground};
+use spaceman::{
+    WorkspaceId,
+    app::{UiAgentSnapshot, UiLaunchAtLogin, UiUpdateStatus},
+};
 
-use crate::{BASE_SCENES, Pane, Scene, Ui, WINDOW_SIZE, blank_fixture};
+use crate::{Pane, Ui, WINDOW_SIZE, activity, apps, hud, map, onboarding, panes, rules::Doc};
+
+pub(crate) type Scene = (&'static str, fn(&mut Ui));
+
+const SCENE_GROUPS: &[&[Scene]] = &[
+    onboarding::SCENES,
+    panes::SCENES,
+    map::SCENES,
+    activity::SCENES,
+    hud::SCENES,
+];
 
 pub fn attach(app: App<Ui>) -> App<Ui> {
     let playground = Playground::new()
@@ -19,8 +33,11 @@ pub fn attach(app: App<Ui>) -> App<Ui> {
 pub fn scenes() -> &'static [Scene] {
     static ALL: OnceLock<Vec<Scene>> = OnceLock::new();
     ALL.get_or_init(|| {
-        let mut out = BASE_SCENES.to_vec();
-        let mut grouped: Vec<(usize, Scene)> = BASE_SCENES
+        let base: Vec<Scene> = SCENE_GROUPS
+            .iter()
+            .flat_map(|scenes| scenes.iter().copied())
+            .collect();
+        let mut grouped: Vec<(usize, Scene)> = base
             .iter()
             .map(|&(name, apply)| {
                 let mut ui = blank_fixture();
@@ -31,9 +48,56 @@ pub fn scenes() -> &'static [Scene] {
             })
             .collect();
         grouped.sort_by_key(|(rank, _)| *rank);
+        let mut out = base;
         out.extend(grouped.into_iter().map(|(_, scene)| scene));
         out
     })
+}
+
+pub(crate) fn blank_fixture() -> Ui {
+    let mut ui = Ui {
+        pane: Pane::Rules,
+        navigated: false,
+        doc: Doc::parse(include_str!("../fixtures/config.toml")),
+        apps: apps::Catalog::default(),
+        agent: None,
+        activity: activity::ActivityPane::default(),
+        bridge: None,
+        window: None,
+        hud_driver: None,
+        hud_preview: None,
+        waker: None,
+        frame_remembered: true,
+        tour: None,
+        drag: None,
+        menu: None,
+        running: Vec::new(),
+        error: None,
+        fixture: true,
+    };
+    reset_fixture(&mut ui, Pane::Rules);
+    ui
+}
+
+pub(crate) fn reset_fixture(ui: &mut Ui, pane: Pane) {
+    ui.fixture = true;
+    ui.pane = pane;
+    ui.tour = None;
+    ui.hud_preview = None;
+    ui.doc = Doc::parse(include_str!("../fixtures/config.toml"));
+    ui.look_up_apps();
+    ui.agent = Some(UiAgentSnapshot {
+        accessibility: true,
+        automatic: true,
+        hud: true,
+        launch_at_login: UiLaunchAtLogin::On,
+        update: UiUpdateStatus::Idle,
+        active_workspaces: vec![
+            WorkspaceId::THREE,
+            WorkspaceId::named('M').unwrap_or(WorkspaceId::SIX),
+        ],
+        last_error: None,
+    });
 }
 
 fn group(ui: &Ui) -> (usize, &'static str) {
@@ -56,12 +120,13 @@ mod tests {
 
     #[test]
     fn groups_every_base_scene_under_its_pane() {
+        let base_count: usize = SCENE_GROUPS.iter().map(|scenes| scenes.len()).sum();
         let grouped: Vec<&str> = scenes()
             .iter()
             .map(|(name, _)| *name)
             .filter(|name| name.contains('/'))
             .collect();
-        assert_eq!(grouped.len(), BASE_SCENES.len());
+        assert_eq!(grouped.len(), base_count);
         for expected in [
             "Onboarding/onboarding-welcome",
             "Onboarding/onboarding-conflict",
@@ -85,5 +150,15 @@ mod tests {
                 "{expected} missing from {grouped:?}"
             );
         }
+    }
+
+    #[test]
+    fn command_shortcuts_follow_sidebar_pane_order() {
+        assert_eq!(Pane::from_shortcut('0'), None);
+        for (index, expected) in Pane::ALL.into_iter().enumerate() {
+            let digit = char::from_digit((index + 1) as u32, 10).unwrap();
+            assert_eq!(Pane::from_shortcut(digit), Some(expected));
+        }
+        assert_eq!(Pane::from_shortcut('6'), None);
     }
 }

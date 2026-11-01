@@ -1,45 +1,14 @@
 //! The window: Hex's settings shell. A sidebar of panes under the traffic lights, with the
 //! version and an update check at its foot, beside a raised panel holding the pane.
 
-use rune::{Anim, Cx, El, Icon, ScrollSpec, Tx, col, el, icon, row, text};
+use rune::{Anim, Cx, El, ScrollSpec, Tx, col, el, icon, row, text};
 use spaceman::app::UiUpdateStatus;
 
 use crate::{
-    Pane, Ui, activity,
+    Pane, Ui,
     controls::{self, Paint},
-    hud, map, onboarding, panes,
+    hud, onboarding,
 };
-
-static GENERAL_ICON: Icon = Icon {
-    name: "spaceman-general",
-    view: 16.0,
-    body: include_str!("../assets/general.svg"),
-};
-static RULES_ICON: Icon = Icon {
-    name: "spaceman-rules",
-    view: 16.0,
-    body: include_str!("../assets/rules.svg"),
-};
-static WORKSPACES_ICON: Icon = Icon {
-    name: "spaceman-workspaces",
-    view: 16.0,
-    body: include_str!("../assets/workspaces.svg"),
-};
-static ACTIVITY_ICON: Icon = Icon {
-    name: "spaceman-activity",
-    view: 24.0,
-    body: include_str!("../assets/activity.svg"),
-};
-
-fn pane_icon(pane: Pane) -> &'static Icon {
-    match pane {
-        Pane::General => &GENERAL_ICON,
-        Pane::Rules => &RULES_ICON,
-        Pane::Workspaces => &WORKSPACES_ICON,
-        Pane::Shortcuts => &rune_theme_opencode::icons::KEYBOARD,
-        Pane::Activity => &ACTIVITY_ICON,
-    }
-}
 
 /// The traffic lights sit over the sidebar, so the navigation starts below them.
 const SIDEBAR_TOP: f32 = 52.0;
@@ -56,13 +25,7 @@ pub fn view(ui: &Ui, cx: &mut Cx<Ui>) -> El {
     let p = Paint::new(cx.system_dark(), cx.env().scale);
     // Menus mount above the page (rune-kit overlays).
     let mut layer = Vec::new();
-    let (trailing, body) = match ui.pane {
-        Pane::General => (None, panes::general(ui, p)),
-        Pane::Rules => (None, map::pane(ui, p, &mut layer)),
-        Pane::Workspaces => (None, panes::workspaces(ui, p)),
-        Pane::Shortcuts => (None, panes::shortcuts(p)),
-        Pane::Activity => (Some(activity::header_actions(ui, p)), activity::pane(ui, p)),
-    };
+    let (trailing, body) = ui.pane.render(ui, p, &mut layer);
     let panel = col()
         .key("panel")
         .grow(1.0)
@@ -201,7 +164,7 @@ fn nav_item(p: Paint, pane: Pane, on: bool) -> El {
                 .fill(c.hover)
                 .group_opacity(0.0, 1.0),
         )
-        .child(icon(pane_icon(pane), 16.0).key("icon").color(if on {
+        .child(icon(pane.icon(), 16.0).key("icon").color(if on {
             c.icon_base
         } else {
             c.icon_muted

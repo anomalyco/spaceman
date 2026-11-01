@@ -231,6 +231,21 @@ pub fn icon_toggle_row(
         .on_press(flip)
 }
 
+/// Reveals `path` in Finder, or opens its parent folder if the file has not been created yet.
+pub fn reveal_in_finder(path: &std::path::Path) {
+    let target = if path.exists() {
+        path
+    } else {
+        path.parent().unwrap_or(path)
+    };
+    drop(
+        std::process::Command::new("open")
+            .arg("-R")
+            .arg(target)
+            .spawn(),
+    );
+}
+
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub enum ButtonKind {
     Primary,

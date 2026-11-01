@@ -1,17 +1,142 @@
-//! The panes besides Rules: General (permission, login item, config file), Workspaces (which
-//! display each one opens on) and Shortcuts (the hotkeys, read-only).
+//! Settings pane registry plus the General, Workspaces, and Shortcuts panes.
 
-use rune::{El, Tx, col};
+use rune::{El, Icon, Tx, col};
 use rune_kit::SegmentedControl;
 use spaceman::{WorkspaceId, app::UiLaunchAtLogin};
 
 use crate::{
-    Ui,
+    Ui, activity,
     controls::{self, ButtonKind, Paint},
+    map,
+    playground::{Scene, reset_fixture},
     view::scroll_body,
 };
 
-pub fn general(ui: &Ui, p: Paint) -> El {
+static GENERAL_ICON: Icon = Icon {
+    name: "spaceman-general",
+    view: 16.0,
+    body: include_str!("../assets/general.svg"),
+};
+static RULES_ICON: Icon = Icon {
+    name: "spaceman-rules",
+    view: 16.0,
+    body: include_str!("../assets/rules.svg"),
+};
+static WORKSPACES_ICON: Icon = Icon {
+    name: "spaceman-workspaces",
+    view: 16.0,
+    body: include_str!("../assets/workspaces.svg"),
+};
+static ACTIVITY_ICON: Icon = Icon {
+    name: "spaceman-activity",
+    view: 24.0,
+    body: include_str!("../assets/activity.svg"),
+};
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Pane {
+    General,
+    Rules,
+    Workspaces,
+    Shortcuts,
+    Activity,
+}
+
+type PaneRender = fn(&Ui, Paint, &mut Vec<El>) -> (Option<El>, El);
+
+struct PaneSpec {
+    key: &'static str,
+    title: &'static str,
+    icon: &'static Icon,
+    render: PaneRender,
+}
+
+const fn pane_spec(
+    key: &'static str,
+    title: &'static str,
+    icon: &'static Icon,
+    render: PaneRender,
+) -> PaneSpec {
+    PaneSpec {
+        key,
+        title,
+        icon,
+        render,
+    }
+}
+
+impl Pane {
+    pub const ALL: [Pane; 5] = [
+        Pane::General,
+        Pane::Rules,
+        Pane::Workspaces,
+        Pane::Shortcuts,
+        Pane::Activity,
+    ];
+
+    const fn spec(self) -> PaneSpec {
+        match self {
+            Pane::General => pane_spec("general", "General", &GENERAL_ICON, |ui, p, _| {
+                (None, general(ui, p))
+            }),
+            Pane::Rules => pane_spec("rules", "Rules", &RULES_ICON, |ui, p, layer| {
+                (None, map::pane(ui, p, layer))
+            }),
+            Pane::Workspaces => {
+                pane_spec("workspaces", "Workspaces", &WORKSPACES_ICON, |ui, p, _| {
+                    (None, workspaces(ui, p))
+                })
+            }
+            Pane::Shortcuts => pane_spec(
+                "shortcuts",
+                "Shortcuts",
+                &rune_theme_opencode::icons::KEYBOARD,
+                |_, p, _| (None, shortcuts(p)),
+            ),
+            Pane::Activity => pane_spec("activity", "Activity", &ACTIVITY_ICON, |ui, p, _| {
+                (Some(activity::header_actions(ui, p)), activity::pane(ui, p))
+            }),
+        }
+    }
+
+    pub const fn key(self) -> &'static str {
+        self.spec().key
+    }
+
+    pub const fn title(self) -> &'static str {
+        self.spec().title
+    }
+
+    pub const fn icon(self) -> &'static Icon {
+        self.spec().icon
+    }
+
+    pub fn render(self, ui: &Ui, p: Paint, layer: &mut Vec<El>) -> (Option<El>, El) {
+        (self.spec().render)(ui, p, layer)
+    }
+
+    /// Maps `⌘1`..`⌘N` in sidebar order.
+    pub fn from_shortcut(digit: char) -> Option<Pane> {
+        let index = digit.to_digit(10)?.checked_sub(1)? as usize;
+        Self::ALL.get(index).copied()
+    }
+}
+
+pub(crate) const SCENES: &[Scene] = &[
+    ("general", |ui| reset_fixture(ui, Pane::General)),
+    ("general-setup", |ui| {
+        reset_fixture(ui, Pane::General);
+        if let Some(agent) = &mut ui.agent {
+            agent.accessibility = false;
+            agent.automatic = false;
+            agent.launch_at_login = UiLaunchAtLogin::Off;
+        }
+    }),
+    ("workspaces", |ui| reset_fixture(ui, Pane::Workspaces)),
+    ("shortcuts", |ui| reset_fixture(ui, Pane::Shortcuts)),
+];
+
+fn general(ui: &Ui, p: Paint) -> El {
     let c = &p.k.c;
     let mut sections = Vec::new();
     if let Some(agent) = &ui.agent {
@@ -137,12 +262,7 @@ pub fn general(ui: &Ui, p: Paint) -> El {
                 ButtonKind::Secondary,
                 |_: &mut Ui, _: &mut Tx| {
                     if let Some(path) = spaceman::config::config_path() {
-                        drop(
-                            std::process::Command::new("open")
-                                .arg("-R")
-                                .arg(path)
-                                .spawn(),
-                        );
+                        controls::reveal_in_finder(&path);
                     }
                 },
             ),
@@ -156,21 +276,10 @@ pub fn general(ui: &Ui, p: Paint) -> El {
 
 const MONITORS: [&str; 3] = ["Any", "Main", "Secondary"];
 
-pub fn workspaces(ui: &Ui, p: Paint) -> El {
-    let mut workspaces: Vec<WorkspaceId> = WorkspaceId::numbered().collect();
-    workspaces.extend(
-        WorkspaceId::all()
-            .skip(WorkspaceId::NUMBERED_COUNT)
-            .filter(|workspace| {
-                ui.doc.monitor(*workspace).is_some()
-                    || ui
-                        .doc
-                        .rules()
-                        .iter()
-                        .any(|rule| rule.place == crate::rules::Place::Workspace(*workspace))
-            }),
-    );
-    let rows = workspaces
+fn workspaces(ui: &Ui, p: Paint) -> El {
+    let rows = ui
+        .doc
+        .workspaces_with_referenced(WorkspaceId::numbered())
         .into_iter()
         .map(|workspace| monitor_row(ui, p, workspace))
         .collect();
@@ -236,7 +345,7 @@ const SHORTCUTS: &[(&str, &[&[&str]])] = &[
     ("Fullscreen layout", &[&["⌥", "⇧", "F"]]),
 ];
 
-pub fn shortcuts(p: Paint) -> El {
+fn shortcuts(p: Paint) -> El {
     let rows = controls::shortcut_rows(p, "shortcut", SHORTCUTS);
     scroll_body(
         "shortcuts-body",
