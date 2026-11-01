@@ -21,54 +21,13 @@ mod view;
 
 use std::sync::Arc;
 
+pub use panes::Pane;
 use rules::{Doc, Place};
 use rune::{AppSpec, KeyEvent, PointerPress, Tx, Waker};
-use spaceman::{
-    WorkspaceId,
-    app::{UiAction, UiAgentSnapshot, UiBridge, UiHudEvent, UiLaunchAtLogin, UiUpdateStatus},
-};
+use spaceman::app::{UiAction, UiAgentSnapshot, UiBridge, UiHudEvent};
 
 /// One fixed size: tiling window managers float such a window, and every pane fits it.
 pub const WINDOW_SIZE: (f32, f32) = (860.0, 580.0);
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum Pane {
-    General,
-    Rules,
-    Workspaces,
-    Shortcuts,
-    Activity,
-}
-
-impl Pane {
-    pub const ALL: [Pane; 5] = [
-        Pane::General,
-        Pane::Rules,
-        Pane::Workspaces,
-        Pane::Shortcuts,
-        Pane::Activity,
-    ];
-
-    pub fn title(self) -> &'static str {
-        match self {
-            Pane::General => "General",
-            Pane::Rules => "Rules",
-            Pane::Workspaces => "Workspaces",
-            Pane::Shortcuts => "Shortcuts",
-            Pane::Activity => "Activity",
-        }
-    }
-
-    pub fn key(self) -> &'static str {
-        match self {
-            Pane::General => "general",
-            Pane::Rules => "rules",
-            Pane::Workspaces => "workspaces",
-            Pane::Shortcuts => "shortcuts",
-            Pane::Activity => "activity",
-        }
-    }
-}
 
 /// The one anchored menu that is open.
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -101,7 +60,7 @@ pub struct Ui {
     /// The last save that failed.
     pub error: Option<String>,
     /// Scenes render fixed data and ignore the live agent and file.
-    fixture: bool,
+    pub(crate) fixture: bool,
 }
 
 impl Ui {
@@ -191,7 +150,7 @@ impl Ui {
     }
 
     /// Names and icons for every app the rules mention, before the view needs them.
-    fn look_up_apps(&mut self) {
+    pub(crate) fn look_up_apps(&mut self) {
         for rule in self.doc.rules() {
             if let Some(bundle_id) = &rule.bundle_id {
                 self.apps.get(bundle_id);
@@ -297,19 +256,15 @@ fn on_key(ui: &mut Ui, event: &KeyEvent, _tx: &mut Tx) -> bool {
             return true;
         }
     }
-    if ui.tour.is_none() && ui.hud_preview.is_none() && !event.mods.shift && !event.mods.alt {
-        let pane = match event.key {
-            rune::Key::Command('1') => Some(Pane::General),
-            rune::Key::Command('2') => Some(Pane::Rules),
-            rune::Key::Command('3') => Some(Pane::Workspaces),
-            rune::Key::Command('4') => Some(Pane::Shortcuts),
-            rune::Key::Command('5') => Some(Pane::Activity),
-            _ => None,
-        };
-        if let Some(pane) = pane {
-            ui.select_pane(pane);
-            return true;
-        }
+    if ui.tour.is_none()
+        && ui.hud_preview.is_none()
+        && !event.mods.shift
+        && !event.mods.alt
+        && let rune::Key::Command(digit) = event.key
+        && let Some(pane) = Pane::from_shortcut(digit)
+    {
+        ui.select_pane(pane);
+        return true;
     }
     false
 }
@@ -335,7 +290,7 @@ fn spec() -> AppSpec<Ui> {
         title: "Spaceman",
         size: WINDOW_SIZE,
         min_size: Some(WINDOW_SIZE),
-        init: blank_fixture,
+        init: playground::blank_fixture,
         view: view::view,
         scenes: playground::scenes(),
         fonts: rune_theme_opencode::FONTS,
@@ -415,187 +370,4 @@ fn main() {
     }
     #[cfg(not(target_os = "macos"))]
     base_app().run();
-}
-
-// ---------------------------------------------------------------------------
-// Scenes for headless stills (`--snap out.png --scene rules`) and Playground
-
-pub(crate) type Scene = (&'static str, fn(&mut Ui));
-
-pub(crate) const BASE_SCENES: &[Scene] = &[
-    ("onboarding-welcome", |ui| {
-        fixture(ui, Pane::Rules);
-        let tour =
-            onboarding::Tour::fixture(onboarding::Step::Welcome, false, false, Vec::new(), ui);
-        onboarding::apply_fixture(ui, tour);
-    }),
-    ("onboarding-conflict", |ui| {
-        fixture(ui, Pane::Rules);
-        let tour = onboarding::Tour::fixture(
-            onboarding::Step::Welcome,
-            false,
-            false,
-            vec!["AeroSpace".into()],
-            ui,
-        );
-        onboarding::apply_fixture(ui, tour);
-    }),
-    ("onboarding-setup", |ui| {
-        fixture(ui, Pane::Rules);
-        let tour = onboarding::Tour::fixture(onboarding::Step::Setup, false, false, Vec::new(), ui);
-        onboarding::apply_fixture(ui, tour);
-    }),
-    ("onboarding-setup-waiting", |ui| {
-        fixture(ui, Pane::Rules);
-        let tour = onboarding::Tour::fixture(onboarding::Step::Setup, false, true, Vec::new(), ui);
-        onboarding::apply_fixture(ui, tour);
-    }),
-    ("onboarding-setup-ready", |ui| {
-        fixture(ui, Pane::Rules);
-        let tour = onboarding::Tour::fixture(onboarding::Step::Setup, true, false, Vec::new(), ui);
-        onboarding::apply_fixture(ui, tour);
-    }),
-    ("onboarding-rules", |ui| {
-        fixture(ui, Pane::Rules);
-        ui.doc = Doc::parse(
-            "version = 1\n\n[[rules]]\nbundle_id = \"com.apple.Safari\"\naction = \"route\"\nworkspace = 1\n\n[[rules]]\nbundle_id = \"com.apple.MobileSMS\"\naction = \"route\"\nworkspace = 2\n\n[[rules]]\nbundle_id = \"com.apple.systempreferences\"\naction = \"float\"\n",
-        );
-        ui.look_up_apps();
-        let tour = onboarding::Tour::fixture(onboarding::Step::Rules, true, false, Vec::new(), ui);
-        onboarding::apply_fixture(ui, tour);
-    }),
-    ("onboarding-done", |ui| {
-        fixture(ui, Pane::Rules);
-        let tour = onboarding::Tour::fixture(onboarding::Step::Done, true, false, Vec::new(), ui);
-        onboarding::apply_fixture(ui, tour);
-    }),
-    ("general", |ui| fixture(ui, Pane::General)),
-    ("general-setup", |ui| {
-        fixture(ui, Pane::General);
-        if let Some(agent) = &mut ui.agent {
-            agent.accessibility = false;
-            agent.automatic = false;
-            agent.launch_at_login = UiLaunchAtLogin::Off;
-        }
-    }),
-    ("rules", |ui| fixture(ui, Pane::Rules)),
-    ("rules-drag", |ui| {
-        fixture(ui, Pane::Rules);
-        ui.drag = map::Drag::fixture(&ui.doc);
-    }),
-    ("rules-add", |ui| {
-        fixture(ui, Pane::Rules);
-        ui.open_add_menu(Place::Float);
-    }),
-    ("workspaces", |ui| fixture(ui, Pane::Workspaces)),
-    ("shortcuts", |ui| fixture(ui, Pane::Shortcuts)),
-    ("activity", |ui| {
-        fixture(ui, Pane::Activity);
-        ui.activity = activity::ActivityPane::fixture_healthy();
-    }),
-    ("hud-switch", |ui| {
-        fixture(ui, Pane::Rules);
-        ui.hud_preview = Some(spaceman::app::UiHudEvent {
-            workspace: spaceman::WorkspaceId::TWO,
-            kind: spaceman::app::UiHudKind::Workspace,
-            preview: spaceman::app::UiHudLayout::Split(vec![
-                spaceman::Rect {
-                    x: 0,
-                    y: 0,
-                    width: 860,
-                    height: 1100,
-                },
-                spaceman::Rect {
-                    x: 860,
-                    y: 0,
-                    width: 640,
-                    height: 550,
-                },
-                spaceman::Rect {
-                    x: 860,
-                    y: 550,
-                    width: 640,
-                    height: 550,
-                },
-            ]),
-            windows: 3,
-        });
-    }),
-    ("hud-moved", |ui| {
-        fixture(ui, Pane::Rules);
-        ui.hud_preview = Some(spaceman::app::UiHudEvent {
-            workspace: spaceman::WorkspaceId::FOUR,
-            kind: spaceman::app::UiHudKind::Moved,
-            preview: spaceman::app::UiHudLayout::Split(vec![
-                spaceman::Rect {
-                    x: 0,
-                    y: 0,
-                    width: 750,
-                    height: 1100,
-                },
-                spaceman::Rect {
-                    x: 750,
-                    y: 0,
-                    width: 750,
-                    height: 1100,
-                },
-            ]),
-            windows: 2,
-        });
-    }),
-    ("hud-fullscreen", |ui| {
-        fixture(ui, Pane::Rules);
-        ui.hud_preview = Some(spaceman::app::UiHudEvent {
-            workspace: spaceman::WorkspaceId::ONE,
-            kind: spaceman::app::UiHudKind::Fullscreen { enabled: true },
-            preview: spaceman::app::UiHudLayout::Fullscreen,
-            windows: 2,
-        });
-    }),
-];
-
-pub(crate) fn blank_fixture() -> Ui {
-    let mut ui = Ui {
-        pane: Pane::Rules,
-        navigated: false,
-        doc: Doc::parse(include_str!("../fixtures/config.toml")),
-        apps: apps::Catalog::default(),
-        agent: None,
-        activity: activity::ActivityPane::default(),
-        bridge: None,
-        window: None,
-        hud_driver: None,
-        hud_preview: None,
-        waker: None,
-        frame_remembered: true,
-        tour: None,
-        drag: None,
-        menu: None,
-        running: Vec::new(),
-        error: None,
-        fixture: true,
-    };
-    fixture(&mut ui, Pane::Rules);
-    ui
-}
-
-fn fixture(ui: &mut Ui, pane: Pane) {
-    ui.fixture = true;
-    ui.pane = pane;
-    ui.tour = None;
-    ui.hud_preview = None;
-    ui.doc = Doc::parse(include_str!("../fixtures/config.toml"));
-    ui.look_up_apps();
-    ui.agent = Some(UiAgentSnapshot {
-        accessibility: true,
-        automatic: true,
-        hud: true,
-        launch_at_login: UiLaunchAtLogin::On,
-        update: UiUpdateStatus::Idle,
-        active_workspaces: vec![
-            WorkspaceId::THREE,
-            WorkspaceId::named('M').unwrap_or(WorkspaceId::SIX),
-        ],
-        last_error: None,
-    });
 }

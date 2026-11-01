@@ -11,10 +11,16 @@ use rune::{El, Tx, col, row, text};
 use spaceman::journal::{AnomalyKind, AnomalyState, JournalEvent, JournalLine};
 
 use crate::{
-    Ui,
+    Pane, Ui,
     controls::{self, ButtonKind, Paint},
+    playground::{Scene, reset_fixture},
     view::scroll_body,
 };
+
+pub(crate) const SCENES: &[Scene] = &[("activity", |ui| {
+    reset_fixture(ui, Pane::Activity);
+    ui.activity = ActivityPane::fixture_healthy();
+})];
 
 const WINDOW_24H_MS: u64 = 24 * 3_600 * 1_000;
 const MAX_ROWS: usize = 16;
@@ -280,7 +286,7 @@ impl ActivityPane {
     }
 
     #[must_use]
-    pub fn fixture_healthy() -> Self {
+    fn fixture_healthy() -> Self {
         let now_ms = 1_700_000_000_000;
         let at = |secs_ago: u64| now_ms - secs_ago * 1_000;
         let lines = vec![
@@ -563,18 +569,7 @@ pub fn pane(ui: &Ui, p: Paint) -> El {
                 ButtonKind::Secondary,
                 |_: &mut Ui, _: &mut Tx| {
                     if let Some((live, _)) = spaceman::journal::default_paths() {
-                        let target = if live.exists() {
-                            live
-                        } else {
-                            live.parent()
-                                .map_or(live.clone(), std::path::Path::to_path_buf)
-                        };
-                        drop(
-                            std::process::Command::new("open")
-                                .arg("-R")
-                                .arg(target)
-                                .spawn(),
-                        );
+                        controls::reveal_in_finder(&live);
                     }
                 },
             ),

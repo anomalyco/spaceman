@@ -13,11 +13,15 @@ use rune::{
     ScreenEdge, TextStyle, Tx, col, el, row, text,
 };
 use spaceman::{
-    Axis,
+    Axis, Rect, WorkspaceId,
     app::{HUD_PREVIEW_RECT, UiHudEvent, UiHudKind, UiHudLayout},
 };
 
-use crate::controls::Paint;
+use crate::{
+    Pane,
+    controls::Paint,
+    playground::{Scene, reset_fixture},
+};
 
 pub const HOLD_MS: u64 = 1_150;
 const HOLD_DURATION: Duration = Duration::from_millis(HOLD_MS);
@@ -338,13 +342,8 @@ fn mini_layout(layout: &UiHudLayout, hair: f32) -> El {
             );
         }
         UiHudLayout::Split(tiles) => {
-            let pw = HUD_PREVIEW_RECT.width.max(1) as f32;
-            let ph = HUD_PREVIEW_RECT.height.max(1) as f32;
             for (index, rect) in tiles.iter().enumerate() {
-                let x = INSET + (rect.x as f32 / pw) * inner_w + 0.6;
-                let y = INSET + (rect.y as f32 / ph) * inner_h + 0.6;
-                let w = ((rect.width as f32 / pw) * inner_w - 1.2).max(2.0);
-                let h = ((rect.height as f32 / ph) * inner_h - 1.2).max(2.0);
+                let (x, y, w, h) = scale_tile(*rect, INSET, inner_w, inner_h, 0.6, 2.0);
                 screen = screen.child(
                     el().key(format!("tile{index}"))
                         .absolute(x, y)
@@ -388,13 +387,8 @@ pub fn stage(event: &UiHudEvent, p: Paint) -> El {
             );
         }
         UiHudLayout::Split(tiles) => {
-            let pw = HUD_PREVIEW_RECT.width.max(1) as f32;
-            let ph = HUD_PREVIEW_RECT.height.max(1) as f32;
             for (index, rect) in tiles.iter().enumerate() {
-                let x = PAD + (rect.x as f32 / pw) * inner_w + 4.0;
-                let y = PAD + (rect.y as f32 / ph) * inner_h + 4.0;
-                let w = ((rect.width as f32 / pw) * inner_w - 8.0).max(12.0);
-                let h = ((rect.height as f32 / ph) * inner_h - 8.0).max(12.0);
+                let (x, y, w, h) = scale_tile(*rect, PAD, inner_w, inner_h, 4.0, 12.0);
                 mock = mock.child(
                     el().key(format!("stage-tile{index}"))
                         .absolute(x, y)
@@ -420,6 +414,86 @@ pub fn stage(event: &UiHudEvent, p: Paint) -> El {
         .center()
         .child(mock)
 }
+
+fn scale_tile(
+    rect: Rect,
+    inset: f32,
+    inner_w: f32,
+    inner_h: f32,
+    gap: f32,
+    min_side: f32,
+) -> (f32, f32, f32, f32) {
+    let pw = HUD_PREVIEW_RECT.width.max(1) as f32;
+    let ph = HUD_PREVIEW_RECT.height.max(1) as f32;
+    (
+        inset + (rect.x as f32 / pw) * inner_w + gap,
+        inset + (rect.y as f32 / ph) * inner_h + gap,
+        ((rect.width as f32 / pw) * inner_w - gap * 2.0).max(min_side),
+        ((rect.height as f32 / ph) * inner_h - gap * 2.0).max(min_side),
+    )
+}
+
+const fn tile_rect(x: i32, y: i32, width: i32, height: i32) -> Rect {
+    Rect {
+        x,
+        y,
+        width,
+        height,
+    }
+}
+
+fn hud_scene(
+    ui: &mut crate::Ui,
+    workspace: WorkspaceId,
+    kind: UiHudKind,
+    preview: UiHudLayout,
+    windows: usize,
+) {
+    reset_fixture(ui, Pane::Rules);
+    ui.hud_preview = Some(UiHudEvent {
+        workspace,
+        kind,
+        preview,
+        windows,
+    });
+}
+
+pub(crate) const SCENES: &[Scene] = &[
+    ("hud-switch", |ui| {
+        hud_scene(
+            ui,
+            WorkspaceId::TWO,
+            UiHudKind::Workspace,
+            UiHudLayout::Split(vec![
+                tile_rect(0, 0, 860, 1100),
+                tile_rect(860, 0, 640, 550),
+                tile_rect(860, 550, 640, 550),
+            ]),
+            3,
+        );
+    }),
+    ("hud-moved", |ui| {
+        hud_scene(
+            ui,
+            WorkspaceId::FOUR,
+            UiHudKind::Moved,
+            UiHudLayout::Split(vec![
+                tile_rect(0, 0, 750, 1100),
+                tile_rect(750, 0, 750, 1100),
+            ]),
+            2,
+        );
+    }),
+    ("hud-fullscreen", |ui| {
+        hud_scene(
+            ui,
+            WorkspaceId::ONE,
+            UiHudKind::Fullscreen { enabled: true },
+            UiHudLayout::Fullscreen,
+            2,
+        );
+    }),
+];
 
 fn srgb(hex: u32) -> Color {
     rgba(hex, 1.0)

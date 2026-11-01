@@ -9,7 +9,7 @@ use rune_kit::{
 };
 use spaceman::{WorkspaceId, app::UiLaunchAtLogin};
 
-use super::{Input, StarterApp, Step, Tour, flow::View, input};
+use super::{Input, StarterApp, Step, flow::View, input};
 use crate::{
     Ui,
     controls::{self, ButtonKind, DESCRIPTION, Paint},
@@ -501,8 +501,4 @@ fn done(p: Paint) -> El {
             Some("Spaceman stays in the menu bar, ready for your shortcuts."),
         ))
         .child(controls::card(p, "done-shortcuts", rows))
-}
-
-pub fn apply_fixture(ui: &mut Ui, tour: Tour) {
-    ui.tour = Some(tour);
 }

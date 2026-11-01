@@ -185,6 +185,30 @@ impl Doc {
             .and_then(|table| string(table, "monitor"))
     }
 
+    /// `defaults`, followed by any other workspaces referenced in `[[rules]]` or `[[workspaces]]`.
+    pub fn workspaces_with_referenced(
+        &self,
+        defaults: impl IntoIterator<Item = WorkspaceId>,
+    ) -> Vec<WorkspaceId> {
+        let mut out: Vec<WorkspaceId> = defaults.into_iter().collect();
+        let mut extra: Vec<WorkspaceId> = self
+            .rules()
+            .into_iter()
+            .filter_map(|rule| match rule.place {
+                Place::Workspace(workspace) => Some(workspace),
+                Place::Float | Place::Ignore => None,
+            })
+            .chain(WorkspaceId::all().filter(|workspace| self.monitor(*workspace).is_some()))
+            .collect();
+        extra.sort();
+        for workspace in extra {
+            if !out.contains(&workspace) {
+                out.push(workspace);
+            }
+        }
+        out
+    }
+
     /// Sets the display a workspace asks for; `None` removes its entry, back to the default.
     pub fn set_monitor(&mut self, workspace: WorkspaceId, monitor: Option<&str>) {
         let tables = self

@@ -8,9 +8,10 @@ use rune_kit::{Menu as KitMenu, MenuItem, Placement};
 use spaceman::WorkspaceId;
 
 use crate::{
-    Menu, Ui,
+    Menu, Pane, Ui,
     apps::{self, App},
     controls::{self, Paint},
+    playground::{Scene, reset_fixture},
     rules::{Doc, Place, Rule},
 };
 
@@ -40,6 +41,18 @@ const CHIPS_PER_ROW: usize = 4;
 /// Pointer travel before a press on an app becomes a drag.
 const SLOP: f32 = 3.0;
 
+pub(crate) const SCENES: &[Scene] = &[
+    ("rules", |ui| reset_fixture(ui, Pane::Rules)),
+    ("rules-drag", |ui| {
+        reset_fixture(ui, Pane::Rules);
+        ui.drag = Drag::fixture(&ui.doc);
+    }),
+    ("rules-add", |ui| {
+        reset_fixture(ui, Pane::Rules);
+        ui.open_add_menu(Place::Float);
+    }),
+];
+
 /// An app being dragged: its rule, where it started and how far the pointer has gone.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Drag {
@@ -56,7 +69,7 @@ pub struct Drag {
 
 impl Drag {
     /// Slack mid-drag over workspace 4, for stills.
-    pub fn fixture(doc: &Doc) -> Option<Drag> {
+    fn fixture(doc: &Doc) -> Option<Drag> {
         let layout = Layout::new(doc);
         let rule = doc
             .rules()
@@ -92,20 +105,7 @@ struct Layout {
 impl Layout {
     fn new(doc: &Doc) -> Layout {
         let rules = doc.rules();
-        let mut tiles: Vec<WorkspaceId> =
-            (1..=9).filter_map(|n| WorkspaceId::new(n).ok()).collect();
-        let mut extra: Vec<WorkspaceId> = rules
-            .iter()
-            .filter_map(|rule| match rule.place {
-                Place::Workspace(workspace) => Some(workspace),
-                _ => None,
-            })
-            .chain(WorkspaceId::all().filter(|workspace| doc.monitor(*workspace).is_some()))
-            .filter(|workspace| !tiles.contains(workspace))
-            .collect();
-        extra.sort();
-        extra.dedup();
-        tiles.extend(extra);
+        let tiles = doc.workspaces_with_referenced(WorkspaceId::numbered().take(9));
         let mut routed = vec![Vec::new(); tiles.len()];
         let mut floating = Vec::new();
         for rule in rules {
@@ -208,320 +208,7 @@ impl Layout {
         ((0.0..=MAP_W).contains(&x) && (top..=self.box_top() + self.box_h() + GAP).contains(&y))
             .then_some(Place::Float)
     }
-}
 
-pub fn pane(ui: &Ui, p: Paint, layer: &mut Vec<El>) -> El {
-    let layout = Layout::new(&ui.doc);
-    let active = ui
-        .agent
-        .as_ref()
-        .map_or(&[][..], |agent| agent.active_workspaces.as_slice());
-    let target = ui
-        .drag
-        .filter(|drag| drag.moved)
-        .and_then(|drag| drag.target);
-    let mut map = el().key("map").w(MAP_W).h(layout.height()).child(
-        controls::heading(
-            p,
-            "where",
-            "Where apps open",
-            Some("Drag an app to move it"),
-        )
-        .w(MAP_W)
-        .px(0.0)
-        .absolute(0.0, 0.0),
-    );
-    for (index, workspace) in layout.tiles.iter().copied().enumerate() {
-        let (x, y) = layout.tile_origin(index);
-        let is_active = active.contains(&workspace);
-        let is_target = target == Some(Place::Workspace(workspace));
-        map = map.child(
-            tile(
-                ui, p, &layout, index, workspace, is_active, is_target, layer,
-            )
-            .absolute(x, y),
-        );
-    }
-    map = map
-        .child(
-            controls::heading(p, "float-heading", "Float, never tiled", None)
-                .w(MAP_W)
-                .px(0.0)
-                .absolute(0.0, layout.float_head_top()),
-        )
-        .child(float_box(
-            ui,
-            p,
-            &layout,
-            target == Some(Place::Float),
-            layer,
-        ));
-    if let Some(drag) = ui.drag.filter(|drag| drag.moved) {
-        map = map.children(ghost(ui, p, &layout, drag));
-    }
-    col()
-        .key("rules-body")
-        .grow(1.0)
-        .px(crate::view::CONTENT_PADDING)
-        .pt(4.0)
-        .child(map)
-}
-
-#[allow(clippy::too_many_arguments)]
-fn tile(
-    ui: &Ui,
-    p: Paint,
-    layout: &Layout,
-    index: usize,
-    workspace: WorkspaceId,
-    active: bool,
-    target: bool,
-    layer: &mut Vec<El>,
-) -> El {
-    let c = &p.k.c;
-    let rules = &layout.routed[index];
-    let border = if target {
-        (1.5, c.border_focus)
-    } else if active {
-        (1.5, c.border_strong)
-    } else {
-        (p.hair, c.border_weak)
-    };
-    let mut tile = el()
-        .key(format!("tile-{workspace}"))
-        .role("group")
-        .label(format!("Workspace {workspace}"))
-        .size(TILE_W, TILE_H)
-        .radius(p.k.radius.lg)
-        .fill(if target { c.layer_02 } else { c.layer_01 })
-        .border(border.0, border.1)
-        .hover_group()
-        .child(
-            text(workspace.to_string())
-                .key("number")
-                .font(p.k.ty.ui_medium)
-                .color(if active { p.text() } else { p.muted() })
-                .absolute(TILE_PAD, 10.0),
-        )
-        .child(add_button(ui, p, Place::Workspace(workspace), layer).absolute(TILE_W - 30.0, 8.0));
-    let overflow = rules.len() > ICONS_SHOWN;
-    for (slot, rule) in rules.iter().enumerate() {
-        let (x, y) = Layout::icon_offset(slot);
-        if overflow && slot == ICONS_SHOWN - 1 {
-            tile = tile.child(
-                el().key("more")
-                    .size(ICON, ICON)
-                    .radius(6.0)
-                    .fill(c.layer_03)
-                    .center()
-                    .child(
-                        text(format!("+{}", rules.len() - slot))
-                            .font(p.k.ty.small_medium)
-                            .color(p.muted()),
-                    )
-                    .absolute(x, y),
-            );
-            break;
-        }
-        let item = draggable(ui, p, layout, rule, app_icon(ui, p, rule, ICON), layer);
-        tile = tile.child(item.absolute(x, y));
-    }
-    tile
-}
-
-/// The float box: a chip per floating app, then Add.
-fn float_box(ui: &Ui, p: Paint, layout: &Layout, target: bool, layer: &mut Vec<El>) -> El {
-    let c = &p.k.c;
-    let top = layout.box_top();
-    let mut area = el()
-        .key("float-box")
-        .w(MAP_W)
-        .h(layout.box_h())
-        .radius(p.k.radius.lg)
-        .fill(if target { c.layer_02 } else { c.layer_01 })
-        .border(
-            if target { 1.5 } else { p.hair },
-            if target {
-                c.border_focus
-            } else {
-                c.border_weak
-            },
-        )
-        .absolute(0.0, top);
-    for (slot, rule) in layout.floating.iter().enumerate() {
-        let (x, y) = layout.chip_origin(slot);
-        let chip = chip(ui, p, rule);
-        area = area.child(draggable(ui, p, layout, rule, chip, layer).absolute(x, y - top));
-    }
-    let (x, y) = layout.chip_origin(layout.floating.len());
-    area.child(add_chip(ui, p, layer).absolute(x, y - top))
-}
-
-fn chip(ui: &Ui, p: Paint, rule: &Rule) -> El {
-    let c = &p.k.c;
-    let name = rule_name(ui, rule);
-    row()
-        .size(CHIP_W, CHIP_H)
-        .px(6.0)
-        .gap(8.0)
-        .center_y()
-        .radius(p.k.radius.md)
-        .fill(c.layer_02)
-        .child(app_icon(ui, p, rule, CHIP_ICON))
-        .child(
-            text(if rule.place == Place::Ignore {
-                format!("{name} · ignored")
-            } else {
-                name
-            })
-            .key("name")
-            .font(p.k.ty.ui)
-            .color(p.text())
-            .truncate()
-            .shrink(),
-        )
-}
-
-fn add_chip(ui: &Ui, p: Paint, layer: &mut Vec<El>) -> El {
-    let c = &p.k.c;
-    let open = ui.menu == Some(Menu::Add(Place::Float));
-    let trigger = row()
-        .key("add-float")
-        .role("button")
-        .label("Add app")
-        .size(CHIP_W, CHIP_H)
-        .px(10.0)
-        .gap(6.0)
-        .center_y()
-        .radius(p.k.radius.md)
-        .border(p.hair, c.border_base)
-        .hover(c.hover)
-        .press(c.pressed)
-        .focusable(true)
-        .focus_ring(2.0, -2.0, c.border_focus)
-        .on_press(|ui: &mut Ui| ui.open_add_menu(Place::Float))
-        .child(rune::icon(&rune_theme_opencode::icons::PLUS, 14.0).color(c.icon_muted))
-        .child(text("Add app").font(p.k.ty.ui).color(p.muted()));
-    add_menu(ui, p, "add-float-menu", trigger, open, Place::Float, layer)
-}
-
-/// A tile's Add, shown while the pointer is over the tile or its menu is open.
-fn add_button(ui: &Ui, p: Paint, place: Place, layer: &mut Vec<El>) -> El {
-    let c = &p.k.c;
-    let open = ui.menu == Some(Menu::Add(place));
-    let trigger = el()
-        .key("add")
-        .role("button")
-        .label("Add an app here")
-        .size(22.0, 22.0)
-        .center()
-        .radius(p.k.radius.sm)
-        .hover(c.hover)
-        .press(c.pressed)
-        .on_press(move |ui: &mut Ui| ui.open_add_menu(place))
-        .child(rune::icon(&rune_theme_opencode::icons::PLUS, 14.0).color(c.icon_muted));
-    let trigger = if open || ui.drag.is_some() {
-        trigger.opacity(if open { 1.0 } else { 0.0 })
-    } else {
-        trigger.group_opacity(0.0, 1.0)
-    };
-    let key = match place {
-        Place::Workspace(workspace) => format!("add-{workspace}-menu"),
-        _ => "add-menu".into(),
-    };
-    add_menu(ui, p, &key, trigger, open, place, layer)
-}
-
-fn add_menu(
-    ui: &Ui,
-    p: Paint,
-    key: &str,
-    trigger: El,
-    open: bool,
-    place: Place,
-    layer: &mut Vec<El>,
-) -> El {
-    let mut menu = KitMenu::new(key)
-        .trigger(trigger)
-        .placement(Placement::BottomStart)
-        .gutter(4.0)
-        .min_width(220.0)
-        .open(open)
-        .on_close(|ui: &mut Ui| ui.menu = None);
-    if open {
-        menu = menu.group_label("Running apps");
-        if ui.running.is_empty() {
-            menu = menu.item(MenuItem::new("Every running app has a rule").disabled(true));
-        }
-        for app in &ui.running {
-            let bundle_id = app.bundle_id.clone();
-            let lead = controls::icon_or_initial(p, ui.apps.cached(&bundle_id), &app.name, 16.0);
-            menu = menu.item(MenuItem::new(app.name.clone()).lead(lead).on_select(
-                move |ui: &mut Ui| {
-                    let bundle_id = bundle_id.clone();
-                    ui.menu = None;
-                    ui.edit(move |doc| doc.add(&bundle_id, place));
-                },
-            ));
-        }
-    }
-    menu.build(p.k, layer)
-}
-
-/// `item` for `rule`, dragged to move it and right-clicked for its menu.
-fn draggable(ui: &Ui, p: Paint, layout: &Layout, rule: &Rule, item: El, layer: &mut Vec<El>) -> El {
-    let index = rule.index;
-    let Some((origin, size)) = layout.spot(rule) else {
-        return item;
-    };
-    let dragging = ui.drag.is_some_and(|drag| drag.rule == index && drag.moved);
-    let tiles = layout.tiles.clone();
-    let floating: Vec<usize> = layout.floating.iter().map(|r| r.index).collect();
-    let routed: Vec<Vec<usize>> = layout
-        .routed
-        .iter()
-        .map(|rules| rules.iter().map(|r| r.index).collect())
-        .collect();
-    let item = item
-        .key(format!("rule-{index}"))
-        .role("button")
-        .label(rule_name(ui, rule))
-        .help(rule_help(ui, rule))
-        .cursor(Cursor::Grab)
-        .opacity(if dragging { 0.3 } else { 1.0 })
-        .on_drag(move |ui: &mut Ui, d: &mut rune::Drag, _: &mut Tx| {
-            drag(ui, d, index, origin, size, |x, y| {
-                let layout = Layout::from_parts(&tiles, &routed, &floating);
-                layout.target_at(x, y)
-            })
-        })
-        .on_secondary_press(move |ui: &mut Ui, press: PointerPress, _: &mut Tx| {
-            ui.menu = Some(Menu::Rule(index, press));
-        });
-    let point = match ui.menu {
-        Some(Menu::Rule(open, point)) if open == index => Some(point),
-        _ => None,
-    };
-    let mut menu = rune_kit::context_menu(format!("rule-{index}-menu"), item, point)
-        .on_close(|ui: &mut Ui| ui.menu = None);
-    if point.is_some() {
-        if rule.place != Place::Float {
-            menu = menu.item(
-                MenuItem::new("Float, never tiled").on_select(move |ui: &mut Ui| {
-                    ui.menu = None;
-                    ui.edit(|doc| doc.place(index, Place::Float));
-                }),
-            );
-        }
-        menu = menu.item(MenuItem::new("Remove rule").on_select(move |ui: &mut Ui| {
-            ui.menu = None;
-            ui.edit(|doc| doc.remove(index));
-        }));
-    }
-    menu.build(p.k, layer)
-}
-
-impl Layout {
     /// A layout rebuilt from indices alone, for drag handlers, which can't hold rules.
     fn from_parts(tiles: &[WorkspaceId], routed: &[Vec<usize>], floating: &[usize]) -> Layout {
         let rule = |index: usize| Rule {
@@ -538,6 +225,387 @@ impl Layout {
                 .collect(),
             floating: floating.iter().copied().map(rule).collect(),
         }
+    }
+}
+
+pub fn pane(ui: &Ui, p: Paint, layer: &mut Vec<El>) -> El {
+    let layout = Layout::new(&ui.doc);
+    let view = MapView {
+        ui,
+        p,
+        layout: &layout,
+        active: ui
+            .agent
+            .as_ref()
+            .map_or(&[][..], |agent| agent.active_workspaces.as_slice()),
+        target: ui
+            .drag
+            .filter(|drag| drag.moved)
+            .and_then(|drag| drag.target),
+    };
+    let mut map = el().key("map").w(MAP_W).h(layout.height()).child(
+        controls::heading(
+            p,
+            "where",
+            "Where apps open",
+            Some("Drag an app to move it"),
+        )
+        .w(MAP_W)
+        .px(0.0)
+        .absolute(0.0, 0.0),
+    );
+    for (index, workspace) in layout.tiles.iter().copied().enumerate() {
+        let (x, y) = layout.tile_origin(index);
+        map = map.child(view.tile(index, workspace, layer).absolute(x, y));
+    }
+    map = map
+        .child(
+            controls::heading(p, "float-heading", "Float, never tiled", None)
+                .w(MAP_W)
+                .px(0.0)
+                .absolute(0.0, layout.float_head_top()),
+        )
+        .child(view.float_box(layer));
+    if let Some(drag) = ui.drag.filter(|drag| drag.moved) {
+        map = map.children(view.ghost(drag));
+    }
+    col()
+        .key("rules-body")
+        .grow(1.0)
+        .px(crate::view::CONTENT_PADDING)
+        .pt(4.0)
+        .child(map)
+}
+
+#[derive(Clone, Copy)]
+struct MapView<'a> {
+    ui: &'a Ui,
+    p: Paint,
+    layout: &'a Layout,
+    active: &'a [WorkspaceId],
+    target: Option<Place>,
+}
+
+impl MapView<'_> {
+    fn tile(self, index: usize, workspace: WorkspaceId, layer: &mut Vec<El>) -> El {
+        let c = &self.p.k.c;
+        let rules = &self.layout.routed[index];
+        let active = self.active.contains(&workspace);
+        let target = self.target == Some(Place::Workspace(workspace));
+        let border = if target {
+            (1.5, c.border_focus)
+        } else if active {
+            (1.5, c.border_strong)
+        } else {
+            (self.p.hair, c.border_weak)
+        };
+        let mut tile = el()
+            .key(format!("tile-{workspace}"))
+            .role("group")
+            .label(format!("Workspace {workspace}"))
+            .size(TILE_W, TILE_H)
+            .radius(self.p.k.radius.lg)
+            .fill(if target { c.layer_02 } else { c.layer_01 })
+            .border(border.0, border.1)
+            .hover_group()
+            .child(
+                text(workspace.to_string())
+                    .key("number")
+                    .font(self.p.k.ty.ui_medium)
+                    .color(if active {
+                        self.p.text()
+                    } else {
+                        self.p.muted()
+                    })
+                    .absolute(TILE_PAD, 10.0),
+            )
+            .child(
+                self.add_button(Place::Workspace(workspace), layer)
+                    .absolute(TILE_W - 30.0, 8.0),
+            );
+        let overflow = rules.len() > ICONS_SHOWN;
+        for (slot, rule) in rules.iter().enumerate() {
+            let (x, y) = Layout::icon_offset(slot);
+            if overflow && slot == ICONS_SHOWN - 1 {
+                tile = tile.child(
+                    el().key("more")
+                        .size(ICON, ICON)
+                        .radius(6.0)
+                        .fill(c.layer_03)
+                        .center()
+                        .child(
+                            text(format!("+{}", rules.len() - slot))
+                                .font(self.p.k.ty.small_medium)
+                                .color(self.p.muted()),
+                        )
+                        .absolute(x, y),
+                );
+                break;
+            }
+            let item = self.draggable(rule, self.app_icon(rule, ICON), layer);
+            tile = tile.child(item.absolute(x, y));
+        }
+        tile
+    }
+
+    /// The float box: a chip per floating app, then Add.
+    fn float_box(self, layer: &mut Vec<El>) -> El {
+        let c = &self.p.k.c;
+        let top = self.layout.box_top();
+        let target = self.target == Some(Place::Float);
+        let mut area = el()
+            .key("float-box")
+            .w(MAP_W)
+            .h(self.layout.box_h())
+            .radius(self.p.k.radius.lg)
+            .fill(if target { c.layer_02 } else { c.layer_01 })
+            .border(
+                if target { 1.5 } else { self.p.hair },
+                if target {
+                    c.border_focus
+                } else {
+                    c.border_weak
+                },
+            )
+            .absolute(0.0, top);
+        for (slot, rule) in self.layout.floating.iter().enumerate() {
+            let (x, y) = self.layout.chip_origin(slot);
+            let chip = self.chip(rule);
+            area = area.child(self.draggable(rule, chip, layer).absolute(x, y - top));
+        }
+        let (x, y) = self.layout.chip_origin(self.layout.floating.len());
+        area.child(self.add_chip(layer).absolute(x, y - top))
+    }
+
+    fn chip(self, rule: &Rule) -> El {
+        let c = &self.p.k.c;
+        let name = self.rule_name(rule);
+        row()
+            .size(CHIP_W, CHIP_H)
+            .px(6.0)
+            .gap(8.0)
+            .center_y()
+            .radius(self.p.k.radius.md)
+            .fill(c.layer_02)
+            .child(self.app_icon(rule, CHIP_ICON))
+            .child(
+                text(if rule.place == Place::Ignore {
+                    format!("{name} · ignored")
+                } else {
+                    name
+                })
+                .key("name")
+                .font(self.p.k.ty.ui)
+                .color(self.p.text())
+                .truncate()
+                .shrink(),
+            )
+    }
+
+    fn add_chip(self, layer: &mut Vec<El>) -> El {
+        let c = &self.p.k.c;
+        let trigger = row()
+            .key("add-float")
+            .role("button")
+            .label("Add app")
+            .size(CHIP_W, CHIP_H)
+            .px(10.0)
+            .gap(6.0)
+            .center_y()
+            .radius(self.p.k.radius.md)
+            .border(self.p.hair, c.border_base)
+            .hover(c.hover)
+            .press(c.pressed)
+            .focusable(true)
+            .focus_ring(2.0, -2.0, c.border_focus)
+            .on_press(|ui: &mut Ui| ui.open_add_menu(Place::Float))
+            .child(rune::icon(&rune_theme_opencode::icons::PLUS, 14.0).color(c.icon_muted))
+            .child(text("Add app").font(self.p.k.ty.ui).color(self.p.muted()));
+        self.add_menu("add-float-menu", trigger, Place::Float, layer)
+    }
+
+    /// A tile's Add, shown while the pointer is over the tile or its menu is open.
+    fn add_button(self, place: Place, layer: &mut Vec<El>) -> El {
+        let c = &self.p.k.c;
+        let open = self.ui.menu == Some(Menu::Add(place));
+        let trigger = el()
+            .key("add")
+            .role("button")
+            .label("Add an app here")
+            .size(22.0, 22.0)
+            .center()
+            .radius(self.p.k.radius.sm)
+            .hover(c.hover)
+            .press(c.pressed)
+            .on_press(move |ui: &mut Ui| ui.open_add_menu(place))
+            .child(rune::icon(&rune_theme_opencode::icons::PLUS, 14.0).color(c.icon_muted));
+        let trigger = if open || self.ui.drag.is_some() {
+            trigger.opacity(if open { 1.0 } else { 0.0 })
+        } else {
+            trigger.group_opacity(0.0, 1.0)
+        };
+        let key = match place {
+            Place::Workspace(workspace) => format!("add-{workspace}-menu"),
+            Place::Float | Place::Ignore => "add-menu".into(),
+        };
+        self.add_menu(&key, trigger, place, layer)
+    }
+
+    fn add_menu(self, key: &str, trigger: El, place: Place, layer: &mut Vec<El>) -> El {
+        let open = self.ui.menu == Some(Menu::Add(place));
+        let mut menu = KitMenu::new(key)
+            .trigger(trigger)
+            .placement(Placement::BottomStart)
+            .gutter(4.0)
+            .min_width(220.0)
+            .open(open)
+            .on_close(|ui: &mut Ui| ui.menu = None);
+        if open {
+            menu = menu.group_label("Running apps");
+            if self.ui.running.is_empty() {
+                menu = menu.item(MenuItem::new("Every running app has a rule").disabled(true));
+            }
+            for app in &self.ui.running {
+                let bundle_id = app.bundle_id.clone();
+                let lead = controls::icon_or_initial(
+                    self.p,
+                    self.ui.apps.cached(&bundle_id),
+                    &app.name,
+                    16.0,
+                );
+                menu = menu.item(MenuItem::new(app.name.clone()).lead(lead).on_select(
+                    move |ui: &mut Ui| {
+                        let bundle_id = bundle_id.clone();
+                        ui.menu = None;
+                        ui.edit(move |doc| doc.add(&bundle_id, place));
+                    },
+                ));
+            }
+        }
+        menu.build(self.p.k, layer)
+    }
+
+    /// `item` for `rule`, dragged to move it and right-clicked for its menu.
+    fn draggable(self, rule: &Rule, item: El, layer: &mut Vec<El>) -> El {
+        let index = rule.index;
+        let Some((origin, size)) = self.layout.spot(rule) else {
+            return item;
+        };
+        let dragging = self
+            .ui
+            .drag
+            .is_some_and(|drag| drag.rule == index && drag.moved);
+        let tiles = self.layout.tiles.clone();
+        let floating: Vec<usize> = self.layout.floating.iter().map(|r| r.index).collect();
+        let routed: Vec<Vec<usize>> = self
+            .layout
+            .routed
+            .iter()
+            .map(|rules| rules.iter().map(|r| r.index).collect())
+            .collect();
+        let item = item
+            .key(format!("rule-{index}"))
+            .role("button")
+            .label(self.rule_name(rule))
+            .help(self.rule_help(rule))
+            .cursor(Cursor::Grab)
+            .opacity(if dragging { 0.3 } else { 1.0 })
+            .on_drag(move |ui: &mut Ui, d: &mut rune::Drag, _: &mut Tx| {
+                drag(ui, d, index, origin, size, |x, y| {
+                    let layout = Layout::from_parts(&tiles, &routed, &floating);
+                    layout.target_at(x, y)
+                })
+            })
+            .on_secondary_press(move |ui: &mut Ui, press: PointerPress, _: &mut Tx| {
+                ui.menu = Some(Menu::Rule(index, press));
+            });
+        let point = match self.ui.menu {
+            Some(Menu::Rule(open, point)) if open == index => Some(point),
+            _ => None,
+        };
+        let mut menu = rune_kit::context_menu(format!("rule-{index}-menu"), item, point)
+            .on_close(|ui: &mut Ui| ui.menu = None);
+        if point.is_some() {
+            if rule.place != Place::Float {
+                menu = menu.item(MenuItem::new("Float, never tiled").on_select(
+                    move |ui: &mut Ui| {
+                        ui.menu = None;
+                        ui.edit(|doc| doc.place(index, Place::Float));
+                    },
+                ));
+            }
+            menu = menu.item(MenuItem::new("Remove rule").on_select(move |ui: &mut Ui| {
+                ui.menu = None;
+                ui.edit(|doc| doc.remove(index));
+            }));
+        }
+        menu.build(self.p.k, layer)
+    }
+
+    /// The dragged item, following the pointer above everything else in the map.
+    fn ghost(self, drag: Drag) -> Option<El> {
+        let rule = self
+            .layout
+            .routed
+            .iter()
+            .flatten()
+            .chain(&self.layout.floating)
+            .find(|rule| rule.index == drag.rule)?;
+        let item = if drag.size == (CHIP_W, CHIP_H) {
+            self.chip(rule)
+        } else {
+            self.app_icon(rule, ICON)
+        };
+        let mut ghost = item
+            .key("ghost")
+            .cursor(Cursor::Grabbing)
+            .absolute(drag.origin.0 + drag.delta.0, drag.origin.1 + drag.delta.1);
+        for shadow in &self.p.k.elevation.floating {
+            ghost = ghost.box_shadow(*shadow);
+        }
+        Some(ghost)
+    }
+
+    fn rule_app<'a>(self, rule: &Rule) -> Option<&'a App>
+    where
+        Self: 'a,
+    {
+        self.ui.apps.cached(rule.bundle_id.as_deref()?)
+    }
+
+    fn rule_name(self, rule: &Rule) -> String {
+        match (self.rule_app(rule), &rule.bundle_id, &rule.title) {
+            (Some(app), _, _) => app.name.clone(),
+            (None, Some(bundle_id), _) => apps::fallback_name(bundle_id),
+            (None, None, Some(title)) => title.clone(),
+            (None, None, None) => "Any app".into(),
+        }
+    }
+
+    fn rule_help(self, rule: &Rule) -> String {
+        let name = self.rule_name(rule);
+        match &rule.title {
+            Some(title) => format!("{name}, windows titled “{title}”"),
+            None => name,
+        }
+    }
+
+    fn app_icon(self, rule: &Rule, size: f32) -> El {
+        let icon =
+            controls::icon_or_initial(self.p, self.rule_app(rule), &self.rule_name(rule), size);
+        if rule.title.is_none() {
+            return icon;
+        }
+        // A rule for some of an app's windows wears a dot.
+        let c = &self.p.k.c;
+        icon.child(
+            el().key("title-dot")
+                .size(8.0, 8.0)
+                .radius(4.0)
+                .fill(c.icon_accent)
+                .border(1.5, c.layer_01)
+                .absolute(size - 6.0, -2.0),
+        )
     }
 }
 
@@ -593,67 +661,6 @@ fn drag(
             }
         }
     }
-}
-
-/// The dragged item, following the pointer above everything else in the map.
-fn ghost(ui: &Ui, p: Paint, layout: &Layout, drag: Drag) -> Option<El> {
-    let rule = layout
-        .routed
-        .iter()
-        .flatten()
-        .chain(&layout.floating)
-        .find(|rule| rule.index == drag.rule)?;
-    let item = if drag.size == (CHIP_W, CHIP_H) {
-        chip(ui, p, rule)
-    } else {
-        app_icon(ui, p, rule, ICON)
-    };
-    let mut ghost = item
-        .key("ghost")
-        .cursor(Cursor::Grabbing)
-        .absolute(drag.origin.0 + drag.delta.0, drag.origin.1 + drag.delta.1);
-    for shadow in &p.k.elevation.floating {
-        ghost = ghost.box_shadow(*shadow);
-    }
-    Some(ghost)
-}
-
-fn rule_app<'a>(ui: &'a Ui, rule: &Rule) -> Option<&'a App> {
-    ui.apps.cached(rule.bundle_id.as_deref()?)
-}
-
-fn rule_name(ui: &Ui, rule: &Rule) -> String {
-    match (rule_app(ui, rule), &rule.bundle_id, &rule.title) {
-        (Some(app), _, _) => app.name.clone(),
-        (None, Some(bundle_id), _) => apps::fallback_name(bundle_id),
-        (None, None, Some(title)) => title.clone(),
-        (None, None, None) => "Any app".into(),
-    }
-}
-
-fn rule_help(ui: &Ui, rule: &Rule) -> String {
-    let name = rule_name(ui, rule);
-    match &rule.title {
-        Some(title) => format!("{name}, windows titled “{title}”"),
-        None => name,
-    }
-}
-
-fn app_icon(ui: &Ui, p: Paint, rule: &Rule, size: f32) -> El {
-    let icon = controls::icon_or_initial(p, rule_app(ui, rule), &rule_name(ui, rule), size);
-    if rule.title.is_none() {
-        return icon;
-    }
-    // A rule for some of an app's windows wears a dot.
-    let c = &p.k.c;
-    icon.child(
-        el().key("title-dot")
-            .size(8.0, 8.0)
-            .radius(4.0)
-            .fill(c.icon_accent)
-            .border(1.5, c.layer_01)
-            .absolute(size - 6.0, -2.0),
-    )
 }
 
 #[cfg(test)]

@@ -11,11 +11,15 @@ use std::{
 };
 
 pub use flow::{Effect, Flow, Input, SetupState, Step, launch_step};
-pub use view::{apply_fixture, overlay};
+pub use view::overlay;
 
 use spaceman::app::UiLaunchAtLogin;
 
-use crate::{Ui, apps};
+use crate::{
+    Pane, Ui, apps,
+    playground::{Scene, reset_fixture},
+    rules::Doc,
+};
 
 const ADVANCE_BEAT: Duration = Duration::from_millis(700);
 const STARTER_LIMIT: usize = 4;
@@ -69,7 +73,7 @@ impl Tour {
         }
     }
 
-    pub fn fixture(
+    fn fixture(
         step: Step,
         accessibility: bool,
         asked: bool,
@@ -287,3 +291,44 @@ fn live_starters(ui: &mut Ui) -> Vec<StarterApp> {
 
     out
 }
+
+fn tour_scene(ui: &mut Ui, step: Step, accessibility: bool, asked: bool) {
+    reset_fixture(ui, Pane::Rules);
+    ui.tour = Some(Tour::fixture(step, accessibility, asked, Vec::new(), ui));
+}
+
+pub(crate) const SCENES: &[Scene] = &[
+    ("onboarding-welcome", |ui| {
+        tour_scene(ui, Step::Welcome, false, false)
+    }),
+    ("onboarding-conflict", |ui| {
+        reset_fixture(ui, Pane::Rules);
+        ui.tour = Some(Tour::fixture(
+            Step::Welcome,
+            false,
+            false,
+            vec!["AeroSpace".into()],
+            ui,
+        ));
+    }),
+    ("onboarding-setup", |ui| {
+        tour_scene(ui, Step::Setup, false, false)
+    }),
+    ("onboarding-setup-waiting", |ui| {
+        tour_scene(ui, Step::Setup, false, true)
+    }),
+    ("onboarding-setup-ready", |ui| {
+        tour_scene(ui, Step::Setup, true, false)
+    }),
+    ("onboarding-rules", |ui| {
+        reset_fixture(ui, Pane::Rules);
+        ui.doc = Doc::parse(
+            "version = 1\n\n[[rules]]\nbundle_id = \"com.apple.Safari\"\naction = \"route\"\nworkspace = 1\n\n[[rules]]\nbundle_id = \"com.apple.MobileSMS\"\naction = \"route\"\nworkspace = 2\n\n[[rules]]\nbundle_id = \"com.apple.systempreferences\"\naction = \"float\"\n",
+        );
+        ui.look_up_apps();
+        ui.tour = Some(Tour::fixture(Step::Rules, true, false, Vec::new(), ui));
+    }),
+    ("onboarding-done", |ui| {
+        tour_scene(ui, Step::Done, true, false)
+    }),
+];
