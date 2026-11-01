@@ -17,7 +17,7 @@ use objc2_core_graphics::{
     CGEvent, CGEventFlags, CGEventSource, CGEventSourceStateID, CGEventType, CGMouseButton,
     CGWindowID, CGWindowListOption,
 };
-use objc2_foundation::{NSNumber, NSString};
+use objc2_foundation::{NSNumber, ns_string};
 
 use crate::{
     AppInstanceId, AppObservation, DisplaySelector, NativeObservation, ObservedApplication,
@@ -80,14 +80,12 @@ pub fn snapshot(cycle: u64) -> Result<(NativeObservation, Settings), SnapshotErr
     snapshot_in_output(cycle, main_output()?)
 }
 
-const OWN_BUNDLE_ID: &str = "com.kitlangton.spaceman";
-
 /// Spaceman's own windows (Settings, Onboarding, HUD) are never managed, even when `spaceman` CLI
 /// observes `Spaceman.app` from a second process.
 pub(super) fn is_own_application(application: &NSRunningApplication) -> bool {
     application
         .bundleIdentifier()
-        .is_some_and(|id| id.to_string() == OWN_BUNDLE_ID)
+        .is_some_and(|id| &*id == ns_string!("com.kitlangton.spaceman"))
 }
 
 #[must_use]
@@ -202,8 +200,7 @@ pub fn outputs() -> Result<DisplayOutputs, SnapshotError> {
 
 fn screen_display_id(screen: &NSScreen) -> Option<u32> {
     let description = screen.deviceDescription();
-    let key = NSString::from_str("NSScreenNumber");
-    let number = description.objectForKey(&key)?;
+    let number = description.objectForKey(ns_string!("NSScreenNumber"))?;
     number
         .downcast_ref::<NSNumber>()
         .map(NSNumber::unsignedIntValue)
@@ -389,7 +386,7 @@ const LOCK_SCREEN_BUNDLE_ID: &str = "com.apple.loginwindow";
 fn is_lock_screen(application: &NSRunningApplication) -> bool {
     application
         .bundleIdentifier()
-        .is_some_and(|bundle| bundle.to_string() == LOCK_SCREEN_BUNDLE_ID)
+        .is_some_and(|bundle| &*bundle == ns_string!("com.apple.loginwindow"))
 }
 
 fn is_screen_locked() -> bool {

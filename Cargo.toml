@@ -61,6 +61,7 @@ objc2-core-foundation = { version = "0.3.2", default-features = false, features 
   "CFArray",
   "CFDate",
   "CFDictionary",
+  "CFFileDescriptor",
   "CFNumber",
   "CFRunLoop",
   "CFString",

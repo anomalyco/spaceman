@@ -5,14 +5,12 @@ mod flow;
 mod tests;
 mod view;
 
-use std::{
-    thread,
-    time::{Duration, Instant},
-};
+use std::time::{Duration, Instant};
 
 pub use flow::{Effect, Flow, Input, SetupState, Step, launch_step};
 pub use view::overlay;
 
+use rune::Tx;
 use spaceman::app::UiLaunchAtLogin;
 
 use crate::{
@@ -123,7 +121,7 @@ impl Tour {
     }
 }
 
-pub fn poll(ui: &mut Ui) -> bool {
+pub fn poll(ui: &mut Ui, tx: &mut Tx) -> bool {
     let status = ui_setup_state(ui);
     let live = !ui.fixture;
     let Some(tour) = &mut ui.tour else {
@@ -149,6 +147,13 @@ pub fn poll(ui: &mut Ui) -> bool {
     }
     apply(ui, effect);
     remember_step(ui, step_before);
+    if let Some(at) = ui.tour.as_ref().and_then(|tour| tour.advance_at) {
+        tx.wake_after(
+            ADVANCE_BEAT
+                .saturating_sub(at.elapsed())
+                .max(Duration::from_millis(1)),
+        );
+    }
     let after = ui.tour.as_ref().map(|tour| tour.flow.view());
     after.as_ref() != Some(&before)
 }
@@ -199,12 +204,6 @@ fn apply(ui: &mut Ui, effect: Effect) {
         Effect::AdvanceSoon => {
             if let Some(tour) = &mut ui.tour {
                 tour.advance_at = Some(Instant::now());
-            }
-            if let Some(waker) = ui.waker.clone() {
-                thread::spawn(move || {
-                    thread::sleep(ADVANCE_BEAT + Duration::from_millis(15));
-                    waker();
-                });
             }
         }
         Effect::Finish => {

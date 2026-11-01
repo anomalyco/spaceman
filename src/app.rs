@@ -393,6 +393,7 @@ impl PreparedAgent {
                 events,
                 hotkey_workspaces: self.hotkey_workspaces,
                 hud: self.hud,
+                trusted,
                 controls: self.controls,
                 control_server: self.control_server,
                 bridge: self.bridge,

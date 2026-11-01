@@ -51,7 +51,6 @@ pub struct Ui {
     window: Option<rune::AppHandle<Ui>>,
     hud_driver: Option<hud::HudDriver>,
     pub hud_preview: Option<UiHudEvent>,
-    waker: Option<Waker>,
     frame_remembered: bool,
     pub tour: Option<onboarding::Tour>,
     pub drag: Option<map::Drag>,
@@ -66,6 +65,7 @@ pub struct Ui {
 impl Ui {
     #[cfg(target_os = "macos")]
     fn load_live(
+        doc: Doc,
         bridge: UiBridge,
         initial_tour: Option<onboarding::Step>,
         accessibility: bool,
@@ -73,7 +73,7 @@ impl Ui {
         let mut ui = Ui {
             pane: Pane::Rules,
             navigated: false,
-            doc: Doc::load(),
+            doc,
             apps: apps::Catalog::default(),
             agent: None,
             activity: activity::ActivityPane::default(),
@@ -81,7 +81,6 @@ impl Ui {
             window: None,
             hud_driver: None,
             hud_preview: None,
-            waker: None,
             frame_remembered: false,
             tour: None,
             drag: None,
@@ -194,7 +193,6 @@ impl Ui {
 }
 
 fn setup(ui: &mut Ui, waker: Waker) {
-    ui.waker = Some(waker.clone());
     if !ui.fixture
         && let Some(bridge) = &ui.bridge
     {
@@ -202,11 +200,11 @@ fn setup(ui: &mut Ui, waker: Waker) {
     }
 }
 
-fn poll(ui: &mut Ui, _clock: f64, _tx: &mut Tx) -> bool {
+fn poll(ui: &mut Ui, _clock: f64, tx: &mut Tx) -> bool {
     if !ui.fixture && !ui.frame_remembered {
         ui.frame_remembered = rune_mac::remember_frame("Spaceman");
     }
-    let mut changed = onboarding::poll(ui);
+    let mut changed = onboarding::poll(ui, tx);
     changed |= ui.activity.poll(
         ui.pane == Pane::Activity && ui.tour.is_none() && ui.hud_preview.is_none(),
         ui.fixture,
@@ -225,7 +223,7 @@ fn poll(ui: &mut Ui, _clock: f64, _tx: &mut Tx) -> bool {
         ui.agent = Some(snapshot);
         changed = true;
         if ui.tour.is_some() {
-            changed |= onboarding::poll(ui);
+            changed |= onboarding::poll(ui, tx);
         }
     }
     if let Some(hud_event) = news.hud
@@ -336,9 +334,10 @@ pub(crate) fn live_app(
     initial_tour: Option<onboarding::Step>,
     accessibility: bool,
 ) -> rune::App<Ui> {
-    let initial_hud = Doc::load().hud();
+    let doc = Doc::load();
+    let initial_hud = doc.hud();
     let mut app = base_app()
-        .init(move || Ui::load_live(bridge, initial_tour, accessibility))
+        .init(move || Ui::load_live(doc, bridge, initial_tour, accessibility))
         .on_reopen(on_reopen);
     let hud_driver = hud::install(&mut app, initial_hud);
     app.handle().update_if(move |ui, _| {

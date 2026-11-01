@@ -176,3 +176,20 @@ fn worker_thread_queries_drain_objective_c_autorelease_pool() {
         "worker thread leaked {growth} bytes of phys_footprint across 400 cycles (baseline={baseline}, after={after})"
     );
 }
+
+#[test]
+fn window_event_monitor_wakes_parked_run_loop_on_refresh_and_drop() {
+    let monitor = super::WindowEventMonitor::new();
+    assert!(monitor.take_dirty());
+    // Let the AX event thread park inside `CFRunLoop::run_in_mode` (24h timeout).
+    thread::sleep(std::time::Duration::from_millis(25));
+    monitor.refresh_applications();
+    thread::sleep(std::time::Duration::from_millis(10));
+    let stop_started = std::time::Instant::now();
+    drop(monitor);
+    assert!(
+        stop_started.elapsed() < std::time::Duration::from_millis(500),
+        "parked event monitor took {:?} to wake and stop",
+        stop_started.elapsed()
+    );
+}
