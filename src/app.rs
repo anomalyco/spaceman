@@ -277,6 +277,7 @@ pub struct PreparedAgent {
 }
 
 pub fn prepare() -> Result<(PreparedAgent, UiBridge), String> {
+    macos::redirect_stderr_to_log();
     log_event!(
         "agent started (pid {}, version {})",
         std::process::id(),

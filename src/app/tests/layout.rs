@@ -73,10 +73,7 @@ fn fullscreen_layout_toggles_without_changing_tile_order() {
     assert_eq!(runtime.backend.frames[&first], outputs.main().frame);
     assert_eq!(runtime.backend.frames[&second], outputs.main().frame);
     assert!(runtime.workspaces.uses_fullscreen_layout(WorkspaceId::ONE));
-    assert!(matches!(
-        status.layouts[0].mode,
-        status_item::WorkspaceLayoutMode::Fullscreen
-    ));
+    assert!(matches!(status.layouts[0].mode, UiHudLayout::Fullscreen));
     assert_eq!(
         runtime.workspaces.engine(WorkspaceId::ONE).bound_windows(),
         vec![first.clone(), second.clone()]
@@ -89,10 +86,7 @@ fn fullscreen_layout_toggles_without_changing_tile_order() {
     assert_eq!(runtime.backend.frames[&first].width, 500);
     assert_eq!(runtime.backend.frames[&second].x, 500);
     assert!(!runtime.workspaces.uses_fullscreen_layout(WorkspaceId::ONE));
-    assert!(matches!(
-        status.layouts[0].mode,
-        status_item::WorkspaceLayoutMode::Split(_)
-    ));
+    assert!(matches!(status.layouts[0].mode, UiHudLayout::Split(_)));
     assert_eq!(
         runtime.workspaces.engine(WorkspaceId::ONE).bound_windows(),
         vec![first, second]
@@ -129,10 +123,7 @@ fn removing_the_last_window_exits_fullscreen_layout() {
 
     assert!(!runtime.workspaces.uses_fullscreen_layout(WorkspaceId::ONE));
     assert!(runtime.pending_fullscreen_focus_restore.is_empty());
-    assert!(matches!(
-        status.layouts[0].mode,
-        status_item::WorkspaceLayoutMode::Split(_)
-    ));
+    assert!(matches!(status.layouts[0].mode, UiHudLayout::Split(_)));
 }
 
 #[test]
@@ -883,10 +874,7 @@ fn opening_a_new_tiled_window_exits_fullscreen_layout_and_splits_side_by_side() 
     let status = runtime.cycle(outputs, &cancelled).unwrap();
 
     assert!(!runtime.workspaces.uses_fullscreen_layout(WorkspaceId::ONE));
-    assert!(matches!(
-        status.layouts[0].mode,
-        status_item::WorkspaceLayoutMode::Split(_)
-    ));
+    assert!(matches!(status.layouts[0].mode, UiHudLayout::Split(_)));
     assert_eq!(runtime.backend.frames[&first].width, 500);
     assert_eq!(runtime.backend.frames[&second].x, 500);
     assert_eq!(runtime.backend.frames[&second].width, 500);

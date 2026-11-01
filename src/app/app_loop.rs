@@ -3,7 +3,7 @@ use std::time::SystemTime;
 use super::{
     worker::{
         cancel_unavailable_exit, queue_input, request_restore, send_restore, send_with_outputs,
-        settings_state, show_result,
+        show_result,
     },
     *,
 };
@@ -325,12 +325,10 @@ impl MainThreadAgent {
                     "active_workspaces": self.active_workspaces,
                 })
                 .to_string()),
-                ControlCommand::Settings => Ok(settings_state(
-                    self.automatic,
-                    &self.active_workspaces,
-                    self.last_error.as_deref(),
-                )
-                .to_string()),
+                ControlCommand::Settings => {
+                    self.launch_at_login = UiLaunchAtLogin::from_result(login_item::status());
+                    Ok(self.snapshot().to_settings_json().to_string())
+                }
                 ControlCommand::App(ref action) => {
                     queue(&self.actions_sender, action.clone(), "queued")
                 }
@@ -756,17 +754,18 @@ impl MainThreadAgent {
     }
 
     fn publish_ui(&self, config_changed: bool) {
-        self.bridge.publish(
-            UiAgentSnapshot {
-                accessibility: macos::accessibility_trusted(),
-                automatic: self.automatic,
-                hud: self.hud,
-                launch_at_login: self.launch_at_login.clone(),
-                update: sparkle::status().into(),
-                active_workspaces: self.active_workspaces.clone(),
-                last_error: self.last_error.clone(),
-            },
-            config_changed,
-        );
+        self.bridge.publish(self.snapshot(), config_changed);
+    }
+
+    fn snapshot(&self) -> UiAgentSnapshot {
+        UiAgentSnapshot {
+            accessibility: macos::accessibility_trusted(),
+            automatic: self.automatic,
+            hud: self.hud,
+            launch_at_login: self.launch_at_login.clone(),
+            update: sparkle::status().into(),
+            active_workspaces: self.active_workspaces.clone(),
+            last_error: self.last_error.clone(),
+        }
     }
 }

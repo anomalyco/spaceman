@@ -212,12 +212,10 @@ impl Layout {
 
 pub fn pane(ui: &Ui, p: Paint, layer: &mut Vec<El>) -> El {
     let layout = Layout::new(&ui.doc);
-    let active: Vec<String> = ui
+    let active = ui
         .agent
-        .clone()
-        .flatten()
-        .map(|agent| agent.active)
-        .unwrap_or_default();
+        .as_ref()
+        .map_or(&[][..], |agent| agent.active_workspaces.as_slice());
     let target = ui
         .drag
         .filter(|drag| drag.moved)
@@ -235,7 +233,7 @@ pub fn pane(ui: &Ui, p: Paint, layer: &mut Vec<El>) -> El {
     );
     for (index, workspace) in layout.tiles.iter().copied().enumerate() {
         let (x, y) = layout.tile_origin(index);
-        let is_active = active.contains(&workspace.to_string());
+        let is_active = active.contains(&workspace);
         let is_target = target == Some(Place::Workspace(workspace));
         map = map.child(
             tile(
