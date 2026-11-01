@@ -151,8 +151,7 @@ fn gesture_dispatch_preserves_preview_and_final_semantics() {
 #[test]
 fn dispatch_classifies_cancellation_before_worker_receipt() {
     let (sender, receiver) = channel();
-    let mut busy = false;
-    let mut interruptible = false;
+    let mut dispatch = WorkerDispatch::new(sender);
     let mut commands = actions()
         .into_iter()
         .map(|(action, _)| {
@@ -178,26 +177,16 @@ fn dispatch_classifies_cancellation_before_worker_receipt() {
     commands.push((WorkerCommand::Action(WorkerAction::Retile, outputs()), true));
     commands.push((WorkerCommand::Stop, false));
     for (command, expected) in commands {
-        assert!(send_worker_command(
-            &sender,
-            command,
-            &mut busy,
-            &mut interruptible
-        ));
-        assert!(busy);
-        assert_eq!(interruptible, expected);
+        assert!(dispatch.send(command));
+        assert!(dispatch.is_busy());
+        assert_eq!(dispatch.is_interruptible_busy(), expected);
         assert!(receiver.try_recv().is_ok());
-        busy = false;
+        dispatch.finish_command();
     }
     drop(receiver);
-    assert!(!send_worker_command(
-        &sender,
-        WorkerCommand::Action(WorkerAction::Retile, outputs()),
-        &mut busy,
-        &mut interruptible
-    ));
-    assert!(!busy);
-    assert!(!interruptible);
+    assert!(!dispatch.send(WorkerCommand::Action(WorkerAction::Retile, outputs())));
+    assert!(!dispatch.is_busy());
+    assert!(!dispatch.is_interruptible_busy());
 }
 
 #[test]
@@ -229,26 +218,23 @@ fn control_acknowledgements_name_each_queued_action() {
 fn restoration_request_sends_now_or_waits_for_the_current_worker() {
     for was_busy in [false, true] {
         let (sender, receiver) = channel();
-        let mut busy = was_busy;
-        let mut interruptible = true;
-        let mut pending = false;
-        let mut restoring = false;
-        request_restore(
-            &sender,
-            &mut busy,
-            &mut interruptible,
-            &mut pending,
-            &mut restoring,
-        );
-        assert!(busy);
-        assert_eq!(pending, was_busy);
-        assert_eq!(restoring, !was_busy);
-        assert_eq!(interruptible, was_busy);
+        let mut dispatch = WorkerDispatch::new(sender);
+        if was_busy {
+            assert!(dispatch.send(WorkerCommand::Action(WorkerAction::Retile, outputs())));
+            assert!(receiver.try_recv().is_ok());
+        }
+        dispatch.request_restore();
+        assert!(dispatch.is_busy());
+        assert_eq!(dispatch.is_restoring(), !was_busy);
+        assert!(dispatch.is_restoring_or_pending());
+        assert_eq!(dispatch.is_interruptible_busy(), was_busy);
         if was_busy {
             assert!(matches!(receiver.try_recv(), Err(TryRecvError::Empty)));
-        } else {
-            assert!(matches!(receiver.try_recv(), Ok(WorkerCommand::RestoreAll)));
+            dispatch.finish_command();
+            assert_eq!(dispatch.start_pending_restore(), Some(true));
+            assert!(dispatch.is_restoring());
         }
+        assert!(matches!(receiver.try_recv(), Ok(WorkerCommand::RestoreAll)));
     }
 }
 
@@ -256,15 +242,9 @@ fn restoration_request_sends_now_or_waits_for_the_current_worker() {
 fn disconnected_worker_does_not_claim_restoration_is_running() {
     let (sender, receiver) = channel();
     drop(receiver);
-    let (mut busy, mut interruptible, mut pending, mut restoring) = (false, false, false, false);
-    request_restore(
-        &sender,
-        &mut busy,
-        &mut interruptible,
-        &mut pending,
-        &mut restoring,
-    );
-    assert!(!busy && !restoring && !pending);
+    let mut dispatch = WorkerDispatch::new(sender);
+    dispatch.request_restore();
+    assert!(!dispatch.is_busy() && !dispatch.is_restoring_or_pending());
 }
 
 #[test]
