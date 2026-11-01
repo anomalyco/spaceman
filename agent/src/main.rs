@@ -12,6 +12,7 @@ mod controls;
 #[cfg(target_os = "macos")]
 mod host;
 mod map;
+mod onboarding;
 mod panes;
 mod playground;
 mod rules;
@@ -80,7 +81,9 @@ pub struct Ui {
     #[cfg(target_os = "macos")]
     bridge: Option<spaceman::app::UiBridge>,
     window: Option<rune::AppHandle<Ui>>,
+    waker: Option<Waker>,
     frame_remembered: bool,
+    pub tour: Option<onboarding::Tour>,
     pub drag: Option<map::Drag>,
     pub menu: Option<Menu>,
     pub running: Vec<apps::Running>,
@@ -92,7 +95,11 @@ pub struct Ui {
 
 impl Ui {
     #[cfg(target_os = "macos")]
-    fn load_live(bridge: spaceman::app::UiBridge) -> Ui {
+    fn load_live(
+        bridge: spaceman::app::UiBridge,
+        initial_tour: Option<onboarding::Step>,
+        accessibility: bool,
+    ) -> Ui {
         let mut ui = Ui {
             pane: Pane::Rules,
             navigated: false,
@@ -101,7 +108,9 @@ impl Ui {
             agent: None,
             bridge: Some(bridge),
             window: None,
+            waker: None,
             frame_remembered: false,
+            tour: None,
             drag: None,
             menu: None,
             running: Vec::new(),
@@ -109,7 +118,16 @@ impl Ui {
             fixture: false,
         };
         ui.look_up_apps();
+        if let Some(step) = initial_tour {
+            ui.tour = Some(onboarding::Tour::from_launch(step, accessibility, &mut ui));
+        }
         ui
+    }
+
+    pub fn start_tour(&mut self) {
+        self.menu = None;
+        self.drag = None;
+        self.tour = Some(onboarding::Tour::manual(self));
     }
 
     pub fn select_pane(&mut self, pane: Pane) {
@@ -200,34 +218,36 @@ impl Ui {
 }
 
 fn setup(ui: &mut Ui, waker: Waker) {
+    ui.waker = Some(waker.clone());
     #[cfg(target_os = "macos")]
     if !ui.fixture
         && let Some(bridge) = &ui.bridge
     {
         bridge.set_waker(Arc::new(move || waker()));
     }
-    #[cfg(not(target_os = "macos"))]
-    let _ = (ui, waker);
 }
 
 fn poll(ui: &mut Ui, _clock: f64, _tx: &mut Tx) -> bool {
     if !ui.fixture && !ui.frame_remembered {
         ui.frame_remembered = rune_mac::remember_frame("Spaceman");
     }
+    let mut changed = onboarding::poll(ui);
     #[cfg(target_os = "macos")]
     {
-        let Some(bridge) = &ui.bridge else {
-            return false;
+        let Some(bridge) = ui.bridge.clone() else {
+            return changed;
         };
         let news = bridge.take_news();
-        let mut changed = false;
         if let Some(snapshot) = news.snapshot {
             let agent = agent::Agent::from_snapshot(snapshot);
-            if !ui.navigated && ui.agent.is_none() && !agent.accessibility {
+            if !ui.navigated && ui.agent.is_none() && !agent.accessibility && ui.tour.is_none() {
                 ui.pane = Pane::General;
             }
             ui.agent = Some(Some(agent));
             changed = true;
+            if ui.tour.is_some() {
+                changed |= onboarding::poll(ui);
+            }
         }
         if news.config_changed && ui.drag.is_none() {
             ui.doc = Doc::load();
@@ -238,15 +258,21 @@ fn poll(ui: &mut Ui, _clock: f64, _tx: &mut Tx) -> bool {
     }
     #[cfg(not(target_os = "macos"))]
     {
-        false
+        changed
     }
 }
 
 fn on_key(ui: &mut Ui, event: &KeyEvent, _tx: &mut Tx) -> bool {
-    if event.key == rune::Key::Escape && (ui.drag.is_some() || ui.menu.is_some()) {
-        ui.drag = None;
-        ui.menu = None;
-        return true;
+    if event.key == rune::Key::Escape {
+        if ui.drag.is_some() || ui.menu.is_some() {
+            ui.drag = None;
+            ui.menu = None;
+            return true;
+        }
+        if ui.tour.as_ref().is_some_and(|tour| tour.flow.manual()) {
+            onboarding::input(ui, onboarding::Input::Dismiss);
+            return true;
+        }
     }
     false
 }
@@ -322,9 +348,13 @@ fn base_app() -> rune::App<Ui> {
 }
 
 #[cfg(target_os = "macos")]
-pub(crate) fn live_app(bridge: spaceman::app::UiBridge) -> rune::App<Ui> {
+pub(crate) fn live_app(
+    bridge: spaceman::app::UiBridge,
+    initial_tour: Option<onboarding::Step>,
+    accessibility: bool,
+) -> rune::App<Ui> {
     base_app()
-        .init(move || Ui::load_live(bridge))
+        .init(move || Ui::load_live(bridge, initial_tour, accessibility))
         .on_reopen(on_reopen)
 }
 
@@ -358,6 +388,52 @@ fn main() {
 pub(crate) type Scene = (&'static str, fn(&mut Ui));
 
 pub(crate) const BASE_SCENES: &[Scene] = &[
+    ("onboarding-welcome", |ui| {
+        fixture(ui, Pane::Rules);
+        let tour =
+            onboarding::Tour::fixture(onboarding::Step::Welcome, false, false, Vec::new(), ui);
+        onboarding::apply_fixture(ui, tour);
+    }),
+    ("onboarding-conflict", |ui| {
+        fixture(ui, Pane::Rules);
+        let tour = onboarding::Tour::fixture(
+            onboarding::Step::Welcome,
+            false,
+            false,
+            vec!["AeroSpace".into()],
+            ui,
+        );
+        onboarding::apply_fixture(ui, tour);
+    }),
+    ("onboarding-setup", |ui| {
+        fixture(ui, Pane::Rules);
+        let tour = onboarding::Tour::fixture(onboarding::Step::Setup, false, false, Vec::new(), ui);
+        onboarding::apply_fixture(ui, tour);
+    }),
+    ("onboarding-setup-waiting", |ui| {
+        fixture(ui, Pane::Rules);
+        let tour = onboarding::Tour::fixture(onboarding::Step::Setup, false, true, Vec::new(), ui);
+        onboarding::apply_fixture(ui, tour);
+    }),
+    ("onboarding-setup-ready", |ui| {
+        fixture(ui, Pane::Rules);
+        let tour = onboarding::Tour::fixture(onboarding::Step::Setup, true, false, Vec::new(), ui);
+        onboarding::apply_fixture(ui, tour);
+    }),
+    ("onboarding-rules", |ui| {
+        fixture(ui, Pane::Rules);
+        ui.doc = Doc::parse(
+            "version = 1\n\n[[rules]]\nbundle_id = \"com.apple.Safari\"\naction = \"route\"\nworkspace = 1\n\n[[rules]]\nbundle_id = \"com.apple.MobileSMS\"\naction = \"route\"\nworkspace = 2\n\n[[rules]]\nbundle_id = \"com.apple.systempreferences\"\naction = \"float\"\n",
+        );
+        ui.look_up_apps();
+        let tour = onboarding::Tour::fixture(onboarding::Step::Rules, true, false, Vec::new(), ui);
+        onboarding::apply_fixture(ui, tour);
+    }),
+    ("onboarding-done", |ui| {
+        fixture(ui, Pane::Rules);
+        let tour = onboarding::Tour::fixture(onboarding::Step::Done, true, false, Vec::new(), ui);
+        onboarding::apply_fixture(ui, tour);
+    }),
     ("general", |ui| fixture(ui, Pane::General)),
     ("general-setup", |ui| {
         fixture(ui, Pane::General);
@@ -390,7 +466,9 @@ pub(crate) fn blank_fixture() -> Ui {
         #[cfg(target_os = "macos")]
         bridge: None,
         window: None,
+        waker: None,
         frame_remembered: true,
+        tour: None,
         drag: None,
         menu: None,
         running: Vec::new(),
@@ -404,6 +482,7 @@ pub(crate) fn blank_fixture() -> Ui {
 fn fixture(ui: &mut Ui, pane: Pane) {
     ui.fixture = true;
     ui.pane = pane;
+    ui.tour = None;
     ui.doc = Doc::parse(include_str!("../fixtures/config.toml"));
     ui.look_up_apps();
     ui.agent = Some(Some(agent::Agent {

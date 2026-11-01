@@ -37,11 +37,14 @@ pub fn scenes() -> &'static [Scene] {
 }
 
 fn group(ui: &Ui) -> (usize, &'static str) {
+    if ui.tour.is_some() {
+        return (0, "Onboarding");
+    }
     let rank = Pane::ALL
         .iter()
         .position(|pane| *pane == ui.pane)
         .unwrap_or(0);
-    (rank, ui.pane.title())
+    (rank + 1, ui.pane.title())
 }
 
 #[cfg(test)]
@@ -57,6 +60,11 @@ mod tests {
             .collect();
         assert_eq!(grouped.len(), BASE_SCENES.len());
         for expected in [
+            "Onboarding/onboarding-welcome",
+            "Onboarding/onboarding-conflict",
+            "Onboarding/onboarding-setup",
+            "Onboarding/onboarding-rules",
+            "Onboarding/onboarding-done",
             "General/general",
             "General/general-setup",
             "Rules/rules",

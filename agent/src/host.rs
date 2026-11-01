@@ -38,8 +38,12 @@ pub fn bring_window_forward(window: &rune::AppHandle<Ui>) {
 pub fn run() -> Result<(), String> {
     redirect_stderr_to_log();
     let (prepared, bridge) = spaceman::app::prepare()?;
-    let open_at_launch = !spaceman::macos::accessibility_trusted();
-    let mut app = crate::live_app(bridge).args(Vec::new()).accessory();
+    let accessibility = spaceman::macos::accessibility_trusted();
+    let initial_tour = crate::onboarding::launch_step(accessibility);
+    let open_at_launch = initial_tour.is_some() || !accessibility;
+    let mut app = crate::live_app(bridge, initial_tour, accessibility)
+        .args(Vec::new())
+        .accessory();
     app = if open_at_launch {
         app.keep_running()
     } else {

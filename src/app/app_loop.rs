@@ -47,6 +47,7 @@ pub struct MainThreadAgent {
     open_settings: Box<dyn FnMut() -> Result<(), String>>,
     hotkeys: Option<Hotkeys>,
     automatic: bool,
+    awaiting_accessibility: bool,
     worker_busy: bool,
     worker_interruptible: bool,
     exit_intent: Option<ExitIntent>,
@@ -75,7 +76,8 @@ impl MainThreadAgent {
         init: AppLoopInit,
         launch_status: Result<login_item::Status, String>,
     ) -> Self {
-        let (hotkeys, hotkey_error) = if macos::accessibility_trusted() {
+        let trusted = macos::accessibility_trusted();
+        let (hotkeys, hotkey_error) = if trusted {
             match HotkeyPlan::current(&init.hotkey_workspaces)
                 .and_then(|plan| Hotkeys::install(init.actions_sender.clone(), plan))
             {
@@ -125,6 +127,7 @@ impl MainThreadAgent {
             open_settings: init.open_settings,
             hotkeys,
             automatic,
+            awaiting_accessibility: !trusted,
             worker_busy,
             worker_interruptible,
             exit_intent: None,
@@ -378,6 +381,7 @@ impl MainThreadAgent {
             match action {
                 Action::ToggleAutomatic if self.automatic => {
                     self.automatic = false;
+                    self.awaiting_accessibility = false;
                     self.cancelled.store(true, Ordering::Release);
                     self.hotkeys = None;
                     self.pending_inputs.clear();
@@ -402,11 +406,13 @@ impl MainThreadAgent {
                 }
                 Action::ToggleAutomatic => {
                     if !macos::accessibility_trusted() {
+                        self.awaiting_accessibility = true;
                         self.last_error = Some("Accessibility permission is required".into());
                         self.ui_dirty = true;
                         status_item::set_status("Paused · Accessibility required");
                         continue;
                     }
+                    self.awaiting_accessibility = false;
                     match HotkeyPlan::current(&self.hotkey_workspaces)
                         .and_then(|plan| Hotkeys::install(self.actions_sender.clone(), plan))
                     {
@@ -699,6 +705,17 @@ impl MainThreadAgent {
             self.config_stamp = stamp;
         }
         self.ui_dirty = false;
+        let trusted = macos::accessibility_trusted();
+        if self.awaiting_accessibility
+            && trusted
+            && !self.automatic
+            && !self.restoring
+            && !self.restore_pending
+            && self.exit_intent.is_none()
+        {
+            self.awaiting_accessibility = false;
+            drop(self.actions_sender.send(Action::ToggleAutomatic));
+        }
         self.publish_ui(config_changed);
     }
 

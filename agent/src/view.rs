@@ -7,7 +7,7 @@ use crate::{
     Pane, Ui,
     agent::Update,
     controls::{self, Paint},
-    map, panes,
+    map, onboarding, panes,
 };
 
 static GENERAL_ICON: Icon = Icon {
@@ -78,6 +78,9 @@ pub fn view(ui: &Ui, cx: &mut Cx<Ui>) -> El {
         .hover_motion_within(Anim::INSTANT, Anim::INSTANT)
         .child(sidebar(ui, p))
         .child(panel);
+    if let Some(tour) = onboarding::overlay(ui, p) {
+        layer.push(tour);
+    }
     rune_kit::root(window, layer)
 }
 
