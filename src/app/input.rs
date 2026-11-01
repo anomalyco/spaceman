@@ -2,10 +2,26 @@
 //! commands retain their arrival order until dispatched or explicitly cleared.
 use std::collections::VecDeque;
 
-use super::{FinalGesture, WorkerAction, is_window_drag, is_window_resize};
+use super::{FinalGesture, WorkerAction};
 use crate::{PhysicalWindowId, Rect};
 
 const MAX_PENDING_INPUTS: usize = 64;
+
+pub(super) fn is_window_drag(start: Rect, current: Rect) -> bool {
+    let moved = (start.x - current.x).abs().max((start.y - current.y).abs()) >= 6;
+    let resized = (start.width - current.width)
+        .abs()
+        .max((start.height - current.height).abs())
+        > 2;
+    moved && !resized
+}
+
+pub(super) fn is_window_resize(start: Rect, current: Rect) -> bool {
+    (start.width - current.width)
+        .abs()
+        .max((start.height - current.height).abs())
+        >= 6
+}
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub(super) enum QueuedInput {

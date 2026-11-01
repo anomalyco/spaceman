@@ -71,7 +71,7 @@ use input::{GestureTracker, InputQueue, QueuedInput};
 use journal::JournalState;
 use memory::MemoryState;
 use runtime::*;
-use worker::{is_window_drag, is_window_resize, spawn_worker};
+use worker::spawn_worker;
 
 pub const TICK_INTERVAL: Duration = Duration::from_millis(25);
 const FALLBACK_REFRESH_INTERVAL: Duration = Duration::from_secs(1);
@@ -421,13 +421,6 @@ pub fn allow_immediate_termination() {
 
 pub fn finish_appkit_termination() {
     termination::reply(true);
-}
-
-fn queue(actions: &Sender<Action>, action: Action, ack: &str) -> Result<String, String> {
-    actions
-        .send(action)
-        .map(|()| ack.into())
-        .map_err(|_| "Spaceman agent is stopping".into())
 }
 
 #[cfg(test)]

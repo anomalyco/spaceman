@@ -15,9 +15,10 @@ use crate::{BindingState, Slot, SlotId};
 
 use super::*;
 use super::{
+    app_loop::WorkerDispatch,
     cycle::OMISSION_SETTLE,
+    input::{is_window_drag, is_window_resize},
     parking::REPARK_ATTEMPT_LIMIT,
-    worker::{request_restore, send_worker_command},
 };
 
 #[derive(Clone, Debug, Eq, PartialEq)]

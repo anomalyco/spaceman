@@ -25,20 +25,20 @@ This file is the current engineering contract. README and `docs/` describe curre
 
 ## Architecture Map
 
-- `agent/`, `src/app.rs`, `src/app/app_loop.rs`, `src/app/bridge.rs`: single-process Rune host
-  (`spaceman-agent`), owner-only capped logging, 25 ms `NSTimer` foreground pump, action queue,
-  status, restore-before-exit coordination, in-process Settings window (`General`, `Rules`,
-  `Workspaces`, `Shortcuts`, `Activity`), first-run onboarding tour (`agent/src/onboarding.rs`),
-  non-activating Workspace HUD overlay (`agent/src/hud.rs`), Playground (`⇧⌘D` / `--playground`), and
-  the worker boundary.
+- `agent/`, `src/app.rs`, `src/app/app_loop.rs`, `src/app/app_loop/`, `src/app/worker.rs`,
+  `src/app/bridge.rs`: single-process Rune host (`spaceman-agent`), owner-only capped logging, 25 ms
+  `NSTimer` foreground pump, action queue, status, restore-before-exit coordination, in-process
+  Settings window (`General`, `Rules`, `Workspaces`, `Shortcuts`, `Activity`), first-run onboarding
+  tour (`agent/src/onboarding.rs`), non-activating Workspace HUD overlay (`agent/src/hud.rs`),
+  Playground (`⇧⌘D` / `--playground`), and the worker boundary.
 - `src/app/runtime.rs`, `src/app/cycle.rs`, `src/app/cycle/affinity.rs`, `src/app/switching.rs`,
   `src/app/parking.rs`, `src/app/commands.rs`, `src/app/backend.rs`: the worker-thread
   `WorkspaceRuntime` — observation cycles and affinity, workspace switches, durable
   parking/restoration, focused-window commands, and the native/persistence backend seam. Tests live
-  in `src/app/tests/`.
+  in `src/app/tests.rs` and `src/app/tests/`.
 - `src/window_memory.rs`, `src/app/memory.rs`: advisory, title-free per-bundle placement memory and
-  relaunch recall. `src/journal.rs`, `src/app/journal.rs`: bounded arrangement/anomaly journal and
-  the `spaceman doctor` summary.
+  relaunch recall. `src/journal.rs`, `src/journal/doctor.rs`, `src/app/journal.rs`: bounded
+  arrangement/anomaly journal and the `spaceman doctor` summary.
 - `src/app/input.rs`: bounded ordered user input and geometry-based gesture tracking, independent
   of preview-worker availability. Main-thread pointer sampling must not make synchronous AX calls.
 - `src/status_item.rs`, `src/login_item.rs`, `src/sparkle.rs`, `src/termination.rs`: main-thread
