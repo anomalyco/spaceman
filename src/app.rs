@@ -54,7 +54,16 @@ mod switching;
 mod worker;
 
 pub use app_loop::{MainThreadAgent, TickOutcome};
-pub use bridge::{UiAction, UiAgentSnapshot, UiBridge, UiLaunchAtLogin, UiNews, UiUpdateStatus};
+pub use bridge::{
+    HUD_PREVIEW_RECT, UiAction, UiAgentSnapshot, UiBridge, UiHudEvent, UiHudKind, UiHudLayout,
+    UiLaunchAtLogin, UiNews, UiUpdateStatus,
+};
+
+pub struct HostCallbacks {
+    pub open_settings: Box<dyn FnMut() -> Result<(), String>>,
+    pub open_setup: Box<dyn FnMut() -> Result<(), String>>,
+    pub save_hud: Box<dyn FnMut(bool) -> Result<(), String>>,
+}
 
 use app_loop::AppLoopInit;
 use backend::*;
@@ -136,7 +145,10 @@ pub(crate) enum Action {
     Worker(WorkerAction),
     ToggleAutomatic,
     OpenSettings,
+    OpenSetup,
     OpenAccessibility,
+    ToggleHud,
+    SetHud(bool),
     CheckForUpdates,
     InstallUpdate,
     Terminate,
@@ -258,6 +270,7 @@ pub struct PreparedAgent {
     cancelled: Arc<AtomicBool>,
     scope: ManagementScope,
     hotkey_workspaces: Vec<WorkspaceId>,
+    hud: bool,
     controls: Receiver<ControlRequest>,
     control_server: control::Server,
     bridge: UiBridge,
@@ -273,6 +286,7 @@ pub fn prepare() -> Result<(PreparedAgent, UiBridge), String> {
     let parked = load_parked()?;
     let (config, workspace_state) =
         recover_startup_metadata(Config::load(), load_workspace_state());
+    let hud = config.hud();
     let mut configured_workspaces = Workspaces::default();
     config.configure_workspaces(&mut configured_workspaces);
     let mut hotkey_workspaces = WorkspaceId::numbered()
@@ -319,6 +333,7 @@ pub fn prepare() -> Result<(PreparedAgent, UiBridge), String> {
             cancelled,
             scope,
             hotkey_workspaces,
+            hud,
             controls,
             control_server,
             bridge: bridge.clone(),
@@ -332,7 +347,7 @@ impl PreparedAgent {
     /// AX event monitor) once winit's `NSApplication` delegate is active.
     pub fn start_main_thread(
         self,
-        mut open_settings: Box<dyn FnMut() -> Result<(), String>>,
+        mut callbacks: HostCallbacks,
     ) -> Result<MainThreadAgent, String> {
         if let Err(error) = termination::install(self.actions_sender.clone()) {
             log_event!("failed to install application termination gate: {error}");
@@ -345,6 +360,7 @@ impl PreparedAgent {
             termination::allow_next();
             return Err(format!("failed to install Spaceman status item: {error}"));
         }
+        status_item::set_hud(self.hud);
         if let Err(error) = sparkle::start(self.actions_sender.clone()) {
             log_event!("Sparkle unavailable: {error}");
         }
@@ -363,8 +379,9 @@ impl PreparedAgent {
             .collect::<Vec<_>>();
         status_item::set_workspace_numbers(&workspace_numbers);
         let trusted = macos::accessibility_trusted();
+        status_item::set_accessibility(trusted);
         let events = macos::WindowEventMonitor::new();
-        let agent = MainThreadAgent::new(
+        let mut agent = MainThreadAgent::new(
             AppLoopInit {
                 actions: self.actions,
                 actions_sender: self.actions_sender,
@@ -374,20 +391,26 @@ impl PreparedAgent {
                 scope: self.scope,
                 events,
                 hotkey_workspaces: self.hotkey_workspaces,
+                hud: self.hud,
                 controls: self.controls,
                 control_server: self.control_server,
                 bridge: self.bridge,
-                open_settings: Box::new(|| Ok(())),
+                callbacks: HostCallbacks {
+                    open_settings: Box::new(|| Ok(())),
+                    open_setup: Box::new(|| Ok(())),
+                    save_hud: Box::new(|_| Ok(())),
+                },
             },
             launch_status,
         );
         if !trusted {
             status_item::set_status("Paused · Accessibility required");
-            if let Err(error) = open_settings() {
+            if let Err(error) = (callbacks.open_settings)() {
                 status_item::set_status(&format!("Could not open Settings: {error}"));
             }
         }
-        Ok(agent.with_open_settings(open_settings))
+        agent.set_callbacks(callbacks);
+        Ok(agent)
     }
 }
 

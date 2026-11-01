@@ -34,18 +34,20 @@ Placement recall (reboot, fresh start, or app relaunch)     // recover.memory
 │   -> journaled as a wrong placement; its app then recalls its placements on every launch
 └── Arrangement changes recorded after holding 10 s (quitting does not shrink the memory)
 
-Diagnose                                                   // recover.doctor  (journal: working tree only)
+Diagnose                                                   // recover.doctor
+├── Settings › Activity -> 24h health, recent journal rows, procwatch vitals, Mark Issue
 ├── spaceman doctor [hours] -> starts, restorations, recalls, wrong placements, anomalies,
 │                                last arrangement
 ├── spaceman ctl wrong -> marks the journal and snapshots the arrangement right now
 ├── spaceman ctl debug / spaceman hud -> live sanitized model
-└── agent.log (+ .1) -> decisions, slow worker commands, worker errors (not routine cancellations)
+└── agent.log (+ .prev) -> decisions, slow worker commands, worker errors (not routine cancellations)
 ```
 
 ## How To Get To It (User POV)
 
 ```ts
-Menu bar: Disable Tiling (pause + restore) | Quit Spaceman
+Menu bar: Disable Tiling (pause + restore) | Workspace HUD | Settings... (⌘,) | Quit Spaceman (⌘Q)
+Settings: Activity -> Refresh | Mark Issue | journal.jsonl (Show in Finder)
 CLI:      spaceman ctl pause | resume | quit | restart | status | debug
           spaceman doctor [hours]      // reads files directly; works with the agent stopped
           spaceman hud

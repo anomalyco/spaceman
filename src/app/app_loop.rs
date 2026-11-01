@@ -26,10 +26,11 @@ pub(super) struct AppLoopInit {
     pub(super) scope: ManagementScope,
     pub(super) events: macos::WindowEventMonitor,
     pub(super) hotkey_workspaces: Vec<WorkspaceId>,
+    pub(super) hud: bool,
     pub(super) controls: Receiver<ControlRequest>,
     pub(super) control_server: control::Server,
     pub(super) bridge: UiBridge,
-    pub(super) open_settings: Box<dyn FnMut() -> Result<(), String>>,
+    pub(super) callbacks: HostCallbacks,
 }
 
 pub struct MainThreadAgent {
@@ -44,9 +45,10 @@ pub struct MainThreadAgent {
     controls: Receiver<ControlRequest>,
     _control_server: control::Server,
     bridge: UiBridge,
-    open_settings: Box<dyn FnMut() -> Result<(), String>>,
+    callbacks: HostCallbacks,
     hotkeys: Option<Hotkeys>,
     automatic: bool,
+    hud: bool,
     awaiting_accessibility: bool,
     worker_busy: bool,
     worker_interruptible: bool,
@@ -124,9 +126,10 @@ impl MainThreadAgent {
             controls: init.controls,
             _control_server: init.control_server,
             bridge: init.bridge,
-            open_settings: init.open_settings,
+            callbacks: init.callbacks,
             hotkeys,
             automatic,
+            hud: init.hud,
             awaiting_accessibility: !trusted,
             worker_busy,
             worker_interruptible,
@@ -154,12 +157,8 @@ impl MainThreadAgent {
         agent
     }
 
-    pub(super) fn with_open_settings(
-        mut self,
-        open_settings: Box<dyn FnMut() -> Result<(), String>>,
-    ) -> Self {
-        self.open_settings = open_settings;
-        self
+    pub(super) fn set_callbacks(&mut self, callbacks: HostCallbacks) {
+        self.callbacks = callbacks;
     }
 
     pub fn tick(&mut self) -> TickOutcome {
@@ -202,6 +201,11 @@ impl MainThreadAgent {
                     self.last_error = result.as_ref().err().cloned();
                     if let Ok(status) = &result {
                         self.active_workspaces.clone_from(&status.active);
+                        if self.hud
+                            && let Some(hud) = status.hud.clone()
+                        {
+                            self.bridge.publish_hud(hud);
+                        }
                     }
                     self.ui_dirty = true;
                     show_result(result);
@@ -442,11 +446,38 @@ impl MainThreadAgent {
                     }
                 }
                 Action::OpenSettings => {
-                    if let Err(error) = (self.open_settings)() {
+                    if let Err(error) = (self.callbacks.open_settings)() {
                         status_item::set_status(&format!("Could not open Settings: {error}"));
                     }
                 }
+                Action::OpenSetup => {
+                    if let Err(error) = (self.callbacks.open_setup)() {
+                        status_item::set_status(&format!("Could not open Setup: {error}"));
+                    }
+                }
                 Action::OpenAccessibility => permission_guide::show(),
+                Action::ToggleHud => {
+                    let next = !self.hud;
+                    match (self.callbacks.save_hud)(next) {
+                        Ok(()) => {
+                            self.hud = next;
+                            self.config_stamp = crate::config::modified();
+                            status_item::set_hud(next);
+                            self.publish_ui(true);
+                        }
+                        Err(error) => {
+                            status_item::set_status(&format!(
+                                "Could not change Workspace HUD: {error}"
+                            ));
+                        }
+                    }
+                }
+                Action::SetHud(enabled) => {
+                    self.hud = enabled;
+                    self.config_stamp = crate::config::modified();
+                    status_item::set_hud(enabled);
+                    self.ui_dirty = true;
+                }
                 Action::CheckForUpdates => {
                     sparkle::check_for_updates();
                     self.ui_dirty = true;
@@ -703,9 +734,14 @@ impl MainThreadAgent {
             let stamp = crate::config::modified();
             config_changed = stamp != self.config_stamp;
             self.config_stamp = stamp;
+            if config_changed && let Ok(config) = Config::load() {
+                self.hud = config.hud();
+                status_item::set_hud(self.hud);
+            }
         }
         self.ui_dirty = false;
         let trusted = macos::accessibility_trusted();
+        status_item::set_accessibility(trusted);
         if self.awaiting_accessibility
             && trusted
             && !self.automatic
@@ -724,6 +760,7 @@ impl MainThreadAgent {
             UiAgentSnapshot {
                 accessibility: macos::accessibility_trusted(),
                 automatic: self.automatic,
+                hud: self.hud,
                 launch_at_login: self.launch_at_login.clone(),
                 update: sparkle::status().into(),
                 active_workspaces: self.active_workspaces.clone(),

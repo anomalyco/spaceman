@@ -15,6 +15,9 @@ impl WorkspaceId {
     pub const NUMBERED_COUNT: usize = 10;
     pub const COUNT: usize = Self::NUMBERED_COUNT + 26;
     pub const ONE: Self = Self(1);
+    pub const TWO: Self = Self(2);
+    pub const THREE: Self = Self(3);
+    pub const FOUR: Self = Self(4);
     pub const SIX: Self = Self(6);
 
     pub fn new(value: u8) -> Result<Self, String> {

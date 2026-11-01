@@ -45,14 +45,29 @@ objc2::define_class!(
     unsafe impl NSObjectProtocol for Target {}
 
     impl Target {
+        #[unsafe(method(openSetup:))]
+        fn open_setup(&self, _sender: &NSObject) {
+            drop(self.ivars().actions.send(Action::OpenSetup));
+        }
+
         #[unsafe(method(toggleAutomatic:))]
         fn toggle_automatic(&self, _sender: &NSObject) {
             drop(self.ivars().actions.send(Action::ToggleAutomatic));
         }
 
+        #[unsafe(method(toggleHud:))]
+        fn toggle_hud(&self, _sender: &NSObject) {
+            drop(self.ivars().actions.send(Action::ToggleHud));
+        }
+
         #[unsafe(method(openSettings:))]
         fn open_settings(&self, _sender: &NSObject) {
             drop(self.ivars().actions.send(Action::OpenSettings));
+        }
+
+        #[unsafe(method(checkForUpdates:))]
+        fn check_for_updates(&self, _sender: &NSObject) {
+            drop(self.ivars().actions.send(Action::CheckForUpdates));
         }
 
         #[unsafe(method(toggleLaunchAtLogin:))]
@@ -81,7 +96,10 @@ struct Controller {
     _target: Retained<Target>,
     button: Retained<NSStatusBarButton>,
     status: Retained<NSMenuItem>,
+    setup: Retained<NSMenuItem>,
+    setup_separator: Retained<NSMenuItem>,
     automatic: Retained<NSMenuItem>,
+    hud: Retained<NSMenuItem>,
     launch_at_login: Retained<NSMenuItem>,
     status_title: String,
     workspace_layouts: Vec<WorkspaceLayout>,
@@ -100,13 +118,29 @@ pub fn install(sender: Sender<Action>) -> Result<(), String> {
     status.setHidden(true);
     menu.addItem(&status);
     menu.addItem(&NSMenuItem::separatorItem(marker));
-    let automatic = action_item("Disable Tiling", &target, sel!(toggleAutomatic:), marker);
+    let setup = action_item("Run Setup...", &target, sel!(openSetup:), "", marker);
+    setup.setHidden(true);
+    menu.addItem(&setup);
+    let setup_separator = NSMenuItem::separatorItem(marker);
+    setup_separator.setHidden(true);
+    menu.addItem(&setup_separator);
+    let automatic = action_item(
+        "Disable Tiling",
+        &target,
+        sel!(toggleAutomatic:),
+        "",
+        marker,
+    );
     menu.addItem(&automatic);
     menu.addItem(&NSMenuItem::separatorItem(marker));
+    let hud = action_item("Workspace HUD", &target, sel!(toggleHud:), "", marker);
+    hud.setState(NSControlStateValueOn);
+    menu.addItem(&hud);
     let launch_at_login = action_item(
         "Launch at Login",
         &target,
         sel!(toggleLaunchAtLogin:),
+        "",
         marker,
     );
     menu.addItem(&launch_at_login);
@@ -115,10 +149,24 @@ pub fn install(sender: Sender<Action>) -> Result<(), String> {
         "Settings...",
         &target,
         sel!(openSettings:),
+        ",",
+        marker,
+    ));
+    menu.addItem(&action_item(
+        "Check for Updates...",
+        &target,
+        sel!(checkForUpdates:),
+        "",
         marker,
     ));
     menu.addItem(&NSMenuItem::separatorItem(marker));
-    menu.addItem(&action_item("Quit Spaceman", &target, sel!(quit:), marker));
+    menu.addItem(&action_item(
+        "Quit Spaceman",
+        &target,
+        sel!(quit:),
+        "q",
+        marker,
+    ));
 
     let item = NSStatusBar::systemStatusBar().statusItemWithLength(NSVariableStatusItemLength);
     let button = item
@@ -133,7 +181,10 @@ pub fn install(sender: Sender<Action>) -> Result<(), String> {
             _target: target,
             button,
             status,
+            setup,
+            setup_separator,
             automatic,
+            hud,
             launch_at_login,
             status_title: String::new(),
             workspace_layouts: Vec::new(),
@@ -161,6 +212,27 @@ pub fn clear_status() {
         if let Some(controller) = controller.as_mut() {
             controller.status.setHidden(true);
             controller.status_title.clear();
+        }
+    });
+}
+
+pub fn set_accessibility(trusted: bool) {
+    CONTROLLER.with(|controller| {
+        if let Some(controller) = controller.borrow().as_ref() {
+            controller.setup.setHidden(trusted);
+            controller.setup_separator.setHidden(trusted);
+        }
+    });
+}
+
+pub fn set_hud(enabled: bool) {
+    CONTROLLER.with(|controller| {
+        if let Some(controller) = controller.borrow().as_ref() {
+            controller.hud.setState(if enabled {
+                NSControlStateValueOn
+            } else {
+                NSControlStateValueOff
+            });
         }
     });
 }
@@ -322,6 +394,7 @@ fn action_item(
     title: &str,
     target: &Target,
     action: objc2::runtime::Sel,
+    key: &str,
     marker: MainThreadMarker,
 ) -> Retained<NSMenuItem> {
     // SAFETY: `action` matches a method declared on `Target` taking a single sender object.
@@ -330,7 +403,7 @@ fn action_item(
             NSMenuItem::alloc(marker),
             &NSString::from_str(title),
             Some(action),
-            &NSString::new(),
+            &NSString::from_str(key),
         )
     };
     // SAFETY: `target` is retained inside `Controller` for the lifetime of the menu.

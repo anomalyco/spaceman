@@ -16,15 +16,18 @@ Spaceman is an experimental public preview, not a broadly qualified release.
   order and may swap workspaces.
 - Configuration supports ordered exact-match `float`/`route`/`ignore` rules and display assignment. It
   intentionally does not support orthogonal named app spaces or regex title matching.
-- Configuration is loaded only at process startup. `ctl restart` exits safely but does not relaunch.
+- Configuration changes to rules, display assignments, and `[settings]` apply automatically; newly
+  referenced named workspace letters register their global shortcuts on the next app start. `ctl restart`
+  exits safely but does not relaunch.
 - Spaceman assumes one macOS Space per display. Windows on another Space are adopted into the active
   workspace when that Space is shown, and tiles whose windows are ordered out while it is shown may
   be released.
 - `secondary` selects the first non-main display; display ordering and duplicate names may surprise.
 - Global shortcuts may collide with other applications or fail on keyboard layouts that cannot
   produce required characters.
-- Settings currently covers Accessibility, Launch at Login, and signed updates rather than every
-  configuration option. There is no telemetry or analytics.
+- Settings covers Accessibility, Launch at Login, Workspace HUD, app-wide placement rules, workspace
+  display assignments, keyboard shortcuts, and Activity diagnostics; title-specific rules are edited in
+  `config.toml`. There is no telemetry or analytics.
 - The repository still lacks a concise product demo.
 
 Use the isolated live harnesses in [Development](development.md) before changing window-management,

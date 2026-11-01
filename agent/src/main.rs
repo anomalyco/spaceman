@@ -6,11 +6,13 @@
 #[global_allocator]
 static ALLOCATOR: procwatch::alloc::Counting = procwatch::alloc::Counting::system();
 
+mod activity;
 mod agent;
 mod apps;
 mod controls;
 #[cfg(target_os = "macos")]
 mod host;
+mod hud;
 mod map;
 mod onboarding;
 mod panes;
@@ -32,14 +34,16 @@ pub enum Pane {
     Rules,
     Workspaces,
     Shortcuts,
+    Activity,
 }
 
 impl Pane {
-    pub const ALL: [Pane; 4] = [
+    pub const ALL: [Pane; 5] = [
         Pane::General,
         Pane::Rules,
         Pane::Workspaces,
         Pane::Shortcuts,
+        Pane::Activity,
     ];
 
     pub fn title(self) -> &'static str {
@@ -48,6 +52,7 @@ impl Pane {
             Pane::Rules => "Rules",
             Pane::Workspaces => "Workspaces",
             Pane::Shortcuts => "Shortcuts",
+            Pane::Activity => "Activity",
         }
     }
 
@@ -57,6 +62,7 @@ impl Pane {
             Pane::Rules => "rules",
             Pane::Workspaces => "workspaces",
             Pane::Shortcuts => "shortcuts",
+            Pane::Activity => "activity",
         }
     }
 }
@@ -78,9 +84,12 @@ pub struct Ui {
     pub apps: apps::Catalog,
     /// `None` until the agent first answers; `Some(None)` in disconnected fixtures.
     pub agent: Option<Option<agent::Agent>>,
+    pub activity: activity::ActivityPane,
     #[cfg(target_os = "macos")]
     bridge: Option<spaceman::app::UiBridge>,
     window: Option<rune::AppHandle<Ui>>,
+    hud_driver: Option<hud::HudDriver>,
+    pub hud_preview: Option<spaceman::app::UiHudEvent>,
     waker: Option<Waker>,
     frame_remembered: bool,
     pub tour: Option<onboarding::Tour>,
@@ -106,8 +115,11 @@ impl Ui {
             doc: Doc::load(),
             apps: apps::Catalog::default(),
             agent: None,
+            activity: activity::ActivityPane::default(),
             bridge: Some(bridge),
             window: None,
+            hud_driver: None,
+            hud_preview: None,
             waker: None,
             frame_remembered: false,
             tour: None,
@@ -173,6 +185,31 @@ impl Ui {
         }
     }
 
+    pub fn toggle_hud(&mut self) {
+        let next = !self.doc.hud();
+        self.edit(|doc| doc.set_hud(next));
+        if self.error.is_none() {
+            if let Some(driver) = &self.hud_driver {
+                driver.set_enabled(next);
+            }
+            #[cfg(target_os = "macos")]
+            if !self.fixture
+                && let Some(bridge) = &self.bridge
+            {
+                bridge.send(spaceman::app::UiAction::SetHud(next));
+            }
+        }
+    }
+
+    pub fn mark_wrong(&self) {
+        #[cfg(target_os = "macos")]
+        if !self.fixture
+            && let Some(bridge) = &self.bridge
+        {
+            bridge.send(spaceman::app::UiAction::MarkWrong);
+        }
+    }
+
     /// Names and icons for every app the rules mention, before the view needs them.
     fn look_up_apps(&mut self) {
         for rule in self.doc.rules() {
@@ -232,6 +269,10 @@ fn poll(ui: &mut Ui, _clock: f64, _tx: &mut Tx) -> bool {
         ui.frame_remembered = rune_mac::remember_frame("Spaceman");
     }
     let mut changed = onboarding::poll(ui);
+    changed |= ui.activity.poll(
+        ui.pane == Pane::Activity && ui.tour.is_none() && ui.hud_preview.is_none(),
+        ui.fixture,
+    );
     #[cfg(target_os = "macos")]
     {
         let Some(bridge) = ui.bridge.clone() else {
@@ -240,6 +281,9 @@ fn poll(ui: &mut Ui, _clock: f64, _tx: &mut Tx) -> bool {
         let news = bridge.take_news();
         if let Some(snapshot) = news.snapshot {
             let agent = agent::Agent::from_snapshot(snapshot);
+            if let Some(driver) = &ui.hud_driver {
+                driver.set_enabled(agent.hud);
+            }
             if !ui.navigated && ui.agent.is_none() && !agent.accessibility && ui.tour.is_none() {
                 ui.pane = Pane::General;
             }
@@ -249,9 +293,17 @@ fn poll(ui: &mut Ui, _clock: f64, _tx: &mut Tx) -> bool {
                 changed |= onboarding::poll(ui);
             }
         }
+        if let Some(hud_event) = news.hud
+            && let Some(driver) = &ui.hud_driver
+        {
+            driver.trigger(hud_event);
+        }
         if news.config_changed && ui.drag.is_none() {
             ui.doc = Doc::load();
             ui.look_up_apps();
+            if let Some(driver) = &ui.hud_driver {
+                driver.set_enabled(ui.doc.hud());
+            }
             changed = true;
         }
         changed
@@ -271,6 +323,20 @@ fn on_key(ui: &mut Ui, event: &KeyEvent, _tx: &mut Tx) -> bool {
         }
         if ui.tour.as_ref().is_some_and(|tour| tour.flow.manual()) {
             onboarding::input(ui, onboarding::Input::Dismiss);
+            return true;
+        }
+    }
+    if ui.tour.is_none() && ui.hud_preview.is_none() && !event.mods.shift && !event.mods.alt {
+        let pane = match event.key {
+            rune::Key::Command('1') => Some(Pane::General),
+            rune::Key::Command('2') => Some(Pane::Rules),
+            rune::Key::Command('3') => Some(Pane::Workspaces),
+            rune::Key::Command('4') => Some(Pane::Shortcuts),
+            rune::Key::Command('5') => Some(Pane::Activity),
+            _ => None,
+        };
+        if let Some(pane) = pane {
+            ui.select_pane(pane);
             return true;
         }
     }
@@ -353,9 +419,16 @@ pub(crate) fn live_app(
     initial_tour: Option<onboarding::Step>,
     accessibility: bool,
 ) -> rune::App<Ui> {
-    base_app()
+    let initial_hud = Doc::load().hud();
+    let mut app = base_app()
         .init(move || Ui::load_live(bridge, initial_tour, accessibility))
-        .on_reopen(on_reopen)
+        .on_reopen(on_reopen);
+    let hud_driver = hud::install(&mut app, initial_hud);
+    app.handle().update_if(move |ui, _| {
+        ui.hud_driver = Some(hud_driver);
+        false
+    });
+    app
 }
 
 fn preview_mode() -> bool {
@@ -454,6 +527,69 @@ pub(crate) const BASE_SCENES: &[Scene] = &[
     }),
     ("workspaces", |ui| fixture(ui, Pane::Workspaces)),
     ("shortcuts", |ui| fixture(ui, Pane::Shortcuts)),
+    ("activity", |ui| {
+        fixture(ui, Pane::Activity);
+        ui.activity = activity::ActivityPane::fixture_healthy();
+    }),
+    ("hud-switch", |ui| {
+        fixture(ui, Pane::Rules);
+        ui.hud_preview = Some(spaceman::app::UiHudEvent {
+            workspace: spaceman::WorkspaceId::TWO,
+            kind: spaceman::app::UiHudKind::Workspace,
+            preview: spaceman::app::UiHudLayout::Split(vec![
+                spaceman::Rect {
+                    x: 0,
+                    y: 0,
+                    width: 860,
+                    height: 1100,
+                },
+                spaceman::Rect {
+                    x: 860,
+                    y: 0,
+                    width: 640,
+                    height: 550,
+                },
+                spaceman::Rect {
+                    x: 860,
+                    y: 550,
+                    width: 640,
+                    height: 550,
+                },
+            ]),
+            windows: 3,
+        });
+    }),
+    ("hud-moved", |ui| {
+        fixture(ui, Pane::Rules);
+        ui.hud_preview = Some(spaceman::app::UiHudEvent {
+            workspace: spaceman::WorkspaceId::FOUR,
+            kind: spaceman::app::UiHudKind::Moved,
+            preview: spaceman::app::UiHudLayout::Split(vec![
+                spaceman::Rect {
+                    x: 0,
+                    y: 0,
+                    width: 750,
+                    height: 1100,
+                },
+                spaceman::Rect {
+                    x: 750,
+                    y: 0,
+                    width: 750,
+                    height: 1100,
+                },
+            ]),
+            windows: 2,
+        });
+    }),
+    ("hud-fullscreen", |ui| {
+        fixture(ui, Pane::Rules);
+        ui.hud_preview = Some(spaceman::app::UiHudEvent {
+            workspace: spaceman::WorkspaceId::ONE,
+            kind: spaceman::app::UiHudKind::Fullscreen { enabled: true },
+            preview: spaceman::app::UiHudLayout::Fullscreen,
+            windows: 2,
+        });
+    }),
 ];
 
 pub(crate) fn blank_fixture() -> Ui {
@@ -463,9 +599,12 @@ pub(crate) fn blank_fixture() -> Ui {
         doc: Doc::parse(include_str!("../fixtures/config.toml")),
         apps: apps::Catalog::default(),
         agent: None,
+        activity: activity::ActivityPane::default(),
         #[cfg(target_os = "macos")]
         bridge: None,
         window: None,
+        hud_driver: None,
+        hud_preview: None,
         waker: None,
         frame_remembered: true,
         tour: None,
@@ -483,11 +622,13 @@ fn fixture(ui: &mut Ui, pane: Pane) {
     ui.fixture = true;
     ui.pane = pane;
     ui.tour = None;
+    ui.hud_preview = None;
     ui.doc = Doc::parse(include_str!("../fixtures/config.toml"));
     ui.look_up_apps();
     ui.agent = Some(Some(agent::Agent {
         accessibility: true,
         automatic: true,
+        hud: true,
         launch_at_login: agent::LaunchAtLogin::On,
         update: agent::Update::Idle,
         active: vec!["3".into(), "M".into()],

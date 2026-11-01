@@ -66,10 +66,13 @@ application is responsive. Successful Accessibility writes alone do not confirm 
 
 The menu-bar control shows active workspace/layout glyphs and runtime errors. Its actions are:
 
+- `Run Setup...`, shown while Accessibility permission is missing;
 - `Disable Tiling`, or `Enable Tiling` while paused;
+- `Workspace HUD`, checked while the non-activating workspace capsule (`[settings] hud = true`) is enabled;
 - `Launch at Login`, shown checked when macOS has enabled the signed app bundle;
-- `Settings...`, with Accessibility, launch-at-login, and software-update controls;
-- `Quit Spaceman`.
+- `Settings...` (`⌘,`), opening the Rune Settings window (`General`, `Rules`, `Workspaces`, `Shortcuts`, and `Activity`, plus `⇧⌘D` Playground);
+- `Check for Updates...`;
+- `Quit Spaceman` (`⌘Q`).
 
 If macOS reports that the login item requires approval, the menu label says
 `Launch at Login (Approval Required...)`; choosing it opens Login Items settings. Registration does

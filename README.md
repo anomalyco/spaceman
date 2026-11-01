@@ -22,8 +22,10 @@ Spaceman currently:
 - persists active workspaces, nested split layouts, tile order and weights, and parked-window recovery
   metadata across Spaceman restarts, and remembers each application's window placements by bundle
   identifier so reboots and startup recovery return windows to their workspaces;
-- journals window arrangements and model/screen disagreements locally, summarized by
-  `spaceman doctor`;
+- journals window arrangements and model/screen disagreements locally, summarized in Settings (`Activity`)
+  and by `spaceman doctor`;
+- shows a non-activating Workspace HUD capsule on workspace switches, cross-workspace moves, and layout
+  toggles (`[settings] hud = true`);
 - can register its signed app bundle with macOS to launch automatically at login;
 - supports directional focus and movement across displays, drag-to-reorder/nest, mouse and keyboard
   resizing, balancing, and a workspace-wide Fullscreen Layout;
@@ -83,17 +85,18 @@ maintainer workflow.
 
 1. Disable every other window manager. For AeroSpace: `aerospace enable off`.
 2. Open Spaceman: `open "/Applications/Spaceman.app"`.
-3. Spaceman opens Settings when Accessibility access is missing. Choose `Grant Access`, then enable
-   Spaceman under **System Settings > Privacy & Security > Accessibility**.
-4. Optionally enable `Launch at Login` in Spaceman Settings.
-5. Confirm operation with `spaceman ctl status`.
+3. On a fresh install, Spaceman opens its four-step setup tour when Accessibility access is missing.
+   Choose `Allow`, enable Spaceman under **System Settings > Privacy & Security > Accessibility**,
+   optionally enable `Launch at Login`, and pick starter app rules.
+4. Confirm operation with `spaceman ctl status`.
 
 When Accessibility permission is granted and hotkeys register successfully, Spaceman starts automatic
 tiling; it does not otherwise start paused intentionally. Without Accessibility permission, the menu
-reports the permission error and tiling remains paused. The menu actions are `Disable Tiling` (or
-`Enable Tiling` while paused),
-`Launch at Login`, `Settings...`, and `Quit Spaceman`. Settings shows Accessibility, launch-at-login,
-and signed software-update controls. If macOS requires approval, the login item action opens **System
+reports the permission error and tiling remains paused. The menu actions are `Run Setup...` (while
+Accessibility is missing), `Disable Tiling` (or `Enable Tiling` while paused), `Workspace HUD`,
+`Launch at Login`, `Settings...` (`⌘,`), `Check for Updates...`, and `Quit Spaceman` (`⌘Q`). Settings
+includes `General`, `Rules`, `Workspaces`, `Shortcuts`, and `Activity` (title-free arrangement
+diagnostics and process vitals). If macOS requires approval, the login item action opens **System
 Settings > General > Login Items & Extensions**.
 
 ## Everyday Use
@@ -135,9 +138,9 @@ spaceman ctl resume
 
 ## Configure
 
-Spaceman reads `~/Library/Application Support/Spaceman/config.toml` at process startup. See the exact
-current schema and [config.example.toml](config.example.toml) in
-[Configuration](docs/configuration.md).
+Spaceman reads `~/Library/Application Support/Spaceman/config.toml` at startup and reloads rule,
+display, and HUD edits automatically when the file changes. See the exact current schema and
+[config.example.toml](config.example.toml) in [Configuration](docs/configuration.md).
 
 ```sh
 spaceman config-check "$HOME/Library/Application Support/Spaceman/config.toml"

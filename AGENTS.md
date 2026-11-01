@@ -27,8 +27,10 @@ This file is the current engineering contract. README and `docs/` describe curre
 
 - `agent/`, `src/app.rs`, `src/app/app_loop.rs`, `src/app/bridge.rs`: single-process Rune host
   (`spaceman-agent`), owner-only capped logging, 25 ms `NSTimer` foreground pump, action queue,
-  status, restore-before-exit coordination, in-process Settings window + Playground (`⇧⌘D`), and the
-  worker boundary.
+  status, restore-before-exit coordination, in-process Settings window (`General`, `Rules`,
+  `Workspaces`, `Shortcuts`, `Activity`), first-run onboarding tour (`agent/src/onboarding.rs`),
+  non-activating Workspace HUD overlay (`agent/src/hud.rs`), Playground (`⇧⌘D` / `--playground`), and
+  the worker boundary.
 - `src/app/runtime.rs`, `src/app/cycle.rs`, `src/app/cycle/affinity.rs`, `src/app/switching.rs`,
   `src/app/parking.rs`, `src/app/commands.rs`, `src/app/backend.rs`: the worker-thread
   `WorkspaceRuntime` — observation cycles and affinity, workspace switches, durable

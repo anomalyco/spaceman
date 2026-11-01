@@ -9,7 +9,7 @@ use std::{cell::RefCell, ptr::NonNull};
 use block2::RcBlock;
 use objc2::rc::{Retained, autoreleasepool};
 use objc2_foundation::{NSRunLoop, NSRunLoopCommonModes, NSTimer};
-use spaceman::app::{MainThreadAgent, PreparedAgent, TICK_INTERVAL, TickOutcome};
+use spaceman::app::{HostCallbacks, MainThreadAgent, PreparedAgent, TICK_INTERVAL, TickOutcome};
 
 use crate::Ui;
 
@@ -78,10 +78,27 @@ fn start_main_thread() {
         return;
     };
     let settings_window = window.clone();
-    let agent = match prepared.start_main_thread(Box::new(move || {
-        bring_window_forward(&settings_window);
-        Ok(())
-    })) {
+    let setup_window = window.clone();
+    let callbacks = HostCallbacks {
+        open_settings: Box::new(move || {
+            bring_window_forward(&settings_window);
+            Ok(())
+        }),
+        open_setup: Box::new(move || {
+            setup_window.update_if(|ui, _| {
+                ui.start_tour();
+                true
+            });
+            bring_window_forward(&setup_window);
+            Ok(())
+        }),
+        save_hud: Box::new(|enabled| {
+            let mut doc = crate::rules::Doc::load();
+            doc.set_hud(enabled);
+            doc.save()
+        }),
+    };
+    let agent = match prepared.start_main_thread(callbacks) {
         Ok(agent) => agent,
         Err(error) => {
             STARTUP_ERROR.with(|slot| *slot.borrow_mut() = Some(error));

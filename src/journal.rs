@@ -117,7 +117,8 @@ pub enum PlacementSource {
 }
 
 impl PlacementSource {
-    const fn label(self) -> &'static str {
+    #[must_use]
+    pub const fn label(self) -> &'static str {
         match self {
             Self::Active => "opened on the active workspace",
             Self::Recall => "recalled from memory",
@@ -253,7 +254,8 @@ pub enum AnomalyKind {
 }
 
 impl AnomalyKind {
-    const fn label(self) -> &'static str {
+    #[must_use]
+    pub const fn label(self) -> &'static str {
         match self {
             Self::Leaked => "leaked",
             Self::Stranded => "stranded",
@@ -265,7 +267,8 @@ impl AnomalyKind {
         }
     }
 
-    const fn meaning(self) -> &'static str {
+    #[must_use]
+    pub const fn meaning(self) -> &'static str {
         match self {
             Self::Leaked => "visible although its workspace is hidden",
             Self::Stranded => "off screen although its workspace is visible",

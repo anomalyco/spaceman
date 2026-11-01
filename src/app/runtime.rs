@@ -4,6 +4,7 @@ pub(super) struct CycleStatus {
     pub(super) active: Vec<WorkspaceId>,
     pub(super) layouts: Vec<status_item::WorkspaceLayout>,
     pub(super) failed: usize,
+    pub(super) hud: Option<UiHudEvent>,
 }
 
 #[derive(Clone, Debug, serde::Serialize)]
@@ -678,6 +679,21 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
                 .collect(),
             active,
             failed,
+            hud: None,
+        }
+    }
+
+    pub(super) fn hud_for(&self, workspace: WorkspaceId, kind: UiHudKind) -> UiHudEvent {
+        let preview = if self.workspaces.uses_fullscreen_layout(workspace) {
+            UiHudLayout::Fullscreen
+        } else {
+            UiHudLayout::Split(self.preview_layout(workspace, status_item::WORKSPACE_PREVIEW))
+        };
+        UiHudEvent {
+            workspace,
+            kind,
+            preview,
+            windows: self.workspaces.windows(workspace).len(),
         }
     }
 }

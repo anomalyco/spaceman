@@ -47,6 +47,7 @@ cargo run --locked -- displays
 cargo run --locked -- snapshot
 cargo run --locked -- retile
 cargo run --locked -- watch 20
+cargo run --locked -p spaceman-agent -- --size 1324x580 --playground Activity/activity --snap /tmp/activity.png
 ```
 
 Commands with `--apply` and the menu-bar app move real windows. Disable every other window manager and

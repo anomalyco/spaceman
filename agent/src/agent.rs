@@ -7,6 +7,7 @@ use serde_json::Value;
 pub struct Agent {
     pub accessibility: bool,
     pub automatic: bool,
+    pub hud: bool,
     pub launch_at_login: LaunchAtLogin,
     pub update: Update,
     pub active: Vec<String>,
@@ -42,6 +43,7 @@ impl Agent {
         Self {
             accessibility: snapshot.accessibility,
             automatic: snapshot.automatic,
+            hud: snapshot.hud,
             launch_at_login: match snapshot.launch_at_login {
                 UiLaunchAtLogin::Off => LaunchAtLogin::Off,
                 UiLaunchAtLogin::On => LaunchAtLogin::On,
@@ -71,6 +73,7 @@ impl Agent {
         Some(Agent {
             accessibility: value["accessibility"].as_bool().unwrap_or(false),
             automatic: value["automatic"].as_bool().unwrap_or(false),
+            hud: value["hud"].as_bool().unwrap_or(true),
             launch_at_login: match launch {
                 "enabled" => LaunchAtLogin::On,
                 "disabled" => LaunchAtLogin::Off,
@@ -128,6 +131,7 @@ mod tests {
         let agent = Agent::from_snapshot(UiAgentSnapshot {
             accessibility: true,
             automatic: true,
+            hud: true,
             launch_at_login: UiLaunchAtLogin::On,
             update: UiUpdateStatus::UpToDate,
             active_workspaces: vec![WorkspaceId::ONE, WorkspaceId::SIX],

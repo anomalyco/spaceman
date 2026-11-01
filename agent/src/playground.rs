@@ -40,6 +40,9 @@ fn group(ui: &Ui) -> (usize, &'static str) {
     if ui.tour.is_some() {
         return (0, "Onboarding");
     }
+    if ui.hud_preview.is_some() {
+        return (Pane::ALL.len() + 1, "HUD");
+    }
     let rank = Pane::ALL
         .iter()
         .position(|pane| *pane == ui.pane)
@@ -72,6 +75,10 @@ mod tests {
             "Rules/rules-add",
             "Workspaces/workspaces",
             "Shortcuts/shortcuts",
+            "Activity/activity",
+            "HUD/hud-switch",
+            "HUD/hud-moved",
+            "HUD/hud-fullscreen",
         ] {
             assert!(
                 grouped.contains(&expected),
