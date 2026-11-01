@@ -341,11 +341,7 @@ impl ActivityPane {
 }
 
 pub fn header_actions(ui: &Ui, p: Paint) -> El {
-    let can_mark = ui
-        .agent
-        .as_ref()
-        .and_then(Option::as_ref)
-        .is_some_and(|agent| agent.automatic);
+    let can_mark = ui.agent.as_ref().is_some_and(|agent| agent.automatic);
     let mut actions = row().key("activity-actions").gap(8.0).center_y();
     if can_mark {
         actions = actions.child(controls::button(
@@ -376,14 +372,20 @@ pub fn pane(ui: &Ui, p: Paint) -> El {
         .activity
         .fixture_vitals
         .clone()
-        .unwrap_or_else(live_vitals);
+        .unwrap_or_else(process_vitals);
 
-    let (runtime_desc, runtime_dot) = match ui.agent.as_ref().and_then(Option::as_ref) {
+    let (runtime_desc, runtime_dot) = match ui.agent.as_ref() {
         Some(agent) if agent.automatic => {
-            let active = if agent.active.is_empty() {
+            let active = if agent.active_workspaces.is_empty() {
                 "Automatic tiling active".to_owned()
             } else {
-                format!("Automatic tiling · Workspaces {}", agent.active.join(" · "))
+                let list = agent
+                    .active_workspaces
+                    .iter()
+                    .map(ToString::to_string)
+                    .collect::<Vec<_>>()
+                    .join(" · ");
+                format!("Automatic tiling · Workspaces {list}")
             };
             (active, p.success())
         }
@@ -591,7 +593,7 @@ fn journal_stamp() -> Option<(Option<SystemTime>, u64)> {
     Some((metadata.modified().ok(), metadata.len()))
 }
 
-fn live_vitals() -> String {
+pub(crate) fn process_vitals() -> String {
     let usage = procwatch::usage();
     match (usage.footprint, usage.fds) {
         (Some(footprint), Some(fds)) => format!("{} MB · {fds} fds", footprint >> 20),

@@ -315,13 +315,53 @@ fn union_rect(left: Rect, right: Rect) -> Rect {
     }
 }
 
-/// Point file descriptor 2 (stderr) at the given open file so diagnostics from
-/// bundle launches land in a log instead of nowhere.
-pub fn redirect_stderr_to(file: &std::fs::File) {
+/// When launched as an app bundle, stderr goes nowhere. Redirect it to a
+/// size-capped, owner-only log file so runtime diagnostics survive. Terminal
+/// launches keep stderr on the terminal.
+pub(crate) fn redirect_stderr_to_log() {
+    use std::{
+        io::IsTerminal,
+        os::unix::fs::{OpenOptionsExt, PermissionsExt},
+    };
+    if std::io::stderr().is_terminal() {
+        return;
+    }
+    let Some(path) = crate::config::application_support_path("agent.log") else {
+        return;
+    };
+    if let Some(parent) = path.parent() {
+        drop(std::fs::create_dir_all(parent));
+    }
+    if std::fs::metadata(&path).is_ok_and(|metadata| metadata.len() > 5 * 1024 * 1024) {
+        // Keep one previous generation: the history before a restart is
+        // usually what a bug report needs.
+        let previous = path.with_extension("log.prev");
+        drop(std::fs::rename(&path, &previous));
+        drop(std::fs::set_permissions(
+            &previous,
+            std::fs::Permissions::from_mode(0o600),
+        ));
+    }
+    let Ok(file) = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .mode(0o600)
+        .open(&path)
+    else {
+        return;
+    };
+    drop(std::fs::set_permissions(
+        &path,
+        std::fs::Permissions::from_mode(0o600),
+    ));
+    redirect_stderr_to(&file);
+}
+
+fn redirect_stderr_to(file: &std::fs::File) {
     let fd = std::os::unix::io::AsRawFd::as_raw_fd(file);
     // SAFETY: dup2 atomically replaces descriptor 2 with a duplicate of a
     // descriptor we own; the original File may close independently afterwards.
-    let _: i32 = unsafe { libc::dup2(fd, 2) };
+    let _: i32 = unsafe { libc::dup2(fd, libc::STDERR_FILENO) };
 }
 
 #[must_use]

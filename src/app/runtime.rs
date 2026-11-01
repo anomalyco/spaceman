@@ -481,8 +481,7 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
                         fullscreen_layout: self
                             .workspaces
                             .uses_fullscreen_layout(resolved.workspace),
-                        layout: self
-                            .preview_layout(resolved.workspace, status_item::WORKSPACE_PREVIEW),
+                        layout: self.preview_layout(resolved.workspace, HUD_PREVIEW_RECT),
                     })
                 })
                 .collect(),
@@ -663,18 +662,9 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
         CycleStatus {
             layouts: active
                 .iter()
-                .map(|workspace| {
-                    let mode = if self.workspaces.uses_fullscreen_layout(*workspace) {
-                        status_item::WorkspaceLayoutMode::Fullscreen
-                    } else {
-                        status_item::WorkspaceLayoutMode::Split(
-                            self.preview_layout(*workspace, status_item::WORKSPACE_PREVIEW),
-                        )
-                    };
-                    status_item::WorkspaceLayout {
-                        workspace: workspace.to_string(),
-                        mode,
-                    }
+                .map(|workspace| status_item::WorkspaceLayout {
+                    workspace: workspace.to_string(),
+                    mode: self.workspace_preview(*workspace),
                 })
                 .collect(),
             active,
@@ -684,16 +674,19 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
     }
 
     pub(super) fn hud_for(&self, workspace: WorkspaceId, kind: UiHudKind) -> UiHudEvent {
-        let preview = if self.workspaces.uses_fullscreen_layout(workspace) {
-            UiHudLayout::Fullscreen
-        } else {
-            UiHudLayout::Split(self.preview_layout(workspace, status_item::WORKSPACE_PREVIEW))
-        };
         UiHudEvent {
             workspace,
             kind,
-            preview,
+            preview: self.workspace_preview(workspace),
             windows: self.workspaces.windows(workspace).len(),
+        }
+    }
+
+    fn workspace_preview(&self, workspace: WorkspaceId) -> UiHudLayout {
+        if self.workspaces.uses_fullscreen_layout(workspace) {
+            UiHudLayout::Fullscreen
+        } else {
+            UiHudLayout::Split(self.preview_layout(workspace, HUD_PREVIEW_RECT))
         }
     }
 }

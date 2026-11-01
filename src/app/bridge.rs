@@ -77,6 +77,15 @@ impl UiLaunchAtLogin {
             Err(error) => Self::Failed(error),
         }
     }
+
+    pub(super) fn as_settings_value(&self) -> String {
+        match self {
+            Self::On => "enabled".into(),
+            Self::Off => "disabled".into(),
+            Self::NeedsApproval => "requires-approval".into(),
+            Self::Failed(error) => format!("error: {error}"),
+        }
+    }
 }
 
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
@@ -87,6 +96,18 @@ pub enum UiUpdateStatus {
     Checking,
     UpToDate,
     Available,
+}
+
+impl UiUpdateStatus {
+    pub(super) const fn as_str(self) -> &'static str {
+        match self {
+            Self::Unavailable => "unavailable",
+            Self::Idle => "idle",
+            Self::Checking => "checking",
+            Self::UpToDate => "up-to-date",
+            Self::Available => "available",
+        }
+    }
 }
 
 impl From<sparkle::UpdateStatus> for UiUpdateStatus {
@@ -110,6 +131,21 @@ pub struct UiAgentSnapshot {
     pub update: UiUpdateStatus,
     pub active_workspaces: Vec<WorkspaceId>,
     pub last_error: Option<String>,
+}
+
+impl UiAgentSnapshot {
+    pub(super) fn to_settings_json(&self) -> serde_json::Value {
+        serde_json::json!({
+            "version": env!("CARGO_PKG_VERSION"),
+            "accessibility": self.accessibility,
+            "automatic": self.automatic,
+            "hud": self.hud,
+            "launch_at_login": self.launch_at_login.as_settings_value(),
+            "update": self.update.as_str(),
+            "active_workspaces": self.active_workspaces,
+            "last_error": self.last_error,
+        })
+    }
 }
 
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
@@ -290,5 +326,26 @@ mod tests {
 
         bridge.send(UiAction::ToggleAutomatic);
         assert_eq!(receiver.try_recv().ok(), Some(Action::ToggleAutomatic));
+    }
+
+    #[test]
+    fn encodes_snapshot_as_control_settings_json() {
+        let snapshot = UiAgentSnapshot {
+            accessibility: true,
+            automatic: false,
+            hud: false,
+            launch_at_login: UiLaunchAtLogin::NeedsApproval,
+            update: UiUpdateStatus::Checking,
+            active_workspaces: vec![WorkspaceId::THREE, WorkspaceId::named('M').unwrap()],
+            last_error: Some("Hotkeys unavailable".into()),
+        };
+        let value = snapshot.to_settings_json();
+        assert_eq!(value["accessibility"], true);
+        assert_eq!(value["automatic"], false);
+        assert_eq!(value["hud"], false);
+        assert_eq!(value["launch_at_login"], "requires-approval");
+        assert_eq!(value["update"], "checking");
+        assert_eq!(value["active_workspaces"], serde_json::json!([3, "M"]));
+        assert_eq!(value["last_error"], "Hotkeys unavailable");
     }
 }

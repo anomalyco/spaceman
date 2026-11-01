@@ -183,33 +183,3 @@ pub(super) fn spawn_worker(
         }
     });
 }
-
-/// The agent's half of the settings window: what only this process can read.
-pub(super) fn settings_state(
-    automatic: bool,
-    active_workspaces: &[WorkspaceId],
-    last_error: Option<&str>,
-) -> serde_json::Value {
-    let launch_at_login = match login_item::status() {
-        Ok(login_item::Status::Enabled) => "enabled".to_string(),
-        Ok(login_item::Status::Disabled) => "disabled".to_string(),
-        Ok(login_item::Status::RequiresApproval) => "requires-approval".to_string(),
-        Err(error) => format!("error: {error}"),
-    };
-    let update = match sparkle::status() {
-        sparkle::UpdateStatus::Unavailable => "unavailable",
-        sparkle::UpdateStatus::Idle => "idle",
-        sparkle::UpdateStatus::Checking => "checking",
-        sparkle::UpdateStatus::UpToDate => "up-to-date",
-        sparkle::UpdateStatus::UpdateAvailable => "available",
-    };
-    serde_json::json!({
-        "version": env!("CARGO_PKG_VERSION"),
-        "accessibility": macos::accessibility_trusted(),
-        "automatic": automatic,
-        "launch_at_login": launch_at_login,
-        "update": update,
-        "active_workspaces": active_workspaces,
-        "last_error": last_error,
-    })
-}

@@ -5,15 +5,13 @@ use rune::{
     text,
 };
 use rune_kit::{
-    Button, ButtonVariant, ControlSize, IconButton, IconButtonVariant, Keybind, SegmentedControl,
-    glyphs,
+    Button, ButtonVariant, ControlSize, IconButton, IconButtonVariant, SegmentedControl, glyphs,
 };
-use spaceman::WorkspaceId;
+use spaceman::{WorkspaceId, app::UiLaunchAtLogin};
 
 use super::{Input, StarterApp, Step, Tour, flow::View, input};
 use crate::{
     Ui,
-    agent::LaunchAtLogin,
     controls::{self, ButtonKind, DESCRIPTION, Paint},
     rules::Place,
 };
@@ -355,17 +353,12 @@ fn setup(ui: &Ui, p: Paint, view: &View) -> El {
         }),
     );
 
-    let login_state = ui
-        .agent
-        .clone()
-        .flatten()
-        .map(|agent| agent.launch_at_login);
-    let login_desc = match login_state {
-        Some(LaunchAtLogin::NeedsApproval) => (
+    let login_desc = match ui.agent.as_ref().map(|agent| &agent.launch_at_login) {
+        Some(UiLaunchAtLogin::NeedsApproval) => (
             "Approve Spaceman in System Settings › General › Login Items.".to_owned(),
             p.warning(),
         ),
-        Some(LaunchAtLogin::Failed(error)) => (error, p.danger()),
+        Some(UiLaunchAtLogin::Failed(error)) => (error.clone(), p.danger()),
         _ => (
             "Start in the menu bar when you sign in.".to_owned(),
             p.muted(),
@@ -497,20 +490,7 @@ fn done(p: Paint) -> El {
                     ),
             ),
     );
-    let rows = DONE_SHORTCUTS
-        .iter()
-        .enumerate()
-        .map(|(index, (title, combos))| {
-            let mut keys = row().key("keys").gap(6.0).center_y();
-            for (n, combo) in combos.iter().enumerate() {
-                if n > 0 {
-                    keys = keys.child(text("or").font(p.k.ty.small).color(p.faint()));
-                }
-                keys = keys.child(Keybind::new(combo).build(p.k));
-            }
-            controls::setting_row(p, &format!("done-shortcut-{index}"), title, None, keys)
-        })
-        .collect();
+    let rows = controls::shortcut_rows(p, "done-shortcut", DONE_SHORTCUTS);
     col()
         .key("done")
         .gap(20.0)

@@ -11,26 +11,16 @@ use objc2_app_kit::{
 };
 use objc2_foundation::{NSObject, NSObjectProtocol, NSPoint, NSRect, NSSize, NSString};
 
-use crate::{app::Action, login_item};
+use crate::{
+    app::{Action, HUD_PREVIEW_RECT, UiHudLayout},
+    login_item,
+};
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub(crate) struct WorkspaceLayout {
     pub(crate) workspace: String,
-    pub(crate) mode: WorkspaceLayoutMode,
+    pub(crate) mode: UiHudLayout,
 }
-
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub(crate) enum WorkspaceLayoutMode {
-    Split(Vec<crate::Rect>),
-    Fullscreen,
-}
-
-pub(crate) const WORKSPACE_PREVIEW: crate::Rect = crate::Rect {
-    x: 0,
-    y: 0,
-    width: 1500,
-    height: 1100,
-};
 
 struct TargetIvars {
     actions: Sender<Action>,
@@ -346,24 +336,24 @@ fn draw_workspace_layouts(
         let frame = NSRect::new(NSPoint::new(x, 2.5), NSSize::new(15.0, 11.0));
         let outline = NSBezierPath::bezierPathWithRoundedRect_xRadius_yRadius(frame, 2.5, 2.5);
         match &layout.mode {
-            WorkspaceLayoutMode::Fullscreen => outline.fill(),
-            WorkspaceLayoutMode::Split(tiles) => {
+            UiHudLayout::Fullscreen => outline.fill(),
+            UiHudLayout::Split(tiles) => {
                 outline.setLineWidth(1.25);
                 outline.stroke();
                 for tile in tiles {
                     let tile = NSRect::new(
                         NSPoint::new(
-                            x + f64::from(tile.x) / f64::from(WORKSPACE_PREVIEW.width) * 15.0,
+                            x + f64::from(tile.x) / f64::from(HUD_PREVIEW_RECT.width) * 15.0,
                             // Preview frames are top-down; the image is unflipped.
-                            2.5 + (f64::from(WORKSPACE_PREVIEW.height)
+                            2.5 + (f64::from(HUD_PREVIEW_RECT.height)
                                 - f64::from(tile.y)
                                 - f64::from(tile.height))
-                                / f64::from(WORKSPACE_PREVIEW.height)
+                                / f64::from(HUD_PREVIEW_RECT.height)
                                 * 11.0,
                         ),
                         NSSize::new(
-                            f64::from(tile.width) / f64::from(WORKSPACE_PREVIEW.width) * 15.0,
-                            f64::from(tile.height) / f64::from(WORKSPACE_PREVIEW.height) * 11.0,
+                            f64::from(tile.width) / f64::from(HUD_PREVIEW_RECT.width) * 15.0,
+                            f64::from(tile.height) / f64::from(HUD_PREVIEW_RECT.height) * 11.0,
                         ),
                     );
                     let tile = NSBezierPath::bezierPathWithRect(tile);

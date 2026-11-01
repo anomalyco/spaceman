@@ -2,10 +2,10 @@
 //! version and an update check at its foot, beside a raised panel holding the pane.
 
 use rune::{Anim, Cx, El, Icon, ScrollSpec, Tx, col, el, icon, row, text};
+use spaceman::app::UiUpdateStatus;
 
 use crate::{
     Pane, Ui, activity,
-    agent::Update,
     controls::{self, Paint},
     hud, map, onboarding, panes,
 };
@@ -126,16 +126,18 @@ fn update_status(ui: &Ui, p: Paint) -> El {
     let c = &p.k.c;
     let update = ui
         .agent
-        .clone()
-        .flatten()
-        .map_or(Update::Unavailable, |agent| agent.update);
+        .as_ref()
+        .map_or(UiUpdateStatus::Unavailable, |agent| agent.update);
     let label = match update {
-        Update::Checking => "Checking for updates…",
-        Update::UpToDate => "Spaceman is up to date",
-        Update::Available => "Update available",
-        Update::Idle | Update::Unavailable => "Check for updates",
+        UiUpdateStatus::Checking => "Checking for updates…",
+        UiUpdateStatus::UpToDate => "Spaceman is up to date",
+        UiUpdateStatus::Available => "Update available",
+        UiUpdateStatus::Idle | UiUpdateStatus::Unavailable => "Check for updates",
     };
-    let check = matches!(update, Update::Idle | Update::UpToDate | Update::Available);
+    let check = matches!(
+        update,
+        UiUpdateStatus::Idle | UiUpdateStatus::UpToDate | UiUpdateStatus::Available
+    );
     let mut status = row()
         .key("check-for-updates")
         .h(20.0)

@@ -13,7 +13,9 @@ use std::{
 pub use flow::{Effect, Flow, Input, SetupState, Step, launch_step};
 pub use view::{apply_fixture, overlay};
 
-use crate::{Ui, agent::LaunchAtLogin, apps};
+use spaceman::app::UiLaunchAtLogin;
+
+use crate::{Ui, apps};
 
 const ADVANCE_BEAT: Duration = Duration::from_millis(700);
 const STARTER_LIMIT: usize = 4;
@@ -74,7 +76,7 @@ impl Tour {
         conflicts: Vec<String>,
         ui: &mut Ui,
     ) -> Self {
-        if let Some(Some(agent)) = &mut ui.agent {
+        if let Some(agent) = &mut ui.agent {
             agent.accessibility = accessibility;
             agent.automatic = accessibility;
         }
@@ -174,10 +176,12 @@ fn apply(ui: &mut Ui, effect: Effect) {
         Effect::OpenAccessibility => ui.open_accessibility(),
         Effect::ToggleLaunchAtLogin => {
             if ui.fixture {
-                if let Some(Some(agent)) = &mut ui.agent {
+                if let Some(agent) = &mut ui.agent {
                     agent.launch_at_login = match agent.launch_at_login {
-                        LaunchAtLogin::On | LaunchAtLogin::NeedsApproval => LaunchAtLogin::Off,
-                        LaunchAtLogin::Off | LaunchAtLogin::Failed(_) => LaunchAtLogin::On,
+                        UiLaunchAtLogin::On | UiLaunchAtLogin::NeedsApproval => {
+                            UiLaunchAtLogin::Off
+                        }
+                        UiLaunchAtLogin::Off | UiLaunchAtLogin::Failed(_) => UiLaunchAtLogin::On,
                     };
                 }
                 let status = ui_setup_state(ui);
@@ -209,11 +213,7 @@ fn apply(ui: &mut Ui, effect: Effect) {
 }
 
 fn ui_setup_state(ui: &Ui) -> SetupState {
-    let accessibility = ui
-        .agent
-        .clone()
-        .flatten()
-        .is_some_and(|agent| agent.accessibility);
+    let accessibility = ui.agent.as_ref().is_some_and(|agent| agent.accessibility);
     SetupState {
         accessibility,
         launch_at_login: ui_launch_at_login(ui),
@@ -221,10 +221,10 @@ fn ui_setup_state(ui: &Ui) -> SetupState {
 }
 
 fn ui_launch_at_login(ui: &Ui) -> bool {
-    ui.agent.clone().flatten().is_some_and(|agent| {
+    ui.agent.as_ref().is_some_and(|agent| {
         matches!(
             agent.launch_at_login,
-            LaunchAtLogin::On | LaunchAtLogin::NeedsApproval
+            UiLaunchAtLogin::On | UiLaunchAtLogin::NeedsApproval
         )
     })
 }

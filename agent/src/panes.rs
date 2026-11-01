@@ -1,149 +1,122 @@
 //! The panes besides Rules: General (permission, login item, config file), Workspaces (which
 //! display each one opens on) and Shortcuts (the hotkeys, read-only).
 
-use rune::{El, Tx, col, row, text};
-use rune_kit::{Keybind, SegmentedControl};
-use spaceman::WorkspaceId;
+use rune::{El, Tx, col};
+use rune_kit::SegmentedControl;
+use spaceman::{WorkspaceId, app::UiLaunchAtLogin};
 
 use crate::{
     Ui,
-    agent::LaunchAtLogin,
     controls::{self, ButtonKind, Paint},
     view::scroll_body,
 };
 
 pub fn general(ui: &Ui, p: Paint) -> El {
     let c = &p.k.c;
-    let agent = ui.agent.clone().flatten();
     let mut sections = Vec::new();
-    match &agent {
-        None if ui.agent.is_some() => sections.push(controls::section(
-            p,
-            "agent",
-            "Spaceman",
-            vec![controls::setting_row(
+    if let Some(agent) = &ui.agent {
+        let access = if agent.accessibility {
+            controls::setting_row(
                 p,
-                "not-running",
-                "Spaceman isn't running",
-                Some((
-                    "Rules still save; it reads them when it starts.".into(),
-                    p.muted(),
-                )),
-                controls::button(p, "open", "Open Spaceman", ButtonKind::Primary, |_, _| {
-                    drop(
-                        std::process::Command::new("open")
-                            .args(["-b", "com.kitlangton.spaceman"])
-                            .spawn(),
-                    );
-                }),
-            )],
-        )),
-        None => {}
-        Some(agent) => {
-            let access = if agent.accessibility {
-                controls::setting_row(
-                    p,
-                    "accessibility",
-                    "Accessibility",
-                    Some(("Granted. Spaceman can move windows.".into(), p.muted())),
-                    controls::status_dot(c.success.fg),
-                )
-            } else {
-                controls::setting_row(
-                    p,
-                    "accessibility",
-                    "Accessibility",
-                    Some((
-                        "Spaceman needs it to move and resize windows.".into(),
-                        c.warning.fg,
-                    )),
-                    controls::button(
-                        p,
-                        "grant",
-                        "Open System Settings",
-                        ButtonKind::Primary,
-                        |ui, _| ui.open_accessibility(),
-                    ),
-                )
-            };
-            let tiling = if agent.accessibility {
-                controls::toggle_row(
-                    p,
-                    "tiling",
-                    "Automatic tiling",
-                    Some((
-                        if agent.automatic {
-                            "On. New windows tile as they open.".into()
-                        } else {
-                            "Paused. Parked windows are restored.".into()
-                        },
-                        p.muted(),
-                    )),
-                    agent.automatic,
-                    |ui| ui.toggle_automatic(),
-                )
-            } else {
-                controls::setting_row(
-                    p,
-                    "tiling",
-                    "Automatic tiling",
-                    Some((
-                        "Starts once Accessibility is granted and the hotkeys register.".into(),
-                        p.muted(),
-                    )),
-                    controls::status_dot(c.border_strong),
-                )
-            };
-            let (on, description) = match &agent.launch_at_login {
-                LaunchAtLogin::On => (true, None),
-                LaunchAtLogin::Off => (false, None),
-                LaunchAtLogin::NeedsApproval => (
-                    true,
-                    Some((
-                        "Waiting for approval in System Settings › Login Items.".to_owned(),
-                        c.warning.fg,
-                    )),
-                ),
-                LaunchAtLogin::Failed(error) => (false, Some((error.clone(), c.danger.fg))),
-            };
-            let login =
-                controls::toggle_row(p, "login", "Launch at Login", description, on, |ui| {
-                    ui.toggle_launch_at_login();
-                });
-            let hud = controls::toggle_row(
+                "accessibility",
+                "Accessibility",
+                Some(("Granted. Spaceman can move windows.".into(), p.muted())),
+                controls::status_dot(c.success.fg),
+            )
+        } else {
+            controls::setting_row(
                 p,
-                "hud",
-                "Workspace HUD",
+                "accessibility",
+                "Accessibility",
                 Some((
-                    "Show a non-activating capsule when switching workspaces or layouts.".into(),
-                    p.muted(),
-                )),
-                ui.doc.hud(),
-                |ui| ui.toggle_hud(),
-            );
-            let setup_tour = controls::setting_row(
-                p,
-                "setup-tour",
-                "Setup tour",
-                Some((
-                    "Walk through permissions, app rules, and shortcuts.".into(),
-                    p.muted(),
+                    "Spaceman needs it to move and resize windows.".into(),
+                    c.warning.fg,
                 )),
                 controls::button(
                     p,
-                    "run-tour",
-                    "Run Setup Tour…",
-                    ButtonKind::Secondary,
-                    |ui, _| ui.start_tour(),
+                    "grant",
+                    "Open System Settings",
+                    ButtonKind::Primary,
+                    |ui, _| ui.open_accessibility(),
                 ),
-            );
-            sections.push(controls::section(
+            )
+        };
+        let tiling = if agent.accessibility {
+            controls::toggle_row(
                 p,
-                "agent",
-                "Spaceman",
-                vec![access, tiling, hud, login, setup_tour],
-            ));
-        }
+                "tiling",
+                "Automatic tiling",
+                Some((
+                    if agent.automatic {
+                        "On. New windows tile as they open.".into()
+                    } else {
+                        "Paused. Parked windows are restored.".into()
+                    },
+                    p.muted(),
+                )),
+                agent.automatic,
+                |ui| ui.toggle_automatic(),
+            )
+        } else {
+            controls::setting_row(
+                p,
+                "tiling",
+                "Automatic tiling",
+                Some((
+                    "Starts once Accessibility is granted and the hotkeys register.".into(),
+                    p.muted(),
+                )),
+                controls::status_dot(c.border_strong),
+            )
+        };
+        let (on, description) = match &agent.launch_at_login {
+            UiLaunchAtLogin::On => (true, None),
+            UiLaunchAtLogin::Off => (false, None),
+            UiLaunchAtLogin::NeedsApproval => (
+                true,
+                Some((
+                    "Waiting for approval in System Settings › Login Items.".to_owned(),
+                    c.warning.fg,
+                )),
+            ),
+            UiLaunchAtLogin::Failed(error) => (false, Some((error.clone(), c.danger.fg))),
+        };
+        let login = controls::toggle_row(p, "login", "Launch at Login", description, on, |ui| {
+            ui.toggle_launch_at_login();
+        });
+        let hud = controls::toggle_row(
+            p,
+            "hud",
+            "Workspace HUD",
+            Some((
+                "Show a non-activating capsule when switching workspaces or layouts.".into(),
+                p.muted(),
+            )),
+            ui.doc.hud(),
+            |ui| ui.toggle_hud(),
+        );
+        let setup_tour = controls::setting_row(
+            p,
+            "setup-tour",
+            "Setup tour",
+            Some((
+                "Walk through permissions, app rules, and shortcuts.".into(),
+                p.muted(),
+            )),
+            controls::button(
+                p,
+                "run-tour",
+                "Run Setup Tour…",
+                ButtonKind::Secondary,
+                |ui, _| ui.start_tour(),
+            ),
+        );
+        sections.push(controls::section(
+            p,
+            "agent",
+            "Spaceman",
+            vec![access, tiling, hud, login, setup_tour],
+        ));
     }
     sections.push(controls::section(
         p,
@@ -264,20 +237,7 @@ const SHORTCUTS: &[(&str, &[&[&str]])] = &[
 ];
 
 pub fn shortcuts(p: Paint) -> El {
-    let rows = SHORTCUTS
-        .iter()
-        .enumerate()
-        .map(|(index, (title, combos))| {
-            let mut keys = row().key("keys").gap(6.0).center_y();
-            for (n, combo) in combos.iter().enumerate() {
-                if n > 0 {
-                    keys = keys.child(text("or").font(p.k.ty.small).color(p.faint()));
-                }
-                keys = keys.child(Keybind::new(combo).build(p.k));
-            }
-            controls::setting_row(p, &format!("shortcut-{index}"), title, None, keys)
-        })
-        .collect();
+    let rows = controls::shortcut_rows(p, "shortcut", SHORTCUTS);
     scroll_body(
         "shortcuts-body",
         col()
