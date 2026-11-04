@@ -12,9 +12,14 @@ use objc2_app_kit::{
 use objc2_foundation::{NSObject, NSObjectProtocol, NSPoint, NSRect, NSSize, NSString};
 
 use crate::{
-    app::{Action, HUD_PREVIEW_RECT, UiHudLayout},
+    WorkspaceId,
+    app::{Action, HUD_PREVIEW_RECT, UiHudLayout, WorkerAction},
     login_item,
 };
+
+mod workspaces;
+
+pub(crate) use workspaces::{DisplayWorkspaces, MenuWorkspace};
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub(crate) struct WorkspaceLayout {
@@ -65,6 +70,15 @@ objc2::define_class!(
             drop(self.ivars().actions.send(Action::ToggleLaunchAtLogin));
         }
 
+        #[unsafe(method(switchWorkspace:))]
+        fn switch_workspace(&self, sender: &NSMenuItem) {
+            if let Ok(index) = usize::try_from(sender.tag()) {
+                drop(self.ivars().actions.send(Action::Worker(
+                    WorkerAction::SwitchWorkspace(WorkspaceId::from_index(index)),
+                )));
+            }
+        }
+
         #[unsafe(method(quit:))]
         fn quit(&self, _sender: &NSObject) {
             drop(self.ivars().actions.send(Action::Quit));
@@ -82,8 +96,8 @@ impl Target {
 
 struct Controller {
     _item: Retained<NSStatusItem>,
-    _menu: Retained<NSMenu>,
-    _target: Retained<Target>,
+    menu: Retained<NSMenu>,
+    target: Retained<Target>,
     button: Retained<NSStatusBarButton>,
     status: Retained<NSMenuItem>,
     setup: Retained<NSMenuItem>,
@@ -93,6 +107,8 @@ struct Controller {
     launch_at_login: Retained<NSMenuItem>,
     status_title: String,
     workspace_layouts: Vec<WorkspaceLayout>,
+    workspace_menu: Vec<DisplayWorkspaces>,
+    workspace_items: Vec<Retained<NSMenuItem>>,
 }
 
 thread_local! {
@@ -167,8 +183,8 @@ pub fn install(sender: Sender<Action>) -> Result<(), String> {
     CONTROLLER.with(|controller| {
         *controller.borrow_mut() = Some(Controller {
             _item: item,
-            _menu: menu,
-            _target: target,
+            menu,
+            target,
             button,
             status,
             setup,
@@ -178,6 +194,8 @@ pub fn install(sender: Sender<Action>) -> Result<(), String> {
             launch_at_login,
             status_title: String::new(),
             workspace_layouts: Vec::new(),
+            workspace_menu: Vec::new(),
+            workspace_items: Vec::new(),
         });
     });
     Ok(())
@@ -228,6 +246,10 @@ pub fn set_hud(enabled: bool) {
 }
 
 pub fn set_automatic(enabled: bool) {
+    if !enabled {
+        // Switching is ignored while paused, and the list goes stale.
+        set_workspace_menu(&[]);
+    }
     CONTROLLER.with(|controller| {
         if let Some(controller) = controller.borrow().as_ref() {
             controller
@@ -293,6 +315,32 @@ pub fn set_workspace_layouts(layouts: &[WorkspaceLayout]) {
             controller.button.setImage(Some(&image));
             controller.workspace_layouts = layouts.to_vec();
         }
+    });
+}
+
+/// Lists `displays`' workspaces above the tiling toggle.
+pub fn set_workspace_menu(displays: &[DisplayWorkspaces]) {
+    let Some(marker) = MainThreadMarker::new() else {
+        return;
+    };
+    CONTROLLER.with(|controller| {
+        let mut controller = controller.borrow_mut();
+        let Some(controller) = controller.as_mut() else {
+            return;
+        };
+        if controller.workspace_menu == displays {
+            return;
+        }
+        for item in controller.workspace_items.drain(..) {
+            controller.menu.removeItem(&item);
+        }
+        let items = workspaces::items(displays, &controller.target, marker);
+        let start = controller.menu.indexOfItem(&controller.automatic);
+        for (offset, item) in (start..).zip(&items) {
+            controller.menu.insertItem_atIndex(item, offset);
+        }
+        controller.workspace_items = items;
+        controller.workspace_menu = displays.to_vec();
     });
 }
 

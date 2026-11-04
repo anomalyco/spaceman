@@ -92,7 +92,9 @@ maintainer workflow.
 
 When Accessibility permission is granted and hotkeys register successfully, Spaceman starts automatic
 tiling; it does not otherwise start paused intentionally. Without Accessibility permission, the menu
-reports the permission error and tiling remains paused. The menu actions are `Run Setup...` (while
+reports the permission error and tiling remains paused. While tiling, the menu lists each display's
+workspaces (the visible one checked, plus any holding windows, with their apps' icons); choosing one
+switches to it. The menu actions are `Run Setup...` (while
 Accessibility is missing), `Disable Tiling` (or `Enable Tiling` while paused), `Workspace HUD`,
 `Launch at Login`, `Settings...` (`⌘,`), `Check for Updates...`, and `Quit Spaceman` (`⌘Q`). Settings
 includes `General`, `Rules`, `Workspaces`, `Shortcuts`, and `Activity` (title-free arrangement
