@@ -535,3 +535,44 @@ fn status_menu_lists_each_displays_visible_and_occupied_workspaces() {
         ]
     );
 }
+
+#[test]
+fn swipes_step_through_the_occupied_workspaces_of_the_display_under_the_pointer() {
+    let tiled = window(10);
+    let floating = window(11);
+    let mut backend = FakeBackend {
+        observation: Some(observation(&tiled, frame(50))),
+        ..FakeBackend::default()
+    };
+    backend.frames.insert(tiled.clone(), frame(50));
+    backend.frames.insert(floating.clone(), frame(60));
+    let mut runtime = runtime(backend);
+    bind(&mut runtime, WorkspaceId::ONE, &tiled);
+    runtime
+        .workspaces
+        .own_floating(floating, WorkspaceId::THREE);
+    let main_display = (500, 400);
+    let swipe = |runtime: &mut WorkspaceRuntime<FakeBackend>, swipe, point| {
+        runtime
+            .swipe(swipe, point, outputs(), &AtomicBool::new(false))
+            .unwrap()
+            .active
+    };
+
+    assert_eq!(
+        swipe(&mut runtime, Swipe::Left, main_display),
+        [WorkspaceId::THREE, WorkspaceId::SIX]
+    );
+    assert_eq!(
+        swipe(&mut runtime, Swipe::Left, main_display),
+        [WorkspaceId::THREE, WorkspaceId::SIX]
+    );
+    assert_eq!(
+        swipe(&mut runtime, Swipe::Left, (1500, 400)),
+        [WorkspaceId::THREE, WorkspaceId::SIX]
+    );
+    assert_eq!(
+        swipe(&mut runtime, Swipe::Right, main_display),
+        [WorkspaceId::ONE, WorkspaceId::SIX]
+    );
+}

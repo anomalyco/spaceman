@@ -344,6 +344,42 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
         self.switch(previous, outputs, cancelled)
     }
 
+    /// Left goes to the next workspace in the display's menu section, right to
+    /// the previous one. Nothing happens past either end.
+    pub(super) fn swipe(
+        &mut self,
+        swipe: Swipe,
+        point: (i32, i32),
+        outputs: macos::DisplayOutputs,
+        cancelled: &AtomicBool,
+    ) -> Result<CycleStatus, String> {
+        self.synchronize_foreground(&outputs);
+        let display_id = outputs
+            .displays()
+            .iter()
+            .find(|display| display.frame.contains(point.0, point.1))
+            .unwrap_or_else(|| outputs.main())
+            .id
+            .clone();
+        let current = self
+            .visible_workspaces(&outputs)
+            .into_iter()
+            .find(|resolved| resolved.display_id == display_id)
+            .map(|resolved| resolved.workspace);
+        let listed = self.listed_workspaces(&display_id, current, &outputs);
+        let target = listed
+            .iter()
+            .position(|workspace| Some(*workspace) == current)
+            .and_then(|index| match swipe {
+                Swipe::Left => listed.get(index + 1),
+                Swipe::Right => index.checked_sub(1).and_then(|index| listed.get(index)),
+            });
+        match target {
+            Some(&target) => self.switch(target, outputs, cancelled),
+            None => Ok(self.status(0, &outputs)),
+        }
+    }
+
     pub(super) fn move_focused(
         &mut self,
         target: WorkspaceId,

@@ -38,6 +38,7 @@ impl MainThreadAgent {
                     {
                         Ok(registered) => {
                             self.hotkeys = Some(registered);
+                            self.listen_for_swipes();
                             self.automatic = true;
                             self.last_error = None;
                             self.cancelled.store(false, Ordering::Release);

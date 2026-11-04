@@ -35,6 +35,7 @@ mod sparkle;
 #[cfg(target_os = "macos")]
 #[allow(unsafe_code)]
 mod status_item;
+pub mod swipe;
 #[cfg(target_os = "macos")]
 #[allow(unsafe_code)]
 mod termination;

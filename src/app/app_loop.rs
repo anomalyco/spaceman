@@ -70,6 +70,8 @@ pub struct MainThreadAgent {
     mouse_was_down: bool,
     frontmost_application: Option<AppInstanceId>,
     activation_refresh_at: Option<Instant>,
+    /// Installed the first time tiling starts; swipes queue nothing while paused.
+    swipes: Option<macos::SwipeMonitor>,
 }
 
 impl MainThreadAgent {
@@ -102,7 +104,7 @@ impl MainThreadAgent {
         }
 
         let initial_refresh = Instant::now() - FALLBACK_REFRESH_INTERVAL;
-        let agent = Self {
+        let mut agent = Self {
             actions: init.actions,
             actions_sender: init.actions_sender,
             worker,
@@ -137,13 +139,30 @@ impl MainThreadAgent {
             mouse_was_down: macos::mouse_down(),
             frontmost_application: macos::frontmost_application(),
             activation_refresh_at: None,
+            swipes: None,
         };
+        if automatic {
+            agent.listen_for_swipes();
+        }
         agent.publish_ui(false);
         agent
     }
 
     pub(super) fn set_callbacks(&mut self, callbacks: HostCallbacks) {
         self.callbacks = callbacks;
+    }
+
+    fn listen_for_swipes(&mut self) {
+        if self.swipes.is_some() {
+            return;
+        }
+        let sender = self.actions_sender.clone();
+        match macos::SwipeMonitor::install(move |swipe, point| {
+            drop(sender.send(Action::Worker(WorkerAction::Swipe(swipe, point))));
+        }) {
+            Ok(monitor) => self.swipes = Some(monitor),
+            Err(error) => log_event!("trackpad swipes unavailable: {error}"),
+        }
     }
 
     pub fn tick(&mut self) -> TickOutcome {

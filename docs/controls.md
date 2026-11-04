@@ -19,6 +19,13 @@ fails after the old registrations are released, it pauses and reports `Hotkeys u
 | `Option+/` | Toggle the active workspace layout's root horizontal/vertical axis |
 | `Option+-` / `Option+=` | Shrink/grow the focused tile by 50 pixels at its immediate split |
 | `Option+Shift+F` | Toggle the workspace-wide Fullscreen Layout without entering native fullscreen |
+| Three-finger swipe left/right | Next/previous workspace on the display under the pointer |
+
+A three-finger horizontal swipe steps through the workspaces that the display's menu section lists
+(the visible one and every one holding windows), stopping at either end. Swiping left goes to the
+next one, as with macOS Spaces. Spaceman only listens to the trackpad, so macOS still acts on the
+same swipe: set "Swipe between full-screen applications" to four fingers or off in Trackpad
+settings. Four-finger swipes and vertical swipes are left to macOS.
 
 Named workspace shortcuts are registered only when referenced by config. If a configured letter
 overlaps a built-in shortcut, the workspace shortcut takes precedence.
