@@ -46,7 +46,7 @@ Diagnose                                                   // recover.doctor
 ## How To Get To It (User POV)
 
 ```ts
-Menu bar: Disable Tiling (pause + restore) | Workspace HUD | Settings... (⌘,) | Quit Spaceman (⌘Q)
+Menu bar: workspaces (switch) | Disable Tiling (pause + restore) | Workspace HUD | Settings... (⌘,) | Quit Spaceman (⌘Q)
 Settings: Activity -> Refresh | Mark Issue | journal.jsonl (Show in Finder)
 CLI:      spaceman ctl pause | resume | quit | restart | status | debug
           spaceman doctor [hours]      // reads files directly; works with the agent stopped

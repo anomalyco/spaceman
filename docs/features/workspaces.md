@@ -7,7 +7,7 @@ instantly, and send windows or whole apps to a workspace, without using macOS Sp
 
 ```ts
 Switch workspace                                           // ws.switch
-├── Option+1..0 / Option+A..Z / spaceman ctl switch <ws>
+├── Option+1..0 / Option+A..Z / spaceman ctl switch <ws> / a workspace in the menu bar menu
 ├── Incoming parked windows revealed -> laid out -> outgoing windows parked off-screen
 │   └── Reveal not confirmed by the window server in time -> switch rolled back, old workspace stays
 ├── Focus -> last-focused tile of the incoming workspace
@@ -50,7 +50,8 @@ Keyboard (while tiling is enabled)
 └── Option+Tab                  -> back-and-forth
 CLI: spaceman ctl switch | back-and-forth | move | move-app
 Config: ~/Library/Application Support/Spaceman/config.toml -> [[rules]], [[workspaces]] (read at startup only)
-Menu bar: shows the active workspace glyphs; does not switch
+Menu bar: shows the active workspace glyphs; its menu lists each display's visible workspace (checked)
+          and occupied ones with their apps' icons and Option shortcut -> choose one to switch
 Mouse: drop a tile on another display -> moves it to that display's active workspace (see tiling.md)
 ```
 
@@ -66,6 +67,9 @@ on the same letter.
   `focusing_a_parked_window_activates_its_workspace`,
   `workspace_back_and_forth_tracks_each_display_lane_independently`,
   `switching_to_an_unconfigured_named_workspace_is_rejected`.
+- Unit (FakeBackend), `src/app/tests/switching.rs`:
+  `status_menu_lists_each_displays_visible_and_occupied_workspaces` (menu rows per display, checks,
+  app order). The AppKit rows themselves (icons, tooltip of app names) are not covered.
 - Unit (FakeBackend), `src/app/tests/reconciliation.rs`: adoption order
   (`bundle_route_applies_to_initial_window_while_secondary_windows_stay_on_active_workspace`,
   `title_route_rule_routes_matching_secondary_window`,

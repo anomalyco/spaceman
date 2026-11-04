@@ -3,6 +3,7 @@ use super::*;
 pub(super) struct CycleStatus {
     pub(super) active: Vec<WorkspaceId>,
     pub(super) layouts: Vec<status_item::WorkspaceLayout>,
+    pub(super) menu: Vec<status_item::DisplayWorkspaces>,
     pub(super) failed: usize,
     pub(super) hud: Option<UiHudEvent>,
 }
@@ -628,7 +629,7 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
     }
 
     pub(super) fn status(&self, failed: usize, outputs: &macos::DisplayOutputs) -> CycleStatus {
-        self.status_for_visible(failed, &self.visible_workspaces(outputs))
+        self.status_for_visible(failed, &self.visible_workspaces(outputs), outputs)
     }
 
     pub(super) fn persist_workspace_state_if_changed(&mut self) -> Result<(), String> {
@@ -653,6 +654,7 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
         &self,
         failed: usize,
         visible: &[ResolvedWorkspace],
+        outputs: &macos::DisplayOutputs,
     ) -> CycleStatus {
         let active: Vec<_> = visible
             .iter()
@@ -667,10 +669,55 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
                     mode: self.workspace_preview(*workspace),
                 })
                 .collect(),
+            menu: self.workspace_menu(visible, outputs),
             active,
             failed,
             hud: None,
         }
+    }
+
+    /// Per display, its visible workspace and every other workspace holding windows.
+    fn workspace_menu(
+        &self,
+        visible: &[ResolvedWorkspace],
+        outputs: &macos::DisplayOutputs,
+    ) -> Vec<status_item::DisplayWorkspaces> {
+        outputs
+            .displays()
+            .iter()
+            .filter_map(|display| {
+                let current = visible
+                    .iter()
+                    .find(|resolved| resolved.display_id == display.id)
+                    .map(|resolved| resolved.workspace);
+                let workspaces = WorkspaceId::all()
+                    .filter(|workspace| {
+                        let selector = self.workspaces.assignment(*workspace);
+                        self.workspaces.is_enabled(*workspace)
+                            && self.scope.manages_selector(selector)
+                            && outputs.resolve(selector).id == display.id
+                    })
+                    .filter_map(|workspace| {
+                        let mut apps = Vec::new();
+                        for window in self.workspaces.windows(workspace) {
+                            if !apps.contains(&window.app.pid) {
+                                apps.push(window.app.pid);
+                            }
+                        }
+                        let current = current == Some(workspace);
+                        (current || !apps.is_empty()).then_some(status_item::MenuWorkspace {
+                            workspace,
+                            current,
+                            apps,
+                        })
+                    })
+                    .collect::<Vec<_>>();
+                (!workspaces.is_empty()).then(|| status_item::DisplayWorkspaces {
+                    display: display.name.clone(),
+                    workspaces,
+                })
+            })
+            .collect()
     }
 
     pub(super) fn hud_for(&self, workspace: WorkspaceId, kind: UiHudKind) -> UiHudEvent {

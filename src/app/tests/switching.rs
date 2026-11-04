@@ -483,3 +483,55 @@ fn switch_rollback_preserves_original_recovery_frames_and_suppresses_focus_loop(
     let status = runtime.cycle(outputs, &AtomicBool::new(false)).unwrap();
     assert_eq!(status.active, vec![WorkspaceId::ONE, WorkspaceId::SIX]);
 }
+
+#[test]
+fn status_menu_lists_each_displays_visible_and_occupied_workspaces() {
+    let app_window = |pid, window_id| crate::PhysicalWindowId {
+        app: AppInstanceId {
+            pid,
+            launched_at: 1,
+        },
+        window_id,
+    };
+    let mut runtime = runtime(FakeBackend::default());
+    bind(&mut runtime, WorkspaceId::ONE, &app_window(7, 10));
+    bind(&mut runtime, WorkspaceId::ONE, &app_window(8, 11));
+    bind(&mut runtime, WorkspaceId::ONE, &app_window(7, 12));
+    let three = WorkspaceId::THREE;
+    runtime.workspaces.own_floating(app_window(9, 13), three);
+
+    let menu = runtime.status(0, &outputs()).menu;
+
+    let entry = |workspace, current, apps: &[i32]| status_item::MenuWorkspace {
+        workspace,
+        current,
+        apps: apps.to_vec(),
+    };
+    assert_eq!(
+        menu,
+        vec![
+            status_item::DisplayWorkspaces {
+                display: "Main".into(),
+                workspaces: vec![
+                    entry(WorkspaceId::ONE, true, &[7, 8]),
+                    entry(three, false, &[9]),
+                ],
+            },
+            status_item::DisplayWorkspaces {
+                display: "Secondary".into(),
+                workspaces: vec![entry(WorkspaceId::SIX, true, &[])],
+            },
+        ]
+    );
+
+    runtime.workspaces.switch(three);
+    let menu = runtime.status(0, &outputs()).menu;
+
+    assert_eq!(
+        menu[0].workspaces,
+        vec![
+            entry(WorkspaceId::ONE, false, &[7, 8]),
+            entry(three, true, &[9]),
+        ]
+    );
+}

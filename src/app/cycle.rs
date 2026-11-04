@@ -212,7 +212,7 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
         self.record_window_memory(server_frames);
         self.journal.observation = Some(observation);
         self.persist_workspace_state_if_changed()?;
-        Ok(self.status_for_visible(failed, &visible))
+        Ok(self.status_for_visible(failed, &visible, &outputs))
     }
 
     /// A bound window the window server still shows on screen inside this

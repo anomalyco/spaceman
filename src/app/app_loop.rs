@@ -356,6 +356,7 @@ fn show_result(result: Result<CycleStatus, String>) {
     match result {
         Ok(status) => {
             status_item::set_workspace_layouts(&status.layouts);
+            status_item::set_workspace_menu(&status.menu);
             if status.failed > 0 {
                 status_item::set_status(&format!(
                     "{} window operation{} failed",
