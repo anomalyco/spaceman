@@ -1,6 +1,7 @@
 mod apply;
 mod ax;
 mod events;
+mod swipes;
 #[cfg(test)]
 mod tests;
 
@@ -33,6 +34,7 @@ pub use ax::{
     window_server_frames,
 };
 pub use events::WindowEventMonitor;
+pub use swipes::SwipeMonitor;
 
 use apply::{cache_managed_window, evict_managed_app, prune_managed_app};
 use ax::{

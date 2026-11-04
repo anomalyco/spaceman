@@ -178,6 +178,7 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
             WorkerAction::WorkspaceBackAndForth => {
                 self.workspace_back_and_forth(outputs, cancelled)
             }
+            WorkerAction::Swipe(swipe, point) => self.swipe(swipe, point, outputs, cancelled),
             WorkerAction::MoveFocused(workspace) => {
                 self.move_focused(workspace, outputs, cancelled)
             }
@@ -690,32 +691,47 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
                     .iter()
                     .find(|resolved| resolved.display_id == display.id)
                     .map(|resolved| resolved.workspace);
-                let workspaces = WorkspaceId::all()
-                    .filter(|workspace| {
-                        let selector = self.workspaces.assignment(*workspace);
-                        self.workspaces.is_enabled(*workspace)
-                            && self.scope.manages_selector(selector)
-                            && outputs.resolve(selector).id == display.id
-                    })
-                    .filter_map(|workspace| {
+                let workspaces = self
+                    .listed_workspaces(&display.id, current, outputs)
+                    .into_iter()
+                    .map(|workspace| {
                         let mut apps = Vec::new();
                         for window in self.workspaces.windows(workspace) {
                             if !apps.contains(&window.app.pid) {
                                 apps.push(window.app.pid);
                             }
                         }
-                        let current = current == Some(workspace);
-                        (current || !apps.is_empty()).then_some(status_item::MenuWorkspace {
+                        status_item::MenuWorkspace {
                             workspace,
-                            current,
+                            current: current == Some(workspace),
                             apps,
-                        })
+                        }
                     })
                     .collect::<Vec<_>>();
                 (!workspaces.is_empty()).then(|| status_item::DisplayWorkspaces {
                     display: display.name.clone(),
                     workspaces,
                 })
+            })
+            .collect()
+    }
+
+    /// A display's visible workspace and every other one holding windows, in order:
+    /// the rows of its menu section and the stops of a swipe.
+    pub(super) fn listed_workspaces(
+        &self,
+        display_id: &str,
+        current: Option<WorkspaceId>,
+        outputs: &macos::DisplayOutputs,
+    ) -> Vec<WorkspaceId> {
+        WorkspaceId::all()
+            .filter(|workspace| {
+                let selector = self.workspaces.assignment(*workspace);
+                self.workspaces.is_enabled(*workspace)
+                    && self.scope.manages_selector(selector)
+                    && outputs.resolve(selector).id == display_id
+                    && (current == Some(*workspace)
+                        || !self.workspaces.windows(*workspace).is_empty())
             })
             .collect()
     }

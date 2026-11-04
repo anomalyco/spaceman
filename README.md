@@ -118,6 +118,10 @@ Core controls:
 | `Option+/` | Toggle the active layout's root split axis |
 | `Option+-`, `Option+=` | Shrink/grow the focused tile by 50 pixels |
 | `Option+Shift+F` | Toggle Fullscreen Layout without native fullscreen |
+| Three-finger swipe left/right | Next/previous occupied workspace on the display under the pointer |
+
+The swipe shares three fingers with macOS's "Swipe between full-screen applications"; set that to
+four fingers or off in Trackpad settings so only one of them moves.
 
 Character shortcuts follow the active macOS keyboard layout. Workspace digits remain the physical
 ANSI number row, and Tab remains physical Tab. See [Controls](docs/controls.md) for drag, resize,

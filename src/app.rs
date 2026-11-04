@@ -17,7 +17,9 @@ use crate::{
     config::{Config, WindowDisposition},
     control::{self, Command as ControlCommand, Request as ControlRequest},
     hotkeys::{HotkeyPlan, Hotkeys},
-    live, login_item, macos, permission_guide, sparkle, status_item, termination,
+    live, login_item, macos, permission_guide, sparkle, status_item,
+    swipe::Swipe,
+    termination,
 };
 
 /// Timestamped diagnostic line on stderr (redirected to `agent.log` in bundle
@@ -162,6 +164,9 @@ pub(crate) enum WorkerAction {
     Retile,
     SwitchWorkspace(WorkspaceId),
     WorkspaceBackAndForth,
+    /// A trackpad swipe, stepping through the occupied workspaces of the display
+    /// under the pointer.
+    Swipe(Swipe, (i32, i32)),
     MoveFocused(WorkspaceId),
     MoveApp(String, WorkspaceId),
     CycleFocus,
@@ -181,6 +186,7 @@ impl WorkerAction {
             Self::Retile => "retile queued".into(),
             Self::SwitchWorkspace(workspace) => format!("switch to workspace {workspace} queued"),
             Self::WorkspaceBackAndForth => "workspace back-and-forth queued".into(),
+            Self::Swipe(..) => "swipe queued".into(),
             Self::MoveFocused(workspace) => format!("move to workspace {workspace} queued"),
             Self::MoveApp(_, workspace) => format!("move app to workspace {workspace} queued"),
             Self::CycleFocus => "focus cycle queued".into(),
