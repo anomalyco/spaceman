@@ -6,6 +6,7 @@ mod actions;
 mod automatic;
 mod controls;
 mod dispatch;
+mod hotkey_health;
 
 pub(super) use dispatch::WorkerDispatch;
 
@@ -49,6 +50,8 @@ pub struct MainThreadAgent {
     bridge: UiBridge,
     callbacks: HostCallbacks,
     hotkeys: Option<Hotkeys>,
+    hotkey_delivery: DeliveryWatch,
+    last_hotkey_heal: Option<Instant>,
     accessibility: bool,
     automatic: bool,
     hud: bool,
@@ -72,6 +75,8 @@ pub struct MainThreadAgent {
     activation_refresh_at: Option<Instant>,
     /// Installed the first time tiling starts; swipes queue nothing while paused.
     swipes: Option<macos::SwipeMonitor>,
+    /// Option key presses, to notice hotkeys macOS stopped delivering.
+    keys: Option<macos::KeyMonitor>,
 }
 
 impl MainThreadAgent {
@@ -84,7 +89,10 @@ impl MainThreadAgent {
             match HotkeyPlan::current(&init.hotkey_workspaces)
                 .and_then(|plan| Hotkeys::install(init.actions_sender.clone(), plan))
             {
-                Ok(hotkeys) => (Some(hotkeys), None),
+                Ok(hotkeys) => {
+                    log_event!("hotkeys: registered {} shortcuts", hotkeys.len());
+                    (Some(hotkeys), None)
+                }
                 Err(error) => (None, Some(format!("Hotkeys unavailable: {error}"))),
             }
         } else {
@@ -118,6 +126,8 @@ impl MainThreadAgent {
             bridge: init.bridge,
             callbacks: init.callbacks,
             hotkeys,
+            hotkey_delivery: DeliveryWatch::default(),
+            last_hotkey_heal: None,
             accessibility: trusted,
             automatic,
             hud: init.hud,
@@ -140,9 +150,10 @@ impl MainThreadAgent {
             frontmost_application: macos::frontmost_application(),
             activation_refresh_at: None,
             swipes: None,
+            keys: None,
         };
         if automatic {
-            agent.listen_for_swipes();
+            agent.listen_for_input();
         }
         agent.publish_ui(false);
         agent
@@ -152,16 +163,24 @@ impl MainThreadAgent {
         self.callbacks = callbacks;
     }
 
-    fn listen_for_swipes(&mut self) {
-        if self.swipes.is_some() {
-            return;
+    fn listen_for_input(&mut self) {
+        if self.swipes.is_none() {
+            let sender = self.actions_sender.clone();
+            match macos::SwipeMonitor::install(move |swipe, point| {
+                drop(sender.send(Action::Worker(WorkerAction::Swipe(swipe, point))));
+            }) {
+                Ok(monitor) => self.swipes = Some(monitor),
+                Err(error) => log_event!("trackpad swipes unavailable: {error}"),
+            }
         }
-        let sender = self.actions_sender.clone();
-        match macos::SwipeMonitor::install(move |swipe, point| {
-            drop(sender.send(Action::Worker(WorkerAction::Swipe(swipe, point))));
-        }) {
-            Ok(monitor) => self.swipes = Some(monitor),
-            Err(error) => log_event!("trackpad swipes unavailable: {error}"),
+        if self.keys.is_none() {
+            let sender = self.actions_sender.clone();
+            match macos::KeyMonitor::install(move |key_code, modifiers| {
+                drop(sender.send(Action::OptionKeyDown(key_code, modifiers)));
+            }) {
+                Ok(monitor) => self.keys = Some(monitor),
+                Err(error) => log_event!("hotkey delivery check unavailable: {error}"),
+            }
         }
     }
 
@@ -296,6 +315,7 @@ impl MainThreadAgent {
         self.automatic = false;
         self.cancelled.store(true, Ordering::Release);
         self.hotkeys = None;
+        self.hotkey_delivery.clear();
         self.pending_inputs.clear();
         self.gesture_tracker.clear();
         self.ui_dirty = true;

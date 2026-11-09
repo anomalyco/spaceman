@@ -37,8 +37,10 @@ impl MainThreadAgent {
                         .and_then(|plan| Hotkeys::install(self.actions_sender.clone(), plan))
                     {
                         Ok(registered) => {
+                            log_event!("hotkeys: registered {} shortcuts", registered.len());
                             self.hotkeys = Some(registered);
-                            self.listen_for_swipes();
+                            self.hotkey_delivery.clear();
+                            self.listen_for_input();
                             self.automatic = true;
                             self.last_error = None;
                             self.cancelled.store(false, Ordering::Release);
@@ -132,6 +134,10 @@ impl MainThreadAgent {
                     } else {
                         self.cancel_unavailable_exit();
                     }
+                }
+                Action::Hotkey(id) => self.hotkey_delivered(id),
+                Action::OptionKeyDown(key_code, modifiers) => {
+                    self.option_key_down(key_code, modifiers);
                 }
                 Action::Worker(action) => {
                     if self.automatic {

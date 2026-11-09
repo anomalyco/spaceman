@@ -7,6 +7,10 @@ impl MainThreadAgent {
             // Hotkey failure may have paused inside this iteration.
             return;
         }
+        self.heal_missed_hotkey();
+        if !self.automatic {
+            return;
+        }
         let current_frontmost = macos::frontmost_application();
         if current_frontmost != self.frontmost_application {
             self.frontmost_application = current_frontmost;
@@ -125,20 +129,8 @@ impl MainThreadAgent {
                     .as_ref()
                     .is_some_and(|hotkeys| plan.matches(hotkeys)) =>
             {
-                self.hotkeys = None;
-                match Hotkeys::install(self.actions_sender.clone(), plan) {
-                    Ok(hotkeys) => {
-                        self.hotkeys = Some(hotkeys);
-                        self.last_error = None;
-                        self.ui_dirty = true;
-                    }
-                    Err(error) => {
-                        let error = format!("Hotkeys unavailable: {error}");
-                        self.last_error = Some(error.clone());
-                        self.stop_automatic_and_restore();
-                        status_item::set_status(&error);
-                    }
-                }
+                log_event!("hotkeys: keyboard layout changed");
+                self.reinstall_hotkeys(plan);
             }
             Ok(_) => {}
             Err(error) => {
