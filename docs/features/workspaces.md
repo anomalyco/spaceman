@@ -94,6 +94,10 @@ on the same letter.
 - Unit (FakeBackend), `src/app/tests/reconciliation.rs`:
   `an_app_that_quits_while_hidden_releases_its_tiles_and_recovery_metadata` (an app that quits
   while its windows are parked frees their tiles without the workspace being shown).
+- Unit: `src/hotkeys/delivery.rs` pairs Option presses seen by the key tap with Carbon deliveries
+  in either order and reports a press still undelivered after 750 ms. The tap
+  (`src/macos/keys.rs`) and the re-registration in `src/app/app_loop/hotkey_health.rs` are not
+  covered.
 - Live harness (not run): `scripts/live-workspaces.sh` switches 6/7/8 by real hotkeys, moves without
   switching, rapid-switch coalescing, and hard-kill recovery. Needs two displays and AeroSpace.
 
@@ -111,4 +115,8 @@ on the same letter.
   input timing and whether Command was held, so Command-Tab can be told apart from self-activation.
 - Panels and non-standard windows are never parked, so they show on every workspace; an empty
   workspace exposes whatever unmanaged windows sit behind managed ones.
+- macOS can stop delivering Carbon hotkeys to a running agent (seen twice on Nov 9, 2026, cause
+  unknown). A listen-only key tap sees an Option shortcut Carbon didn't take; after 750 ms the agent
+  logs `hotkey: <name> pressed but macOS did not deliver it`, registers every shortcut again (at
+  most every 5 s) and runs the missed action. Each delivered press logs `hotkey: <name>`.
 - Rules and display assignments are read only at startup; `ctl restart` exits but does not relaunch.

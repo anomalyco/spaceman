@@ -5,7 +5,10 @@
 Spaceman needs macOS Accessibility permission to enumerate eligible application windows, read their
 role, state, title, position, and size, determine focus, and focus, move, or resize them. It also reads
 the on-screen Core Graphics window list, display topology, keyboard input source, pointer position,
-and mouse-button state needed for tiling and gestures.
+and mouse-button state needed for tiling and gestures. Two listen-only event taps watch three-finger
+trackpad swipes and Option key presses. The key tap reads only the virtual key code and modifier flags
+of presses with Option held, never characters, to notice a Spaceman shortcut macOS did not deliver;
+other presses are ignored and nothing is stored.
 
 The permission is broad because macOS grants Accessibility at application scope. Spaceman limits its
 own writes to eligible standard, non-minimized, non-fullscreen windows whose position is settable.

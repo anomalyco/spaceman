@@ -1,4 +1,8 @@
+mod delivery;
+
 use std::{collections::BTreeMap, ffi::c_void, ptr, sync::mpsc::Sender};
+
+pub(crate) use delivery::DeliveryWatch;
 
 use crate::{
     Direction, ResizeDirection, WorkspaceId,
@@ -8,8 +12,10 @@ use crate::{
 
 const EVENT_CLASS_KEYBOARD: u32 = u32::from_be_bytes(*b"keyb");
 const EVENT_HOTKEY_PRESSED: u32 = 5;
-const OPTION_KEY: u32 = 1 << 11;
-const SHIFT_KEY: u32 = 1 << 9;
+pub(crate) const COMMAND_KEY: u32 = 1 << 8;
+pub(crate) const SHIFT_KEY: u32 = 1 << 9;
+pub(crate) const OPTION_KEY: u32 = 1 << 11;
+pub(crate) const CONTROL_KEY: u32 = 1 << 12;
 const SIGNATURE: u32 = u32::from_be_bytes(*b"SPMN");
 
 #[repr(C)]
@@ -63,12 +69,13 @@ pub struct Hotkeys {
     handler: *mut c_void,
     context: Option<Box<HandlerContext>>,
     layout_fingerprint: LayoutFingerprint,
+    /// A hotkey's ID is its index here.
+    bindings: Vec<Registration>,
 }
 
-/// Read by the Carbon handler; a hotkey's ID is its index into `actions`.
+/// Read by the Carbon handler.
 struct HandlerContext {
     sender: Sender<Action>,
-    actions: Vec<WorkerAction>,
 }
 
 #[derive(Debug)]
@@ -232,14 +239,7 @@ fn reject_collisions(registrations: &[Registration]) -> Result<(), String> {
 
 impl Hotkeys {
     pub fn install(sender: Sender<Action>, plan: HotkeyPlan) -> Result<Self, String> {
-        let context = Box::new(HandlerContext {
-            sender,
-            actions: plan
-                .registrations
-                .iter()
-                .map(|registration| registration.action.clone())
-                .collect(),
-        });
+        let context = Box::new(HandlerContext { sender });
         let context_pointer = (&raw const *context).cast_mut();
         let event_type = EventTypeSpec {
             event_class: EVENT_CLASS_KEYBOARD,
@@ -267,11 +267,31 @@ impl Hotkeys {
             handler,
             context: Some(context),
             layout_fingerprint: plan.layout_fingerprint,
+            bindings: Vec::new(),
         };
-        for (id, registration) in (0..).zip(plan.registrations) {
+        for (id, registration) in (0..).zip(&plan.registrations) {
             hotkeys.register(registration.key_code, registration.modifiers, id)?;
         }
+        hotkeys.bindings = plan.registrations;
         Ok(hotkeys)
+    }
+
+    pub(crate) fn len(&self) -> usize {
+        self.bindings.len()
+    }
+
+    /// The action and description of the hotkey Carbon delivered as `id`.
+    pub(crate) fn binding(&self, id: u32) -> Option<(&WorkerAction, &str)> {
+        let registration = self.bindings.get(usize::try_from(id).ok()?)?;
+        Some((&registration.action, &registration.description))
+    }
+
+    /// The hotkey registered for this key and these Carbon modifiers.
+    pub(crate) fn id_for(&self, key_code: u32, modifiers: u32) -> Option<u32> {
+        let index = self.bindings.iter().position(|registration| {
+            registration.key_code == key_code && registration.modifiers == modifiers
+        })?;
+        u32::try_from(index).ok()
     }
 
     pub fn matches_current_layout(&self) -> Result<bool, String> {
@@ -346,13 +366,8 @@ unsafe extern "C" fn hotkey_handler(
             (&raw mut hotkey_id).cast(),
         )
     };
-    if status == 0
-        && hotkey_id.signature == SIGNATURE
-        && let Some(action) = usize::try_from(hotkey_id.id)
-            .ok()
-            .and_then(|index| context.actions.get(index))
-    {
-        drop(context.sender.send(Action::Worker(action.clone())));
+    if status == 0 && hotkey_id.signature == SIGNATURE {
+        drop(context.sender.send(Action::Hotkey(hotkey_id.id)));
     }
     0
 }

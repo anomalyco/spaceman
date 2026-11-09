@@ -16,7 +16,7 @@ use crate::{
     ResizeDirection, Settings, WorkspaceId, Workspaces,
     config::{Config, WindowDisposition},
     control::{self, Command as ControlCommand, Request as ControlRequest},
-    hotkeys::{HotkeyPlan, Hotkeys},
+    hotkeys::{DeliveryWatch, HotkeyPlan, Hotkeys},
     live, login_item, macos, permission_guide, sparkle, status_item,
     swipe::Swipe,
     termination,
@@ -145,6 +145,10 @@ impl ManagementScope {
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub(crate) enum Action {
     Worker(WorkerAction),
+    /// Carbon delivered the hotkey with this ID.
+    Hotkey(u32),
+    /// The keyboard tap saw an Option key press (virtual key, Carbon modifiers).
+    OptionKeyDown(u32, u32),
     ToggleAutomatic,
     OpenSettings,
     OpenSetup,
