@@ -24,7 +24,7 @@ use std::sync::Arc;
 pub use panes::Pane;
 use rules::{Doc, Place};
 use rune::{AppSpec, KeyEvent, PointerPress, Tx, Waker};
-use spaceman::app::{UiAction, UiAgentSnapshot, UiBridge, UiHudEvent};
+use spaceman::app::{UiAction, UiAgentSnapshot, UiBridge};
 
 /// One fixed size: tiling window managers float such a window, and every pane fits it.
 pub const WINDOW_SIZE: (f32, f32) = (860.0, 580.0);
@@ -50,7 +50,7 @@ pub struct Ui {
     bridge: Option<UiBridge>,
     window: Option<rune::AppHandle<Ui>>,
     hud_driver: Option<hud::HudDriver>,
-    pub hud_preview: Option<UiHudEvent>,
+    pub hud_preview: Option<hud::HudPreview>,
     frame_remembered: bool,
     pub tour: Option<onboarding::Tour>,
     pub drag: Option<map::Drag>,

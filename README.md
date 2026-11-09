@@ -25,7 +25,8 @@ Spaceman currently:
 - journals window arrangements and model/screen disagreements locally, summarized in Settings (`Activity`)
   and by `spaceman doctor`;
 - shows a non-activating Workspace HUD capsule on workspace switches, cross-workspace moves, and layout
-  toggles (`[settings] hud = true`);
+  toggles (`[settings] hud = true`), which follows quick switches without restarting and honors
+  Reduce Motion;
 - can register its signed app bundle with macOS to launch automatically at login;
 - supports directional focus and movement across displays, drag-to-reorder/nest, mouse and keyboard
   resizing, balancing, and a workspace-wide Fullscreen Layout;

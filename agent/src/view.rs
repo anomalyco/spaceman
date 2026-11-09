@@ -52,7 +52,7 @@ pub fn view(ui: &Ui, cx: &mut Cx<Ui>) -> El {
         layer.push(tour);
     }
     if let Some(hud_preview) = &ui.hud_preview {
-        layer.push(hud::stage(hud_preview, p));
+        layer.push(hud::stage(hud_preview, p, cx.is_reduced_motion()));
     }
     rune_kit::root(window, layer)
 }
