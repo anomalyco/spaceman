@@ -40,6 +40,19 @@ Where a new window goes (first match wins)                 // ws.adoption
 Displays                                                    // ws.displays
 ├── Default: 1-5 main, 6-10 secondary; [[workspaces]] monitor = main | secondary | UUID | name
 └── Preferred display unplugged -> its workspaces fall back to main, return on reconnect
+
+Workspace HUD ([settings] hud, on by default)               // ws.hud
+├── A switch, a window moved to another workspace, a split-axis or Fullscreen Layout toggle
+│   -> capsule near the bottom of the primary display: mini layout, "Workspace 3", "2 windows"
+│      (or "2 windows · Fullscreen", "Vertical split", ...); never a window title
+├── Appears: fades in, scales from .96 and rises 6 pt; stays 1.15 s after the last event; leaves
+│   the same way back in about 0.2 s
+├── Another switch while it's up, or on its way out -> the same capsule carries on from where it
+│   is: changed characters roll (up going to a later workspace, down going back), the mini
+│   layout's tiles slide out and in the way of travel, the width follows; another kind of
+│   message ("Moved to Workspace 4", "Vertical split") fades over the old phrase in place
+├── The same workspace's layout changes -> its tiles move to their new frames
+└── Reduce Motion -> the same changes as a short fade, with nothing travelling or scaling
 ```
 
 Hidden windows are **parked**, not minimized: moved so a one-pixel strip remains at a display edge,
@@ -101,6 +114,15 @@ on the same letter.
 - Live harness (not run): `scripts/live-workspaces.sh` switches 6/7/8 by real hotkeys, moves without
   switching, rapid-switch coalescing, and hard-kill recovery. Needs two displays and AeroSpace.
 
+- Unit, `agent/src/hud/tests.rs`: when the HUD shows, holds, leaves and comes back, which way a
+  switch travels, and its title-free labels. `agent/src/hud/motion_tests.rs` steps the overlay's
+  own view at 120 Hz on a virtual clock and reads back each frame's presented rects, opacity and
+  scale: a burst of switches, a hide and a show pass Rune's motion gate (no pop, jump, swapped
+  text, cut fade or overshoot); the exit is under 1/255 opacity before the panel is ordered out;
+  a switch during the exit turns the capsule around within one frame's step; Reduce Motion moves
+  nothing. Not covered: the panel itself (ordering in and out, the first show's fade, how it
+  composites over other apps) and how the motion looks on a display.
+
 ## Gotchas
 
 - Unit tests model frames, not z-order or paint timing: "outgoing parked after incoming laid out"
@@ -120,3 +142,8 @@ on the same letter.
   logs `hotkey: <name> pressed but macOS did not deliver it`, registers every shortcut again (at
   most every 5 s) and runs the missed action. Each delivered press logs `hotkey: <name>`.
 - Rules and display assignments are read only at startup; `ctl restart` exits but does not relaunch.
+- The HUD's first appearance after launch only fades in: its panel has drawn nothing yet for the
+  capsule to rise from. Every later one enters with the full motion.
+- Try the HUD's motion without switching workspaces in the Playground (`⇧⌘D`, HUD > hud-switch):
+  `N`/`P` step a workspace, `R` and `B` switch several quickly, `M` moves a window, `L` changes
+  the layout, `H` hides and shows it.
