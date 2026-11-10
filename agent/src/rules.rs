@@ -271,14 +271,8 @@ impl Doc {
         let Some(path) = &self.path else {
             return Ok(());
         };
-        if let Some(parent) = path.parent() {
-            std::fs::create_dir_all(parent).map_err(|error| error.to_string())?;
-        }
-        let mut file =
-            atomic_write_file::AtomicWriteFile::open(path).map_err(|error| error.to_string())?;
-        std::io::Write::write_all(&mut file, source.as_bytes())
-            .map_err(|error| error.to_string())?;
-        file.commit().map_err(|error| error.to_string())
+        spaceman::state_file::write_atomic(path, source.as_bytes())
+            .map_err(|error| error.to_string())
     }
 }
 

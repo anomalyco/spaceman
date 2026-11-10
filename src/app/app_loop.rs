@@ -7,6 +7,7 @@ mod automatic;
 mod controls;
 mod dispatch;
 mod hotkey_health;
+mod probe;
 
 pub(super) use dispatch::WorkerDispatch;
 
@@ -69,6 +70,8 @@ pub struct MainThreadAgent {
     last_ui_refresh: Instant,
     config_stamp: Option<SystemTime>,
     launch_at_login: UiLaunchAtLogin,
+    /// Login-item and config state, read off the main thread.
+    probe: Receiver<probe::Probe>,
     ui_dirty: bool,
     mouse_was_down: bool,
     frontmost_application: Option<AppInstanceId>,
@@ -145,6 +148,7 @@ impl MainThreadAgent {
             last_ui_refresh: Instant::now(),
             config_stamp: crate::config::modified(),
             launch_at_login: UiLaunchAtLogin::from_result(launch_status),
+            probe: probe::spawn(APPLICATION_REFRESH_INTERVAL),
             ui_dirty: true,
             mouse_was_down: macos::mouse_down(),
             frontmost_application: macos::frontmost_application(),
@@ -349,13 +353,16 @@ impl MainThreadAgent {
         let mut config_changed = false;
         if periodic {
             self.last_ui_refresh = Instant::now();
-            self.launch_at_login = UiLaunchAtLogin::from_result(login_item::status());
-            let stamp = crate::config::modified();
-            config_changed = stamp != self.config_stamp;
-            self.config_stamp = stamp;
-            if config_changed && let Ok(config) = Config::load() {
-                self.hud = config.hud();
-                status_item::set_hud(self.hud);
+            while let Ok(probe) = self.probe.try_recv() {
+                self.launch_at_login = UiLaunchAtLogin::from_result(probe.launch_at_login);
+                if probe.config_stamp != self.config_stamp {
+                    config_changed = true;
+                    self.config_stamp = probe.config_stamp;
+                    if let Some(hud) = probe.hud {
+                        self.hud = hud;
+                        status_item::set_hud(hud);
+                    }
+                }
             }
         }
         self.ui_dirty = false;

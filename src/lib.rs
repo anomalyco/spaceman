@@ -32,6 +32,8 @@ mod serde_map;
 #[cfg(target_os = "macos")]
 #[allow(unsafe_code)]
 mod sparkle;
+#[allow(unsafe_code)]
+pub mod state_file;
 #[cfg(target_os = "macos")]
 #[allow(unsafe_code)]
 mod status_item;
