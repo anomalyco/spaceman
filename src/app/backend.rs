@@ -1,4 +1,4 @@
-use super::*;
+use super::{state_writer::StateWriter, *};
 
 #[derive(serde::Deserialize, serde::Serialize)]
 pub(super) struct ParkedWindows(
@@ -79,9 +79,34 @@ pub(super) trait WorkspaceBackend {
     ) -> Result<(), String>;
     /// Best-effort diagnostics; a journal failure never affects management.
     fn journal(&mut self, line: &crate::journal::JournalLine);
+    /// Waits briefly for state written in the background to reach the disk.
+    fn flush_state(&mut self) {}
 }
 
-pub(super) struct MacWorkspaceBackend;
+pub(super) struct MacWorkspaceBackend {
+    writer: StateWriter,
+}
+
+impl MacWorkspaceBackend {
+    pub(super) fn new() -> Self {
+        Self {
+            writer: StateWriter::spawn(),
+        }
+    }
+
+    fn write_later(
+        &self,
+        path: Option<PathBuf>,
+        value: &impl serde::Serialize,
+        state: &'static str,
+    ) -> Result<(), String> {
+        let path = path.ok_or("HOME is unavailable")?;
+        let bytes = serde_json::to_vec(value)
+            .map_err(|error| format!("failed to serialize {state} state: {error}"))?;
+        self.writer.write(path, bytes, state);
+        Ok(())
+    }
+}
 
 impl WorkspaceBackend for MacWorkspaceBackend {
     fn snapshot(
@@ -181,15 +206,14 @@ impl WorkspaceBackend for MacWorkspaceBackend {
         &mut self,
         state: &crate::workspace::WorkspaceState,
     ) -> Result<(), String> {
-        persist_workspace_state(state)
+        self.write_later(workspace_state_path(), state, "workspace")
     }
 
     fn persist_window_memory(
         &mut self,
         memory: &crate::window_memory::WindowMemory,
     ) -> Result<(), String> {
-        let path = window_memory_path().ok_or("HOME is unavailable")?;
-        persist_json(&path, memory, "window memory")
+        self.write_later(window_memory_path(), memory, "window memory")
     }
 
     fn journal(&mut self, line: &crate::journal::JournalLine) {
@@ -206,7 +230,15 @@ impl WorkspaceBackend for MacWorkspaceBackend {
             Err(_) => {}
         }
     }
+
+    fn flush_state(&mut self) {
+        if !self.writer.flush(STATE_FLUSH_TIMEOUT) {
+            log_event!("state writes still pending after {STATE_FLUSH_TIMEOUT:?}");
+        }
+    }
 }
+
+const STATE_FLUSH_TIMEOUT: Duration = Duration::from_secs(5);
 
 fn window_memory_path() -> Option<PathBuf> {
     crate::config::application_support_path("window-memory.json")
@@ -249,7 +281,13 @@ pub(super) fn load_parked() -> Result<HashMap<crate::PhysicalWindowId, crate::Re
 
 fn persist_parked(parked: &HashMap<crate::PhysicalWindowId, crate::Rect>) -> Result<(), String> {
     let path = parked_path().ok_or("HOME is unavailable")?;
-    persist_json(&path, &ParkedWindowsRef(parked), "parked-window")
+    let started = Instant::now();
+    let result = persist_json(&path, &ParkedWindowsRef(parked), "parked-window");
+    let elapsed = started.elapsed();
+    if elapsed >= Duration::from_millis(500) {
+        log_event!("slow parked-window state write: {}ms", elapsed.as_millis());
+    }
+    result
 }
 
 pub(super) fn load_workspace_state() -> Result<Option<crate::workspace::WorkspaceState>, String> {
@@ -295,27 +333,13 @@ pub(super) fn recover_startup_metadata(
     (config, workspace_state)
 }
 
-fn persist_workspace_state(state: &crate::workspace::WorkspaceState) -> Result<(), String> {
-    let path = workspace_state_path().ok_or("HOME is unavailable")?;
-    persist_json(&path, state, "workspace")
-}
-
 fn persist_json(
     path: &std::path::Path,
     value: &impl serde::Serialize,
     state: &str,
 ) -> Result<(), String> {
-    let parent = path
-        .parent()
-        .ok_or_else(|| format!("{state} state path has no parent"))?;
-    std::fs::create_dir_all(parent)
-        .map_err(|error| format!("failed to create state directory: {error}"))?;
     let bytes = serde_json::to_vec(value)
         .map_err(|error| format!("failed to serialize {state} state: {error}"))?;
-    let mut file = atomic_write_file::AtomicWriteFile::open(path)
-        .map_err(|error| format!("failed to open {state} state: {error}"))?;
-    file.write_all(&bytes)
-        .map_err(|error| format!("failed to write {state} state: {error}"))?;
-    file.commit()
-        .map_err(|error| format!("failed to commit {state} state: {error}"))
+    crate::state_file::write_atomic(path, &bytes)
+        .map_err(|error| format!("failed to write {state} state: {error}"))
 }

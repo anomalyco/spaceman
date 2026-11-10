@@ -111,7 +111,13 @@ impl WorkspaceRuntime<MacWorkspaceBackend> {
         config: Config,
         workspace_state: Option<crate::workspace::WorkspaceState>,
     ) -> Self {
-        Self::with_backend_config_state(scope, MacWorkspaceBackend, parked, config, workspace_state)
+        Self::with_backend_config_state(
+            scope,
+            MacWorkspaceBackend::new(),
+            parked,
+            config,
+            workspace_state,
+        )
     }
 }
 
@@ -152,10 +158,14 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
                 let requested = self.parked.len();
                 let failed = self.restore_all();
                 self.journal_restore("restore all", requested, failed);
+                // Pause, quit and restart all restore first; the layout they
+                // resume from must be on disk before the process can exit.
+                self.backend.flush_state();
                 return Some(WorkerResult::Restored { failed });
             }
             WorkerCommand::Stop => {
                 self.journal_event(crate::journal::JournalEvent::Stop);
+                self.backend.flush_state();
                 return None;
             }
         };
