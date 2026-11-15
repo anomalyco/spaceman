@@ -209,7 +209,7 @@ mod raster {
             out.extend_from_slice(&line[..row]);
         }
         // The bitmap is premultiplied.
-        for pixel in out.chunks_exact_mut(4) {
+        for pixel in out.as_chunks_mut::<4>().0 {
             let alpha = u16::from(pixel[3]);
             if alpha > 0 && alpha < 255 {
                 for channel in &mut pixel[..3] {

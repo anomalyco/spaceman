@@ -60,7 +60,7 @@ window has returned before replacing its bundle.
 Source builds are distinct from the notarized preview artifact and require your own `Developer ID
 Application` signing identity.
 
-Requirements: macOS, Xcode command-line tools, Rust 1.95.0, and a Developer ID Application identity.
+Requirements: macOS, Xcode command-line tools, Rust 1.100.0, and a Developer ID Application identity.
 
 From an existing repository checkout, first disable every other window manager, then run:
 

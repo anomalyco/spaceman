@@ -2,7 +2,7 @@
 name = "spaceman"
 version = "0.1.6"
 edition = "2024"
-rust-version = "1.95"
+rust-version = "1.100"
 license = "MIT"
 description = "A macOS tiling window manager with stable logical windows"
 repository = "https://github.com/kitlangton/spaceman"

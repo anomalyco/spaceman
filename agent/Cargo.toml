@@ -2,7 +2,7 @@
 name = "spaceman-agent"
 version = "0.1.6"
 edition = "2024"
-rust-version = "1.95"
+rust-version = "1.100"
 license = "MIT"
 description = "Spaceman's macOS menu-bar and Rune host"
 publish = false

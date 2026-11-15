@@ -11,7 +11,7 @@ Spaceman's release path is direct distribution outside the Mac App Store. Releas
 Developer ID signing and Apple's notarization service so Gatekeeper can verify them. App Store
 Connect upload and TestFlight tooling are not part of this release path.
 
-Release preparation requires Xcode command-line tools, Rust 1.95.0, a Developer ID Application
+Release preparation requires Xcode command-line tools, Rust 1.100.0, a Developer ID Application
 identity, Sparkle's Ed25519 key in Keychain, and the notarization profile below. Publication also
 requires an authenticated `wrangler` CLI. `notarytool` prompts securely for an app-specific password
 and stores the validated credential in Keychain; no secret enters the repository:
