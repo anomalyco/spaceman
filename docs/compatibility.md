@@ -7,7 +7,7 @@ Treat compatibility as experimental rather than guaranteed.
 The source build requires:
 
 - Xcode command-line tools with `codesign` and `security`;
-- Rust 1.95.0 from `rust-toolchain.toml`;
+- Rust 1.100.0 from `rust-toolchain.toml`;
 - a `Developer ID Application` signing identity.
 
 The documented numbered-workspace shortcuts assume an ANSI number row. Other keyboard layouts may

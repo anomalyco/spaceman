@@ -18,7 +18,7 @@ if [ -z "$cargo_bin" ] && [ -x "$HOME/.cargo/bin/cargo" ]; then
   cargo_bin="$HOME/.cargo/bin/cargo"
 fi
 if [ -z "$cargo_bin" ] || ! command -v "$cargo_bin" >/dev/null 2>&1; then
-  echo "cargo was not found; install Rust 1.95.0 or set CARGO to its absolute path." >&2
+  echo "cargo was not found; install Rust 1.100.0 or set CARGO to its absolute path." >&2
   exit 1
 fi
 
