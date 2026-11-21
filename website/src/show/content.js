@@ -431,7 +431,7 @@ const painters = {
       roundRect(ctx, x, y, gw, gh, 10)
       ctx.clip()
       silhouette(ctx, x, y, gw, gh, i, p.off)
-      if (p.off) text(ctx, p.name[0], x + gw / 2, y + gh / 2 + 14, { size: 40, weight: 600, color: "#8a8d92", align: "center" })
+      if (p.off) text(ctx, p.initial || p.name[0], x + gw / 2, y + gh / 2 + 14, { size: 40, weight: 600, color: "#8a8d92", align: "center" })
       ctx.restore()
       ctx.fillStyle = "rgba(0,0,0,.45)"
       roundRect(ctx, x + 10, y + gh - 34, 18 + p.name.length * 8.5, 24, 6)
@@ -479,7 +479,11 @@ const painters = {
   },
   // The stranger's photo viewer: the photo area stays transparent (the live scene shows through);
   // a strip of earlier nights runs underneath.
-  viewer2(ctx, w, h) {
+  viewer2(ctx, w, h, d) {
+    ctx.fillStyle = "#1b1c1f"
+    ctx.fillRect(0, BAR_H, w, h - BAR_H)
+    const hole = photoHole(w, h, d.aspect || 1.6)
+    ctx.clearRect(hole.x, hole.y, hole.w, hole.h)
     ctx.fillStyle = "#2a2b2e"
     ctx.fillRect(0, h - 96, w, 96)
     const n = 7
@@ -556,3 +560,16 @@ export function paintWindow(ctx, w, h, win, focused) {
 }
 
 export { text, hash }
+
+// Where the photograph sits inside the viewer window (window-local units).
+export function photoHole(w, h, aspect) {
+  const aw = w - 24
+  const ah = h - BAR_H - 96 - 24
+  let pw = aw
+  let ph = pw / aspect
+  if (ph > ah) {
+    ph = ah
+    pw = ph * aspect
+  }
+  return { x: (w - pw) / 2, y: BAR_H + 12 + (ah - ph) / 2, w: pw, h: ph }
+}

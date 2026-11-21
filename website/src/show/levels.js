@@ -3,7 +3,7 @@
 // Each layer is a plane at depth z (in units of F, the distance at which his screen fills the frame).
 import { FONT, MONO } from "./apps.js"
 import { World } from "./world.js"
-import { BAR_H } from "./content.js"
+import { BAR_H, photoHole } from "./content.js"
 
 const rgb = (h, a = 1) => [parseInt(h.slice(1, 3), 16) / 255, parseInt(h.slice(3, 5), 16) / 255, parseInt(h.slice(5, 7), 16) / 255, a]
 
@@ -70,53 +70,83 @@ export function headPrims(SW, SH, light) {
 }
 
 // The front of his house at night, with the study window open onto the room (z = Z_FRONT).
-export function frontPrims(SW, SH, photo, light) {
+// photo is the part of this plane that ends up in the photograph; s is the plane's current scale,
+// used to fade in details that would otherwise arrive as giant shapes.
+export function frontPrims(SW, SH, photo, light, s = 0.2) {
   const o = { x: -0.5 * SW, y: -0.62 * SH, w: 2 * SW, h: 2.15 * SH }
-  const B = { x: photo.x - 200, y: photo.y - 200, w: photo.w + 400, h: photo.h + 400 }
+  const B = { x: photo.x - 0.4 * SW, y: photo.y - 0.4 * SH, w: photo.w + 0.8 * SW, h: photo.h + 0.8 * SH }
   const wall = rgb("#1a1e24")
+  const siding = rgb("#15181d")
   const p = []
+  const fine = clamp01((0.7 - s) / 0.35)
   // the wall, as four pieces around the window opening
   p.push({ x: B.x, y: B.y, w: B.w, h: o.y - B.y, col: wall })
   p.push({ x: B.x, y: o.y + o.h, w: B.w, h: B.y + B.h - o.y - o.h, col: wall })
   p.push({ x: B.x, y: o.y, w: o.x - B.x, h: o.h, col: wall })
   p.push({ x: o.x + o.w, y: o.y, w: B.x + B.w - o.x - o.w, h: o.h, col: wall })
-  // siding
-  for (let y = Math.ceil(B.y / 150) * 150; y < B.y + B.h; y += 150) {
-    if (y > o.y && y < o.y + o.h) {
-      p.push({ x: B.x, y, w: o.x - B.x - 60, h: 9, col: rgb("#14171c") })
-      p.push({ x: o.x + o.w + 60, y, w: B.x + B.w - o.x - o.w - 60, h: 9, col: rgb("#14171c") })
-    } else p.push({ x: B.x, y, w: B.w, h: 9, col: rgb("#14171c") })
+  // siding boards
+  const roofY = o.y - 0.78 * SH
+  const ground = o.y + o.h + 0.55 * SH
+  for (let y = roofY + 0.16 * SH; y < ground; y += 0.16 * SH) {
+    if (y > o.y - 0.1 * SH && y < o.y + o.h + 0.12 * SH) {
+      p.push({ x: B.x, y, w: o.x - B.x - 0.1 * SW, h: 0.012 * SH, col: siding, a: fine })
+      p.push({ x: o.x + o.w + 0.1 * SW, y, w: B.x + B.w - o.x - o.w - 0.1 * SW, h: 0.012 * SH, col: siding, a: fine })
+    } else p.push({ x: B.x, y, w: B.w, h: 0.012 * SH, col: siding, a: fine })
   }
-  // light from the window on the siding
-  p.push({ x: o.x - 1.4 * SW, y: o.y - 1.1 * SH, w: o.w + 2.8 * SW, h: o.h + 2.6 * SH, tex: glowCanvas(), col: [0.5, 0.58, 0.72, 0.11 * light], r: 0 })
-  // roof and gutter
-  const roofY = o.y - 2.4 * SH
-  p.push({ x: B.x, y: B.y, w: B.w, h: roofY - B.y, col: rgb("#0b0d10") })
-  p.push({ x: B.x, y: roofY - 30, w: B.w, h: 60, col: rgb("#23272d") })
-  p.push({ x: o.x - 2.6 * SW, y: roofY, w: 50, h: B.y + B.h - roofY, col: rgb("#1f2329") })
-  // casing, sill, sashes
+  // the screen's light, spilling onto the siding around the window
+  p.push({ x: o.x - 1.1 * SW, y: o.y - 1.0 * SH, w: o.w + 2.2 * SW, h: o.h + 2.0 * SH, tex: glowCanvas(), col: [0.5, 0.58, 0.72, 0.12 * light], r: 0 })
+  // roof edge and gutter, downspout
+  p.push({ x: B.x, y: B.y, w: B.w, h: roofY - B.y, col: rgb("#0a0c0f") })
+  p.push({ x: B.x, y: roofY - 0.03 * SH, w: B.w, h: 0.07 * SH, col: rgb("#22262c") })
+  p.push({ x: o.x - 1.05 * SW, y: roofY, w: 0.05 * SW, h: ground - roofY, col: rgb("#1f2329"), a: fine })
+  // casing, sill, the meeting rail of the sash
   const trim = rgb("#2c3036")
-  p.push({ x: o.x - 70, y: o.y - 70, w: o.w + 140, h: 70, col: trim })
-  p.push({ x: o.x - 70, y: o.y, w: 70, h: o.h, col: trim })
-  p.push({ x: o.x + o.w, y: o.y, w: 70, h: o.h, col: trim })
-  p.push({ x: o.x - 110, y: o.y + o.h, w: o.w + 220, h: 80, col: rgb("#33373e") })
-  p.push({ x: o.x, y: o.y + o.h * 0.5 - 22, w: o.w, h: 44, col: trim })
-  p.push({ x: o.x + o.w * 0.5 - 16, y: o.y, w: 32, h: o.h, col: trim })
-  // curtain edge, inside
-  p.push({ x: o.x, y: o.y, w: 0.16 * SW, h: o.h, col: [0.07, 0.07, 0.08, 0.92] })
-  // the lawn, the path, and two trash cans at the curb
-  const ground = o.y + o.h + 1.7 * SH
-  p.push({ x: B.x, y: ground, w: B.w, h: B.y + B.h - ground, col: rgb("#10140f") })
-  p.push({ x: o.x + o.w + 1.5 * SW, y: ground, w: 0.9 * SW, h: B.y + B.h - ground, col: rgb("#1c1e1f") })
-  p.push({ x: o.x - 3.3 * SW, y: ground - 1.1 * SH, w: 0.55 * SW, h: 1.3 * SH, col: rgb("#16191c"), r: 40 })
-  p.push({ x: o.x - 2.6 * SW, y: ground - 1.1 * SH, w: 0.55 * SW, h: 1.3 * SH, col: rgb("#141a16"), r: 40 })
-  p.push({ x: o.x + o.w + 3.4 * SW, y: o.y + 0.2 * SH, w: 0.2 * SW, h: 0.3 * SH, col: rgb("#22262b"), r: 20 })
+  const tw = 0.07 * SW
+  p.push({ x: o.x - tw, y: o.y - tw, w: o.w + 2 * tw, h: tw, col: trim })
+  p.push({ x: o.x - tw, y: o.y, w: tw, h: o.h, col: trim })
+  p.push({ x: o.x + o.w, y: o.y, w: tw, h: o.h, col: trim })
+  p.push({ x: o.x - tw * 1.6, y: o.y + o.h, w: o.w + tw * 3.2, h: 0.08 * SH, col: rgb("#34383f") })
+  p.push({ x: o.x, y: o.y + o.h * 0.3 - 0.02 * SH, w: o.w, h: 0.04 * SH, col: trim, a: fine })
+  // a curtain, half drawn, inside
+  p.push({ x: o.x, y: o.y, w: 0.22 * SW, h: o.h, col: [0.07, 0.07, 0.08, 0.94] })
+  p.push({ x: o.x + o.w - 0.1 * SW, y: o.y, w: 0.1 * SW, h: o.h, col: [0.07, 0.07, 0.08, 0.94] })
+  // foundation, a shrub under the window, the lawn
+  p.push({ x: B.x, y: ground - 0.1 * SH, w: B.w, h: 0.1 * SH, col: rgb("#202327") })
+  p.push({ x: o.x - 0.3 * SW, y: ground - 0.42 * SH, w: o.w + 0.6 * SW, h: 0.5 * SH, col: rgb("#0c120d"), r: 0.2 * SH })
+  p.push({ x: B.x, y: ground, w: B.w, h: B.y + B.h - ground, col: rgb("#0f130f") })
+  // two trash cans by the side of the house, put away by 8 PM
+  for (const [k, cx] of [[0, 1.85], [1, 2.2]]) {
+    p.push({ x: cx * SW, y: ground - 0.62 * SH, w: 0.3 * SW, h: 0.66 * SH, col: rgb(k ? "#141a16" : "#161a1e"), r: 0.03 * SW })
+    p.push({ x: cx * SW - 0.015 * SW, y: ground - 0.66 * SH, w: 0.33 * SW, h: 0.07 * SH, col: rgb("#1c2126"), r: 0.02 * SW })
+  }
+  // house number by the door frame
+  p.push({ x: -1.55 * SW, y: o.y + 0.2 * SH, w: 0.22 * SW, h: 0.3 * SH, tex: numberCanvas(), r: 0, a: fine })
   return { prims: p, opening: o }
+}
+
+const clamp01 = (x) => (x < 0 ? 0 : x > 1 ? 1 : x)
+
+let numTex = null
+function numberCanvas() {
+  if (numTex) return numTex
+  const c = (numTex = document.createElement("canvas"))
+  c.width = 220
+  c.height = 300
+  const ctx = c.getContext("2d")
+  ctx.fillStyle = "#1e2228"
+  ctx.fillRect(0, 0, 220, 300)
+  ctx.fillStyle = "rgba(200,200,190,.42)"
+  ctx.font = `600 190px ${FONT}`
+  ctx.textAlign = "center"
+  ctx.textBaseline = "middle"
+  ctx.fillText("12", 110, 160)
+  c.version = 1
+  return c
 }
 
 // The outer desktop. Its own Mac, its own Spaceman, its own bar.
 export function makeOuter(SW, SH, res) {
-  const o = new World(SW, SH)
+  const o = new World(SW, SH, { wall: "tidy" })
   o.res = res
   o.tiling = true
   o.status = true
@@ -125,7 +155,8 @@ export function makeOuter(SW, SH, res) {
   const viewer = o.add({ id: "o-photo", app: "viewer", kind: "viewer2", title: "No. 12 — Study", ws: 5, data: {} })
   o.add({ id: "o-height", app: "sheets", kind: "sheet", title: "Hedge — Height", ws: 5, data: { cols: ["Date", "Height"], widths: [0.55, 0.45], rows: ["Nov 14", "Nov 15", "Nov 16", "Nov 17", "Nov 18", "Nov 19", "Nov 20"].map((d) => ({ cells: [d, "6′ 0″"] })) } })
   o.add({ id: "o-min", app: "paper", kind: "paper", title: "Minutes — Corrections", ws: 5, data: { heading: "Corrections", lines: ["Item 2. I did not agree to this.", "Item 3. Measured from the", "street side, not the path.", "Item 4. I was present.", { gap: 1 }, { t: "Not sent", soft: 1 }] } })
-  for (const n of [1, 2, 3, 4, 6]) o.add({ id: "o-x" + n, app: ["postbox", "browsy", "jot", "daybook", "", "call"][n - 1], kind: "paper", title: "", ws: n, data: {} })
+  const others = { 1: ["postbox", "mail", "Postbox"], 2: ["browsy", "browser", "Browsy"], 3: ["jot", "jot", "Jot"], 4: ["daybook", "daybook", "Daybook"], 6: ["daybook", "daybook", "Daybook — Saturday"] }
+  for (const [n, [app, kind, title]] of Object.entries(others)) o.add({ id: "o-x" + n, app, kind, title, ws: +n, data: kind === "daybook" ? { date: "Saturday, November 21", events: [{ t: "Mow", at: 9, len: 1, color: "#d9e3cf" }] } : { heading: title } })
   o.active = 5
   o.ensureCell(6)
   for (const c of o.bar.cells) {
@@ -137,11 +168,18 @@ export function makeOuter(SW, SH, res) {
   o.full.clear()
   // the photograph takes the left two thirds; the notes stack on the right
   const a = o.area
-  const rects = {
-    "o-photo": { x: a.x + 4, y: a.y + 4, w: a.w * 0.64 - 8, h: a.h - 8 },
-    "o-height": { x: a.x + a.w * 0.64 + 4, y: a.y + 4, w: a.w * 0.36 - 8, h: a.h * 0.5 - 8 },
-    "o-min": { x: a.x + a.w * 0.64 + 4, y: a.y + a.h * 0.5 + 4, w: a.w * 0.36 - 8, h: a.h * 0.5 - 8 },
-  }
+  const tall = SH > SW * 1.05
+  const rects = tall
+    ? {
+        "o-photo": { x: a.x + 4, y: a.y + 4, w: a.w - 8, h: a.h * 0.56 - 8 },
+        "o-height": { x: a.x + 4, y: a.y + a.h * 0.56 + 4, w: a.w * 0.5 - 8, h: a.h * 0.44 - 8 },
+        "o-min": { x: a.x + a.w * 0.5 + 4, y: a.y + a.h * 0.56 + 4, w: a.w * 0.5 - 8, h: a.h * 0.44 - 8 },
+      }
+    : {
+        "o-photo": { x: a.x + 4, y: a.y + 4, w: a.w * 0.64 - 8, h: a.h - 8 },
+        "o-height": { x: a.x + a.w * 0.64 + 4, y: a.y + 4, w: a.w * 0.36 - 8, h: a.h * 0.5 - 8 },
+        "o-min": { x: a.x + a.w * 0.64 + 4, y: a.y + a.h * 0.5 + 4, w: a.w * 0.36 - 8, h: a.h * 0.5 - 8 },
+      }
   o.rectsOf = (ws) => (ws === 5 ? new Map(Object.entries(rects)) : new Map([["o-x" + ws, { x: a.x + 4, y: a.y + 4, w: a.w - 8, h: a.h - 8 }]]))
   for (const [id, r] of Object.entries(rects)) {
     const w = o.wins.get(id)
@@ -151,7 +189,9 @@ export function makeOuter(SW, SH, res) {
   o.cursor.x.x = o.cursor.x.t = SW * 0.5
   o.cursor.y.x = o.cursor.y.t = SH - 120
   const pr = rects["o-photo"]
-  o.photoRect = { x: pr.x, y: pr.y + BAR_H, w: pr.w, h: pr.h - BAR_H - 96 }
+  const hole = photoHole(pr.w, pr.h, SW / SH)
+  o.photoRect = { x: pr.x + hole.x, y: pr.y + hole.y, w: hole.w, h: hole.h }
+  viewer.data = { aspect: SW / SH }
   void viewer
   return o
 }
@@ -174,3 +214,4 @@ export function stampCanvas(text) {
 }
 
 export { rgb, FONT }
+

@@ -38,7 +38,7 @@ export function tile(n, a) {
 }
 
 export class World {
-  constructor(SW, SH) {
+  constructor(SW, SH, opts = {}) {
     this.SW = SW
     this.SH = SH
     this.area = { x: EDGE_PAD - GAP / 2, y: MENU_H + EDGE_PAD - GAP / 2, w: SW - 2 * EDGE_PAD + GAP, h: SH - MENU_H - 2 * EDGE_PAD - 66 + GAP }
@@ -60,7 +60,9 @@ export class World {
     this.cursor = { x: sp(SW * 0.62, 0.6), y: sp(SH * 0.55, 0.6), a: sp(1, 0.3), press: sp(0, 0.08) }
     this.keys = { label: null, a: sp(0, 0.25), until: 0 }
     this.time = 0
-    this.wall = null
+    this.wall = wallpaper(opts.wall || "night")
+    this.lastFocus = {}
+    this.reduced = !!opts.reduced
   }
 
   add(def) {
@@ -122,13 +124,25 @@ export class World {
   }
 
   setFocus(id) {
+    const prev = this.wins.get(this.focus)
+    if (prev) prev.dirty = true
     this.focus = id
     const w = this.wins.get(id)
     if (w) {
       w.z = ++this.z
+      w.dirty = true
       this.frontApp = APPS[w.app]?.name || "Jot"
+      this.lastFocus[w.ws] = id
     }
-    for (const x of this.wins.values()) x.dirty = true
+  }
+
+  // Change a window's title or contents; it repaints on the next frame.
+  set(id, patch) {
+    const w = this.wins.get(id)
+    if (!w) return
+    if (patch.data) w.data = { ...w.data, ...patch.data }
+    if (patch.title != null) w.title = patch.title
+    w.dirty = true
   }
 
   open(def, { route } = {}) {
@@ -171,23 +185,27 @@ export class World {
     w.ws = ws
     this.listOf(ws).push(id)
     const c = this.cellRect(ws)
-    to(w.x, c.x, 0.5)
-    to(w.y, c.y, 0.5)
-    to(w.w, c.w, 0.5)
-    to(w.h, c.h, 0.5)
-    to(w.a, 0, 0.45)
+    if (this.reduced) {
+      to(w.a, 0, 0.3)
+    } else {
+      to(w.x, c.x, 0.5)
+      to(w.y, c.y, 0.5)
+      to(w.w, c.w, 0.5)
+      to(w.h, c.h, 0.5)
+      to(w.a, 0, 0.45)
+    }
     w.flying = this.time + 0.55
     this.reflow()
   }
 
   switchTo(ws, { quiet } = {}) {
     if (ws === this.active) return
-    const dir = Math.sign(ws - this.active)
+    const dir = this.reduced ? 0 : Math.sign(ws - this.active)
     this.ensureCell(ws)
     for (const w of this.wins.values()) {
       if (w.float || w.leaving) continue
       if (w.ws === this.active) {
-        to(w.off, -dir * 36, 0.16)
+        to(w.off, -dir * 36 || -0.001, 0.16)
         to(w.a, 0, 0.12)
       }
     }
@@ -321,13 +339,15 @@ export class World {
   ensureCanvas(w) {
     const tw = Math.max(40, w.w.t)
     const th = Math.max(40, w.h.t)
-    const sizeChanged = Math.abs(w.cw - tw) > 0.5 || Math.abs(w.ch - th) > 0.5
+    // the world's resolution, capped so no window canvas passes about 2.2 megapixels
+    const res = Math.max(0.5, Math.floor(Math.min(this.res, Math.sqrt(2.2e6 / (tw * th))) * 4) / 4)
+    const sizeChanged = Math.abs(w.cw - tw) > 0.5 || Math.abs(w.ch - th) > 0.5 || w.res !== res
     if (!w.dirty && !sizeChanged && w.canvas) return
     if (w.flying && w.canvas) return
     w.cw = tw
     w.ch = th
+    w.res = res
     if (!w.canvas) w.canvas = document.createElement("canvas")
-    const res = this.res
     const pw = Math.ceil(tw * res)
     const ph = Math.ceil(th * res)
     if (w.canvas.width !== pw || w.canvas.height !== ph) {
@@ -417,10 +437,15 @@ export class World {
     return c
   }
 
-  // T maps logical units to CSS px: px = x * T.k + T.ox. clip is in CSS px. g marks graded primitives.
-  draw(list, T, clip, g = 1, g2 = 0) {
-    const P = (x, y, w, h, o) => list.push({ x: x * T.k + T.ox, y: y * T.k + T.oy, w: w * T.k, h: h * T.k, clip, g, g2, ...o })
-    // wallpaper and menu bar
+  // T maps logical units to CSS px: px = x * T.k + T.ox. clip is in CSS px; g grades; am scales
+  // alpha. part is "base" (wallpaper and windows), "top" (menu bar, bar, keys, cursor) or "all".
+  draw(list, T, { clip = null, g = 1, am = 1, part = "all" } = {}) {
+    const P = (x, y, w, h, o) => list.push({ g, ...o, x: x * T.k + T.ox, y: y * T.k + T.oy, w: w * T.k, h: h * T.k, clip, a: (o.a ?? 1) * am, r: (o.r ?? 0) * T.k, ring: o.ring ? o.ring * T.k : 0, shadow: o.shadow ? o.shadow * T.k : 0 })
+    if (part !== "top") this.drawBase(P)
+    if (part !== "base") this.drawTop(P)
+  }
+
+  drawBase(P) {
     P(0, 0, this.SW, this.SH, { tex: this.wall, r: 0 })
     const wins = [...this.wins.values()].sort((a, b) => (a.float ? 1e6 : 0) + a.z - ((b.float ? 1e6 : 0) + b.z))
     for (const w of wins) {
@@ -435,15 +460,18 @@ export class World {
       const r = Math.min(10, ww * 0.12)
       P(x, y, ww, hh, { shadow: w.float ? 34 : 18, col: [0, 0, 0, w.float ? 0.5 : 0.32], r, a: w.a.x })
       P(x, y, ww, hh, { tex: w.canvas, r, a: w.a.x })
-      P(x, y, ww, hh, { ring: 0.8 / T.k, col: [0, 0, 0, 0.22], r, a: w.a.x })
+      P(x, y, ww, hh, { ring: 0.8, col: [0, 0, 0, 0.22], r, a: w.a.x })
     }
-    // menu bar
+  }
+
+  drawTop(P) {
     P(0, 0, this.SW, MENU_H, { tex: this.menu(), r: 0 })
     this.drawBar(P)
     // key cast
     if (this.keys.a.x > 0.01 && this.keys.label) {
       const c = this.keyCanvas()
-      P(this.SW - c.lw - 24, this.SH - c.lh - 22, c.lw, c.lh, { tex: c, r: 14, a: this.keys.a.x, g: 0 })
+      const bg = this.barGeom()
+      P(this.SW / 2 - c.lw / 2, bg.y - c.lh - 18, c.lw, c.lh, { tex: c, r: 14, a: this.keys.a.x, g: 0 })
     }
     // cursor
     const cu = this.cursor
@@ -524,6 +552,34 @@ function cursorCanvas() {
   ctx.lineJoin = "round"
   ctx.stroke()
   ctx.fill()
+  c.version = 1
+  return c
+}
+
+const walls = {}
+// A quiet gradient desktop. night: his; tidy: the other desktop.
+function wallpaper(kind) {
+  if (walls[kind]) return walls[kind]
+  const c = (walls[kind] = document.createElement("canvas"))
+  c.width = 320
+  c.height = 200
+  const ctx = c.getContext("2d")
+  const g = ctx.createLinearGradient(0, 0, 320, 200)
+  if (kind === "tidy") {
+    g.addColorStop(0, "#2f3a3a")
+    g.addColorStop(1, "#1d2324")
+  } else {
+    g.addColorStop(0, "#4a5868")
+    g.addColorStop(0.6, "#38424f")
+    g.addColorStop(1, "#262c35")
+  }
+  ctx.fillStyle = g
+  ctx.fillRect(0, 0, 320, 200)
+  const r = ctx.createRadialGradient(220, 60, 0, 220, 60, 220)
+  r.addColorStop(0, kind === "tidy" ? "rgba(140,170,160,.18)" : "rgba(200,190,170,.16)")
+  r.addColorStop(1, "rgba(0,0,0,0)")
+  ctx.fillStyle = r
+  ctx.fillRect(0, 0, 320, 200)
   c.version = 1
   return c
 }
