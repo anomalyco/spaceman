@@ -1,0 +1,104 @@
+{
+  "voice": "8olojUk4IXpvKgaOCHXj",
+  "text": "[quiet, close to the microphone, calm and unhurried, a man talking across a kitchen table late at night] — your light was on. I hope that's all right. I won't stay long.\n\n[precise, patient, slightly pleased with his own clarity] I want to explain how I keep things. Then it'll make sense.\n\nI'd had some of those windows open since March. February, some of them. Three of them were the same note... I closed two.\n\nEverything goes side by side now. Nothing on top of anything. Mail went to two. The browser went to three. I went back to make sure. They were still there. There's a bar along the bottom, so you always know where everything is.\n\nI made a rule. Chatter opens on two. [a small pause] I did read both messages.\n\nI gave Mark his drill back. Four years. It's a better drill than mine, actually. He said I didn't need to.\n\nFour is the house. Five is the street. Nobody else wanted to take the minutes.\n\n[cooler, very even] Your hedge is six foot two. The limit is six feet. We've talked about it... twice. I've photographed it every morning since. A hundred and sixty mornings.\n\nI sent the minutes round again. You're the only one who replied.\n\n[colder, quieter, never louder] There was a photograph attached. It took me a minute to recognise the study. [pause] From this side.\n\n[exhales] Can I sit? ...I'll sit.\n\n[a long silence, then flat and soft] Leave it on.",
+  "takes": [
+    {
+      "id": "m1",
+      "stability": 0.5
+    },
+    {
+      "id": "m2",
+      "stability": 0.5
+    },
+    {
+      "id": "m3",
+      "stability": 0.5
+    },
+    {
+      "id": "m4",
+      "stability": 0.35
+    },
+    {
+      "id": "m5",
+      "stability": 0.35
+    },
+    {
+      "id": "m6",
+      "stability": 0.65
+    },
+    {
+      "id": "n1",
+      "stability": 0.35,
+      "text": "$text2"
+    },
+    {
+      "id": "n2",
+      "stability": 0.35,
+      "text": "$text2"
+    },
+    {
+      "id": "n3",
+      "stability": 0.42,
+      "text": "$text2"
+    },
+    {
+      "id": "n4",
+      "stability": 0.42,
+      "text": "$text2"
+    },
+    {
+      "id": "p1",
+      "stability": 0.35,
+      "text": "$text3"
+    },
+    {
+      "id": "p2",
+      "stability": 0.35,
+      "text": "$text3"
+    },
+    {
+      "id": "p3",
+      "stability": 0.35,
+      "text": "$text3"
+    },
+    {
+      "id": "p4",
+      "stability": 0.35,
+      "text": "$text3"
+    },
+    {
+      "id": "p5",
+      "stability": 0.42,
+      "text": "$text3"
+    }
+  ],
+  "text2": "[quiet, close to the microphone, calm and unhurried, a man talking across a kitchen table late at night] — your light was on. I hope that's all— I hope that's all right. I won't stay long.\n\n[precise, patient, slightly pleased with his own clarity] I want to explain how I keep things. Then it'll make sense.\n\nI'd had some of those windows open since March. February, some of them. Three of them were, uh... the same note. I closed two.\n\nEverything goes side by side now. Nothing on top of anything. Mail went to two. The browser went to three. I went back to make sure. They were still there. There's a bar along the bottom, so you always know where everything is.\n\nI made a rule. Chatter opens on two. [a small pause] I did read both messages.\n\nI gave Mark his drill back. Four years. It's a better drill than mine, actually. He said I didn't need to.\n\nFour is the house. Five is the street. Nobody else wanted to take the minutes.\n\n[cooler, very even] Your hedge is six foot two. The limit is six feet. We've talked about it... twice. I've photographed it every morning since. A hundred and sixty mornings.\n\nI sent the minutes round again. You're the only one who replied.\n\n[colder, quieter, never louder] There was a photograph attached. It took me a minute to recognise the study. [pause] From this side.\n\n[exhales] Can I sit? ...I'll sit.\n\n[a long silence, then flat and soft] Leave it on.",
+  "pick": "p1",
+  "gaps": [
+    {
+      "after": "away from anything.",
+      "len": 6.4
+    },
+    {
+      "after": "I'll sit.",
+      "len": 3.2
+    }
+  ],
+  "tail": 0.9,
+  "chairAt": 0.8,
+  "text3": "[quiet, close to the microphone, unhurried, a man at a kitchen table late at night, gently entranced by how well everything works] — your light was on. I hope that's all— I hope that's all right. I won't stay long.\n\n[precise, patient, a little pleased with his own clarity] I want to explain how I keep things. Then it'll make sense.\n\nI'd had some of those windows open since March. February, some of them. Three of them were, uh... the same note. I closed two.\n\n[softer, admiring] And then everything went side by side. Nothing on top of anything. Nothing behind anything. You could see all of it at once... It's very clean.\n\nMail went to two. The browser went to three. I went back to make sure, and they were just... there. Exactly where I'd put them. Nothing was ever lost again. There's a bar along the bottom, so you always know where everything is. You're never more than one key away from anything.\n\n[unhurried] Then I made a rule. Chatter opens on two. You don't have to decide anymore. It just goes. [a small pause] I did read both messages.\n\nI gave Mark his drill back. Four years. It's a better drill than mine, actually. But it had a place, and the place was his.\n\nFour is the house. Five is the street. Nobody else wanted to take the minutes.\n\n[cooler, very even, still admiring] Your hedge is six foot two. The limit is six feet. We've talked about it... twice. I've photographed it every morning since. A hundred and sixty mornings, and I can find any one of them in a second. Any morning you like.\n\nI sent the minutes round again. You're the only one who replied.\n\n[colder, quieter, never louder] There was a photograph attached. It took me a minute to recognise the study. [pause] From this side.\n\n[almost tender] Everything else has a place now. [pause] You're the last thing.\n\n[exhales] Can I sit? ...I'll sit.\n\n[a long silence, then flat and soft] Leave it on.",
+  "lift": [
+    {
+      "phrase": "just... there.",
+      "db": 7
+    },
+    {
+      "phrase": "Leave it on.",
+      "db": 3
+    },
+    {
+      "phrase": "It's very clean.",
+      "db": 2
+    }
+  ]
+}
