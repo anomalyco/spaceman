@@ -135,17 +135,23 @@ export class Audio {
     for (const [file, b] of this.beds) if (b.level > 0) this.bed(file, b.level, t, 0.3)
   }
 
+  // Everything stops at once (the film's last cut), with a few milliseconds' ramp so it doesn't click.
   stopAll() {
+    const now = this.ctx?.currentTime ?? 0
     for (const h of this.live) {
       try {
-        h.src.stop()
+        h.g.gain.setTargetAtTime(0, now, 0.004)
+        h.src.stop(now + 0.03)
       } catch {}
     }
     this.live.clear()
     for (const b of this.beds.values()) {
+      const g = b.gain
       b.h = null
-      b.gain?.disconnect()
       b.gain = null
+      if (!g) continue
+      g.gain.setTargetAtTime(0, now, 0.004)
+      setTimeout(() => g.disconnect(), 60)
     }
   }
 

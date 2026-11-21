@@ -484,7 +484,7 @@ export function build(S) {
   const signed = word("Three of you signed")
   push(signed - 0.6, signed + 0.2, home, null)
   clickAt(signed - 0.3, "photo", closeBtn, () => (w.close("photo"), S.sfx("close", 0.45)), 0.7)
-  const NOTE14 = (n, who) => ({ heading: "About the cameras", edited: "Signed " + who, lines: ["We'd like the two cameras on No. 12", "that face our houses taken down.", { gap: 1 }, { t: "— " + n, soft: 1 }] })
+  const NOTE14 = (n, who) => ({ heading: "About the cameras", list: ["cameras", "hedge", "minutes", "six"], edited: "Signed " + who, lines: ["We'd like the two cameras on No. 12", "that face our houses taken down.", { gap: 1 }, { t: "— " + n, soft: 1 }] })
   openMany(signed + 0.25, 2, [
     { id: "cam16", app: "jot", kind: "jot", title: "cameras — No. 16", data: NOTE14("No. 16", "Feb 26") },
     { id: "cam10", app: "jot", kind: "jot", title: "cameras — No. 10", data: NOTE14("No. 10", "Feb 26") },
@@ -505,7 +505,7 @@ export function build(S) {
   })
   at(six - 0.6, () => {
     w.add({ ws: 6, hidden: true, id: "plan", app: "plans", kind: "plan", title: "Downstairs — Plans", data: PLAN(2) })
-    w.add({ ws: 6, hidden: true, id: "six", app: "jot", kind: "jot", title: "six", data: { heading: "six", edited: "Edited Jun 11", check: 1, lines: [{ t: "No. 16 — Tue, Mar 3", done: 1 }, { t: "No. 10 (Mark) — Thu, Jun 11", done: 1 }, { t: "   drill returned", soft: 1, nobox: 1 }, { t: "No. 14" }] } })
+    w.add({ ws: 6, hidden: true, id: "six", app: "jot", kind: "jot", title: "six", data: { heading: "six", list: ["six", "cameras", "hedge", "minutes"], edited: "Edited Jun 11", check: 1, lines: [{ t: "No. 16 — Tue, Mar 3", done: 1 }, { t: "No. 10 (Mark) — Thu, Jun 11", done: 1 }, { t: "   drill returned", soft: 1, nobox: 1 }, { t: "No. 14" }] } })
   })
   sw(six - 0.05, 6)
   push(six + 0.1, six + 1.0, () => frameOf("six", 1.25), "six")

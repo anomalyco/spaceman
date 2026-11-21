@@ -136,3 +136,27 @@ Main-thread time per frame, busiest section (13–40 s, 263 frames): p50 0.9 ms,
 Ending (88–101 s): p50 1.2 ms, p95 14.7 ms, max 18.2 ms (window textures repainting as the outer
 desktop builds). No errors on WebGPU, Canvas 2D, reduced-motion or phone paths. The visitor's
 ⌥2/⌥3/⌥1 during 24–30 switched 1 → 2 → 3 → 1.
+
+
+# Second pass (Nov 21)
+
+Kit's notes: name the product, "the sweet flesh of efficiency", three tapes (A/B/C) that differ in how far
+the ending goes, a diegetic start, and an ending that's brutal and unmistakable. The film is cut to C.
+
+## Round 2 · rebuild (10:00–10:30)
+
+- Tape C (`c2`), 150.5 s: a half-second breath between paragraphs where the take ran them together,
+  cuts placed in the quietest 30 ms between words (the alignment runs up to 0.35 s late on the last
+  words), "Minutes" and "Present... one" lifted.
+- `director.js` reads every time from the tape: `word()` takes the next match within 30 s of the last
+  lookup (else the nearest before it), so repeated phrases ("I closed two", "Side by side") resolve
+  without hard-coded times. HOLD and END come from the tape's long gaps and last word.
+- The ending: three signed notes "About the cameras", two closed with the opening's gesture; ⌥6
+  "Downstairs" (a floor plan with two hatched places, 16 · Mar 3 and Mark · Jun 11, a dashed third,
+  14, and a ticked list); the doorbell; the study pull; the kitchen; "I've put the plastic down" cuts
+  to the floor; black through the silence; "Present..." cuts to the floor afterwards; a hard cut to
+  the card.
+- The still is the exhibit (recorder with a typed tag); clicking the recorder or ⌥1 starts it. No
+  skip, no sound toggle, captions toggle kept.
+- Workspaces filled in one move (`openMany`): the five retargets the trace check flagged at the house,
+  street and signatures are gone; one remains (the bar marker's deliberate return to 1).

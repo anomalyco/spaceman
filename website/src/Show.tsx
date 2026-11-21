@@ -185,9 +185,9 @@ export function Show({ header }: { header: React.ReactNode }) {
       </div>
 
       {(phase === "still" || phase === "loading") && (
-        <div className="pointer-events-none absolute inset-x-0 bottom-[7%] flex flex-col items-center gap-1.5 px-6 text-center">
+        <div className={`pointer-events-none absolute inset-x-0 bottom-[7%] flex flex-col items-center gap-1.5 px-6 text-center transition-opacity duration-300 ${phase === "loading" ? "opacity-0" : "opacity-100"}`}>
           <p className="text-[15px] text-[#e4e1da] [text-shadow:0_1px_12px_rgba(0,0,0,.9)]">
-            {phase === "loading" ? "…" : touch ? "Tap the recorder." : "Press ⌥1, or click the recorder."}
+            {touch ? "Tap the recorder." : "Press ⌥1, or click the recorder."}
           </p>
           <p className="text-[13px] text-[#9d9991] [text-shadow:0_1px_10px_rgba(0,0,0,.9)]">A short film about Spaceman, a tiling window manager for macOS · 2:30 · sound on</p>
         </div>
