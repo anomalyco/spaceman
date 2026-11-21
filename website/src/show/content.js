@@ -104,7 +104,9 @@ function paperBody(ctx, w, h, d) {
   ctx.fillRect(0, BAR_H, w, h - BAR_H)
   let y = BAR_H + 40
   if (d.heading) {
-    text(ctx, d.heading, 26, y, { size: 21, weight: 650, max: w - 52 })
+    const hs = d.hsize || 21
+    y += hs - 21
+    text(ctx, d.heading, 26, y, { size: hs, weight: 650, max: w - 52 })
     y += 14
     if (d.sub) {
       y += 14
@@ -489,7 +491,7 @@ const painters = {
     ctx.fillStyle = "#1c1d20"
     ctx.fillRect(0, BAR_H, w, h - BAR_H)
     const people = d.people || []
-    const cols = w > h * 0.9 ? 2 : 1
+    const cols = people.length > 1 && w > h * 0.9 ? 2 : 1
     const rows = Math.ceil(people.length / cols)
     const gw = (w - 12 * (cols + 1)) / cols
     const gh = (h - BAR_H - 12 * (rows + 1)) / rows
@@ -507,6 +509,14 @@ const painters = {
       ctx.fill()
       text(ctx, p.name, x + 19, y + gh - 17, { size: 13, weight: 600, color: "#f0eee9" })
     })
+    if (d.toast) {
+      ctx.font = `500 14px ${FONT}`
+      const tw = ctx.measureText(d.toast).width + 28
+      ctx.fillStyle = "rgba(40,41,45,.92)"
+      roundRect(ctx, w / 2 - tw / 2, BAR_H + 24, tw, 32, 8)
+      ctx.fill()
+      text(ctx, d.toast, w / 2, BAR_H + 45, { size: 14, weight: 500, color: "#e9e7e2", align: "center" })
+    }
   },
   sheet(ctx, w, h, d) {
     ctx.fillStyle = "#fbfbf9"

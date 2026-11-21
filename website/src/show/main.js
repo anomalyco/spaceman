@@ -239,7 +239,14 @@ export function createShow({ still, canvas, base, capture = false, reduced = fal
   function speak(id, at) {
     const v = audio.voiceFile(id)
     const dur = v?.dur ?? LINES[id].split(" ").length * 0.38
-    caption = { id, text: LINES[id], t0: at, t1: at + dur + 0.5, words: v?.words || null }
+    // one sentence at a time, so the caption never runs ahead of the voice
+    const sentences = []
+    for (const w of v?.words || []) {
+      const last = sentences[sentences.length - 1]
+      if (!last || /[.?!]$/.test(last.text)) sentences.push({ t: w.t, text: w.text })
+      else last.text += " " + w.text
+    }
+    caption = { id, text: sentences[0]?.text || LINES[id], t0: at, t1: at + dur + 0.5, sentences, k: 0 }
     emit("caption", caption)
     audio.play(v?.file || id + ".mp3", { t, kind: "voice" })
   }
@@ -281,6 +288,13 @@ export function createShow({ still, canvas, base, capture = false, reduced = fal
     if (caption && t > caption.t1) {
       caption = null
       emit("caption", null)
+    } else if (caption?.sentences.length > 1) {
+      let k = 0
+      while (k + 1 < caption.sentences.length && t >= caption.t0 + caption.sentences[k + 1].t - 0.05) k++
+      if (k !== caption.k) {
+        caption = { ...caption, k, text: caption.sentences[k].text }
+        emit("caption", caption)
+      }
     }
   }
 

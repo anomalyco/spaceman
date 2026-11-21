@@ -155,7 +155,7 @@ export function Show({ header }: { header: React.ReactNode }) {
                   </kbd>
                 ))}
               </span>
-              <span className="text-[15px] text-[#ece9e3]">{touch ? "Tap to play" : "Press ⌥1 to play"}</span>
+              <span className="text-[15px] text-[#ece9e3]">{touch ? "Tap to play" : "Press ⌥1 or click to play"}</span>
             </button>
             <p className="flex items-center gap-2 text-[13px] text-[#a19d96]">
               A short film, 1:41
@@ -189,8 +189,8 @@ export function Show({ header }: { header: React.ReactNode }) {
       )}
 
       {hint && phase === "live" && (
-        <p className="pointer-events-none absolute inset-x-0 top-[12%] mx-auto w-fit rounded-full bg-black/60 px-4 py-2 text-[14px] text-[#ece9e3] backdrop-blur">
-          {touch ? "Your turn. Tap the bar to switch workspaces." : "Your turn. ⌥1, ⌥2 and ⌥3 switch workspaces."}
+        <p className="pointer-events-none absolute inset-x-0 bottom-[15%] mx-auto w-fit rounded-full bg-black/70 px-4 py-2 text-[15px] text-[#ece9e3] backdrop-blur">
+          {touch ? "Your turn. Tap a workspace in the bar." : "Your turn. Try ⌥2, then ⌥3."}
         </p>
       )}
 

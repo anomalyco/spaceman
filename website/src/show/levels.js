@@ -55,7 +55,7 @@ export function roomPrims(SW, SH, light) {
 // Him, from behind: head, shoulders and the back of the chair (z = Z_HEAD).
 export function headPrims(SW, SH, light) {
   const rim = [0.62, 0.7, 0.84, 0.3 * light]
-  const lit = [0.66, 0.74, 0.88, 0.5 * light]
+  const lit = [0.7, 0.78, 0.92, 0.85 * light]
   const dark = rgb("#050506")
   const p = []
   const cx = SW * 0.5
@@ -164,8 +164,9 @@ export function makeOuter(SW, SH, res) {
   o.clock = "Fri 11:48 PM"
   o.frontApp = "Viewer"
   const viewer = o.add({ id: "o-photo", app: "viewer", kind: "viewer2", title: "No. 12 — Study", ws: 5, data: {} })
+  // his own papers: whose desktop this is should read before the details do
+  o.add({ id: "o-min", app: "paper", kind: "paper", title: "Minutes — Corrections", ws: 5, data: { heading: "Corrections from No. 14", hsize: 30, lines: [{ t: "Not sent", b: 1, size: 20, color: "#9a3b2c" }, { gap: 1 }, "Item 2. I did not agree to this.", "Item 3. Measured from the", "street side, not the path.", "Item 4. I was present."] } })
   o.add({ id: "o-height", app: "sheets", kind: "sheet", title: "Hedge — Height", ws: 5, data: { cols: ["Date", "Height"], widths: [0.55, 0.45], rows: ["Nov 14", "Nov 15", "Nov 16", "Nov 17", "Nov 18", "Nov 19", "Nov 20"].map((d) => ({ cells: [d, "6′ 0″"] })) } })
-  o.add({ id: "o-min", app: "paper", kind: "paper", title: "Minutes — Corrections", ws: 5, data: { heading: "Corrections from No. 14", lines: ["Item 2. I did not agree to this.", "Item 3. Measured from the", "street side, not the path.", "Item 4. I was present.", { gap: 1 }, { t: "Not sent", soft: 1 }] } })
   const others = { 1: ["postbox", "mail", "Postbox"], 2: ["browsy", "browser", "Browsy"], 3: ["jot", "jot", "Jot"], 4: ["daybook", "daybook", "Daybook"] }
   for (const [n, [app, kind, title]] of Object.entries(others)) o.add({ id: "o-x" + n, app, kind, title, ws: +n, data: kind === "daybook" ? { date: "Saturday, November 21", events: [] } : { heading: title } })
   o.active = 5

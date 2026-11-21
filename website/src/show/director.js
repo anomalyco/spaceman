@@ -5,7 +5,7 @@ import { easeInOut, smooth, clamp, mix } from "./springs.js"
 import { BAR_H } from "./content.js"
 
 export const HOLD = [24, 30] // the visitor's turn: Option+1/2/3 really switch
-export const END = 100.85
+export const END = 100.72
 
 const NOTE = ["call about the gutters", "drill → return", "passwords??", "organize notes", "hedge (ask)"]
 
@@ -21,7 +21,7 @@ export function pile(SW, SH) {
     { id: "recipes", app: "paper", kind: "paper", title: "Recipes", at: F(0.62, 0.16, 0.3, 0.44), data: { heading: "Recipes", lines: ["Chili (Mom's)", "Banana bread", "Lasagna — the good one", "Pancakes"] } },
     { id: "daybook", app: "daybook", kind: "daybook", title: "Daybook", at: F(0.12, 0.36, 0.32, 0.5), data: { date: "Tuesday, June 2", events: [{ t: "Trash out", at: 19, len: 0.7, color: "#d9e3cf" }] } },
     { id: "untitled", app: "paper", kind: "paper", title: "Untitled 47", at: F(0.3, 0.3, 0.3, 0.36), data: {} },
-    { id: "drill", app: "jot", kind: "jot", title: "return drill", at: F(0.68, 0.5, 0.27, 0.34), data: { heading: "return drill", lines: ["to No. 10", { t: "borrowed spring 2022", soft: 1 }] } },
+    { id: "drill", app: "jot", kind: "jot", title: "return drill", at: F(0.68, 0.5, 0.27, 0.34), data: { heading: "return drill", check: 1, lines: ["to No. 10", { t: "borrowed spring 2022", soft: 1, nobox: 1 }] } },
     { id: "notes2", app: "jot", kind: "jot", title: "notes — real", at: F(0.2, 0.2, 0.3, 0.42), data: { heading: "notes — real", lines: NOTE } },
     { id: "notes1", app: "jot", kind: "jot", title: "notes (1)", at: F(0.1, 0.46, 0.3, 0.42), data: { heading: "notes", lines: NOTE } },
     { id: "notes", app: "jot", kind: "jot", title: "notes", at: F(0.44, 0.24, 0.3, 0.42), data: { heading: "notes", lines: NOTE } },
@@ -195,36 +195,41 @@ export function build(S) {
   at(35.5, () => w.move("dana", 2))
   S.say(36.8, "not-closed")
   sw(37.6, 2)
+  // stay with her message, Postbox's edge still in frame
+  push(37.8, 38.6, () => {
+    const f = frameOf("dana", 1.25)
+    return { ...f, cx: clamp(f.cx - S.SW * 0.06, (S.SW * f.D) / 2, S.SW - (S.SW * f.D) / 2) }
+  })
   sw(40.1, 1, "Wed Jun 3  6:02 AM")
 
-  // ── The drill: checked as he says it ──
+  // ── The drill: he ticks it after the neighbour says he needn't have ──
   at(40.15, () => w.setFocus("drill"))
   push(40.15, 40.9, () => frameOf("drill", 1.5))
   S.say(40.8, "drill")
-  clickAt(41.3, "drill", (id) => [R(id).x.t + 34, R(id).y.t + BAR_H + 64])
-  at(41.3, () => w.set("drill", { data: { check: 1, lines: [{ t: "to No. 10", done: 1 }, { t: "borrowed spring 2022", soft: 1, nobox: 1 }] } }))
-  push(45.4, 46.3, home)
+  clickAt(46.3, "drill", (id) => [R(id).x.t + 34, R(id).y.t + BAR_H + 64])
+  at(46.3, () => w.set("drill", { data: { check: 1, lines: [{ t: "to No. 10", done: 1 }, { t: "borrowed spring 2022", soft: 1, nobox: 1 }] } }))
+  push(46.9, 47.6, home)
 
   // ── 4 · The house ──
-  sw(47.2, 4, "Sat Jun 6  9:30 AM")
+  sw(47.6, 4, "Sat Jun 6  9:30 AM")
   const open = (t, ws, def) => at(t, () => (w.open({ ws, ...def, at: def.at || [S.SW * 0.3, S.SH * 0.3, S.SW * 0.4, S.SH * 0.4] }), S.sfx("thunk", 0.35)))
-  open(47.6, 4, { id: "groceries", app: "sheets", kind: "sheet", title: "Groceries — Standing Order", data: { cols: ["Item", "Qty", "Day"], widths: [0.5, 0.25, 0.25], rows: [["Eggs", "12", "Sun"], ["Milk", "1 gal", "Sun"], ["Bread", "1", "Sun"], ["Coffee", "2 lb", "Sun"], ["Apples", "6", "Sun"], ["Paper towels", "2", "1st Sun"]].map((cells) => ({ cells })) } })
-  open(48.0, 4, { id: "laundry", app: "jot", kind: "jot", title: "Laundry — Rotation", data: { heading: "Laundry — Rotation", lines: ["Mon  whites", "Wed  darks", "Fri  towels", "Sun  sheets"] } })
-  open(48.4, 4, { id: "friday", app: "daybook", kind: "daybook", title: "Friday dinner", data: { date: "Friday, June 12", events: [{ t: "Dinner (4)", at: 18.5, len: 2.5, color: "#e9d5c4" }] } })
-  S.say(47.9, "house")
+  open(47.9, 4, { id: "groceries", app: "sheets", kind: "sheet", title: "Groceries — Standing Order", data: { cols: ["Item", "Qty", "Day"], widths: [0.5, 0.25, 0.25], rows: [["Eggs", "12", "Sun"], ["Milk", "1 gal", "Sun"], ["Bread", "1", "Sun"], ["Coffee", "2 lb", "Sun"], ["Apples", "6", "Sun"], ["Paper towels", "2", "1st Sun"]].map((cells) => ({ cells })) } })
+  open(48.2, 4, { id: "laundry", app: "jot", kind: "jot", title: "Laundry — Rotation", data: { heading: "Laundry — Rotation", lines: ["Mon  whites", "Wed  darks", "Fri  towels", "Sun  sheets"] } })
+  open(48.5, 4, { id: "friday", app: "daybook", kind: "daybook", title: "Friday dinner", data: { date: "Friday, June 12", events: [{ t: "Dinner (4)", at: 18.5, len: 2.5, color: "#e9d5c4" }] } })
+  S.say(48.1, "house")
 
   // ── 5 · The neighborhood ──
-  sw(50.8, 5, "Tue Jun 9  10:12 PM")
-  open(51.1, 5, { id: "minutes", app: "paper", kind: "paper", title: "HOA — Minutes", data: { heading: "Pinecrest HOA — Minutes", sub: "Meeting of June 9", size: 14, gap: 23, lines: ["Present: 9 of 9", "1. Trash cans to be stored out of view", "    by 8 PM on collection days.", "2. Hedges and fences: six feet maximum.", "3. Minutes: No. 12."] } })
-  open(51.5, 5, { id: "trash", app: "sheets", kind: "sheet", title: "Trash Cans — Collection", data: { cols: ["House", "Out", "In by 8"], widths: [0.4, 0.3, 0.3], rows: [["No. 8", "✓", "✓"], ["No. 10", "✓", "8:40 PM"], ["No. 12", "✓", "✓"], ["No. 14", "✓", "—"], ["No. 16", "✓", "✓"]].map((cells) => ({ cells })) } })
-  open(51.9, 5, { id: "door", app: "doorbell", kind: "cam", title: "Doorbell — Front", dark: 1, data: { time: "10:12:31 PM", lit: 0 } })
+  sw(50.5, 5, "Tue Jun 9  10:12 PM")
+  open(50.8, 5, { id: "minutes", app: "paper", kind: "paper", title: "HOA — Minutes", data: { heading: "Pinecrest HOA — Minutes", sub: "Meeting of June 9", size: 14, gap: 23, lines: ["Present: 9 of 9", "1. Trash cans to be stored out of view", "    by 8 PM on collection days.", "2. Hedges and fences: six feet maximum.", "3. Minutes: No. 12."] } })
+  open(51.2, 5, { id: "trash", app: "sheets", kind: "sheet", title: "Trash Cans — Collection", data: { cols: ["House", "Out", "In by 8"], widths: [0.4, 0.3, 0.3], rows: [["No. 8", "✓", "✓"], ["No. 10", "✓", "8:40 PM"], ["No. 12", "✓", "✓"], ["No. 14", "✓", "—"], ["No. 16", "✓", "✓"]].map((cells) => ({ cells })) } })
+  open(51.6, 5, { id: "door", app: "doorbell", kind: "cam", title: "Doorbell — Front", dark: 1, data: { time: "10:12:31 PM", lit: 0 } })
   S.say(51.4, "minutes")
 
   // ── The hedge: three mornings you can read, then all of them ──
   open(56.0, 5, { id: "hedge", app: "viewer", kind: "photos", title: "No. 14 — Hedge", data: { count: 1 } })
   let shots = 1
   span(56.0, 65.4, (u, t) => {
-    const n = t < 58.2 ? 1 : t < 59.6 ? 2 : t < 60.6 ? 3 : 3 + Math.floor(157 * Math.pow(clamp((t - 60.6) / 4.8), 2))
+    const n = t < 58.2 ? 1 : t < 59.6 ? 2 : t < 60.6 ? 3 : 3 + Math.floor(157 * Math.pow(clamp((t - 60.6) / 3.8), 2))
     if (n !== shots) {
       if (n <= 3 || n === 24 || n === 70) S.sfx("shutter", n <= 3 ? 0.45 : 0.3)
       shots = n
@@ -236,7 +241,7 @@ export function build(S) {
   S.say(56.6, "hedge")
   S.say(62.6, "second")
   at(63.6, () => w.set("hedge", { data: { measured: 1, measuredFrom: shots } }))
-  push(65.4, 66.2, home)
+  push(65.6, 66.3, home)
 
   // ── The minutes, again ──
   at(66.0, () => {
@@ -259,7 +264,8 @@ export function build(S) {
   // the board meeting: him, and No. 16, who leaves
   const people = [{ name: "No. 12" }, { name: "No. 16", initial: "16", off: 1 }]
   people.forEach((p, i) => open(72.9 + i * 0.22, 6, { id: "call" + i, app: "call", kind: "call", title: "HOA — Board", dark: 1, data: { people: [p] } }))
-  at(75.3, () => (w.close("call1"), S.sfx("close", 0.35)))
+  at(75.3, () => (w.close("call1"), w.set("call0", { data: { toast: "No. 16 left" } }), S.sfx("close", 0.35)))
+  at(76.9, () => w.set("call0", { data: { toast: null } }))
 
   // ── The months ──
   sw(77.6, 1, "Wed Nov 18  6:02 AM")
@@ -277,6 +283,8 @@ export function build(S) {
     s.a.t = 1
     w.setFocus("rules")
   })
+  push(80.1, 80.6, settingsFrame)
+  push(81.5, 82.0, home)
   at(81.9, () => w.close("rules"))
   sw(82.4, 3, "Thu Nov 19  11:20 PM")
   sw(83.3, 6, "Fri Nov 20  7:41 PM")

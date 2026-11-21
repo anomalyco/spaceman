@@ -471,8 +471,8 @@ export class World {
     if (this.keys.a.x > 0.01 && this.keys.label) {
       const c = this.keyCanvas()
       const bg = this.barGeom()
-      // bottom left, like a key-cast overlay, clear of the bar and the captions
-      P(EDGE_PAD + 14, this.SH - c.lh - 18, c.lw, c.lh, { tex: c, r: 14, a: this.keys.a.x, g: 0 })
+      // beside the bar, so the keys and what they did are one glance
+      P(Math.max(EDGE_PAD, bg.x - c.lw - 14), bg.y + bg.h / 2 - c.lh / 2, c.lw, c.lh, { tex: c, r: 14, a: this.keys.a.x, g: 0 })
     }
     // cursor
     const cu = this.cursor
