@@ -7,6 +7,7 @@ import { chromium, type Page } from "playwright"
 import { mkdirSync, rmSync, writeFileSync, existsSync } from "node:fs"
 import { join, resolve } from "node:path"
 import { $ } from "bun"
+import { encode, grid } from "./encode.ts"
 
 const [distArg = "../../dist", outArg = "cap"] = process.argv.slice(2).filter((a) => !a.startsWith("--"))
 const quick = process.argv.includes("--quick")
@@ -91,17 +92,7 @@ const shot = (page: Page, path: string) => page.screenshot({ path, type: "jpeg",
   writeFileSync(join(out, "audio-log.json"), JSON.stringify(log))
   await ctx.close()
 
-  // contact sheet every 2 s, plus the clip with an offline mix
-  const every = 2 * FPS
-  const picks: string[] = []
-  for (let f = 0; f < total; f += every) picks.push(join(frames, String(f).padStart(5, "0") + ".jpg"))
-  for (let i = 0; i < picks.length; i += 20) {
-    const part = picks.slice(i, i + 20)
-    await $`magick montage ${part} -tile 5x -geometry 512x320+4+4 -background #222 -pointsize 18 -fill white ${join(out, `sheet-${String(i / 20 + 1)}.jpg`)}`.quiet()
-  }
-  const mix = await mixAudio(log as any[], total / FPS)
-  await $`ffmpeg -y -loglevel error -framerate ${FPS} -i ${frames}/%05d.jpg ${mix ? ["-i", mix] : []} -c:v libx264 -pix_fmt yuv420p -crf 22 -preset veryfast ${mix ? ["-c:a", "aac", "-b:a", "160k", "-shortest"] : []} ${join(out, "film.mp4")}`
-  rmSync(frames, { recursive: true, force: true })
+  await encode(out, total, FPS, audioDir)
 }
 
 // ── 2 · Keyframes on the other paths ────────────────────────────────────
@@ -118,8 +109,7 @@ async function keyframes(name: string, o: Opts) {
     await shot(page, p)
     files.push(p)
   }
-  const geo = o.mobile ? "195x422+4+4" : "448x280+4+4"
-  await $`magick montage ${files} -tile ${o.mobile ? "10x" : "5x"} -geometry ${geo} -background #222 ${join(out, "strip-" + name + ".jpg")}`.quiet()
+  await grid(files, o.mobile ? 10 : 5, o.mobile ? "195x422" : "448x280", join(out, "strip-" + name + ".jpg"))
   rmSync(dir, { recursive: true, force: true })
   ;(report.paths ??= {} as any)[name] = { errors, renderer: (await state(page).catch(() => ({}))).renderer }
   await ctx.close()
@@ -145,40 +135,3 @@ console.log(JSON.stringify({ ...report, states: undefined }, null, 1))
 await browser.close()
 server.stop()
 
-// Offline mix of the play log with ffmpeg: every clip delayed to its show time; the room loop
-// follows its logged levels as a stepped volume envelope.
-async function mixAudio(log: any[], secs: number) {
-  const clips = log.filter((e) => e.kind === "voice" || e.kind === "sfx")
-  if (!clips.length) return null
-  const levels = log.filter((e) => e.kind === "level")
-  const inputs: string[] = []
-  const parts: string[] = []
-  let n = 0
-  clips.forEach((e, i) => {
-    const f = join(audioDir, e.file)
-    if (!existsSync(f)) return
-    inputs.push("-i", f)
-    const k = n++
-    const off = e.offset || 0
-    parts.push(`[${k}:a]atrim=start=${off},asetpts=PTS-STARTPTS,volume=${e.gain ?? 1},adelay=${Math.round(e.t * 1000)}:all=1[a${i}]`)
-  })
-  const labels = parts.map((p) => p.slice(p.lastIndexOf("[")))
-  const room = join(audioDir, "sfx-room.mp3")
-  if (levels.length && existsSync(room)) {
-    inputs.push("-stream_loop", "-1", "-i", room)
-    const k = n++
-    let expr = "0"
-    for (const l of levels) expr = `if(gte(t\\,${l.t})\\,${l.gain}\\,${expr})`
-    parts.push(`[${k}:a]atrim=0:${secs},volume='${expr}':eval=frame[room]`)
-    labels.push("[room]")
-  }
-  const graph = parts.join(";") + `;${labels.join("")}amix=inputs=${labels.length}:normalize=0,atrim=0:${secs},loudnorm=I=-16:TP=-1.5[out]`
-  const file = join(out, "mix.m4a")
-  writeFileSync(join(out, "mix-graph.txt"), graph)
-  const p = Bun.spawnSync(["ffmpeg", "-y", "-loglevel", "error", ...inputs, "-filter_complex_script", join(out, "mix-graph.txt"), "-map", "[out]", "-c:a", "aac", "-b:a", "160k", file])
-  if (p.exitCode !== 0) {
-    console.log("mix failed", p.stderr.toString().slice(0, 2000))
-    return null
-  }
-  return file
-}

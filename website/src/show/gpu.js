@@ -1,7 +1,7 @@
 // WebGPU renderer: one instanced rounded-rect pipeline. Primitives come from the display list in
 // draw order; consecutive primitives sharing a texture go out in one draw call. Canvas textures are
 // re-uploaded only when their version changes.
-const FLOATS = 24
+const FLOATS = 20 // five vec4f per primitive, matching struct P
 
 const WGSL = /* wgsl */ `
 struct U { view: vec4f, grade: vec4f }
@@ -119,7 +119,10 @@ export async function createGPU(canvas) {
 
   function texFor(c) {
     let e = texs.get(c)
-    if (e && e.version === c.version && e.w === c.width && e.h === c.height) return e
+    if (e && e.version === c.version && e.w === c.width && e.h === c.height) {
+      e.used = true
+      return e
+    }
     if (!e || e.w !== c.width || e.h !== c.height) {
       e?.tex.destroy()
       const tex = device.createTexture({ size: [Math.max(1, c.width), Math.max(1, c.height)], format: "rgba8unorm", usage: GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.COPY_DST | GPUTextureUsage.RENDER_ATTACHMENT })

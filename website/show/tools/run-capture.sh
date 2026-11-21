@@ -5,7 +5,8 @@ set -euo pipefail
 round=${1:-r0}
 shift || true
 root="${0:A:h}/../.."
-out="${LEASE_OUT:-$root/show/cap}/$round"
+# browser jobs fetch new files under <worktree>/captures/ back by themselves
+out="$root/../captures/$round"
 cd $root
 bun install --silent
 show/tools/build-static.sh >/dev/null
