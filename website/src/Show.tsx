@@ -178,7 +178,7 @@ export function Show({ header }: { header: React.ReactNode }) {
       className="relative h-[100svh] min-h-[480px] w-full overflow-hidden bg-[#08080a] select-none"
     >
       {phase !== "ended" && <Exhibit onStart={start} ready={ready} live={phase === "live"} />}
-      <canvas ref={canvas} aria-hidden="true" onPointerDown={onTap} className={`absolute inset-0 size-full ${phase === "live" ? "opacity-100" : "opacity-0"}`} />
+      <canvas ref={canvas} aria-hidden="true" onPointerDown={onTap} className={`absolute inset-0 size-full ${phase === "live" ? "opacity-100" : "pointer-events-none opacity-0"}`} />
 
       <div className={`pointer-events-none absolute inset-x-0 top-0 transition-opacity duration-500 ${live ? "opacity-0" : "opacity-100"}`}>
         <div className={live ? "" : "pointer-events-auto"}>{header}</div>
