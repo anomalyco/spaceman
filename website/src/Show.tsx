@@ -74,6 +74,8 @@ export function Show({ header }: { header: React.ReactNode }) {
   const [hint, setHint] = useState(false);
   const [cc, setCc] = useState<boolean | null>(null);
   const [touch, setTouch] = useState(false);
+  // the CC button shows while the pointer moves (or a key is pressed), then gets out of the picture
+  const [awake, setAwake] = useState(true);
   // a click before the engine has loaded starts the film as soon as it has
   const pending = useRef(false);
 
@@ -153,6 +155,23 @@ export function Show({ header }: { header: React.ReactNode }) {
     return () => window.removeEventListener("keydown", onKey);
   }, [start]);
 
+  useEffect(() => {
+    if (phase !== "live") return;
+    let timer = 0;
+    const wake = () => {
+      setAwake(true);
+      window.clearTimeout(timer);
+      timer = window.setTimeout(() => setAwake(false), 2500);
+    };
+    wake();
+    const events = ["pointermove", "pointerdown", "keydown"] as const;
+    for (const e of events) window.addEventListener(e, wake);
+    return () => {
+      window.clearTimeout(timer);
+      for (const e of events) window.removeEventListener(e, wake);
+    };
+  }, [phase]);
+
   const onTap = (e: React.PointerEvent) => {
     const r = canvas.current?.getBoundingClientRect();
     if (r) show.current?.tap(e.clientX - r.left, e.clientY - r.top);
@@ -176,7 +195,7 @@ export function Show({ header }: { header: React.ReactNode }) {
       </div>
 
       {live && (
-        <div className="absolute top-3 left-3 flex gap-2 sm:top-auto sm:left-auto sm:right-6 sm:bottom-6">
+        <div className={`absolute top-3 left-3 flex gap-2 transition-opacity duration-500 focus-within:opacity-100 sm:top-auto sm:left-auto sm:right-6 sm:bottom-6 ${awake ? "opacity-100" : "opacity-0"}`}>
           <button type="button" onClick={() => setCc(!captions)} aria-pressed={captions} className={`h-9 rounded-full border border-white/10 px-3 text-[12px] font-semibold tracking-wide backdrop-blur ${captions ? "bg-[#ece9e3] text-[#151517]" : "bg-black/45 text-[#d8d5ce] hover:bg-black/60"}`}>
             CC
           </button>

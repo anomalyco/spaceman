@@ -102,9 +102,13 @@ def clapboard(name, col):
 
 def hedge(name, x, y0, y1, G, M, levels=2):
     h = box(name, (x, (y0 + y1) / 2, G + HEDGE_H / 2), (0.95, y1 - y0, HEDGE_H), M["hedge"], 0.14, 3)
-    sub = h.modifiers.new("sub", "SUBSURF")
-    sub.levels = sub.render_levels = levels
-    for k, (scale, strength) in enumerate([(0.3, 0.07), (0.06, 0.025 if levels > 2 else 0.0)]):
+    # an even mesh first, so the lumps below have vertices to move (a subdivided box has a few big faces)
+    rm = h.modifiers.new("remesh", "REMESH")
+    rm.mode = "VOXEL"
+    rm.voxel_size = 0.07 if levels > 2 else 0.14
+    rm.use_smooth_shade = True
+    # clipped, but by hand: a slow wave along the top and the face, then the leaf-mass lumps
+    for k, (scale, strength) in enumerate([(1.6, 0.24), (0.45, 0.1), (0.18, 0.07), (0.06, 0.025 if levels > 2 else 0.0)]):
         if strength <= 0:
             continue
         tex = bpy.data.textures.new("hedgeNoise%d" % k, "CLOUDS")
@@ -126,6 +130,7 @@ def house(name, x0, x1, y0, y1, G, M, siding, hh=5.6, body=True):
     vs = [bm.verts.new(v) for v in [(-hw, -rw2, 0), (hw, -rw2, 0), (hw, rw2, 0), (-hw, rw2, 0), (0, -rw2, ridge), (0, rw2, ridge)]]
     for f in [(0, 4, 5, 3), (1, 2, 5, 4), (0, 1, 4), (3, 5, 2)]:
         bm.faces.new([vs[i] for i in f])
+    bmesh.ops.recalc_face_normals(bm, faces=bm.faces)
     r = obj_from_bm(name + "Roof", bm, M["roof"])
     r.location = ((x0 + x1) / 2, (y0 + y1) / 2, G + hh)
     out.append(r)

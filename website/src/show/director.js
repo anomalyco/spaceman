@@ -546,11 +546,12 @@ export function build(S) {
   const signed = word("Three of them signed")
   push(signed - 0.6, signed + 0.2, home, null)
   clickAt(signed - 0.3, "photo", closeBtn, () => (w.close("photo"), S.sfx("close", 0.45)), 0.7)
-  const NOTE14 = (n, who) => ({ heading: "About the cameras", list: ["cameras", "hedge", "minutes", "six"], edited: "Signed " + who, lines: ["We'd like the two cameras on No. 12", "that face our houses taken down.", { gap: 1 }, { t: "— " + n, soft: 1 }] })
+  // one petition, three households: the same two lines, each signed (and added to) in its own hand
+  const NOTE14 = (sig, who, extra = []) => ({ heading: "About the cameras", list: ["cameras", "hedge", "minutes", "six"], edited: "Signed " + who, lines: ["We'd like the two cameras on No. 12", "that face our houses taken down.", ...extra, { gap: 1 }, { t: "— " + sig, soft: 1 }] })
   openMany(signed + 0.25, 2, [
-    { id: "cam16", app: "jot", kind: "jot", title: "cameras — No. 16", data: NOTE14("No. 16", "Feb 26") },
-    { id: "cam10", app: "jot", kind: "jot", title: "cameras — No. 10", data: NOTE14("No. 10", "Feb 26") },
-    { id: "cam14", app: "jot", kind: "jot", title: "cameras — No. 14", data: NOTE14("No. 14", "Feb 27") },
+    { id: "cam16", app: "jot", kind: "jot", title: "cameras — No. 16", data: NOTE14("Ruth and Alan, No. 16", "Feb 26") },
+    { id: "cam10", app: "jot", kind: "jot", title: "cameras — No. 10", data: NOTE14("Mark (10)", "Feb 26", ["Also still waiting on my drill."]) },
+    { id: "cam14", app: "jot", kind: "jot", title: "cameras — No. 14", data: NOTE14("The Abeles, No. 14", "Feb 27", ["Thank you."]) },
   ])
   const closed2 = word("I closed two")
   clickAt(word("closed") + 0.02, "cam16", closeBtn, () => (w.close("cam16"), S.sfx("close", 0.7)))
@@ -582,10 +583,24 @@ export function build(S) {
     const m = (p.w.t - 56) / 5.6
     return { x: p.x.t + 28 + m * (1.55 + i * 1.15), y: p.y.t + BAR_H + 110 + m * 0.45, w: m * 0.8, h: m * 2 }
   }
+  // his hand on the plan while he talks: over Mark's place, then idling toward the empty one, then onto it
+  at(june + 0.3, () => {
+    const r = placeRect(1)
+    w.cursorTo(r.x + r.w * 0.72, r.y + r.h * 0.6, june + 1.5)
+  })
+  const missed = word("Nobody missed")
+  at(missed + 0.2, () => {
+    const r = placeRect(1)
+    w.cursorTo(r.x + r.w * 1.2, r.y + r.h * 0.52, missed + 2.4)
+  })
   const place = word("Everything else had")
   at(place, () => (w.clock = "Fri Nov 20  11:47 PM"))
   // "You're the last thing." The dashed third place is selected, and held.
   const lastThing = word("last thing")
+  at(lastThing - 1.1, () => {
+    const r = placeRect(2)
+    w.cursorTo(r.x + r.w * 0.55, r.y + r.h * 0.5, lastThing - 0.15)
+  })
   at(lastThing - 0.1, () => {
     w.set("plan", { data: { sel: [2, 2] } })
     S.sfx("key", 0.25)

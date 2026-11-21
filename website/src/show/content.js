@@ -511,17 +511,28 @@ const painters = {
     ctx.fillStyle = "rgba(226,223,217,.8)"
     ctx.fillRect(0, BAR_H, w, 34)
     const n = d.tabs || 1
+    // the open tab keeps its width; the rest crush down to their favicons, as a browser does with 38 of them
     const tw = Math.max(9, Math.min(170, (w - 20) / n))
-    for (let i = 0; i < n && 10 + i * tw < w; i++) {
-      if (i === 0) {
-        ctx.fillStyle = PAGE
-        roundRect(ctx, 10, BAR_H + 5, tw - 2, 29, 7)
-        ctx.fill()
-      } else if (i > 0) {
-        ctx.fillStyle = "rgba(0,0,0,.12)"
-        ctx.fillRect(10 + i * tw - 1, BAR_H + 13, 1, 13)
+    const aw = Math.max(tw, Math.min(150, (w - 20) * 0.34))
+    const rw = n > 1 ? Math.max(9, (w - 20 - aw) / (n - 1)) : 0
+    ctx.fillStyle = PAGE
+    roundRect(ctx, 10, BAR_H + 5, aw - 2, 29, 7)
+    ctx.fill()
+    text(ctx, TAB_TITLES[0], 22, BAR_H + 24, { size: 12, color: INK, max: aw - 26 })
+    for (let i = 1; i < n; i++) {
+      const x = 10 + aw + (i - 1) * rw
+      if (x + rw > w - 6) break
+      if (i > 1) {
+        ctx.fillStyle = "rgba(0,0,0,.1)"
+        ctx.fillRect(x - 0.5, BAR_H + 13, 1, 13)
       }
-      if (tw > 60) text(ctx, TAB_TITLES[i % TAB_TITLES.length], 22 + i * tw, BAR_H + 24, { size: 12, color: i === 0 ? INK : "#6a665f", max: tw - 26 })
+      if (rw >= 60) text(ctx, TAB_TITLES[i % TAB_TITLES.length], x + 12, BAR_H + 24, { size: 12, color: "#6a665f", max: rw - 24 })
+      else if (rw >= 11) {
+        const f = Math.min(10, rw - 4)
+        ctx.fillStyle = FAVICONS[i % FAVICONS.length]
+        roundRect(ctx, x + (rw - f) / 2, BAR_H + 19.5 - f / 2, f, f, 2.5)
+        ctx.fill()
+      }
     }
     ctx.fillStyle = PAGE
     ctx.fillRect(0, BAR_H + 34, w, h)
@@ -702,7 +713,15 @@ const painters = {
       ctx.lineWidth = 1
       roundRect(ctx, x0 - 7.5, y + 0.5, tw + 7, 33, 7)
       ctx.stroke()
-      const cells = [r.app, r.title ? `“${r.title}”` : "Any", r.action, r.ws ?? "—"]
+      // an empty field being edited loses its dash: just the focus ring and the insertion point
+      const editing = r.cursor === 3 && r.ws == null
+      const cells = [r.app, r.title ? `“${r.title}”` : "Any", r.action, editing ? "" : (r.ws ?? "—")]
+      if (editing) {
+        ctx.strokeStyle = "rgba(61,111,208,.55)"
+        ctx.lineWidth = 2.5
+        roundRect(ctx, x0 + cols[3][1] * tw - 7, y + 5, 0.2 * tw - 6, 24, 5)
+        ctx.stroke()
+      }
       cells.forEach((c, i) => {
         if (c == null) return
         const f = cols[i][1]
@@ -722,6 +741,7 @@ const painters = {
 }
 
 const SERIF = 'Charter, "Iowan Old Style", Georgia, serif'
+const FAVICONS = ["#4f7fbf", "#c4553e", "#6a9a5b", "#d0a03a", "#7d6bb0", "#3f9a96", "#8a8580", "#c97a3a"]
 const TAB_TITLES = ["Gutter guards: which kind?", "Hedge height bylaws", "Laser measure reviews", "Pinecrest HOA", "How to take minutes", "Cordless drills compared"]
 
 export function paintWindow(ctx, w, h, win, focused) {

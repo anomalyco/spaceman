@@ -144,7 +144,7 @@ def wrap_material(bx, by):
     up = node(m, "ShaderNodeMapRange")
     up.inputs["From Min"].default_value = -0.05
     up.inputs["From Max"].default_value = 0.65
-    up.inputs["To Max"].default_value = 0.32
+    up.inputs["To Max"].default_value = 0.24
     link(m, sep.outputs["Y"], up.inputs["Value"])
     low = node(m, "ShaderNodeMapRange")
     low.inputs["From Min"].default_value = 0.12
@@ -160,21 +160,52 @@ def wrap_material(bx, by):
     link(m, a1.outputs[0], a2.inputs[0])
     link(m, low.outputs["Result"], a2.inputs[1])
     br = node(m, "ShaderNodeValToRGB")
-    br.color_ramp.elements[0].position = 0.64
+    br.color_ramp.elements[0].position = 0.655
     br.color_ramp.elements[0].color = (0.46, 0.48, 0.5, 1)
     br.color_ramp.elements[1].position = 0.92
     br.color_ramp.elements[1].color = (0.035, 0.004, 0.004, 1)
-    e = br.color_ramp.elements.new(0.71)
-    e.color = (0.3, 0.2, 0.2, 1)
-    e = br.color_ramp.elements.new(0.79)
-    e.color = (0.12, 0.03, 0.03, 1)
+    e = br.color_ramp.elements.new(0.7)
+    e.color = (0.15, 0.04, 0.034, 1)
+    e = br.color_ramp.elements.new(0.77)
+    e.color = (0.1, 0.018, 0.016, 1)
     link(m, a2.outputs[0], br.inputs["Fac"])
     mx = node(m, "ShaderNodeMix")
     mx.data_type = "RGBA"
     link(m, tr.outputs["Color"], mx.inputs[0])
     link(m, br.outputs["Color"], mx.inputs[6])
     mx.inputs[7].default_value = (0.1, 0.1, 0.105, 1)
-    link(m, mx.outputs[2], bsdf(m).inputs["Base Color"])
+    hn = node(m, "ShaderNodeTexNoise")
+    # long and soft: the sheen runs along the creases he was wound in, never specks
+    hs = node(m, "ShaderNodeVectorMath")
+    hs.operation = "MULTIPLY"
+    link(m, v.outputs[0], hs.inputs[0])
+    hs.inputs[1].default_value = (1.0, 0.18, 1.0)
+    hn.inputs["Scale"].default_value = 11.0
+    hn.inputs["Detail"].default_value = 1.0
+    hn.inputs["Roughness"].default_value = 0.4
+    link(m, hs.outputs[0], hn.inputs["Vector"])
+    hr = node(m, "ShaderNodeValToRGB")
+    hr.color_ramp.elements[0].position = 0.5
+    hr.color_ramp.elements[0].color = (0, 0, 0, 1)
+    hr.color_ramp.elements[1].position = 0.72
+    hr.color_ramp.elements[1].color = (0.3, 0.3, 0.3, 1)
+    link(m, hn.outputs["Fac"], hr.inputs["Fac"])
+    # only on what faces up toward the bulb
+    up2 = node(m, "ShaderNodeMapRange")
+    up2.inputs["From Min"].default_value = 0.06
+    up2.inputs["From Max"].default_value = 0.14
+    link(m, sep.outputs["Z"], up2.inputs["Value"])
+    hm = node(m, "ShaderNodeMath")
+    hm.operation = "MULTIPLY"
+    link(m, hr.outputs["Color"], hm.inputs[0])
+    link(m, up2.outputs["Result"], hm.inputs[1])
+    sh = node(m, "ShaderNodeMix")
+    sh.data_type = "RGBA"
+    sh.blend_type = "SCREEN"
+    link(m, hm.outputs[0], sh.inputs[0])
+    link(m, mx.outputs[2], sh.inputs[6])
+    sh.inputs[7].default_value = (0.85, 0.87, 0.9, 1)
+    link(m, sh.outputs[2], bsdf(m).inputs["Base Color"])
     return m
 
 
@@ -280,13 +311,22 @@ for k, (px, py) in enumerate([(5.12, 0.3), (5.28, 0.3)]):
 SX0, SX1, SY0, SY1 = RW - 0.48, RW - 0.03, 1.0, 2.4
 for (px, py) in [(SX0, SY0), (SX1, SY0), (SX0, SY1), (SX1, SY1)]:
     R.append(box("post", (px, py, 0.92), (0.03, 0.03, 1.84), steel, 0.002))
-for zz in (0.12, 0.62, 1.12, 1.62):
+# the same bins, bought over years: pushed in to different depths, one lid left off and leaning,
+# one shelf a size short, labels stuck on by hand at slightly different heights
+brng = random.Random(16)
+for s_i, zz in enumerate((0.12, 0.62, 1.12, 1.62)):
     R.append(box("shelf", ((SX0 + SX1) / 2, (SY0 + SY1) / 2, zz), (SX1 - SX0, SY1 - SY0, 0.02), steel, 0.002))
     for k in range(3):
-        yy = SY0 + 0.25 + k * 0.45
-        R.append(box("bin", ((SX0 + SX1) / 2, yy, zz + 0.16), (0.4, 0.4, 0.3), bin_m, 0.012))
-        R.append(box("lid", ((SX0 + SX1) / 2, yy, zz + 0.32), (0.42, 0.42, 0.03), lid, 0.008))
-        R.append(box("binlabel", (SX0 + 0.019, yy, zz + 0.2), (0.003, 0.16, 0.035), white, 0.0))
+        yy = SY0 + 0.25 + k * 0.45 + brng.uniform(-0.03, 0.03)
+        xx = (SX0 + SX1) / 2 + brng.choice((0.0, 0.0, 0.025, 0.045))
+        hh = 0.24 if (s_i, k) in ((1, 0), (1, 1)) else 0.3
+        R.append(box("bin", (xx, yy, zz + 0.01 + hh / 2), (0.4, 0.4, hh), bin_m, 0.012))
+        if (s_i, k) != (2, 2):
+            R.append(box("lid", (xx, yy, zz + 0.02 + hh + 0.005), (0.42, 0.42, 0.03), lid, 0.008, rot=(0, 0, rad(brng.uniform(-3, 3)))))
+        R.append(box("binlabel", (xx - 0.2 - 0.002, yy + brng.uniform(-0.03, 0.03), zz + 0.02 + hh * 0.62 + brng.uniform(-0.015, 0.015)),
+                     (0.003, brng.choice((0.16, 0.12, 0.18)), 0.035), white, 0.0, rot=(rad(brng.uniform(-3, 3)), 0, 0)))
+# the third bin's lid, off and leaning against the shelf post
+R.append(box("lidOff", (SX0 - 0.03, SY1 - 0.24, 0.35), (0.03, 0.42, 0.42), lid, 0.008, rot=(0, rad(-8), 0)))
 # the bulb's cord and socket (the bulb itself is emissive, not baked)
 BULB = (3.25, 2.55, 1.92)
 R.append(cyl("cord", (BULB[0], BULB[1], (BULB[2] + RH) / 2 + 0.05), 0.004, RH - BULB[2] - 0.1, black, 8))
@@ -356,8 +396,12 @@ def sheet_z(x, y):
     z += 0.006 * max(0.0, mnoise.noise(Vector((x * 1.3, y * 0.9, 0.5))))
     z += 0.0015 * mnoise.noise(Vector((x * 7.0, y * 5.0, 2.0)))
     # held flat under the tape
-    e = min(x - FX0, FX1 - x, y - FY0, FY1 - y)
-    return 0.004 + (z - 0.004) * min(1.0, max(0.0, (e - 0.03) / 0.12))
+    e = min(x - FX0, y - FY0)
+    z = 0.004 + (z - 0.004) * min(1.0, max(0.0, (e - 0.03) / 0.12))
+    wob = 1 + 0.5 * mnoise.noise(Vector((x * 2.0, y * 2.0, 4.0)))
+    for d in (FX1 - x, FY1 - y):
+        z += 0.022 * wob * max(0.0, 1 - d / 0.07) ** 2.2
+    return z
 
 
 for v in bm.verts:
@@ -659,7 +703,7 @@ for name, o in groups.items():
 
 cams = [
     camera("Before", (0.5, 1.45, 2.1), (3.75, 3.0, 0.1), 56, dof=4.0),
-    camera("After", (3.05, 0.42, 1.62), (3.8, 3.1, 0.12), 50, dof=2.8),
+    camera("After", (2.75, 1.05, 0.82), (4.05, 3.05, 0.12), 40, dof=2.5),
 ]
 bulb.hide_render = False
 export_glb(os.path.join(OUT, "basement.glb"), list(groups.values()) + [bulb] + cams)

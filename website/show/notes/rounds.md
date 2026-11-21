@@ -199,3 +199,38 @@ the ending goes, a diegetic start, and an ending that's brutal and unmistakable.
   newer, lighter concrete with a fine seam.
 - Canvas 2D: the desktop is drawn onto the stills' blank monitors. Phone portrait opens the field of view less
   (exponent 0.42, was 0.6).
+- 13:05–13:20: blood on the wrap is now soaked through the plastic (soft-edged, dull, darkest where it pressed),
+  not painted on; the floor drag marks darker and browner. The basement's floor sheet decimated (Room mesh
+  110k → 33k vertices, basement.glb 11.4 → 6.8 MB).
+- The mix, measured (nobody has listened): the room tone sat at −17 LUFS, level with his voice, so every
+  silence was a roar; now −34 LUFS (RMS −33 dBFS), 17 dB under him. The detective was as loud as him (the
+  compressor lifted him back up); he now goes in after the compressor, band-limited to 200–4000 Hz, at −21 LUFS
+  against his −17.
+- Captions: the aligner had "From the start?" 1.8 s late and 0.04 s long (it was never on screen); the first two
+  replies are retimed from the waveform. A caption now ends at the pause after it, not when the aligner says.
+- Workspace switch: the old workspace fades in 55 ms, so the two never sit on top of each other as a dissolve.
+- Street (study rebake): fascia, gutters and downpipes on the eaves, a plinth, a lighter slate roof, and a blind
+  part way down in every dark window (each at its own height).
+
+## Round 6 (critic: gpt-6.2-astra, `critic-r5.md`, frames from r5) · 13:40–
+
+r5 capture: no errors on any path (WebGPU, Canvas 2D, reduced motion, phone); busy CPU p95 3.6 ms, ending
+1.4 ms. Read against the frames, the critic's points we took:
+
+1. The occupied floor still read as a floor plan with a dummy on it (157, 173). → The last camera comes down to
+   a low line along the three places (40 mm from 0.8 m, was 50 mm from 1.6 m), so SIXTEEN, MARK and him share
+   one sightline; the floor sheet's two free edges curl; the wrap gets broken highlights where it faces the bulb
+   and loses its pink wash (blood through it goes straight from milky plastic to dark).
+2. The photo No. 14 sent read as a stage spot on pristine siding (116). → Re-shot from the pavement opposite, a
+   little to one side, the streetlight's spill broad and soft; then made a phone photo: held a little crooked,
+   grain in the shadows, colour noise, the phone's sharpening and JPEG (`show/tools/phonify.py`).
+3. The window shot's roof drew black (inward faces) and the hedge was a cuboid (153). → Roof normals
+   recalculated; the hedge's top and face wave by hand.
+4. The six section stood still for eleven seconds (131–146, the cursor where it was). → His hand moves over the
+   plan with the words: onto Mark's place, idling toward the empty one, then onto 14 for the click.
+5. Three identical camera notes looked like test data (122). → One petition, three households: the same two
+   lines, signed "Ruth and Alan, No. 16", "Mark (10)" with "Also still waiting on my drill.", and "The Abeles,
+   No. 14" with "Thank you."
+
+Not taken: a play button, mute and skip (#7; Kit asked for none); cutting "I tasted the sweet flesh of
+efficiency" (#9; Kit wants it); shortening the six section by 8 s (the tape fixes its length).

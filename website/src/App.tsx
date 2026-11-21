@@ -24,7 +24,7 @@ function Header() {
         <Wordmark />
       </h1>
       <nav className="flex items-center gap-5 text-[13px] text-[#c9c6bf]">
-        <a href="llms-full.txt" className="hover:text-white">Docs</a>
+        <a href="llms-full.txt" className="hidden hover:text-white sm:inline">Docs</a>
         <a href={DOWNLOAD_URL} className="rounded-full border border-white/15 bg-black/30 px-4 py-1.5 backdrop-blur hover:bg-black/50">Download</a>
       </nav>
     </header>
@@ -83,7 +83,7 @@ function Install() {
   return (
     <div className="flex max-w-3xl flex-col gap-2.5">
       <div className="relative rounded-xl border border-white/10 bg-[#121316]">
-        <pre className="overflow-x-auto px-5 py-4 pr-20 font-mono text-[13px] leading-relaxed text-[#d9d7d1]">
+        <pre className="mr-20 overflow-x-auto py-4 pl-5 font-mono text-[13px] leading-relaxed text-[#d9d7d1]">
           <code>{INSTALL}</code>
         </pre>
         <button

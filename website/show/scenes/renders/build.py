@@ -91,7 +91,15 @@ if "across" in ONLY or "door" in ONLY:
     mon.data.spread = rad(160)
     glow = box("monGlow", (2.0, 2.9, 1.07), (0.62, 0.004, 0.39), mat("monGlowM", (0, 0, 0), 1.0, emit=(0.8, 0.86, 1.0), strength=6.0), 0)
     if "across" in ONLY:
-        cam = camera("CamAcross", (21.2, 1.0, G + 1.62), (3.72, 2.3, 1.45), 9.5)
+        # a phone held up from the pavement opposite, a little to one side: the streetlight's spill is broad
+        # and soft across our front, not a stage spot on the window
+        # the light that matters is his: the monitor through the blinds, the slats glowing from behind
+        L[0].data.spot_size = rad(75)
+        L[0].data.spot_blend = 1.0
+        L[0].data.energy = 1300
+        mon.data.energy = 120
+        glow.data.materials[0].node_tree.nodes["Principled BSDF"].inputs["Emission Strength"].default_value = 14.0
+        cam = camera("CamAcross", (19.3, -0.7, G + 1.5), (3.72, 2.2, 1.55), 13)
         save("across", cam, 1600, 1200)
     if "door" in ONLY:
         L[2].data.energy = 2500  # the streetlight on our side floods the doorbell camera's foreground

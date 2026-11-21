@@ -2,6 +2,7 @@
 # Builds the set, bakes its light into atlases (the screen's light separately), exports
 # public/show/3d/study.glb + study.json, and renders emission previews of what the browser draws.
 # usage: Blender -b --factory-startup -P build.py -- [quick] [previews] [out=<dir>]
+import random
 import os, sys, math, json
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
 import bpy
@@ -112,11 +113,23 @@ def walls():
         R.append(box(n, c, s, paint, 0.003))
     for k, hz in enumerate([0.08, 0.45, 0.82, 1.19, 1.56, 1.89]):
         R.append(box("bcS%d" % k, (sx, sy, hz), (0.78, 0.3, 0.022), paint, 0.003))
+    # orderly, but used: the older row's spines a little faded and their labels yellowed, a few pulled
+    # proud of the rest, some fatter than others, each label stuck on by hand
+    rng = random.Random(14)
+    faded = noisy(mat("binderOld", rough=0.6), (0.14, 0.165, 0.19), (0.155, 0.18, 0.205), scale=60)
+    old_label = mat("labelOld", (0.7, 0.66, 0.55), 0.6)
     for row, hz in enumerate([0.831, 1.201]):
+        x = sx - 0.36 + 0.004
         for i in range(11):
-            x = sx - 0.36 + 0.034 + i * 0.066
-            R.append(box("binder%d_%d" % (row, i), (x, sy + 0.005, hz + 0.011 + 0.155), (0.058, 0.28, 0.31), binder, 0.003))
-            R.append(box("label%d_%d" % (row, i), (x, sy - 0.136, hz + 0.011 + 0.2), (0.034, 0.002, 0.07), label, 0.0))
+            wdt = rng.choice((0.058, 0.058, 0.052, 0.066))
+            if x + wdt > sx + 0.37:
+                break
+            xc = x + wdt / 2
+            dy = rng.choice((0.0, 0.0, 0.0, -0.012, -0.022, 0.006))
+            R.append(box("binder%d_%d" % (row, i), (xc, sy + 0.005 + dy, hz + 0.011 + 0.155), (wdt - 0.003, 0.28, 0.31), faded if row == 0 else binder, 0.003))
+            R.append(box("label%d_%d" % (row, i), (xc + rng.uniform(-0.002, 0.002), sy - 0.136 + dy, hz + 0.011 + 0.2 + rng.uniform(-0.006, 0.006)),
+                         (0.034, 0.002, 0.07), old_label if row == 0 else label, 0.0, rot=(0, rad(rng.uniform(-2.5, 2.5)), 0)))
+            x += wdt + 0.008
     for i in range(3):
         R.append(box("arch%d" % i, (sx - 0.25 + i * 0.25, sy, 1.56 + 0.011 + 0.13), (0.24, 0.28, 0.26), archive, 0.004))
     for i in range(2):
@@ -256,8 +269,9 @@ cams = [
     camera("CamChair", (mx + 0.16, RD - 1.5, 1.24), (mx - 0.02, my, 0.98), 44, dof=2.8),
     camera("CamDesk", (mx + 0.62, RD - 0.98, 0.82), (mx, my, 0.96), 40, dof=2.0),
     camera("CamRoom", (0.72, 0.25, 1.62), (2.35, 2.65, 1.0), 52, dof=4),
-    # from just under the blinds: the bottom rail and the last slats soft across the top of the frame
-    camera("CamWindow", (RW - 0.3, 2.25, 1.21), (26.0, 1.8, G + 3.85), 24, dof=4),
+    # a step back from the sill and a little below the blinds: the bottom rail a thin soft line at the top edge
+    # (the live depth of field can't melt a rail held a hand's width from the lens)
+    camera("CamWindow", (RW - 0.5, 2.25, 1.1), (26.0, 1.8, G + 3.85), 24, dof=4),
 ]
 export_glb(os.path.join(OUT, "study.glb"), list(groups.values()) + [screen, glass, skyplane] + cams)
 
