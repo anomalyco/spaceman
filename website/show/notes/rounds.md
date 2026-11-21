@@ -304,3 +304,10 @@ Then, from the probes (p6a, p6b) and the r5 frames at 100%:
     now, width and density from noise, thinning toward the sheet. The third sheet's far corner is turned back
     where the tape gave up, and one knelt-on crease runs across it toward the bulb (subtle at film size).
     Probe p6z (157, 170.77, 176.6 and the before/after times): no errors on any path.
+26. Final build (15:30): the review build stamp is gone from the footer and `three` / `@types/three` are out of
+    `package.json` (the renderer is our own `glb.js` + `gpu.js`). `scripts/check --no-web` passed. r7q (keyframes on
+    every path, the page) and r7t (motion trace, perf): no errors on WebGPU, Canvas 2D, reduced motion or phone;
+    `trace-check` 5,321 frames, no issues; main-thread time per frame at 1440×900 @2x: busiest section p50 1.0 /
+    p95 3.5 / max 8.6 ms, ending p50 0.9 / p95 1.3 / max 2.7 ms. Before the press the page loads the HTML, the JS
+    and CSS, `mark.svg` and the still (`intro.jpg`); everything else (tape, effects, photos, stills, both GLBs)
+    loads after it, the basement in the background behind the study.
