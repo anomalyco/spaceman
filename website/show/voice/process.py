@@ -73,6 +73,15 @@ def find(words, phrase, last=False):
 # ── the monologue ──
 meta = json.load(open(os.path.join(raw, "mono", TAKE + ".json")))
 words = words_of(meta)
+# where the aligner collapsed a phrase onto the next one (it does on the take's first words), its real
+# times in the take, measured from the waveform
+for fx in VER.get("retime", []):
+    i = find(words, fx["phrase"])
+    toks = fx["phrase"].split()
+    step = (fx["end"] - fx["t"]) / len(toks)
+    for k in range(len(toks)):
+        words[i + k]["t"] = round(fx["t"] + k * step, 3)
+        words[i + k]["end"] = round(fx["t"] + (k + 1) * step, 3)
 src = os.path.join(raw, "mono", TAKE + ".mp3")
 # the take's own audio, to put each cut in the quietest moment between its two words (the alignment
 # can run a few hundred ms late, most of all on the last words)

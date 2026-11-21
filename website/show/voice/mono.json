@@ -199,6 +199,7 @@
   "C": {
    "textKey": "textC2",
    "pick": "ic2",
+   "retime": [{"phrase": "From the start?", "t": 0.1, "end": 0.75}, {"phrase": "All right.", "t": 1.7, "end": 2.1}],
    "gaps": [
     {
      "after": "away from anything.",
