@@ -11,6 +11,6 @@ Spaceman uses macOS Accessibility APIs with no SIP changes required. It provides
 
 ## Downloads
 
-- [Spaceman 0.1.6 for Apple silicon](https://pub-6f85d683ffe0419cad0a71508904053a.r2.dev/releases/Spaceman-v0.1.6-macos-arm64.zip): Developer ID-signed, notarized macOS 14+ preview archive
-- [SHA-256 checksum](https://pub-6f85d683ffe0419cad0a71508904053a.r2.dev/releases/Spaceman-v0.1.6-macos-arm64.zip.sha256): checksum for `Spaceman-v0.1.6-macos-arm64.zip`
+- [Spaceman 0.2.0 for Apple silicon](https://pub-6f85d683ffe0419cad0a71508904053a.r2.dev/releases/Spaceman-v0.2.0-macos-arm64.zip): Developer ID-signed, notarized macOS 14+ preview archive
+- [SHA-256 checksum](https://pub-6f85d683ffe0419cad0a71508904053a.r2.dev/releases/Spaceman-v0.2.0-macos-arm64.zip.sha256): checksum for `Spaceman-v0.2.0-macos-arm64.zip`
 - [Sparkle appcast](https://pub-6f85d683ffe0419cad0a71508904053a.r2.dev/appcast.xml): signed software update feed

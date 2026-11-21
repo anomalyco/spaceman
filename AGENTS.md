@@ -6,7 +6,7 @@ This file is the current engineering contract. README and `docs/` describe curre
 ## Working Here
 
 - Agents merge their own Spaceman PRs and redeploy (release, publish, install) without asking
-  (Kit, Oct 27). The repo stays private under `kitlangton`.
+  (Kit, Oct 27). The repo is private at `anomalyco/spaceman` (moved from `kitlangton`, Nov 20).
 - GitHub Actions don't start on this repo while the account's billing is blocked, so run
   `scripts/check` locally before merging and say so in the PR.
 - The installed app follows `main`: `scripts/spaceman-updater` (LaunchAgent
