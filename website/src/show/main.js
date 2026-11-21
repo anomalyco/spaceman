@@ -390,7 +390,7 @@ export function createShow({ still, canvas, base, capture = false, reduced = fal
       const wantGPU = !new URLSearchParams(location.search).has("canvas2d")
       const [m, r] = await Promise.all([
         manifest ? manifest : fetch(base + "audio/manifest.json").then((x) => x.json()).catch(() => null),
-        renderer ? renderer : (wantGPU ? createGPU(canvas).catch(() => null) : null).then((g) => g || createCanvas2D(canvas)),
+        renderer ? renderer : (wantGPU ? createGPU(canvas).catch(() => null) : Promise.resolve(null)).then((g) => g || createCanvas2D(canvas)),
       ])
       manifest = m
       renderer = r
