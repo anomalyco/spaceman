@@ -22,7 +22,7 @@ export function tile(n, a) {
   else if (n === 3) fr.push([0, 0, 0.5, 1], [0.5, 0, 0.5, 0.5], [0.5, 0.5, 0.5, 0.5])
   else {
     const aspect = portrait ? a.h / a.w : a.w / a.h
-    const cols = Math.max(2, Math.round(Math.sqrt(n * aspect * 0.8)))
+    const cols = n === 4 ? 2 : Math.max(2, Math.round(Math.sqrt(n * aspect * 0.8)))
     const rows = Math.ceil(n / cols)
     let k = 0
     for (let r = 0; r < rows; r++) {
@@ -471,7 +471,8 @@ export class World {
     if (this.keys.a.x > 0.01 && this.keys.label) {
       const c = this.keyCanvas()
       const bg = this.barGeom()
-      P(this.SW / 2 - c.lw / 2, bg.y - c.lh - 18, c.lw, c.lh, { tex: c, r: 14, a: this.keys.a.x, g: 0 })
+      // bottom left, like a key-cast overlay, clear of the bar and the captions
+      P(EDGE_PAD + 14, this.SH - c.lh - 18, c.lw, c.lh, { tex: c, r: 14, a: this.keys.a.x, g: 0 })
     }
     // cursor
     const cu = this.cursor

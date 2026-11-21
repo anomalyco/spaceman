@@ -54,18 +54,27 @@ export function roomPrims(SW, SH, light) {
 
 // Him, from behind: head, shoulders and the back of the chair (z = Z_HEAD).
 export function headPrims(SW, SH, light) {
-  const rim = [0.62, 0.7, 0.84, 0.32 * light]
+  const rim = [0.62, 0.7, 0.84, 0.3 * light]
+  const lit = [0.66, 0.74, 0.88, 0.5 * light]
   const dark = rgb("#050506")
   const p = []
   const cx = SW * 0.5
-  p.push({ x: cx - 0.5 * SW, y: SH * 1.1, w: 1.0 * SW, h: 2 * SH, col: rgb("#08080a"), r: 0.12 * SW })
-  p.push({ x: cx - 0.5 * SW, y: SH * 1.1, w: 1.0 * SW, h: 2 * SH, ring: 3, col: [0.5, 0.56, 0.7, 0.1 * light], r: 0.12 * SW })
-  p.push({ x: cx - 0.42 * SW, y: SH * 0.98, w: 0.84 * SW, h: 1.4 * SH, col: dark, r: 0.2 * SW })
-  p.push({ x: cx - 0.42 * SW, y: SH * 0.98, w: 0.84 * SW, h: 1.4 * SH, ring: 3, col: rim, r: 0.2 * SW })
-  p.push({ x: cx - 0.06 * SW, y: SH * 0.82, w: 0.12 * SW, h: 0.3 * SH, col: dark, r: 0.04 * SW })
-  const hr = 0.115 * SW
-  p.push({ x: cx - hr, y: SH * 0.82 - hr * 1.75, w: hr * 2, h: hr * 2.3, col: dark, r: hr })
-  p.push({ x: cx - hr, y: SH * 0.82 - hr * 1.75, w: hr * 2, h: hr * 2.3, ring: 3, col: rim, r: hr })
+  // chair back
+  p.push({ x: cx - 0.5 * SW, y: SH * 1.12, w: 1.0 * SW, h: 2 * SH, col: rgb("#08080a"), r: 0.12 * SW })
+  p.push({ x: cx - 0.5 * SW, y: SH * 1.12, w: 1.0 * SW, h: 2 * SH, ring: 3, col: [0.5, 0.56, 0.7, 0.08 * light], r: 0.12 * SW })
+  // shoulders, the left one dropped, as he leans on that elbow
+  p.push({ x: cx - 0.46 * SW, y: SH * 1.04, w: 0.52 * SW, h: 1.4 * SH, col: dark, r: 0.16 * SW })
+  p.push({ x: cx - 0.06 * SW, y: SH * 0.96, w: 0.46 * SW, h: 1.4 * SH, col: dark, r: 0.16 * SW })
+  p.push({ x: cx - 0.46 * SW, y: SH * 1.04, w: 0.52 * SW, h: 1.4 * SH, ring: 3, col: lit, r: 0.16 * SW })
+  p.push({ x: cx - 0.06 * SW, y: SH * 0.96, w: 0.46 * SW, h: 1.4 * SH, ring: 2, col: rim, r: 0.16 * SW })
+  p.push({ x: cx - 0.44 * SW, y: SH * 1.04, w: 0.86 * SW, h: 1.4 * SH, col: dark, r: 0.12 * SW })
+  // neck, head turned a little to the right, an ear
+  const hx = cx + 0.025 * SW
+  p.push({ x: hx - 0.06 * SW, y: SH * 0.8, w: 0.12 * SW, h: 0.3 * SH, col: dark, r: 0.04 * SW })
+  const hr = 0.108 * SW
+  p.push({ x: hx + hr * 0.82, y: SH * 0.82 - hr * 0.95, w: hr * 0.34, h: hr * 0.62, col: dark, r: hr * 0.17 })
+  p.push({ x: hx - hr, y: SH * 0.82 - hr * 1.8, w: hr * 2, h: hr * 2.32, col: dark, r: hr * 0.95 })
+  p.push({ x: hx - hr, y: SH * 0.82 - hr * 1.8, w: hr * 2, h: hr * 2.32, ring: 2.5, col: rim, r: hr * 0.95 })
   return p
 }
 
@@ -96,8 +105,10 @@ export function frontPrims(SW, SH, photo, light, s = 0.2) {
   // the screen's light, spilling onto the siding around the window
   p.push({ x: o.x - 1.1 * SW, y: o.y - 1.0 * SH, w: o.w + 2.2 * SW, h: o.h + 2.0 * SH, tex: glowCanvas(), col: [0.5, 0.58, 0.72, 0.12 * light], r: 0 })
   // roof edge and gutter, downspout
-  p.push({ x: B.x, y: B.y, w: B.w, h: roofY - B.y, col: rgb("#0a0c0f") })
-  p.push({ x: B.x, y: roofY - 0.03 * SH, w: B.w, h: 0.07 * SH, col: rgb("#22262c") })
+  p.push({ x: B.x, y: B.y, w: B.w, h: roofY - B.y, col: rgb("#151a22") })
+  p.push({ x: B.x, y: roofY - 0.42 * SH, w: B.w, h: 0.42 * SH, col: rgb("#1b2028") })
+  for (let y = roofY - 0.4 * SH; y < roofY - 0.04 * SH; y += 0.09 * SH) p.push({ x: B.x, y, w: B.w, h: 0.01 * SH, col: rgb("#13171d"), a: fine })
+  p.push({ x: B.x, y: roofY - 0.03 * SH, w: B.w, h: 0.07 * SH, col: rgb("#2b3038") })
   p.push({ x: o.x - 1.05 * SW, y: roofY, w: 0.05 * SW, h: ground - roofY, col: rgb("#1f2329"), a: fine })
   // casing, sill, the meeting rail of the sash
   const trim = rgb("#2c3036")

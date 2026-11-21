@@ -138,36 +138,38 @@ export function Show({ header }: { header: React.ReactNode }) {
       </div>
 
       {phase === "still" && (
-        <div className="absolute inset-0 flex flex-col items-center justify-center gap-4 bg-[radial-gradient(ellipse_at_center,rgba(8,8,10,.62),rgba(8,8,10,.18)_55%,transparent)]">
-          <p className="text-[15px] text-[#c9c5bd]">A tiling window manager for macOS.</p>
-          <button
-            type="button"
-            onClick={start}
-            disabled={!ready}
-            aria-label={touch ? "Play the film" : "Press Option 1 to play the film"}
-            className="group flex flex-col items-center gap-3 rounded-2xl p-4 text-[#f2f1ee] focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-[#cfcac0] disabled:cursor-wait"
-          >
-            <span className="flex items-center gap-1.5">
-              {(touch ? ["Play"] : ["⌥", "1"]).map((k) => (
-                <kbd key={k} className="grid h-16 min-w-16 place-items-center rounded-[14px] border border-white/15 bg-[#1b1b1e]/90 px-4 font-sans text-[26px] font-medium shadow-[0_2px_0_rgba(255,255,255,.08)_inset,0_10px_30px_rgba(0,0,0,.5)] transition-transform duration-100 group-active:translate-y-0.5">
-                  {k}
-                </kbd>
-              ))}
-            </span>
-            <span className="text-[15px] text-[#d8d5ce]">{touch ? "Tap to play" : "Press ⌥1 to play"}</span>
-          </button>
-          <p className="flex items-center gap-2 text-[13px] text-[#8d8a84]">
-            A short film, 1:41
-            <span aria-hidden="true">·</span>
-            <button type="button" onClick={toggleSound} aria-pressed={!muted} className="rounded-full border border-white/12 bg-black/40 px-3 py-1 text-[13px] text-[#d8d5ce] hover:bg-black/60">
-              {muted ? "Sound off" : "Sound on"}
+        <div className="absolute inset-0 grid place-items-center bg-[radial-gradient(ellipse_at_center,rgba(8,8,10,.5),rgba(8,8,10,.12)_60%,transparent)] px-4">
+          <div className="flex flex-col items-center gap-3 rounded-3xl border border-white/10 bg-[#101013]/85 px-8 pt-6 pb-5 shadow-[0_30px_80px_rgba(0,0,0,.55)] backdrop-blur-md">
+            <p className="text-[15px] text-[#d9d6cf]">A tiling window manager for macOS.</p>
+            <button
+              type="button"
+              onClick={start}
+              disabled={!ready}
+              aria-label={touch ? "Play the film" : "Press Option 1 to play the film"}
+              className="group flex flex-col items-center gap-3 rounded-2xl p-2 text-[#f2f1ee] focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-[#cfcac0] disabled:cursor-wait"
+            >
+              <span className="flex items-center gap-1.5">
+                {(touch ? ["Play"] : ["⌥", "1"]).map((k) => (
+                  <kbd key={k} className="grid h-16 min-w-16 place-items-center rounded-[14px] border border-white/15 bg-[#1b1b1e]/90 px-4 font-sans text-[26px] font-medium shadow-[0_2px_0_rgba(255,255,255,.08)_inset,0_10px_30px_rgba(0,0,0,.5)] transition-transform duration-100 group-active:translate-y-0.5">
+                    {k}
+                  </kbd>
+                ))}
+              </span>
+              <span className="text-[15px] text-[#ece9e3]">{touch ? "Tap to play" : "Press ⌥1 to play"}</span>
             </button>
-          </p>
+            <p className="flex items-center gap-2 text-[13px] text-[#a19d96]">
+              A short film, 1:41
+              <span aria-hidden="true">·</span>
+              <button type="button" onClick={toggleSound} aria-pressed={!muted} className="rounded-full border border-white/12 bg-black/40 px-3 py-1 text-[13px] text-[#d8d5ce] hover:bg-black/60">
+                {muted ? "Sound off" : "Sound on"}
+              </button>
+            </p>
+          </div>
         </div>
       )}
 
       {live && (
-        <div className="absolute right-4 bottom-4 flex gap-2 sm:right-6 sm:bottom-6">
+        <div className="absolute top-3 right-3 flex gap-2 sm:top-auto sm:right-6 sm:bottom-6">
           <button type="button" onClick={() => show.current?.skip()} className="h-9 rounded-full border border-white/10 bg-black/45 px-4 text-[13px] text-[#d8d5ce] backdrop-blur hover:bg-black/60">
             Skip
           </button>

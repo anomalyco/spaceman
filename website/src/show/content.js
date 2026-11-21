@@ -114,46 +114,112 @@ function paperBody(ctx, w, h, d) {
   lines(ctx, d.lines || [], 26, y, w - 52, { size: d.size || 15, gap: d.gap || 25, check: d.check })
 }
 
-// Hedge, as photographed every morning from the same spot. Same framing, different weather.
-export function hedgePhoto(ctx, x, y, w, h, i, measured) {
-  const r = hash(i * 7 + 3)
-  const sky = r < 0.3 ? ["#8e9aa6", "#b9c1c7"] : r < 0.7 ? ["#9fb7cc", "#d7e1e6"] : ["#b7c2c9", "#e3e4df"]
-  const g = ctx.createLinearGradient(0, y, 0, y + h)
+// Hedge, as photographed every morning from the same spot. One plate per kind of weather, painted
+// once; each morning is that plate a hair off-register, in that morning's light.
+const plates = new Map()
+function plate(kind) {
+  if (plates.has(kind)) return plates.get(kind)
+  const W = 480
+  const H = 330
+  const c = document.createElement("canvas")
+  c.width = W
+  c.height = H
+  const ctx = c.getContext("2d")
+  const sky = kind === 0 ? ["#8e9aa6", "#b9c1c7"] : kind === 1 ? ["#9fb7cc", "#dbe4e8"] : ["#b7c2c9", "#e6e6e0"]
+  const g = ctx.createLinearGradient(0, 0, 0, H)
   g.addColorStop(0, sky[0])
-  g.addColorStop(1, sky[1])
+  g.addColorStop(0.5, sky[1])
   ctx.fillStyle = g
-  ctx.fillRect(x, y, w, h)
-  ctx.fillStyle = "#6f7d63"
-  ctx.fillRect(x, y + h * 0.82, w, h * 0.18)
-  const top = y + h * (0.24 + (hash(i * 13) - 0.5) * 0.02)
-  ctx.fillStyle = "#2f4a2c"
+  ctx.fillRect(0, 0, W, H)
+  // the house behind, a roofline and a gutter
+  ctx.fillStyle = "rgba(70,74,80,.35)"
+  ctx.fillRect(0, H * 0.08, W, H * 0.2)
+  ctx.fillStyle = "rgba(40,42,46,.4)"
+  ctx.fillRect(0, H * 0.08, W, 3)
+  // lawn and the sidewalk with its joint
+  const lg = ctx.createLinearGradient(0, H * 0.74, 0, H)
+  lg.addColorStop(0, "#5f6f52")
+  lg.addColorStop(1, "#788a66")
+  ctx.fillStyle = lg
+  ctx.fillRect(0, H * 0.74, W, H * 0.26)
+  ctx.fillStyle = "#b9b4a8"
+  ctx.fillRect(0, H * 0.9, W, H * 0.1)
+  ctx.fillStyle = "rgba(0,0,0,.18)"
+  ctx.fillRect(W * 0.58, H * 0.9, 2, H * 0.1)
+  // the hedge: a dark mass, then leaves
+  const top = H * 0.24
+  ctx.fillStyle = "#1f331e"
   ctx.beginPath()
-  ctx.moveTo(x, y + h * 0.84)
-  ctx.lineTo(x, top + 4)
-  for (let k = 0; k <= 12; k++) ctx.lineTo(x + (w * k) / 12, top + (hash(k * 31 + 5) - 0.5) * h * 0.05)
-  ctx.lineTo(x + w, y + h * 0.84)
+  ctx.moveTo(0, H * 0.8)
+  ctx.lineTo(0, top + 6)
+  for (let k = 0; k <= 24; k++) ctx.lineTo((W * k) / 24, top + (hash(k * 31 + 5) - 0.5) * 9)
+  ctx.lineTo(W, H * 0.8)
   ctx.fill()
-  ctx.fillStyle = "rgba(255,255,255,.07)"
-  for (let k = 0; k < 18; k++) ctx.fillRect(x + hash(k * 3 + i) * w, top + hash(k * 5 + 1) * h * 0.5, 2, 2)
+  const greens = ["#2a4428", "#355a31", "#406a3a", "#2f4d2c", "#4b7a42"]
+  for (let k = 0; k < 2600; k++) {
+    const x = hash(k * 3 + 1) * W
+    const y = top + Math.pow(hash(k * 7 + 2), 0.8) * (H * 0.8 - top)
+    const r = 1.5 + hash(k * 11 + 3) * 3.5
+    const lit = 1 - (y - top) / (H * 0.6)
+    ctx.fillStyle = greens[Math.floor(hash(k * 13 + 4) * (lit > 0.5 ? 5 : 3.2))]
+    ctx.beginPath()
+    ctx.arc(x, y, r, 0, Math.PI * 2)
+    ctx.fill()
+  }
+  const sh = ctx.createLinearGradient(0, H * 0.55, 0, H * 0.8)
+  sh.addColorStop(0, "rgba(0,0,0,0)")
+  sh.addColorStop(1, "rgba(0,0,0,.35)")
+  ctx.fillStyle = sh
+  ctx.fillRect(0, H * 0.55, W, H * 0.25)
+  // the neighbor's fence joint at the left
+  ctx.fillStyle = "#8a7a62"
+  ctx.fillRect(0, H * 0.3, W * 0.05, H * 0.5)
+  ctx.fillStyle = "rgba(0,0,0,.25)"
+  ctx.fillRect(W * 0.05, H * 0.3, 2, H * 0.5)
   // the measuring pole
   ctx.fillStyle = "#e9e3d4"
-  ctx.fillRect(x + w * 0.78, y + h * 0.16, Math.max(1.5, w * 0.02), h * 0.68)
+  ctx.fillRect(W * 0.78, H * 0.16, 9, H * 0.66)
   ctx.fillStyle = "#b33a2e"
-  for (let k = 0; k < 7; k++) ctx.fillRect(x + w * 0.78, y + h * (0.16 + k * 0.1), Math.max(1.5, w * 0.02), h * 0.05)
-  if (r < 0.3) {
-    ctx.strokeStyle = "rgba(255,255,255,.18)"
+  for (let k = 0; k < 7; k++) ctx.fillRect(W * 0.78, H * (0.16 + k * 0.1), 9, H * 0.05)
+  if (kind === 0) {
+    ctx.strokeStyle = "rgba(255,255,255,.16)"
     ctx.lineWidth = 1
-    for (let k = 0; k < 14; k++) {
-      const px = x + hash(k * 17 + i) * w
-      const py = y + hash(k * 23 + i) * h * 0.8
+    for (let k = 0; k < 90; k++) {
+      const px = hash(k * 17) * W
+      const py = hash(k * 23) * H * 0.85
       ctx.beginPath()
       ctx.moveTo(px, py)
-      ctx.lineTo(px - 2, py + 6)
+      ctx.lineTo(px - 2, py + 9)
       ctx.stroke()
     }
   }
+  const v = ctx.createRadialGradient(W / 2, H / 2, H * 0.3, W / 2, H / 2, W * 0.62)
+  v.addColorStop(0, "rgba(0,0,0,0)")
+  v.addColorStop(1, "rgba(0,0,0,.28)")
+  ctx.fillStyle = v
+  ctx.fillRect(0, 0, W, H)
+  plates.set(kind, c)
+  return c
+}
+
+export function hedgePhoto(ctx, x, y, w, h, i, measured) {
+  const r = hash(i * 7 + 3)
+  const p = plate(r < 0.3 ? 0 : r < 0.7 ? 1 : 2)
+  // handheld from the same spot: a few pixels off each morning
+  const jx = (hash(i * 5 + 9) - 0.5) * p.width * 0.03
+  const jy = (hash(i * 9 + 2) - 0.5) * p.height * 0.03
+  const m = 0.04
+  ctx.drawImage(p, p.width * m + jx, p.height * m + jy, p.width * (1 - 2 * m), p.height * (1 - 2 * m), x, y, w, h)
+  // that morning's light, and the house's shadow across the lawn as the year turns
+  const warm = hash(i * 3 + 7)
+  ctx.fillStyle = warm < 0.5 ? `rgba(255,214,160,${0.05 + warm * 0.1})` : `rgba(150,170,200,${(warm - 0.5) * 0.14})`
+  ctx.fillRect(x, y, w, h)
+  const len = Math.min(0.9, 0.2 + i / 220)
+  ctx.fillStyle = "rgba(20,26,20,.22)"
+  ctx.fillRect(x, y + h * 0.74, w * len, h * 0.16)
+  const top = y + h * 0.24
   if (measured) {
-    ctx.fillStyle = "rgba(255,255,255,.85)"
+    ctx.fillStyle = "rgba(255,255,255,.88)"
     ctx.fillRect(x + w * 0.4, top - 1, w * 0.36, 1.2)
     ctx.font = `600 ${Math.max(8, w * 0.1)}px ${FONT}`
     ctx.textAlign = "left"
@@ -477,6 +543,14 @@ const painters = {
       x += widths[i] * w
       ctx.fillStyle = "rgba(0,0,0,.06)"
       ctx.fillRect(x, BAR_H, 1, h)
+    }
+    if (d.foot?.length) {
+      const fh = d.foot.length * 22 + 14
+      ctx.fillStyle = "#f1f2ee"
+      ctx.fillRect(0, h - fh, w, fh)
+      ctx.fillStyle = "rgba(0,0,0,.08)"
+      ctx.fillRect(0, h - fh, w, 1)
+      d.foot.forEach((f, i) => text(ctx, f, 12, h - fh + 25 + i * 22, { size: 13.5, color: i === d.foot.length - 1 ? INK : SOFT, max: w - 24 }))
     }
   },
   // The stranger's photo viewer: the photo area stays transparent (the live scene shows through);

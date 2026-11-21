@@ -189,18 +189,16 @@ export function build(S) {
   })
   at(36.1, () => w.move("dana", 2))
   S.say(36.8, "not-closed")
-  sw(37.7, 2)
-  sw(39.5, 1)
+  sw(37.6, 2)
+  sw(40.1, 1, "Wed Jun 3  6:02 AM")
 
-  // ── The drill ──
-  at(40.2, () => {
-    w.clock = "Wed Jun 3  6:02 AM"
-    w.setFocus("drill")
-  })
-  push(40.2, 41.3, () => frameOf("drill", 1.5))
+  // ── The drill: checked as he says it ──
+  at(40.15, () => w.setFocus("drill"))
+  push(40.15, 40.9, () => frameOf("drill", 1.5))
   S.say(40.8, "drill")
-  at(41.9, () => w.set("drill", { data: { check: 1, lines: [{ t: "to No. 10", done: 1 }, { t: "borrowed spring 2022", soft: 1 }] } }))
-  push(46.2, 47.0, home)
+  clickAt(41.3, "drill", (id) => [R(id).x.t + 34, R(id).y.t + BAR_H + 64])
+  at(41.3, () => w.set("drill", { data: { check: 1, lines: [{ t: "to No. 10", done: 1 }, { t: "borrowed spring 2022", soft: 1 }] } }))
+  push(45.4, 46.3, home)
 
   // ── 4 · The house ──
   sw(47.2, 4, "Sat Jun 6  9:30 AM")
@@ -247,20 +245,21 @@ export function build(S) {
   MINUTES_ROWS.forEach((r, i) => at(66.4 + i * 0.75, () => w.set("minutes", { data: { rows: MINUTES_ROWS.slice(0, i + 1).map((cells) => ({ cells })) } })))
   push(66.2, 68.0, () => frameOf("minutes", 1.25))
   S.say(66.6, "circulated")
+  at(67.2, () => w.set("minutes", { data: { foot: ["Sent to 8 households, Jun 10"] } }))
+  at(69.9, () => w.set("minutes", { data: { foot: ["Sent to 8 households, Jun 10", "Sent again to 8 households, Nov 11"] } }))
   push(71.6, 72.4, home)
 
   // ── 6 · The call ──
   sw(72.6, 6, "Tue Nov 17  7:00 PM")
   const people = [{ name: "No. 12" }, { name: "No. 8", initial: "8", off: 1 }, { name: "No. 10", initial: "10", off: 1 }, { name: "No. 16", initial: "16", off: 1 }]
   people.forEach((p, i) => open(72.9 + i * 0.22, 6, { id: "call" + i, app: "call", kind: "call", title: "HOA — Board", dark: 1, data: { people: [p] } }))
-  S.say(74.0, "space")
 
   // ── The months ──
-  sw(78.0, 1, "Thu Jul 16  9:14 PM")
-  at(78.6, () => w.set("friday", { data: { events: [{ t: "Dinner (1)", at: 18.5, len: 2.5, color: "#e9d5c4" }] } }))
-  sw(78.8, 4, "Fri Jul 17  8:55 PM")
-  sw(79.7, 2, "Sat Aug 22  11:20 PM")
-  at(80.4, () => {
+  sw(77.6, 1, "Wed Nov 18  6:02 AM")
+  at(78.2, () => w.set("friday", { data: { date: "Friday, November 20", events: [{ t: "Dinner (1)", at: 18.5, len: 2.5, color: "#e9d5c4" }] } }))
+  sw(78.4, 4, "Wed Nov 18  9:14 PM")
+  sw(79.3, 2, "Thu Nov 19  6:02 AM")
+  at(80.0, () => {
     w.add({ id: "rules", app: "spaceman", kind: "settings", title: "Spaceman Settings", float: true, hidden: true, at: settingsAt(), data: { rules: [
       { app: "Chatter", icon: "chatter", action: "Route", ws: 2 },
       { app: "Doorbell", icon: "doorbell", action: "Route", ws: 5 },
@@ -271,16 +270,16 @@ export function build(S) {
     s.a.t = 1
     w.setFocus("rules")
   })
-  at(82.2, () => w.close("rules"))
-  sw(82.7, 3, "Mon Sep 28  6:02 AM")
-  sw(83.5, 6, "Tue Nov 17  7:41 PM")
+  at(81.9, () => w.close("rules"))
+  sw(82.4, 3, "Thu Nov 19  11:20 PM")
+  sw(83.3, 6, "Fri Nov 20  7:41 PM")
   sw(84.3, 5, "Fri Nov 20  11:46 PM")
-  span(77.5, 86, (u) => {
+  span(76.8, 86, (u) => {
     S.grade[0] = 0.42 * smooth(u)
     S.grade[1] = smooth(u)
     S.grade[2] = 0.3 * smooth(u)
   })
-  at(78.0, () => S.room(0.28, 3))
+  at(77.6, () => S.room(0.28, 3))
   at(84.3, () => w.setFocus("door"))
 
   // ── Number fourteen ──
@@ -288,9 +287,9 @@ export function build(S) {
   at(85.4, () => (w.clock = "Fri Nov 20  11:48 PM"))
   for (let s = 0; s < 14; s++) at(84.3 + s, () => w.set("door", { data: { time: `11:4${s < 6 ? 7 : 8}:${String((s * 1 + 54) % 60).padStart(2, "0")} PM` } }))
   at(85.8, () => {
-    // the cursor drifts to the lit window and rests there
+    // the cursor drifts onto the feed and stops
     const d = R("door")
-    w.moveCursor(d.x.t + d.w.t * 0.36 * 1.0 + d.w.t * 0.28 * 0.66, d.y.t + BAR_H + (d.h.t - BAR_H) * 0.5, 4.6)
+    w.moveCursor(d.x.t + d.w.t * 0.62, d.y.t + BAR_H + (d.h.t - BAR_H) * 0.8, 4.6)
   })
   S.say(88.0, "light")
 
@@ -304,7 +303,7 @@ export function build(S) {
     S.pull.b = u
   })
   at(95.2, () => S.room(0, 0.4))
-  at(100.2, () => S.outerKey())
+  at(100.55, () => S.outerKey())
   at(END, () => S.end())
 
   cues.sort((a, b) => a.t - b.t)
