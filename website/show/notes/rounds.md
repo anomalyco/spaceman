@@ -101,3 +101,38 @@ Declined: a persistent "⌥2, then ⌥3" instruction (the hint already names the
 responds); re-cutting the montage to three selections (it carries the clock forward and shows the
 rules list, which is the product beat); a changing acoustic perspective for the car (needs new SFX;
 listed as a next improvement).
+
+## Round 4 (critic: gpt-6.2-astra, `critique-r4-astra.md`, frames from r3)
+
+Ten weakest:
+
+1. 96.4–100.55: you could tell whose house was in the photo before whose desktop it was. → "Corrections
+   from No. 14" set at 30 px with **Not sent** under it in a draft red; the body stays small.
+2. 24–30: the visitor's hint was at the top, the effect at the bottom. → "Your turn. Try ⌥2, then
+   ⌥3." sits just above the bar (touch: "Tap a workspace in the bar.").
+3. 37.6–40: on 2, the HOA email competed with Dana. → After ⌥2 the camera settles on her message,
+   with Postbox's edge still in frame.
+4. 8.9, 40.8, 67.0: captions showed the last clause before the voice reached it. → Captions run one
+   sentence at a time, timed from the voice's word alignment.
+5. 13.9–21.8: keycaps far left, evidence in the bar. → Key-cast sits beside the bar.
+6. 40–46: the drill was ticked before the neighbour objected. → He ticks it at 46.3, after "He said I
+   didn't need to." The note has an empty box from the start; "borrowed spring 2022" has none.
+7. 77.6–84.3: the rules list flashed by. → The camera pushes onto it so the title rule
+   (`Viewer, "No. 14 — Hedge" → 5`) reads.
+8. 92–95.6: the man nearly disappeared. → Brighter monitor light on his near shoulder.
+9. 47.2–50.8: four overstayed. → Cut to 5 at 50.5, just after "four".
+10. 63.6–65.4: the precision was easy to miss. → The archive stops growing at 64.4 and holds on
+    6′ 2.75″ / 6′ 3″ before the camera pulls out at 65.6.
+
+Also: "Press ⌥1 or click to play" on the still; cut moved to 100.66, while No. 14's windows are
+leaving, so no empty wallpaper shows.
+
+Declined: none outright. The phone ending still squeezes the house into a tall tile (the critic's
+product note); listed as a next improvement.
+
+## Measured (r4 capture, WebGPU, desktop 1440 × 900 logical)
+
+Main-thread time per frame, busiest section (13–40 s, 263 frames): p50 0.9 ms, p95 4.2 ms, max 16 ms.
+Ending (88–101 s): p50 1.2 ms, p95 14.7 ms, max 18.2 ms (window textures repainting as the outer
+desktop builds). No errors on WebGPU, Canvas 2D, reduced-motion or phone paths. The visitor's
+⌥2/⌥3/⌥1 during 24–30 switched 1 → 2 → 3 → 1.

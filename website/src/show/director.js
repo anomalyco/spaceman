@@ -5,7 +5,7 @@ import { easeInOut, smooth, clamp, mix } from "./springs.js"
 import { BAR_H } from "./content.js"
 
 export const HOLD = [24, 30] // the visitor's turn: Option+1/2/3 really switch
-export const END = 100.72
+export const END = 100.66
 
 const NOTE = ["call about the gutters", "drill → return", "passwords??", "organize notes", "hedge (ask)"]
 
