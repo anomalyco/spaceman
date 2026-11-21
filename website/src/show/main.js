@@ -463,9 +463,11 @@ export function createShow({ still, canvas, base, capture = false, reduced = fal
   }
 
   // one sentence at a time, held a moment after it ends unless the next one starts
+  // (the aligner runs a line's end through a pause after it; the pause is where it really ends)
+  const lineEnd = LINES.map(([, a, b]) => Math.min(b, ...TAPE.marks.gaps.filter((g) => g[0] > a && g[0] < b).map((g) => g[0])))
   let li = 0
   function captions() {
-    while (li < LINES.length && t > LINES[li][2] + 0.6) li++
+    while (li < LINES.length && t > lineEnd[li] + 0.6) li++
     const L = LINES[li]
     const on = L && t >= L[1] - 0.05 && (li + 1 >= LINES.length || t < LINES[li + 1][1] - 0.05)
     const high = !!(on && S.capHigh && L[1] >= S.capHigh[0] && L[1] <= S.capHigh[1])

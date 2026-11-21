@@ -162,18 +162,18 @@ for c in cuts:
         extra_lab.append(f"[x{len(extra_lab)}]")
 # the interview room: ventilation, the strip light's buzz, the recorder's own floor; the tones at
 # either end; the detective further from the microphone than he is
-fc.append(f"anoisesrc=r=44100:color=brown:amplitude=0.05:seed=11,lowpass=f=420,highpass=f=60,atrim=0:{total:.3f}[vent]")
-fc.append(f"anoisesrc=r=44100:color=pink:amplitude=0.004:seed=7,highpass=f=2500,atrim=0:{total:.3f}[hiss]")
+fc.append(f"anoisesrc=r=44100:color=brown:amplitude=0.016:seed=11,lowpass=f=420,highpass=f=60,atrim=0:{total:.3f}[vent]")
+fc.append(f"anoisesrc=r=44100:color=pink:amplitude=0.0025:seed=7,highpass=f=2500,atrim=0:{total:.3f}[hiss]")
 fc.append(f"sine=f=100:r=44100,volume=0.0011,atrim=0:{total:.3f}[hum1]")
 fc.append(f"sine=f=300:r=44100,volume=0.0004,atrim=0:{total:.3f}[hum3]")
 tone = "sine=f=1000:r=44100,atrim=0:{d},afade=t=in:d=0.01,afade=t=out:st={o}:d=0.02,volume=0.085,adelay={ms}"
 fc.append(tone.format(d=BEEP, o=BEEP - 0.02, ms=350) + "[beep1]")
 fc.append(tone.format(d=BEEP, o=BEEP - 0.02, ms=int(BEEP2 * 1000)) + "[beep2]")
-far = "aformat=channel_layouts=mono,highpass=f=180,lowpass=f=4800,aecho=0.8:0.55:19|37|61:0.32|0.22|0.12,volume=0.6"
+far = "aformat=channel_layouts=mono,highpass=f=200,lowpass=f=4000,aecho=0.8:0.6:19|37|61:0.36|0.26|0.14,volume=0.25"
 fc.append(f"[1:a]{far},adelay={int(OPEN_AT * 1000)}[iopen]")
 fc.append(f"[2:a]{far},adelay={int(CLOSE_AT * 1000)}[iclose]")
 fc.append("[voice]aecho=0.9:0.4:13|29:0.16|0.08[near]")
-mixins = ["[near]", "[vent]", "[hiss]", "[hum1]", "[hum3]", "[beep1]", "[beep2]", "[iopen]", "[iclose]"]
+mixins = ["[near]", "[vent]", "[hiss]", "[hum1]", "[hum3]", "[beep1]", "[beep2]"]
 if chair_at is not None:
     fc.append(f"[3:a]volume=0.2,lowpass=f=3000,adelay={int(chair_at * 1000)}[chair]")
     mixins.append("[chair]")
@@ -185,7 +185,9 @@ chain = ",".join([
     "alimiter=limit=0.9",
     f"apad=whole_dur={total:.3f},atrim=0:{total:.3f}",
 ])
-fc.append(f"[mix]{chain}[tape]")
+# the detective goes in after the compressor, so he stays as far off as he was placed
+fc.append(f"[mix]{chain}[near_tape]")
+fc.append("[near_tape][iopen][iclose]amix=inputs=3:normalize=0:duration=first[tape]")
 tmp = os.path.join(raw, "mono", "tape.wav")
 run(["ffmpeg", "-y", "-i", src, "-i", INTER["open"]["file"], "-i", INTER["close"]["file"], "-i", os.path.join(raw, "sfx-chair.mp3"), "-i", os.path.join(raw, "sfx-room.mp3"), "-i", os.path.join(raw, "sfx-tapeclick.mp3"),
      *[x for f in extra_in for x in ("-i", f)], "-filter_complex", ";".join(fc), "-map", "[tape]", "-ac", "1", "-ar", "44100", tmp])

@@ -136,9 +136,10 @@ def wrap_material(bx, by):
     link(m, my.outputs["Result"], tr.inputs["Fac"])
     # blood: a noise, weighted toward the head and chest and the underside
     n = node(m, "ShaderNodeTexNoise")
-    n.inputs["Scale"].default_value = 3.5
-    n.inputs["Detail"].default_value = 10.0
-    n.inputs["Roughness"].default_value = 0.62
+    # through the plastic it is soft-edged and dull, darkest where it pressed against the sheet
+    n.inputs["Scale"].default_value = 2.6
+    n.inputs["Detail"].default_value = 3.0
+    n.inputs["Roughness"].default_value = 0.45
     link(m, v.outputs[0], n.inputs["Vector"])
     up = node(m, "ShaderNodeMapRange")
     up.inputs["From Min"].default_value = -0.05
@@ -159,12 +160,14 @@ def wrap_material(bx, by):
     link(m, a1.outputs[0], a2.inputs[0])
     link(m, low.outputs["Result"], a2.inputs[1])
     br = node(m, "ShaderNodeValToRGB")
-    br.color_ramp.elements[0].position = 0.68
+    br.color_ramp.elements[0].position = 0.64
     br.color_ramp.elements[0].color = (0.46, 0.48, 0.5, 1)
-    br.color_ramp.elements[1].position = 0.86
-    br.color_ramp.elements[1].color = (0.05, 0.002, 0.002, 1)
-    e = br.color_ramp.elements.new(0.74)
-    e.color = (0.24, 0.025, 0.02, 1)
+    br.color_ramp.elements[1].position = 0.92
+    br.color_ramp.elements[1].color = (0.035, 0.004, 0.004, 1)
+    e = br.color_ramp.elements.new(0.71)
+    e.color = (0.3, 0.2, 0.2, 1)
+    e = br.color_ramp.elements.new(0.79)
+    e.color = (0.12, 0.03, 0.03, 1)
     link(m, a2.outputs[0], br.inputs["Fac"])
     mx = node(m, "ShaderNodeMix")
     mx.data_type = "RGBA"
@@ -199,7 +202,7 @@ def smear_material():
     mx.data_type = "RGBA"
     link(m, r.outputs["Color"], mx.inputs[0])
     link(m, src, mx.inputs[6])
-    mx.inputs[7].default_value = (0.07, 0.004, 0.003, 1)
+    mx.inputs[7].default_value = (0.04, 0.007, 0.005, 1)
     link(m, mx.outputs[2], p.inputs["Base Color"])
     return m
 

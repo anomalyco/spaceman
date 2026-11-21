@@ -622,7 +622,7 @@ export function build(S) {
     S.three.after = true
     S.three.drift = 0
   })
-  span(back, END, (u) => S.shot("Before", "After", S.reduced ? 0 : easeInOut(u) ** 1.2))
+  span(back, END, (u) => S.shot("Before", "After", S.reduced ? (u < 0.5 ? 0 : 1) : easeInOut(u) ** 1.2))
   at(END, () => S.end())
 
   LOOKS = looks({ intro, install, tiled, hold0: HOLD[0], hold1: HOLD[1], house, hedge, again, six, place, pull, light, down })

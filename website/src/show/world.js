@@ -235,8 +235,9 @@ export class World {
     for (const w of this.wins.values()) {
       if (w.float || w.leaving) continue
       if (w.ws === this.active) {
-        to(w.off, -dir * 32 || -0.001, 0.16)
-        to(w.a, 0, 0.11)
+        // the old workspace is gone before the new one has arrived, so the two never read as a dissolve
+        to(w.off, -dir * 32 || -0.001, 0.12)
+        to(w.a, 0, 0.055)
       }
     }
     const prev = this.active
