@@ -298,7 +298,12 @@ fn hud_emits_only_for_workspace_move_and_layout_actions() {
             axis: crate::Axis::Vertical
         }
     );
-    assert_eq!(toggled.windows, 2);
+    let row = &toggled.displays[0];
+    assert_eq!(row.visible, Some(WorkspaceId::ONE));
+    assert_eq!(row.from, None);
+    assert_eq!(row.workspaces[0].workspace, WorkspaceId::ONE);
+    assert_eq!(row.workspaces[0].tiles.len(), 2);
+    assert!(!row.workspaces[0].fullscreen);
 
     let fullscreen = runtime
         .toggle_fullscreen_layout(outputs(), &cancelled)
@@ -307,7 +312,7 @@ fn hud_emits_only_for_workspace_move_and_layout_actions() {
         .unwrap();
     assert_eq!(fullscreen.workspace, WorkspaceId::ONE);
     assert_eq!(fullscreen.kind, UiHudKind::Fullscreen { enabled: true });
-    assert_eq!(fullscreen.preview, UiHudLayout::Fullscreen);
+    assert!(fullscreen.displays[0].workspaces[0].fullscreen);
 
     let moved = runtime
         .move_focused(WorkspaceId::TWO, outputs(), &cancelled)
@@ -316,7 +321,16 @@ fn hud_emits_only_for_workspace_move_and_layout_actions() {
         .unwrap();
     assert_eq!(moved.workspace, WorkspaceId::TWO);
     assert_eq!(moved.kind, UiHudKind::Moved);
-    assert_eq!(moved.windows, 1);
+    let row = &moved.displays[0];
+    // The marker stays with the user: moving a window never changes the visible workspace.
+    assert_eq!(row.visible, Some(WorkspaceId::ONE));
+    let tiles = |workspace| {
+        row.workspaces
+            .iter()
+            .find(|entry| entry.workspace == workspace)
+            .map_or(0, |entry| entry.tiles.len())
+    };
+    assert_eq!((tiles(WorkspaceId::ONE), tiles(WorkspaceId::TWO)), (1, 1));
 
     let switched = runtime
         .switch(WorkspaceId::TWO, outputs(), &cancelled)
@@ -325,5 +339,14 @@ fn hud_emits_only_for_workspace_move_and_layout_actions() {
         .unwrap();
     assert_eq!(switched.workspace, WorkspaceId::TWO);
     assert_eq!(switched.kind, UiHudKind::Workspace);
-    assert_eq!(switched.windows, 1);
+    let row = &switched.displays[0];
+    assert_eq!(row.visible, Some(WorkspaceId::TWO));
+    assert_eq!(row.from, Some(WorkspaceId::ONE));
+    assert_eq!(
+        row.workspaces
+            .iter()
+            .map(|entry| entry.workspace)
+            .collect::<Vec<_>>(),
+        vec![WorkspaceId::ONE, WorkspaceId::TWO]
+    );
 }

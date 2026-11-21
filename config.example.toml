@@ -2,8 +2,11 @@
 version = 1
 
 # Optional UI preferences. The non-activating Workspace HUD capsule is on by default.
+# hud_style is "layouts" (each workspace's layout with app icons, the default) or
+# "icons" (each workspace's number and its apps' icons).
 [settings]
 hud = true
+hud_style = "layouts"
 
 # Rules are optional, ordered, and first-match wins. Every matcher present in a
 # rule must match exactly. Valid actions are "float", "route", and "ignore".
