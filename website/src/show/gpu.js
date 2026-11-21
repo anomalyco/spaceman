@@ -129,14 +129,34 @@ fn hash(p: vec2f) -> f32 {
   q += dot(q, q.yx + 33.33);
   return fract((q.x + q.y) * q.x);
 }
+// AgX (Troy Sobotka's, in Benjamin Wrensch's polynomial fit): scene-linear in, display out
+fn agxCurve(x: vec3f) -> vec3f {
+  let x2 = x * x;
+  let x4 = x2 * x2;
+  return 15.5 * x4 * x2 - 40.14 * x4 * x + 31.96 * x4 - 6.868 * x2 * x + 0.4298 * x2 + 0.1191 * x - 0.00232;
+}
+fn agx(c: vec3f) -> vec3f {
+  let m = mat3x3f(vec3f(0.842479062253094, 0.0423282422610123, 0.0423756549057051), vec3f(0.0784335999999992, 0.878468636469772, 0.0784336), vec3f(0.0792237451477643, 0.0791661274605434, 0.879142973793104));
+  let inv = mat3x3f(vec3f(1.19687900512017, -0.0528968517574562, -0.0529716355144438), vec3f(-0.0980208811401368, 1.15190312990417, -0.0980434501171241), vec3f(-0.0990297440797205, -0.0989611768448433, 1.15107367264116));
+  var v = clamp(log2(max(m * c, vec3f(1e-10))), vec3f(-12.47393), vec3f(4.026069));
+  v = agxCurve((v + 12.47393) / 16.499999);
+  // a little more contrast and saturation, like Blender's "Medium High Contrast"
+  v = pow(max(v, vec3f(0.0)), vec3f(1.12));
+  let l = dot(v, vec3f(0.2126, 0.7152, 0.0722));
+  v = mix(vec3f(l), v, 1.12);
+  return clamp(inv * v, vec3f(0.0), vec3f(1.0));
+}
 @fragment fn fs(i: VO) -> @location(0) vec4f {
   let px = i.uv * pu.res.xy;
-  var c = textureSampleLevel(scene, samp, i.uv, 0.0).rgb;
-  // depth of field: sharp on the subject, softer with distance from it
+  let s0 = textureSampleLevel(scene, samp, i.uv, 0.0);
+  var c = s0.rgb;
+  let three = pu.c.w > 0.5;
+  // depth of field: sharp on the subject, softer with distance from it (in 3D, by depth)
   let dof = pu.a.x;
   if (dof > 0.001) {
     let q = max(max(pu.focus.xy - px, px - pu.focus.zw), vec2f(0.0));
-    let coc = dof * smoothstep(0.0, 0.42 * min(pu.res.x, pu.res.y), length(q));
+    var coc = dof * smoothstep(0.0, 0.42 * min(pu.res.x, pu.res.y), length(q));
+    if (three) { coc = dof * s0.a; }
     if (coc > 0.002) {
       let b1 = tent(l1, i.uv);
       let b2 = tent(l2, i.uv);
@@ -148,6 +168,7 @@ fn hash(p: vec2f) -> f32 {
   let wide = tent(l3, i.uv) * 0.55 + tent(l4, i.uv) * 0.45;
   let lw = max(dot(wide, vec3f(0.2126, 0.7152, 0.0722)), 1e-4);
   c += wide * (max(lw - pu.a.z, 0.0) / lw) * pu.a.y;
+  if (three) { c = mix(pow(max(c, vec3f(0.0)), vec3f(1.0 / 2.2)), agx(c), pu.c.z); }
   // grade: exposure, warmth, saturation, contrast around mid grey
   c *= pu.b.z;
   c *= vec3f(1.0 + pu.c.x * 0.06, 1.0, 1.0 - pu.c.x * 0.08);
@@ -162,6 +183,47 @@ fn hash(p: vec2f) -> f32 {
   c += n * pu.b.x * (1.0 - 0.6 * clamp(l, 0.0, 1.0));
   c += (hash(px + 0.5) - 0.5) / 255.0;
   return vec4f(clamp(c, vec3f(0.0), vec3f(1.0)), 1.0);
+}
+`
+
+// The room: world-space meshes with baked light. Baked materials add the screen's own light
+// (baked separately) scaled by how bright the screen is; the screen samples the desktop.
+const MESH = /* wgsl */ `
+struct U3 { vp: mat4x4f, eye: vec4f, p: vec4f, sc: vec4f, d: vec4f }
+struct M3 { k: vec4f, col: vec4f }
+@group(0) @binding(0) var<uniform> u: U3;
+@group(1) @binding(0) var<uniform> m: M3;
+@group(1) @binding(1) var tb: texture_2d<f32>;
+@group(1) @binding(2) var te: texture_2d<f32>;
+@group(1) @binding(3) var smp: sampler;
+struct VO { @builtin(position) pos: vec4f, @location(0) uv: vec2f, @location(1) w: vec3f }
+@vertex fn vs(@location(0) p: vec3f, @location(1) uv: vec2f) -> VO {
+  var o: VO;
+  o.pos = u.vp * vec4f(p, 1.0);
+  o.uv = uv;
+  o.w = p;
+  return o;
+}
+@fragment fn fs(i: VO) -> @location(0) vec4f {
+  let b = textureSample(tb, smp, i.uv).rgb;
+  let e = textureSample(te, smp, i.uv).rgb;
+  var c = vec3f(0.0);
+  let kind = m.k.x;
+  if (kind < 0.5) {
+    c = b * m.k.y + e * m.k.z * u.p.x * u.sc.rgb;
+  } else if (kind < 1.5) {
+    // the panel: the desktop it shows, or black glass when it sleeps; a faint sheen at grazing angles
+    let lin = pow(max(b, vec3f(0.0)), vec3f(2.2));
+    let v = normalize(u.eye.xyz - i.w);
+    let f = pow(1.0 - abs(dot(v, m.col.xyz)), 5.0);
+    c = lin * u.p.x * u.sc.w + vec3f(0.0018, 0.002, 0.0026) + vec3f(0.02, 0.022, 0.026) * f;
+  } else {
+    c = m.col.rgb * u.p.y;
+  }
+  c *= u.p.z;
+  let z = distance(u.eye.xyz, i.w);
+  let coc = clamp(abs(1.0 / u.d.x - 1.0 / max(z, 0.01)) * u.d.y, 0.0, 1.0);
+  return vec4f(c, coc);
 }
 `
 
@@ -250,8 +312,219 @@ export async function createGPU(canvas) {
     return e
   }
 
+  // ── the room ──
+  const MSAA = 4
+  const meshMod = device.createShaderModule({ code: MESH })
+  let mesh3 = null // pipeline, created on first scene load
+  const u3 = device.createBuffer({ size: 128, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST })
+  const ubufS = device.createBuffer({ size: 32, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST })
+  const aniso = device.createSampler({ magFilter: "linear", minFilter: "linear", mipmapFilter: "linear", maxAnisotropy: 8, addressModeU: "clamp-to-edge", addressModeV: "clamp-to-edge" })
+  const black = device.createTexture({ size: [1, 1], format: "rgba8unorm", usage: GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.COPY_DST })
+  device.queue.writeTexture({ texture: black }, new Uint8Array([0, 0, 0, 255]), {}, [1, 1])
+  const scenes = new Map()
+  let scr = null // the desktop's texture on the panel, with its mips
+  let ms = null // multisampled colour and depth
+
+  async function imageTexture(bmp) {
+    const levels = Math.floor(Math.log2(Math.max(bmp.width, bmp.height))) + 1
+    const tex = device.createTexture({ size: [bmp.width, bmp.height], format: "rgba8unorm-srgb", mipLevelCount: levels, usage: GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.COPY_DST | GPUTextureUsage.RENDER_ATTACHMENT })
+    device.queue.copyExternalImageToTexture({ source: bmp }, { texture: tex }, [bmp.width, bmp.height])
+    for (let l = 1; l < levels; l++) {
+      const w = Math.max(1, bmp.width >> l)
+      const h = Math.max(1, bmp.height >> l)
+      const small = await createImageBitmap(bmp, { resizeWidth: w, resizeHeight: h, resizeQuality: "high", colorSpaceConversion: "none" })
+      device.queue.copyExternalImageToTexture({ source: small }, { texture: tex, mipLevel: l }, [w, h])
+      small.close?.()
+    }
+    return tex
+  }
+
+  // corners are [bl, br, tr, tl]; u runs tl → tr, v runs tl → bl
+  function panelUV(pos, [bl, , tr, tl]) {
+    const ex = [tr[0] - tl[0], tr[1] - tl[1], tr[2] - tl[2]]
+    const ey = [bl[0] - tl[0], bl[1] - tl[1], bl[2] - tl[2]]
+    const lx = ex[0] ** 2 + ex[1] ** 2 + ex[2] ** 2
+    const ly = ey[0] ** 2 + ey[1] ** 2 + ey[2] ** 2
+    const uv = new Float32Array((pos.length / 3) * 2)
+    for (let i = 0; i < pos.length / 3; i++) {
+      const d = [pos[i * 3] - tl[0], pos[i * 3 + 1] - tl[1], pos[i * 3 + 2] - tl[2]]
+      uv[i * 2] = (d[0] * ex[0] + d[1] * ex[1] + d[2] * ex[2]) / lx
+      uv[i * 2 + 1] = (d[0] * ey[0] + d[1] * ey[1] + d[2] * ey[2]) / ly
+    }
+    return uv
+  }
+
+  function screenTarget(tw, th) {
+    if (scr && scr.w === tw && scr.h === th) return scr
+    scr?.tex.destroy()
+    const levels = Math.min(8, Math.floor(Math.log2(Math.max(tw, th))) + 1)
+    const tex = device.createTexture({ size: [tw, th], format: HDR, mipLevelCount: levels, usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.TEXTURE_BINDING })
+    const lv = (l) => tex.createView({ baseMipLevel: l, mipLevelCount: 1 })
+    const down = []
+    for (let l = 1; l < levels; l++) down.push({ view: lv(l), bg: device.createBindGroup({ layout: downPipe.getBindGroupLayout(0), entries: [{ binding: 0, resource: lv(l - 1) }, { binding: 1, resource: clampS }] }) })
+    scr = { w: tw, h: th, tex, view0: lv(0), all: tex.createView(), down, bgs: new Map() }
+    return scr
+  }
+  const downPipe = down
+
+  function msTargets(w, h) {
+    if (ms && ms.w === w && ms.h === h) return ms
+    ms?.color.destroy()
+    ms?.depth.destroy()
+    ms = {
+      w,
+      h,
+      color: device.createTexture({ size: [w, h], format: HDR, sampleCount: MSAA, usage: GPUTextureUsage.RENDER_ATTACHMENT }),
+      depth: device.createTexture({ size: [w, h], format: "depth24plus", sampleCount: MSAA, usage: GPUTextureUsage.RENDER_ATTACHMENT }),
+    }
+    return ms
+  }
+
   let frame = 0
   return {
+    // Uploads a loaded GLB (see glb.js). scale/emitScale undo the bake's JPEG normalisation per material.
+    async loadScene(key, glb, meta) {
+      if (scenes.has(key)) return
+      if (!mesh3)
+        mesh3 = await device.createRenderPipelineAsync({
+          layout: "auto",
+          vertex: { module: meshMod, entryPoint: "vs", buffers: [{ arrayStride: 12, attributes: [{ shaderLocation: 0, offset: 0, format: "float32x3" }] }, { arrayStride: 8, attributes: [{ shaderLocation: 1, offset: 0, format: "float32x2" }] }] },
+          fragment: { module: meshMod, entryPoint: "fs", targets: [{ format: HDR }] },
+          primitive: { topology: "triangle-list", cullMode: "none" },
+          depthStencil: { format: "depth24plus", depthWriteEnabled: true, depthCompare: "less" },
+          multisample: { count: MSAA },
+        })
+      const draws = []
+      for (const m of glb.meshes) {
+        if (m.material === "Glass") continue
+        const kind = m.material === "Screen" ? 1 : m.emit && !m.base ? 2 : m.base ? 0 : 2
+        const vb = device.createBuffer({ size: m.pos.byteLength, usage: GPUBufferUsage.VERTEX | GPUBufferUsage.COPY_DST })
+        device.queue.writeBuffer(vb, 0, m.pos)
+        // the panel's UVs come from its corners (study.json), so the desktop lands on it exactly
+        const uv = kind === 1 && meta.screen ? panelUV(m.pos, meta.screen) : m.uv
+        const ub = device.createBuffer({ size: uv.byteLength, usage: GPUBufferUsage.VERTEX | GPUBufferUsage.COPY_DST })
+        device.queue.writeBuffer(ub, 0, uv)
+        const idx = m.index instanceof Uint16Array && m.index.length % 2 ? new Uint16Array([...m.index, 0]) : m.index
+        const ib = device.createBuffer({ size: idx.byteLength, usage: GPUBufferUsage.INDEX | GPUBufferUsage.COPY_DST })
+        device.queue.writeBuffer(ib, 0, idx)
+        const mb = device.createBuffer({ size: 32, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST })
+        let normal = [0, 0, 1]
+        if (kind === 1) {
+          const p = m.pos
+          const a = [p[3] - p[0], p[4] - p[1], p[5] - p[2]]
+          const b = [p[6] - p[0], p[7] - p[1], p[8] - p[2]]
+          const n = [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]]
+          const l = Math.hypot(...n) || 1
+          normal = n.map((v) => v / l)
+        }
+        const col = kind === 2 ? m.emitFactor.map((v) => v * (meta.emitStrength?.[m.material] ?? 3)) : normal
+        device.queue.writeBuffer(mb, 0, new Float32Array([kind, 1 / (meta.scale?.[m.material] || 1), 1 / (meta.emitScale?.[m.material] || 1), 0, ...col, 0]))
+        const tb = kind === 0 && m.base ? await imageTexture(m.base) : null
+        const te = kind === 0 && m.emit ? await imageTexture(m.emit) : null
+        draws.push({ name: m.name, kind, vb, ub, ib, fmt: idx instanceof Uint16Array ? "uint16" : "uint32", n: m.index.length, mb, tb, te, bg: null })
+      }
+      for (const d of draws)
+        if (d.kind !== 1)
+          d.bg = device.createBindGroup({ layout: mesh3.getBindGroupLayout(1), entries: [{ binding: 0, resource: { buffer: d.mb } }, { binding: 1, resource: (d.tb || black).createView() }, { binding: 2, resource: (d.te || black).createView() }, { binding: 3, resource: aniso }] })
+      const bg0 = device.createBindGroup({ layout: mesh3.getBindGroupLayout(0), entries: [{ binding: 0, resource: { buffer: u3 } }] })
+      scenes.set(key, { draws, bg0, hidden: new Set() })
+    },
+    hasScene: (key) => scenes.has(key),
+    // Show or hide one of a scene's meshes by its node name (the basement's two states).
+    setVisible(key, name, on) {
+      const sc = scenes.get(key)
+      if (sc) on ? sc.hidden.delete(name) : sc.hidden.add(name)
+    },
+    // A 3D frame: the desktop's list is drawn into the panel's texture (tw × th), then the room.
+    // three: { key, vp, eye, glow, lit, exposure, screenCol, focus, aperture, tm }
+    render3d(list, tw, th, W, H, grade, fx, three) {
+      const sc = scenes.get(three.key)
+      if (!sc) return
+      grow(Math.max(1, list.length))
+      const groups = []
+      let cur = null
+      for (let i = 0; i < list.length; i++) {
+        const p = list[i]
+        const col = p.col || [1, 1, 1, 1]
+        const cl = p.clip || [-1e9, -1e9, 1e9, 1e9]
+        const uv = p.uv || [0, 0, 1, 1]
+        data.set([p.x, p.y, p.w, p.h, col[0], col[1], col[2], col[3] ?? 1, p.r ?? 0, p.a ?? 1, p.shadow || 0, p.ring || 0, cl[0], cl[1], cl[2], cl[3], p.g || 0, p.tex ? 1 : 0, 0, 0, uv[0], uv[1], uv[2], uv[3]], i * FLOATS)
+        const t = p.tex || white
+        if (!cur || cur.t !== t) groups.push((cur = { t, first: i, n: 0 }))
+        cur.n++
+      }
+      if (list.length) device.queue.writeBuffer(sbuf, 0, data, 0, list.length * FLOATS)
+      device.queue.writeBuffer(ubufS, 0, new Float32Array([tw, th, 1, 0, grade[0], grade[1], grade[2], 0]))
+      const S = screenTarget(tw, th)
+      let bgS = S.bgs.get(sbuf)
+      if (!bgS) {
+        bgS = device.createBindGroup({ layout: pipeline.getBindGroupLayout(0), entries: [{ binding: 0, resource: { buffer: ubufS } }, { binding: 1, resource: { buffer: sbuf } }] })
+        S.bgs.clear()
+        S.bgs.set(sbuf, bgS)
+      }
+      for (const d of sc.draws)
+        if (d.kind === 1 && d.scr !== S) {
+          d.scr = S
+          d.bg = device.createBindGroup({ layout: mesh3.getBindGroupLayout(1), entries: [{ binding: 0, resource: { buffer: d.mb } }, { binding: 1, resource: S.all }, { binding: 2, resource: black.createView() }, { binding: 3, resource: aniso }] })
+        }
+      const tex = ctx.getCurrentTexture()
+      const R = targets(tex.width, tex.height)
+      const M = msTargets(tex.width, tex.height)
+      const t = three
+      device.queue.writeBuffer(u3, 0, new Float32Array([...t.vp, ...t.eye, 0, t.glow, t.lit, t.exposure, 0, ...t.screenCol, t.focus, t.aperture, 0, 0]))
+      const f = [0, 0, tex.width, tex.height]
+      device.queue.writeBuffer(
+        pbuf,
+        0,
+        new Float32Array([tex.width, tex.height, 1 / tex.width, 1 / tex.height, ...f, fx.dof ?? 0, fx.bloom ?? 0, fx.threshold ?? 0.6, fx.vignette ?? 0, fx.grain ?? 0, frame++ % 997, fx.exposure ?? 1, fx.saturation ?? 1, fx.warmth ?? 0, fx.contrast ?? 1, t.tm, 1]),
+      )
+      const enc = device.createCommandEncoder()
+      // the desktop, then its mips (so it stays calm when it is small in frame)
+      const sp = enc.beginRenderPass({ colorAttachments: [{ view: S.view0, clearValue: { r: 0.03, g: 0.03, b: 0.035, a: 1 }, loadOp: "clear", storeOp: "store" }] })
+      sp.setPipeline(pipeline)
+      sp.setBindGroup(0, bgS)
+      for (const g of groups) {
+        sp.setBindGroup(1, texFor(g.t).bg)
+        sp.draw(6, g.n, 0, g.first)
+      }
+      sp.end()
+      for (const l of S.down) {
+        const dp = enc.beginRenderPass({ colorAttachments: [{ view: l.view, loadOp: "clear", storeOp: "store", clearValue: { r: 0, g: 0, b: 0, a: 1 } }] })
+        dp.setPipeline(down)
+        dp.setBindGroup(0, l.bg)
+        dp.draw(3)
+        dp.end()
+      }
+      // the room
+      const rp = enc.beginRenderPass({
+        colorAttachments: [{ view: M.color.createView(), resolveTarget: R.scene.createView(), clearValue: { r: 0, g: 0, b: 0, a: 0 }, loadOp: "clear", storeOp: "discard" }],
+        depthStencilAttachment: { view: M.depth.createView(), depthClearValue: 1, depthLoadOp: "clear", depthStoreOp: "discard" },
+      })
+      rp.setPipeline(mesh3)
+      rp.setBindGroup(0, sc.bg0)
+      for (const d of sc.draws) {
+        if (sc.hidden.has(d.name)) continue
+        rp.setBindGroup(1, d.bg)
+        rp.setVertexBuffer(0, d.vb)
+        rp.setVertexBuffer(1, d.ub)
+        rp.setIndexBuffer(d.ib, d.fmt)
+        rp.drawIndexed(d.n)
+      }
+      rp.end()
+      for (let l = 0; l < LEVELS; l++) {
+        const dp = enc.beginRenderPass({ colorAttachments: [{ view: R.levels[l].createView(), loadOp: "clear", storeOp: "store", clearValue: { r: 0, g: 0, b: 0, a: 1 } }] })
+        dp.setPipeline(down)
+        dp.setBindGroup(0, R.downBG[l])
+        dp.draw(3)
+        dp.end()
+      }
+      const pp = enc.beginRenderPass({ colorAttachments: [{ view: tex.createView(), loadOp: "clear", storeOp: "store", clearValue: { r: 0, g: 0, b: 0, a: 1 } }] })
+      pp.setPipeline(post)
+      pp.setBindGroup(0, R.postBG)
+      pp.draw(3)
+      pp.end()
+      device.queue.submit([enc.finish()])
+    },
     kind: "webgpu",
     get lost() {
       return lost

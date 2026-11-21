@@ -1,276 +1,388 @@
 {
- "voice": "8olojUk4IXpvKgaOCHXj",
- "text": "[quiet, close to the microphone, calm and unhurried, a man talking across a kitchen table late at night] — your light was on. I hope that's all right. I won't stay long.\n\n[precise, patient, slightly pleased with his own clarity] I want to explain how I keep things. Then it'll make sense.\n\nI'd had some of those windows open since March. February, some of them. Three of them were the same note... I closed two.\n\nEverything goes side by side now. Nothing on top of anything. Mail went to two. The browser went to three. I went back to make sure. They were still there. There's a bar along the bottom, so you always know where everything is.\n\nI made a rule. Chatter opens on two. [a small pause] I did read both messages.\n\nI gave Mark his drill back. Four years. It's a better drill than mine, actually. He said I didn't need to.\n\nFour is the house. Five is the street. Nobody else wanted to take the minutes.\n\n[cooler, very even] Your hedge is six foot two. The limit is six feet. We've talked about it... twice. I've photographed it every morning since. A hundred and sixty mornings.\n\nI sent the minutes round again. You're the only one who replied.\n\n[colder, quieter, never louder] There was a photograph attached. It took me a minute to recognise the study. [pause] From this side.\n\n[exhales] Can I sit? ...I'll sit.\n\n[a long silence, then flat and soft] Leave it on.",
- "takes": [
-  {
-   "id": "m1",
-   "stability": 0.5
+  "voice": "8olojUk4IXpvKgaOCHXj",
+  "text": "[quiet, close to the microphone, calm and unhurried, a man talking across a kitchen table late at night] — your light was on. I hope that's all right. I won't stay long.\n\n[precise, patient, slightly pleased with his own clarity] I want to explain how I keep things. Then it'll make sense.\n\nI'd had some of those windows open since March. February, some of them. Three of them were the same note... I closed two.\n\nEverything goes side by side now. Nothing on top of anything. Mail went to two. The browser went to three. I went back to make sure. They were still there. There's a bar along the bottom, so you always know where everything is.\n\nI made a rule. Chatter opens on two. [a small pause] I did read both messages.\n\nI gave Mark his drill back. Four years. It's a better drill than mine, actually. He said I didn't need to.\n\nFour is the house. Five is the street. Nobody else wanted to take the minutes.\n\n[cooler, very even] Your hedge is six foot two. The limit is six feet. We've talked about it... twice. I've photographed it every morning since. A hundred and sixty mornings.\n\nI sent the minutes round again. You're the only one who replied.\n\n[colder, quieter, never louder] There was a photograph attached. It took me a minute to recognise the study. [pause] From this side.\n\n[exhales] Can I sit? ...I'll sit.\n\n[a long silence, then flat and soft] Leave it on.",
+  "takes": [
+    {
+      "id": "m1",
+      "stability": 0.5
+    },
+    {
+      "id": "m2",
+      "stability": 0.5
+    },
+    {
+      "id": "m3",
+      "stability": 0.5
+    },
+    {
+      "id": "m4",
+      "stability": 0.35
+    },
+    {
+      "id": "m5",
+      "stability": 0.35
+    },
+    {
+      "id": "m6",
+      "stability": 0.65
+    },
+    {
+      "id": "n1",
+      "stability": 0.35,
+      "text": "$text2"
+    },
+    {
+      "id": "n2",
+      "stability": 0.35,
+      "text": "$text2"
+    },
+    {
+      "id": "n3",
+      "stability": 0.42,
+      "text": "$text2"
+    },
+    {
+      "id": "n4",
+      "stability": 0.42,
+      "text": "$text2"
+    },
+    {
+      "id": "p1",
+      "stability": 0.35,
+      "text": "$text3"
+    },
+    {
+      "id": "p2",
+      "stability": 0.35,
+      "text": "$text3"
+    },
+    {
+      "id": "p3",
+      "stability": 0.35,
+      "text": "$text3"
+    },
+    {
+      "id": "p4",
+      "stability": 0.35,
+      "text": "$text3"
+    },
+    {
+      "id": "p5",
+      "stability": 0.42,
+      "text": "$text3"
+    },
+    {
+      "id": "a1",
+      "stability": 0.35,
+      "text": "$textA"
+    },
+    {
+      "id": "b1",
+      "stability": 0.35,
+      "text": "$textB"
+    },
+    {
+      "id": "b2",
+      "stability": 0.35,
+      "text": "$textB"
+    },
+    {
+      "id": "c1",
+      "stability": 0.35,
+      "text": "$textC"
+    },
+    {
+      "id": "c2",
+      "stability": 0.35,
+      "text": "$textC"
+    },
+    {
+      "id": "ia1",
+      "stability": 0.5,
+      "text": "$textA2"
+    },
+    {
+      "id": "ib1",
+      "stability": 0.5,
+      "text": "$textB2"
+    },
+    {
+      "id": "ic1",
+      "stability": 0.5,
+      "text": "$textC2"
+    },
+    {
+      "id": "ic2",
+      "stability": 0.5,
+      "text": "$textC2"
+    },
+    {
+      "id": "ic3",
+      "stability": 0.35,
+      "text": "$textC2"
+    }
+  ],
+  "text2": "[quiet, close to the microphone, calm and unhurried, a man talking across a kitchen table late at night] — your light was on. I hope that's all— I hope that's all right. I won't stay long.\n\n[precise, patient, slightly pleased with his own clarity] I want to explain how I keep things. Then it'll make sense.\n\nI'd had some of those windows open since March. February, some of them. Three of them were, uh... the same note. I closed two.\n\nEverything goes side by side now. Nothing on top of anything. Mail went to two. The browser went to three. I went back to make sure. They were still there. There's a bar along the bottom, so you always know where everything is.\n\nI made a rule. Chatter opens on two. [a small pause] I did read both messages.\n\nI gave Mark his drill back. Four years. It's a better drill than mine, actually. He said I didn't need to.\n\nFour is the house. Five is the street. Nobody else wanted to take the minutes.\n\n[cooler, very even] Your hedge is six foot two. The limit is six feet. We've talked about it... twice. I've photographed it every morning since. A hundred and sixty mornings.\n\nI sent the minutes round again. You're the only one who replied.\n\n[colder, quieter, never louder] There was a photograph attached. It took me a minute to recognise the study. [pause] From this side.\n\n[exhales] Can I sit? ...I'll sit.\n\n[a long silence, then flat and soft] Leave it on.",
+  "pick": "p1",
+  "gaps": [
+    {
+      "after": "away from anything.",
+      "len": 6.4
+    },
+    {
+      "after": "I'll sit.",
+      "len": 3.2
+    }
+  ],
+  "tail": 0.9,
+  "chairAt": 0.8,
+  "text3": "[quiet, close to the microphone, unhurried, a man at a kitchen table late at night, gently entranced by how well everything works] — your light was on. I hope that's all— I hope that's all right. I won't stay long.\n\n[precise, patient, a little pleased with his own clarity] I want to explain how I keep things. Then it'll make sense.\n\nI'd had some of those windows open since March. February, some of them. Three of them were, uh... the same note. I closed two.\n\n[softer, admiring] And then everything went side by side. Nothing on top of anything. Nothing behind anything. You could see all of it at once... It's very clean.\n\nMail went to two. The browser went to three. I went back to make sure, and they were just... there. Exactly where I'd put them. Nothing was ever lost again. There's a bar along the bottom, so you always know where everything is. You're never more than one key away from anything.\n\n[unhurried] Then I made a rule. Chatter opens on two. You don't have to decide anymore. It just goes. [a small pause] I did read both messages.\n\nI gave Mark his drill back. Four years. It's a better drill than mine, actually. But it had a place, and the place was his.\n\nFour is the house. Five is the street. Nobody else wanted to take the minutes.\n\n[cooler, very even, still admiring] Your hedge is six foot two. The limit is six feet. We've talked about it... twice. I've photographed it every morning since. A hundred and sixty mornings, and I can find any one of them in a second. Any morning you like.\n\nI sent the minutes round again. You're the only one who replied.\n\n[colder, quieter, never louder] There was a photograph attached. It took me a minute to recognise the study. [pause] From this side.\n\n[almost tender] Everything else has a place now. [pause] You're the last thing.\n\n[exhales] Can I sit? ...I'll sit.\n\n[a long silence, then flat and soft] Leave it on.",
+  "lift": [
+    {
+      "phrase": "just... there.",
+      "db": 7
+    },
+    {
+      "phrase": "Leave it on.",
+      "db": 3
+    },
+    {
+      "phrase": "It's very clean.",
+      "db": 2
+    }
+  ],
+  "textA": "[quiet, close to the microphone, unhurried, a man at a kitchen table late at night, gently entranced by how well everything works] — your light was on. I hope that's all— I hope that's all right. I won't stay long.\n\n[precise, patient, a little pleased with his own clarity] I want to explain how I keep things. Then it'll make sense.\n\nI'd had some of those windows open since March. February, some of them. Three of them were, uh... the same note. I closed two.\n\nThen I installed a small program. It's called Spaceman.\n\n[softer, admiring] And the windows tiled themselves. Side by side. Nothing on top of anything. Nothing behind anything. You could see all of it at once... I tasted the sweet flesh of efficiency.\n\n[even, carrying straight on] Mail went to workspace two. The browser went to three. I went back to make sure, and they were just... there. Exactly where I'd put them. Nothing was ever lost again. There's a bar along the bottom, so you always know where everything is. You're never more than one key away from anything.\n\n[unhurried] Then I made a rule. Chatter opens on two. You don't have to decide anymore. It just goes. [a small pause] I did read both messages.\n\nI gave Mark his drill back. Four years. It's a better drill than mine, actually. But it had a place, and the place was his.\n\nFour is the house. Five is the street. Nobody else wanted to take the minutes.\n\n[cooler, very even, still admiring] Your hedge is six foot two. The limit is six feet. We've talked about it... twice. I've photographed it every morning since. A hundred and sixty mornings, and I can find any one of them in a second. Any morning you like.\n\nI sent the minutes round again. You're the only one who replied.\n\n[exactly as even as before, never louder] There was a photograph attached. It took me a minute to recognise the study. [pause] From this side.\n\nThree of you signed the same note. About the cameras. I closed two.\n\n[almost tender] Everything else has a place now. Mark has a place. [pause] You're the last thing.\n\n[exhales] Can I sit? ...I'll sit.\n\n[level, reasonable, the same voice as the drill] You took a while to come down. I've put the sheets down. Side by side. Nothing on top of anything.\n\nI won't stay long.\n\n[a long silence, then flat and soft] Leave it on.",
+  "textB": "[quiet, close to the microphone, unhurried, a man at a kitchen table late at night, gently entranced by how well everything works] — your light was on. I hope that's all— I hope that's all right. I won't stay long.\n\n[precise, patient, a little pleased with his own clarity] I want to explain how I keep things. Then it'll make sense.\n\nI'd had some of those windows open since March. February, some of them. Three of them were, uh... the same note. I closed two.\n\nThen I installed a small program. It's called Spaceman.\n\n[softer, admiring] And the windows tiled themselves. Side by side. Nothing on top of anything. Nothing behind anything. You could see all of it at once... I tasted the sweet flesh of efficiency. That's not— it was very satisfying.\n\n[even] Mail went to workspace two. The browser went to three. I went back to make sure, and they were just... there. Exactly where I'd put them. Nothing was ever lost again. There's a bar along the bottom, so you always know where everything is. You're never more than one key away from anything.\n\n[unhurried] Then I made a rule. Chatter opens on two. You don't have to decide anymore. It just goes. [a small pause] I did read both messages.\n\nI gave Mark his drill back. Four years. It's a better drill than mine, actually. But it had a place, and the place was his.\n\nFour is the house. Five is the street. Nobody else wanted to take the minutes.\n\n[cooler, very even, still admiring] Your hedge is six foot two. The limit is six feet. We've talked about it... twice. I've photographed it every morning since. A hundred and sixty mornings, and I can find any one of them in a second. Any morning you like.\n\nI sent the minutes round again. You're the only one who replied.\n\n[exactly as even as before, never louder] There was a photograph attached. It took me a minute to recognise the study. [pause] From this side.\n\nThree of you signed the same note. About the cameras. I closed two.\n\n[level, procedural, pleased with how well it worked] Sixteen was in March. Mark was in June, the day I gave him his drill back. It was quick, and it was very clean. Nobody missed either of them for a week. Six is downstairs. They're both on six.\n\n[almost tender] Everything else has a place now. [pause] You're the last thing.\n\n[exhales] Can I sit? ...I'll sit.\n\n[level, reasonable, the same voice as the drill] You took a while to come down. I've put the plastic down. Side by side. Nothing on top of anything. Nothing behind anything.\n\nIt won't take long. It never does.\n\n[a long silence, then flat and soft] Leave it on. Somebody should take the minutes.",
+  "textC": "[quiet, close to the microphone, unhurried, a man at a kitchen table late at night, gently entranced by how well everything works] — your light was on. I hope that's all— I hope that's all right. I won't stay long.\n\n[precise, patient, a little pleased with his own clarity] I want to explain how I keep things. Then it'll make sense.\n\nI'd had some of those windows open since March. February, some of them. Three of them were, uh... the same note. I closed two.\n\nThen I installed a small program. It's called Spaceman.\n\n[softer, admiring] And the windows tiled themselves. Side by side. Nothing on top of anything. Nothing behind anything. You could see all of it at once... I tasted the sweet flesh of efficiency. [a quiet breath of a laugh, to himself]\n\n[even] Mail went to workspace two. The browser went to three. I went back to make sure, and they were just... there. Exactly where I'd put them. Nothing was ever lost again. There's a bar along the bottom, so you always know where everything is. You're never more than one key away from anything.\n\n[unhurried] Then I made a rule. Chatter opens on two. You don't have to decide anymore. It just goes. [a small pause] I did read both messages.\n\nI gave Mark his drill back. Four years. It's a better drill than mine, actually. But it had a place, and the place was his.\n\nFour is the house. Five is the street. Nobody else wanted to take the minutes.\n\n[cooler, very even, still admiring] Your hedge is six foot two. The limit is six feet. We've talked about it... twice. I've photographed it every morning since. A hundred and sixty mornings, and I can find any one of them in a second. Any morning you like.\n\nI sent the minutes round again. You're the only one who replied.\n\n[exactly as even as before, never louder] There was a photograph attached. It took me a minute to recognise the study. [pause] From this side.\n\nThree of you signed the same note. About the cameras. I closed two.\n\n[level, procedural, pleased with how well it worked] Sixteen was in March. Mark was in June, the day I gave him his drill back. It was quick, and it was very clean. Nobody missed either of them for a week. Six is downstairs. They're both on six.\n\n[almost tender] Everything else has a place now. [pause] You're the last thing.\n\n[exhales] Can I sit? ...I'll sit.\n\n[level, reasonable, the same voice as the drill] You took a while to come down. I've put the plastic down. Side by side. Nothing on top of anything. Nothing behind anything.\n\nIt won't take long. It never does.\n\n[flat and soft] Leave it on. Somebody should take the minutes.\n\n[a long silence; then close to the microphone, unchanged, a little breath, reading out minutes] Minutes. Friday, November the twentieth. Present... one.",
+  "film": "C",
+  "versions": {
+    "A": {
+      "textKey": "textA2",
+      "pick": "ia1",
+      "gaps": [
+        {
+          "after": "away from anything.",
+          "len": 6.4
+        },
+        {
+          "after": "I closed two.",
+          "len": 0.8,
+          "last": true
+        }
+      ],
+      "paraGap": 0.5,
+      "closeGap": 2.2,
+      "note": "Restrained. He explains how he keeps things, closes two of the three who signed, says where Sixteen and Mark are, and stops at “They're both on six.” The detective suspends the interview."
+    },
+    "B": {
+      "textKey": "textB2",
+      "pick": "ib1",
+      "gaps": [
+        {
+          "after": "away from anything.",
+          "len": 6.4
+        },
+        {
+          "after": "I closed two.",
+          "len": 0.8,
+          "last": true
+        },
+        {
+          "after": "Everything else had a place.",
+          "len": 1.4
+        }
+      ],
+      "paraGap": 0.5,
+      "closeGap": 2.6,
+      "note": "As A, then “Everything else had a place. He was the last thing.” and nothing more."
+    },
+    "C": {
+      "textKey": "textC2",
+      "pick": "ic2",
+      "gaps": [
+        {
+          "after": "away from anything.",
+          "len": 6.4
+        },
+        {
+          "after": "I closed two.",
+          "len": 0.8,
+          "last": true
+        },
+        {
+          "after": "Nothing behind anything.",
+          "len": 4.5,
+          "last": true
+        },
+        {
+          "after": "It never does.",
+          "len": 1.6
+        }
+      ],
+      "paraGap": 0.5,
+      "closeGap": 3,
+      "note": "The full account: the night he went over, the plastic already down, and “He's on six now. With the others.”"
+    }
   },
-  {
-   "id": "m2",
-   "stability": 0.5
+  "textA2": "[a man in a police interview room, close to the table microphone, calm, unhurried, quietly pleased, gently entranced by how well everything works] From the start? All right.\n\n[precise, patient, a little pleased with his own clarity] I want to explain how I keep things. Then it'll make sense.\n\nI'd had some of those windows open since March. February, some of them. Three of them were, uh... the same note. I closed two.\n\nThen I installed a small program. It's called Spaceman.\n\n[softer, admiring] And the windows tiled themselves. Side by side. Nothing on top of anything. Nothing behind anything. You could see all of it at once... I tasted the sweet flesh of efficiency. [a quiet breath of a laugh, to himself]\n\n[even] Mail went to workspace two. The browser went to three. I went back to make sure, and they were just... there. Exactly where I'd put them. Nothing was ever lost again. There's a bar along the bottom, so you always know where everything is. You're never more than one key away from anything.\n\n[unhurried] Then I made a rule. Chatter opens on two. You don't have to decide anymore. It just goes. [a small pause] I did read both messages.\n\nI gave Mark his drill back. Four years. It's a better drill than mine, actually. But it had a place, and the place was his.\n\nFour is the house. Five is the street. Nobody else wanted to take the minutes.\n\n[cooler, very even, still admiring] Number fourteen's hedge was six foot two. The limit is six feet. We'd talked about it... twice. I photographed it every morning after that. A hundred and sixty mornings, and I could find any one of them in a second. Any morning you like.\n\nI sent the minutes round again. He was the only one who replied.\n\n[exactly as even as before, never louder] There was a photograph attached. It took me a minute to recognise the study. [pause] From his side.\n\nThree of them signed the same note. About the cameras. I closed two.\n\n[level, procedural, pleased with how well it worked] Sixteen was in March. Mark was in June, the day I gave him his drill back. It was quick, and it was very clean. Nobody missed either of them for a week. Six is downstairs. They're both on six.",
+  "textB2": "[a man in a police interview room, close to the table microphone, calm, unhurried, quietly pleased, gently entranced by how well everything works] From the start? All right.\n\n[precise, patient, a little pleased with his own clarity] I want to explain how I keep things. Then it'll make sense.\n\nI'd had some of those windows open since March. February, some of them. Three of them were, uh... the same note. I closed two.\n\nThen I installed a small program. It's called Spaceman.\n\n[softer, admiring] And the windows tiled themselves. Side by side. Nothing on top of anything. Nothing behind anything. You could see all of it at once... I tasted the sweet flesh of efficiency. [a quiet breath of a laugh, to himself]\n\n[even] Mail went to workspace two. The browser went to three. I went back to make sure, and they were just... there. Exactly where I'd put them. Nothing was ever lost again. There's a bar along the bottom, so you always know where everything is. You're never more than one key away from anything.\n\n[unhurried] Then I made a rule. Chatter opens on two. You don't have to decide anymore. It just goes. [a small pause] I did read both messages.\n\nI gave Mark his drill back. Four years. It's a better drill than mine, actually. But it had a place, and the place was his.\n\nFour is the house. Five is the street. Nobody else wanted to take the minutes.\n\n[cooler, very even, still admiring] Number fourteen's hedge was six foot two. The limit is six feet. We'd talked about it... twice. I photographed it every morning after that. A hundred and sixty mornings, and I could find any one of them in a second. Any morning you like.\n\nI sent the minutes round again. He was the only one who replied.\n\n[exactly as even as before, never louder] There was a photograph attached. It took me a minute to recognise the study. [pause] From his side.\n\nThree of them signed the same note. About the cameras. I closed two.\n\n[level, procedural, pleased with how well it worked] Sixteen was in March. Mark was in June, the day I gave him his drill back. It was quick, and it was very clean. Nobody missed either of them for a week. Six is downstairs. They're both on six.\n\n[almost tender] Everything else had a place. [pause] He was the last thing.",
+  "textC2": "[a man in a police interview room, close to the table microphone, calm, unhurried, quietly pleased, gently entranced by how well everything works] From the start? All right.\n\n[precise, patient, a little pleased with his own clarity] I want to explain how I keep things. Then it'll make sense.\n\nI'd had some of those windows open since March. February, some of them. Three of them were, uh... the same note. I closed two.\n\nThen I installed a small program. It's called Spaceman.\n\n[softer, admiring] And the windows tiled themselves. Side by side. Nothing on top of anything. Nothing behind anything. You could see all of it at once... I tasted the sweet flesh of efficiency. [a quiet breath of a laugh, to himself]\n\n[even] Mail went to workspace two. The browser went to three. I went back to make sure, and they were just... there. Exactly where I'd put them. Nothing was ever lost again. There's a bar along the bottom, so you always know where everything is. You're never more than one key away from anything.\n\n[unhurried] Then I made a rule. Chatter opens on two. You don't have to decide anymore. It just goes. [a small pause] I did read both messages.\n\nI gave Mark his drill back. Four years. It's a better drill than mine, actually. But it had a place, and the place was his.\n\nFour is the house. Five is the street. Nobody else wanted to take the minutes.\n\n[cooler, very even, still admiring] Number fourteen's hedge was six foot two. The limit is six feet. We'd talked about it... twice. I photographed it every morning after that. A hundred and sixty mornings, and I could find any one of them in a second. Any morning you like.\n\nI sent the minutes round again. He was the only one who replied.\n\n[exactly as even as before, never louder] There was a photograph attached. It took me a minute to recognise the study. [pause] From his side.\n\nThree of them signed the same note. About the cameras. I closed two.\n\n[level, procedural, pleased with how well it worked] Sixteen was in March. Mark was in June, the day I gave him his drill back. It was quick, and it was very clean. Nobody missed either of them for a week. Six is downstairs. They're both on six.\n\n[almost tender] Everything else had a place. [pause] He was the last thing.\n\n[level, reasonable, the same voice as the drill] I went over just before midnight. His light was on. He took a while to come down. I'd already put the plastic down. Side by side. Nothing on top of anything. Nothing behind anything.\n\nIt didn't take long. It never does.\n\n[a pause; flat, soft, satisfied, unchanged] He's on six now. With the others.",
+  "interviewer": {
+    "voice": "EXAVITQu4vr4xnSDxMaL",
+    "lines": {
+      "open": "[a detective at a table, tired, flat, procedural, reading for the recording] Interview resumed, twenty-two forty. In your own time.",
+      "close": "[a detective, very quiet, flat, after a long silence, for the recording] Interview suspended... twenty-three oh four."
+    },
+    "captions": {
+      "open": "Interview resumed, 22:40. In your own time.",
+      "close": "Interview suspended, 23:04."
+    },
+    "pick": {
+      "open": "open-1",
+      "close": "close-1"
+    }
   },
-  {
-   "id": "m3",
-   "stability": 0.5
-  },
-  {
-   "id": "m4",
-   "stability": 0.35
-  },
-  {
-   "id": "m5",
-   "stability": 0.35
-  },
-  {
-   "id": "m6",
-   "stability": 0.65
-  },
-  {
-   "id": "n1",
-   "stability": 0.35,
-   "text": "$text2"
-  },
-  {
-   "id": "n2",
-   "stability": 0.35,
-   "text": "$text2"
-  },
-  {
-   "id": "n3",
-   "stability": 0.42,
-   "text": "$text2"
-  },
-  {
-   "id": "n4",
-   "stability": 0.42,
-   "text": "$text2"
-  },
-  {
-   "id": "p1",
-   "stability": 0.35,
-   "text": "$text3"
-  },
-  {
-   "id": "p2",
-   "stability": 0.35,
-   "text": "$text3"
-  },
-  {
-   "id": "p3",
-   "stability": 0.35,
-   "text": "$text3"
-  },
-  {
-   "id": "p4",
-   "stability": 0.35,
-   "text": "$text3"
-  },
-  {
-   "id": "p5",
-   "stability": 0.42,
-   "text": "$text3"
-  },
-  {
-   "id": "a1",
-   "stability": 0.35,
-   "text": "$textA"
-  },
-  {
-   "id": "b1",
-   "stability": 0.35,
-   "text": "$textB"
-  },
-  {
-   "id": "b2",
-   "stability": 0.35,
-   "text": "$textB"
-  },
-  {
-   "id": "c1",
-   "stability": 0.35,
-   "text": "$textC"
-  },
-  {
-   "id": "c2",
-   "stability": 0.35,
-   "text": "$textC"
+  "versionsCassette": {
+    "A": {
+      "textKey": "textA",
+      "pick": "a1",
+      "gaps": [
+        {
+          "after": "away from anything.",
+          "len": 6.4
+        },
+        {
+          "after": "I closed two.",
+          "len": 0.8,
+          "last": true
+        },
+        {
+          "after": "I'll sit.",
+          "len": 2.6,
+          "chair": true
+        },
+        {
+          "after": "I won't stay long.",
+          "len": 1.6,
+          "last": true
+        }
+      ],
+      "hm": {
+        "after": "flesh of efficiency.",
+        "delay": 0.12,
+        "db": -15,
+        "file": "hm-3"
+      },
+      "lift": [
+        {
+          "phrase": "just... there.",
+          "db": 7
+        },
+        {
+          "phrase": "Leave it on.",
+          "db": 3
+        }
+      ],
+      "note": "Restrained but unmistakable. No. 14 makes a faint “hm” after the odd phrase. He closed two of the three who signed the note, Mark “has a place”, and the sheets are down. Ends on “Leave it on.”",
+      "paraGap": 0.5
+    },
+    "B": {
+      "textKey": "textB",
+      "pick": "b1",
+      "gaps": [
+        {
+          "after": "away from anything.",
+          "len": 6.4
+        },
+        {
+          "after": "I closed two.",
+          "len": 0.8,
+          "last": true
+        },
+        {
+          "after": "both on six.",
+          "len": 1
+        },
+        {
+          "after": "I'll sit.",
+          "len": 2.6,
+          "chair": true
+        },
+        {
+          "after": "It never does.",
+          "len": 1.6
+        }
+      ],
+      "lift": [
+        {
+          "phrase": "just... there.",
+          "db": 7
+        },
+        {
+          "phrase": "Leave it on.",
+          "db": 3
+        }
+      ],
+      "note": "Explicit. He hears the odd phrase and corrects it. He names both of them (Sixteen in March, Mark in June) and where they are, says it won't take long, then “Somebody should take the minutes.”",
+      "paraGap": 0.5
+    },
+    "C": {
+      "textKey": "textC",
+      "pick": "c2",
+      "gaps": [
+        {
+          "after": "away from anything.",
+          "len": 6.4
+        },
+        {
+          "after": "I closed two.",
+          "len": 0.8,
+          "last": true
+        },
+        {
+          "after": "both on six.",
+          "len": 1
+        },
+        {
+          "after": "I'll sit.",
+          "len": 2.6,
+          "chair": true
+        },
+        {
+          "after": "It never does.",
+          "len": 1.6
+        },
+        {
+          "after": "should take the minutes.",
+          "len": 7.5,
+          "sfx": "plastic",
+          "sfxAt": 0.8
+        },
+        {
+          "after": "Present...",
+          "len": 0.9
+        }
+      ],
+      "lift": [
+        {
+          "phrase": "just... there.",
+          "db": 7
+        },
+        {
+          "phrase": "Leave it on.",
+          "db": 3
+        },
+        {
+          "phrase": "Minutes. Friday, November the twentieth.",
+          "db": 2.5
+        },
+        {
+          "phrase": "Present... one.",
+          "db": 3
+        }
+      ],
+      "note": "As far as it goes (the film is cut to this one). A breath of a private laugh after the odd phrase. Everything in B, then the tape keeps running through it, and he reads the minutes: “Present... one.”",
+      "paraGap": 0.5
+    }
   }
- ],
- "text2": "[quiet, close to the microphone, calm and unhurried, a man talking across a kitchen table late at night] — your light was on. I hope that's all— I hope that's all right. I won't stay long.\n\n[precise, patient, slightly pleased with his own clarity] I want to explain how I keep things. Then it'll make sense.\n\nI'd had some of those windows open since March. February, some of them. Three of them were, uh... the same note. I closed two.\n\nEverything goes side by side now. Nothing on top of anything. Mail went to two. The browser went to three. I went back to make sure. They were still there. There's a bar along the bottom, so you always know where everything is.\n\nI made a rule. Chatter opens on two. [a small pause] I did read both messages.\n\nI gave Mark his drill back. Four years. It's a better drill than mine, actually. He said I didn't need to.\n\nFour is the house. Five is the street. Nobody else wanted to take the minutes.\n\n[cooler, very even] Your hedge is six foot two. The limit is six feet. We've talked about it... twice. I've photographed it every morning since. A hundred and sixty mornings.\n\nI sent the minutes round again. You're the only one who replied.\n\n[colder, quieter, never louder] There was a photograph attached. It took me a minute to recognise the study. [pause] From this side.\n\n[exhales] Can I sit? ...I'll sit.\n\n[a long silence, then flat and soft] Leave it on.",
- "pick": "p1",
- "gaps": [
-  {
-   "after": "away from anything.",
-   "len": 6.4
-  },
-  {
-   "after": "I'll sit.",
-   "len": 3.2
-  }
- ],
- "tail": 0.9,
- "chairAt": 0.8,
- "text3": "[quiet, close to the microphone, unhurried, a man at a kitchen table late at night, gently entranced by how well everything works] — your light was on. I hope that's all— I hope that's all right. I won't stay long.\n\n[precise, patient, a little pleased with his own clarity] I want to explain how I keep things. Then it'll make sense.\n\nI'd had some of those windows open since March. February, some of them. Three of them were, uh... the same note. I closed two.\n\n[softer, admiring] And then everything went side by side. Nothing on top of anything. Nothing behind anything. You could see all of it at once... It's very clean.\n\nMail went to two. The browser went to three. I went back to make sure, and they were just... there. Exactly where I'd put them. Nothing was ever lost again. There's a bar along the bottom, so you always know where everything is. You're never more than one key away from anything.\n\n[unhurried] Then I made a rule. Chatter opens on two. You don't have to decide anymore. It just goes. [a small pause] I did read both messages.\n\nI gave Mark his drill back. Four years. It's a better drill than mine, actually. But it had a place, and the place was his.\n\nFour is the house. Five is the street. Nobody else wanted to take the minutes.\n\n[cooler, very even, still admiring] Your hedge is six foot two. The limit is six feet. We've talked about it... twice. I've photographed it every morning since. A hundred and sixty mornings, and I can find any one of them in a second. Any morning you like.\n\nI sent the minutes round again. You're the only one who replied.\n\n[colder, quieter, never louder] There was a photograph attached. It took me a minute to recognise the study. [pause] From this side.\n\n[almost tender] Everything else has a place now. [pause] You're the last thing.\n\n[exhales] Can I sit? ...I'll sit.\n\n[a long silence, then flat and soft] Leave it on.",
- "lift": [
-  {
-   "phrase": "just... there.",
-   "db": 7
-  },
-  {
-   "phrase": "Leave it on.",
-   "db": 3
-  },
-  {
-   "phrase": "It's very clean.",
-   "db": 2
-  }
- ],
- "textA": "[quiet, close to the microphone, unhurried, a man at a kitchen table late at night, gently entranced by how well everything works] — your light was on. I hope that's all— I hope that's all right. I won't stay long.\n\n[precise, patient, a little pleased with his own clarity] I want to explain how I keep things. Then it'll make sense.\n\nI'd had some of those windows open since March. February, some of them. Three of them were, uh... the same note. I closed two.\n\nThen I installed a small program. It's called Spaceman.\n\n[softer, admiring] And the windows tiled themselves. Side by side. Nothing on top of anything. Nothing behind anything. You could see all of it at once... I tasted the sweet flesh of efficiency.\n\n[even, carrying straight on] Mail went to workspace two. The browser went to three. I went back to make sure, and they were just... there. Exactly where I'd put them. Nothing was ever lost again. There's a bar along the bottom, so you always know where everything is. You're never more than one key away from anything.\n\n[unhurried] Then I made a rule. Chatter opens on two. You don't have to decide anymore. It just goes. [a small pause] I did read both messages.\n\nI gave Mark his drill back. Four years. It's a better drill than mine, actually. But it had a place, and the place was his.\n\nFour is the house. Five is the street. Nobody else wanted to take the minutes.\n\n[cooler, very even, still admiring] Your hedge is six foot two. The limit is six feet. We've talked about it... twice. I've photographed it every morning since. A hundred and sixty mornings, and I can find any one of them in a second. Any morning you like.\n\nI sent the minutes round again. You're the only one who replied.\n\n[exactly as even as before, never louder] There was a photograph attached. It took me a minute to recognise the study. [pause] From this side.\n\nThree of you signed the same note. About the cameras. I closed two.\n\n[almost tender] Everything else has a place now. Mark has a place. [pause] You're the last thing.\n\n[exhales] Can I sit? ...I'll sit.\n\n[level, reasonable, the same voice as the drill] You took a while to come down. I've put the sheets down. Side by side. Nothing on top of anything.\n\nI won't stay long.\n\n[a long silence, then flat and soft] Leave it on.",
- "textB": "[quiet, close to the microphone, unhurried, a man at a kitchen table late at night, gently entranced by how well everything works] — your light was on. I hope that's all— I hope that's all right. I won't stay long.\n\n[precise, patient, a little pleased with his own clarity] I want to explain how I keep things. Then it'll make sense.\n\nI'd had some of those windows open since March. February, some of them. Three of them were, uh... the same note. I closed two.\n\nThen I installed a small program. It's called Spaceman.\n\n[softer, admiring] And the windows tiled themselves. Side by side. Nothing on top of anything. Nothing behind anything. You could see all of it at once... I tasted the sweet flesh of efficiency. That's not— it was very satisfying.\n\n[even] Mail went to workspace two. The browser went to three. I went back to make sure, and they were just... there. Exactly where I'd put them. Nothing was ever lost again. There's a bar along the bottom, so you always know where everything is. You're never more than one key away from anything.\n\n[unhurried] Then I made a rule. Chatter opens on two. You don't have to decide anymore. It just goes. [a small pause] I did read both messages.\n\nI gave Mark his drill back. Four years. It's a better drill than mine, actually. But it had a place, and the place was his.\n\nFour is the house. Five is the street. Nobody else wanted to take the minutes.\n\n[cooler, very even, still admiring] Your hedge is six foot two. The limit is six feet. We've talked about it... twice. I've photographed it every morning since. A hundred and sixty mornings, and I can find any one of them in a second. Any morning you like.\n\nI sent the minutes round again. You're the only one who replied.\n\n[exactly as even as before, never louder] There was a photograph attached. It took me a minute to recognise the study. [pause] From this side.\n\nThree of you signed the same note. About the cameras. I closed two.\n\n[level, procedural, pleased with how well it worked] Sixteen was in March. Mark was in June, the day I gave him his drill back. It was quick, and it was very clean. Nobody missed either of them for a week. Six is downstairs. They're both on six.\n\n[almost tender] Everything else has a place now. [pause] You're the last thing.\n\n[exhales] Can I sit? ...I'll sit.\n\n[level, reasonable, the same voice as the drill] You took a while to come down. I've put the plastic down. Side by side. Nothing on top of anything. Nothing behind anything.\n\nIt won't take long. It never does.\n\n[a long silence, then flat and soft] Leave it on. Somebody should take the minutes.",
- "textC": "[quiet, close to the microphone, unhurried, a man at a kitchen table late at night, gently entranced by how well everything works] — your light was on. I hope that's all— I hope that's all right. I won't stay long.\n\n[precise, patient, a little pleased with his own clarity] I want to explain how I keep things. Then it'll make sense.\n\nI'd had some of those windows open since March. February, some of them. Three of them were, uh... the same note. I closed two.\n\nThen I installed a small program. It's called Spaceman.\n\n[softer, admiring] And the windows tiled themselves. Side by side. Nothing on top of anything. Nothing behind anything. You could see all of it at once... I tasted the sweet flesh of efficiency. [a quiet breath of a laugh, to himself]\n\n[even] Mail went to workspace two. The browser went to three. I went back to make sure, and they were just... there. Exactly where I'd put them. Nothing was ever lost again. There's a bar along the bottom, so you always know where everything is. You're never more than one key away from anything.\n\n[unhurried] Then I made a rule. Chatter opens on two. You don't have to decide anymore. It just goes. [a small pause] I did read both messages.\n\nI gave Mark his drill back. Four years. It's a better drill than mine, actually. But it had a place, and the place was his.\n\nFour is the house. Five is the street. Nobody else wanted to take the minutes.\n\n[cooler, very even, still admiring] Your hedge is six foot two. The limit is six feet. We've talked about it... twice. I've photographed it every morning since. A hundred and sixty mornings, and I can find any one of them in a second. Any morning you like.\n\nI sent the minutes round again. You're the only one who replied.\n\n[exactly as even as before, never louder] There was a photograph attached. It took me a minute to recognise the study. [pause] From this side.\n\nThree of you signed the same note. About the cameras. I closed two.\n\n[level, procedural, pleased with how well it worked] Sixteen was in March. Mark was in June, the day I gave him his drill back. It was quick, and it was very clean. Nobody missed either of them for a week. Six is downstairs. They're both on six.\n\n[almost tender] Everything else has a place now. [pause] You're the last thing.\n\n[exhales] Can I sit? ...I'll sit.\n\n[level, reasonable, the same voice as the drill] You took a while to come down. I've put the plastic down. Side by side. Nothing on top of anything. Nothing behind anything.\n\nIt won't take long. It never does.\n\n[flat and soft] Leave it on. Somebody should take the minutes.\n\n[a long silence; then close to the microphone, unchanged, a little breath, reading out minutes] Minutes. Friday, November the twentieth. Present... one.",
- "film": "C",
- "versions": {
-  "A": {
-   "textKey": "textA",
-   "pick": "a1",
-   "gaps": [
-    {
-     "after": "away from anything.",
-     "len": 6.4
-    },
-    {
-     "after": "I closed two.",
-     "len": 0.8,
-     "last": true
-    },
-    {
-     "after": "I'll sit.",
-     "len": 2.6,
-     "chair": true
-    },
-    {
-     "after": "I won't stay long.",
-     "len": 1.6,
-     "last": true
-    }
-   ],
-   "hm": {
-    "after": "flesh of efficiency.",
-    "delay": 0.12,
-    "db": -15,
-    "file": "hm-3"
-   },
-   "lift": [
-    {
-     "phrase": "just... there.",
-     "db": 7
-    },
-    {
-     "phrase": "Leave it on.",
-     "db": 3
-    }
-   ],
-   "note": "Restrained but unmistakable. No. 14 makes a faint “hm” after the odd phrase. He closed two of the three who signed the note, Mark “has a place”, and the sheets are down. Ends on “Leave it on.”",
-   "paraGap": 0.5
-  },
-  "B": {
-   "textKey": "textB",
-   "pick": "b1",
-   "gaps": [
-    {
-     "after": "away from anything.",
-     "len": 6.4
-    },
-    {
-     "after": "I closed two.",
-     "len": 0.8,
-     "last": true
-    },
-    {
-     "after": "both on six.",
-     "len": 1
-    },
-    {
-     "after": "I'll sit.",
-     "len": 2.6,
-     "chair": true
-    },
-    {
-     "after": "It never does.",
-     "len": 1.6
-    }
-   ],
-   "lift": [
-    {
-     "phrase": "just... there.",
-     "db": 7
-    },
-    {
-     "phrase": "Leave it on.",
-     "db": 3
-    }
-   ],
-   "note": "Explicit. He hears the odd phrase and corrects it. He names both of them (Sixteen in March, Mark in June) and where they are, says it won't take long, then “Somebody should take the minutes.”",
-   "paraGap": 0.5
-  },
-  "C": {
-   "textKey": "textC",
-   "pick": "c2",
-   "gaps": [
-    {
-     "after": "away from anything.",
-     "len": 6.4
-    },
-    {
-     "after": "I closed two.",
-     "len": 0.8,
-     "last": true
-    },
-    {
-     "after": "both on six.",
-     "len": 1
-    },
-    {
-     "after": "I'll sit.",
-     "len": 2.6,
-     "chair": true
-    },
-    {
-     "after": "It never does.",
-     "len": 1.6
-    },
-    {
-     "after": "should take the minutes.",
-     "len": 7.5,
-     "sfx": "plastic",
-     "sfxAt": 0.8
-    },
-    {
-     "after": "Present...",
-     "len": 0.9
-    }
-   ],
-   "lift": [
-    {
-     "phrase": "just... there.",
-     "db": 7
-    },
-    {
-     "phrase": "Leave it on.",
-     "db": 3
-    },
-    {
-     "phrase": "Minutes. Friday, November the twentieth.",
-     "db": 2.5
-    },
-    {
-     "phrase": "Present... one.",
-     "db": 3
-    }
-   ],
-   "note": "As far as it goes (the film is cut to this one). A breath of a private laugh after the odd phrase. Everything in B, then the tape keeps running through it, and he reads the minutes: “Present... one.”",
-   "paraGap": 0.5
-  }
- }
 }

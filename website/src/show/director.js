@@ -10,8 +10,8 @@ import { WORDS, TAPE } from "./tape.js"
 // the visitor's turn (Option+1/2/3 really switch) is the first long silence on the tape
 const G0 = TAPE.marks.gaps.find((g) => g[1] > 5)
 export const HOLD = [G0[0], G0[0] + G0[1]]
-// the last long silence: what happens in the kitchen
-const ACT = TAPE.marks.gaps.filter((g) => g[1] > 5).at(-1)
+// the silence after "Nothing behind anything.": what happens downstairs
+const ACT = TAPE.marks.gaps.filter((g) => g[1] > 3).at(-1)
 
 const norm = (s) => s.toLowerCase().replace(/[^a-z0-9']/g, "")
 const starts = (phrase) => {
@@ -49,7 +49,7 @@ export function wordEnd(phrase, after) {
   return WORDS[i + n - 1][2]
 }
 const LAST = WORDS[WORDS.length - 1]
-// the film ends on the last word, with a beat
+// the film ends on the last word, with a beat; the interview runs on under the card
 export const END = LAST[2] + 0.55
 
 const NOTE = ["call about the gutters", "drill → return", "passwords??", "organize notes", "hedge (ask)"]
@@ -99,18 +99,19 @@ const LK = {
   cool: { exposure: 0.95, warmth: -0.2, saturation: 0.82, contrast: 1.05, vignette: 0.28, bloom: 0.16, g: [0, 0.2, 0.05] },
   nov: { exposure: 0.9, warmth: -0.3, saturation: 0.82, contrast: 1.05, vignette: 0.3, bloom: 0.17, g: [0.05, 0.35, 0.08] },
   six: { exposure: 0.84, warmth: -0.5, saturation: 0.7, contrast: 1.08, vignette: 0.38, bloom: 0.18, g: [0.14, 0.5, 0.1] },
-  study: { exposure: 0.96, warmth: -0.2, saturation: 0.9, contrast: 1.04, vignette: 0.42, bloom: 0.24, g: [0.12, 0.45, 0.1] },
-  kitchen: { exposure: 1.0, warmth: 0.35, saturation: 0.95, contrast: 1.06, vignette: 0.46, bloom: 0.3, g: [0.12, 0.45, 0.1] },
-  floor: { exposure: 0.98, warmth: 0.25, saturation: 0.9, contrast: 1.08, vignette: 0.5, bloom: 0.26, g: [0.14, 0.5, 0.1] },
+  room: { exposure: 1.0, warmth: 0.05, saturation: 0.95, contrast: 1.02, vignette: 0.32, bloom: 0.16, g: [0, 0, 0] },
+  study: { exposure: 1.0, warmth: -0.15, saturation: 0.9, contrast: 1.04, vignette: 0.4, bloom: 0.2, g: [0.12, 0.45, 0.1] },
+  street: { exposure: 1.0, warmth: 0.1, saturation: 0.9, contrast: 1.05, vignette: 0.42, bloom: 0.26, g: [0.12, 0.45, 0.1] },
+  down: { exposure: 1.0, warmth: 0.15, saturation: 0.85, contrast: 1.08, vignette: 0.5, bloom: 0.2, g: [0.14, 0.5, 0.1] },
 }
 // The grade follows the story: a warm, tired night; clean light once things have places; mornings;
 // the months cooling; a cold November night; six; the dark study; the kitchen's lamp.
 let LOOKS = null
 function looks(T) {
   return [
-    [0, LK.night], [T.install, LK.night], [T.tiled, LK.clean], [T.hold0, LK.clean], [T.hold1, LK.morning], [T.house - 0.3, LK.morning], [T.house + 0.7, LK.house],
+    [0, LK.room], [T.intro - 1.5, LK.room], [T.intro, LK.night], [T.install, LK.night], [T.tiled, LK.clean], [T.hold0, LK.clean], [T.hold1, LK.morning], [T.house - 0.3, LK.morning], [T.house + 0.7, LK.house],
     [T.hedge - 0.4, LK.house], [T.hedge + 1, LK.hedge], [T.again - 2, LK.cool], [T.again + 1.5, LK.nov], [T.six - 0.2, LK.nov], [T.six + 0.8, LK.six],
-    [T.place, LK.six], [T.pull, LK.study], [T.kitchen, LK.kitchen], [T.floor - 0.01, LK.kitchen], [T.floor, LK.floor], [1e4, LK.floor],
+    [T.place, LK.six], [T.pull, LK.study], [T.light - 0.01, LK.study], [T.light, LK.street], [T.down - 0.01, LK.street], [T.down, LK.down], [1e4, LK.down],
   ]
 }
 
@@ -237,16 +238,37 @@ export function build(S) {
   const BAR_BASE = 1.5
   const BAR_BIG = 2.2
 
-  // ── 0 · The pile, before anything has a place ──
+  // A camera move through the room: a → b over [t0, t1], eased (cut at the middle when reduced).
+  // A move that ends on the screen hands over to the flat desktop as it lands.
+  const move = (t0, t1, a, b, e = easeInOut) =>
+    span(t0, t1, (u) => {
+      if (b === "screen" && u >= 1) return S.flat()
+      S.shot(a, b, S.reduced ? (u < 0.5 ? 0 : 1) : e(u))
+    })
+  const hold = (t0, t1, name, drift = 0.1) =>
+    span(t0, t1, (u) => {
+      S.three.drift = S.reduced ? 0 : drift
+      S.shot(name, name, u)
+    })
+
+  // ── 0 · The study at night; the tone; the screen wakes; in through it ──
   cursor = 0
+  const intro = TAPE.marks.head + 0.7
   at(0, () => {
-    S.bed("room", 0.16, 1.5)
     w.bar.scale.x = w.bar.scale.t = 1.5
+    S.three.glow = 0
+    S.shot("CamChair", "CamChair", 0)
   })
+  // the screen wakes as the recorder's tone sounds, with a panel's small settle
+  span(0.42, 0.95, (u) => (S.three.glow = smooth(u) * (1 + 0.06 * Math.sin(u * 9) * (1 - u))))
+  at(0.42, () => S.sfx("key2", 0.2))
+  move(1.2, intro, "CamChair", "screen", (u) => easeInOut(u) ** 1.15)
+  at(intro, () => S.flat())
+  cursor = TAPE.marks.head
   const march = word("I'd had some")
-  push(0.3, march - 0.2, { cx: S.SW * 0.52, cy: S.SH * 0.5, D: 0.93 })
+  push(intro + 0.05, march - 0.2, { cx: S.SW * 0.52, cy: S.SH * 0.5, D: 0.93 })
   at(2.2, () => w.cursorTo(S.SW * 0.56, S.SH * 0.6, 3.2))
-  at(word("I want to explain", 0) + 0.6, () => w.cursorTo(S.SW * 0.5, S.SH * 0.56, march - 0.6))
+  at(word("I want to explain", TAPE.marks.head) + 0.6, () => w.cursorTo(S.SW * 0.5, S.SH * 0.56, march - 0.6))
   // "...open since March": the March screenshot of this same mess
   clickAt(march + 0.5, "shot", titleOf, () => w.setFocus("shot"))
   push(march, march + 1.4, () => frameOf("shot", 1.45), "shot")
@@ -265,13 +287,16 @@ export function build(S) {
 
   // ── Spaceman: installed, then everything side by side ──
   const install = word("Then I installed")
-  push(install - 0.1, install + 0.9, home)
-  const called = word("It's called Spaceman")
-  at(word("Spaceman") - 0.05, () => {
+  const named = word("Spaceman")
+  const tiled = word("tiled themselves")
+  // up to the corner of the menu bar, where its item appears on its name, then back for the tiling
+  push(install + 0.15, named - 0.15, () => ({ cx: S.SW * 0.83, cy: S.SH * 0.17, D: 0.34 }), null)
+  at(named - 0.05, () => {
     w.status = true
+    w.statusIn = w.time
     S.sfx("key2", 0.45)
   })
-  const tiled = word("tiled themselves")
+  push(named + 0.9, tiled - 0.1, home)
   at(tiled, () => {
     w.tileNow()
     S.sfx("thunk", 0.8)
@@ -305,10 +330,10 @@ export function build(S) {
     const D = 0.42
     return { cx: S.SW / 2, cy: S.SH - (S.SH * D) / 2, D }
   })
-  const away = word("one key away")
-  sw(away - 0.45, 2)
-  sw(away + 0.05, 3)
-  sw(away + 0.6, 1)
+  // "You're never more than one key away": 2, then 3, a beat each, then home before the visitor's turn
+  sw(word("never more") - 0.05, 2)
+  sw(word("key away") - 0.05, 3)
+  sw(HOLD[0] - 0.25, 1)
   push(HOLD[0] - 0.9, HOLD[0], home)
 
   // ── The visitor's turn ──
@@ -356,15 +381,13 @@ export function build(S) {
   const decide = word("You don't have to decide")
   push(decide - 0.15, decide + 0.75, home, null)
   clickAt(decide + 0.3, "settings", closeBtn, () => (w.close("settings"), S.sfx("close", 0.5)))
-  // a new Chatter window: it opens, and goes straight to 2
+  // a new Chatter window opens straight onto 2: he stays on 1, and it appears in 2's place in the bar
   const goes = word("It just goes")
-  at(goes - 0.2, () => {
-    const ww = S.SW * 0.3
-    const hh = S.SH * 0.38
-    w.open({ id: "dana", app: "chatter", kind: "chat", title: "Dana", float: true, at: [S.SW * 0.62 - ww / 2, S.SH * 0.42 - hh / 2, ww, hh], data: { who: "Dana", when: "Today 6:12 AM", msgs: [{ t: "are we still on for friday?" }, { t: "you can say no", note: "Read 6:14 AM" }] } })
-    S.sfx("thunk", 0.35)
+  at(goes - 0.15, () => {
+    w.openMany([{ ws: 2, id: "dana", app: "chatter", kind: "chat", title: "Dana", data: { who: "Dana", when: "Today 6:12 AM", msgs: [{ t: "are we still on for friday?" }, { t: "you can say no", note: "Read 6:14 AM" }] } }])
+    w.pulse(2)
+    S.sfx("thunk", 0.3)
   })
-  at(goes + 0.35, () => w.move("dana", 2))
   // "I did read both messages."
   const read = word("did read both")
   sw(read - 0.05, 2)
@@ -401,7 +424,7 @@ export function build(S) {
   const mins = word("Nobody else wanted")
   at(mins, () => w.setFocus("minutes"))
   push(mins + 0.1, mins + 1.1, () => frameOf("minutes", 1.2), "minutes")
-  const hedge = word("Your hedge")
+  const hedge = word("fourteen's hedge")
   push(hedge - 0.85, hedge, home, null)
 
   // ── The hedge ──
@@ -441,7 +464,7 @@ export function build(S) {
   at(again + 0.75, () => (w.set("minutes", { data: { banner: ["Sent to 8 households · Jun 10", "Sent again to 8 households · Nov 11"] } }), S.sfx("thunk", 0.2)))
 
   // ── The only reply ──
-  const only = word("You're the only")
+  const only = word("He was the only")
   sw(only - 0.1, 2, "Fri Nov 20  7:41 PM")
   const reply = { from: "No. 14", subject: "Re: Minutes — corrections", when: "7:41 PM", unread: 1, clip: 1 }
   at(only + 0.25, () => {
@@ -472,7 +495,7 @@ export function build(S) {
   push(attached + 0.1, attached + 1.0, () => frameOf("photo", 1.06), "photo")
   // "It took me a minute to recognise the study." The camera leans in.
   const took = word("It took me")
-  const fromSide = word("this side")
+  const fromSide = word("his side")
   push(took, fromSide + 0.6, () => {
     const p = R("photo")
     const D = Math.max(p.w.t / S.SW, p.h.t / S.SH) * 0.62
@@ -481,7 +504,7 @@ export function build(S) {
 
   // ── "Three of you signed the same note. About the cameras. I closed two." ──
   // The same three notes as at the start, and the same two clicks.
-  const signed = word("Three of you signed")
+  const signed = word("Three of them signed")
   push(signed - 0.6, signed + 0.2, home, null)
   clickAt(signed - 0.3, "photo", closeBtn, () => (w.close("photo"), S.sfx("close", 0.45)), 0.7)
   const NOTE14 = (n, who) => ({ heading: "About the cameras", list: ["cameras", "hedge", "minutes", "six"], edited: "Signed " + who, lines: ["We'd like the two cameras on No. 12", "that face our houses taken down.", { gap: 1 }, { t: "— " + n, soft: 1 }] })
@@ -515,59 +538,62 @@ export function build(S) {
   push(quick, word("Nobody missed") + 1.6, () => {
     const p = R("plan")
     const D = Math.max(p.w.t / S.SW, p.h.t / S.SH) * 0.7
-    return { cx: p.x.t + p.w.t * 0.45, cy: p.y.t + p.h.t * 0.5, D }
+    const hx = (S.SW * D) / 2
+    const hy = (S.SH * D) / 2
+    return { cx: clamp(p.x.t + p.w.t * 0.45, hx, S.SW - hx), cy: clamp(p.y.t + p.h.t * 0.5, hy, S.SH - hy), D }
   })
   const both = word("They're both on six")
   at(both + 0.3, () => w.set("plan", { data: { sel: [0, 1] } }))
 
-  // ── "Everything else has a place now. You're the last thing." ──
-  const place = word("Everything else has")
-  push(place - 0.5, place + 0.3, home, null)
-  sw(place + 0.05, 5, "Fri Nov 20  11:47 PM")
-  at(place + 0.05, () => ["cam14"].forEach((id) => R(id) && w.close(id)))
-  at(place + 0.1, () => {
-    w.setFocus("door")
-    w.set("door", { data: { time: "11:47:02 PM", lit: 0 } })
-  })
-  for (let k = 1; k < 6; k++) at(place + 0.1 + k, () => w.set("door", { data: { time: `11:47:0${2 + k} PM` } }))
-  push(place + 0.4, place + 1.6, () => frameOf("door", 1.02), "door")
-  // "You're the last thing." His light comes on across the street.
+  // ── "Everything else had a place. He was the last thing." ──
+  // the empty place on the plan, in the plan's own coordinates (see the plan painter)
+  const placeRect = (i) => {
+    const p = R("plan")
+    const m = (p.w.t - 56) / 5.6
+    return { x: p.x.t + 28 + m * (1.55 + i * 1.15), y: p.y.t + BAR_H + 110 + m * 0.45, w: m * 0.8, h: m * 2 }
+  }
+  const place = word("Everything else had")
+  at(place, () => (w.clock = "Fri Nov 20  11:47 PM"))
+  push(place - 0.2, place + 1.2, () => frameOf("plan", 1.08), "plan")
+  // "You're the last thing." The dashed third place is selected, and held.
   const lastThing = word("last thing")
-  at(lastThing + 0.05, () => w.set("door", { data: { lit: 1 } }))
-  at(lastThing + 0.2, () => w.cursorTo(S.SW * 0.86, S.SH * 0.9, lastThing + 1.6))
+  at(lastThing - 0.1, () => {
+    w.set("plan", { data: { sel: [2, 2] } })
+    S.sfx("key", 0.25)
+  })
+  push(word("He was the last") - 0.05, wordEnd("last thing") + 0.2, () => {
+    const r = placeRect(2)
+    const D = Math.min(1, (r.h * 1.9) / S.SH)
+    const hx = (S.SW * D) / 2
+    const hy = (S.SH * D) / 2
+    return { cx: clamp(r.x + r.w / 2, hx, S.SW - hx), cy: clamp(r.y + r.h / 2, hy, S.SH - hy), D }
+  })
 
-  // ── The study, empty; across the street; the kitchen ──
-  // the study pulls back as soon as he's said it; the chair is heard from the kitchen
-  const pull = wordEnd("last thing") + 0.15
-  span(pull, pull + 1.9, (u) => (S.scene.pull = u))
-  at(pull, () => {
-    S.bed("room", 0.3, 0.8)
-    S.bed("night", 0.22, 1.2)
+  // ── The study, empty; his light; downstairs ──
+  // once it has sat a moment, out through the screen into the room he isn't in
+  const lastEnd = wordEnd("last thing")
+  const went = word("I went over")
+  const pull = lastEnd + 0.45
+  move(pull, went + 1.4, "screen", "CamRoom", (u) => easeInOut(u) ** 0.85)
+  // "His light was on." Across the street, under the blind.
+  const light = word("His light") - 0.05
+  hold(light, word("I'd already put") - 0.05, "CamWindow", 0.5)
+  // "I'd already put the plastic down." Downstairs: the two of them, side by side, and the third place.
+  const down = word("I'd already put") - 0.05
+  hold(down, ACT[0] + 0.3, "Before", 0.35)
+  // what happens downstairs happens in the dark, on the tape
+  span(ACT[0] + 0.3, ACT[0] + 1.0, (u) => (S.three.black = smooth(u)))
+  // "He's on six now. With the others." The same floor, afterwards: low, close, held. Nothing moves.
+  const now6 = word("He's on six") - 0.04
+  at(now6, () => {
+    S.three.black = 0
+    S.three.after = true
+    S.three.drift = 0
+    S.shot("After", "After", 0)
   })
-  span(pull + 2.0, pull + 3.5, (u) => (S.scene.win = u))
-  at(pull + 2.1, () => S.sfx("car", 0.35))
-  const kitchen = pull + 3.6
-  span(kitchen, kitchen + 0.6, (u) => (S.scene.fade = smooth(u)))
-  at(kitchen, () => (S.bed("room", 0, 0.25), S.bed("night", 0, 0.25)))
-  // "I've put the plastic down." The same kitchen, from the door: the floor.
-  const plastic = word("I've put the plastic")
-  const floor = word("plastic down") - 0.02
-  span(kitchen, floor, (u) => (S.scene.kpush = u))
-  at(floor, () => (S.scene.floor = 1))
-  span(floor, ACT[0] + 0.4, (u) => (S.scene.fpush = u))
-  // what happens in the kitchen happens in the dark, on the tape
-  span(ACT[0] + 0.5, ACT[0] + 1.4, (u) => (S.scene.black = smooth(u)))
-  // "Minutes. Friday, November the twentieth." in the dark; "Present..." cuts to the floor afterwards
-  const present = word("Present") - 0.04
-  at(present, () => {
-    S.scene.after = 1
-    S.scene.black = 0
-  })
-  span(present, END + 1.5, (u) => (S.scene.apush = u))
-  void plastic
   at(END, () => S.end())
 
-  LOOKS = looks({ install, tiled, hold0: HOLD[0], hold1: HOLD[1], house, hedge, again, six, place, pull, kitchen, floor })
+  LOOKS = looks({ intro, install, tiled, hold0: HOLD[0], hold1: HOLD[1], house, hedge, again, six, place, pull, light, down })
 
   cues.sort((a, b) => a.t - b.t)
   return { cues, spans }

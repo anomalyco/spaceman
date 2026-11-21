@@ -1,7 +1,6 @@
-// Web Audio for the show. Nothing is fetched before the key press. On start the tape and the
-// effects are fetched in one go (about 830 KB); the film begins once they are decoded or after
-// 2.5 s, whichever is first, and the tape joins late at the right offset if it was still on its
-// way. Every play() is logged so captures can be mixed offline.
+// Web Audio for the show. The tape and the effects are fetched while the page is idle (or on the
+// click, with Save-Data) and decoded once the click brings an AudioContext; the tape joins late at
+// the right offset if it was still on its way. Every play() is logged so captures can be mixed offline.
 export class Audio {
   constructor(base, { log = false } = {}) {
     this.base = base
@@ -135,16 +134,18 @@ export class Audio {
     for (const [file, b] of this.beds) if (b.level > 0) this.bed(file, b.level, t, 0.3)
   }
 
-  // Everything stops at once (the film's last cut), with a few milliseconds' ramp so it doesn't click.
-  stopAll() {
+  // Everything stops at once (the film's last cut), with a few milliseconds' ramp so it doesn't click;
+  // keep names a clip that plays on.
+  stopAll(keep = null) {
     const now = this.ctx?.currentTime ?? 0
     for (const h of this.live) {
+      if (keep && h.file === keep) continue
       try {
         h.g.gain.setTargetAtTime(0, now, 0.004)
         h.src.stop(now + 0.03)
       } catch {}
     }
-    this.live.clear()
+    for (const h of [...this.live]) if (!(keep && h.file === keep)) this.live.delete(h)
     for (const b of this.beds.values()) {
       const g = b.gain
       b.h = null

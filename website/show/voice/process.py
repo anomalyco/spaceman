@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
-# Build the show's audio: the monologue as one cassette recording (one long v4 take, pauses opened
-# in the silences between sentences, a tape bed and a tape chain), and the SFX. Writes
+# Build the show's audio: the monologue as one recorded police interview (the recorder's tone, the
+# detective resuming the interview, his one long v4 take with pauses opened in the silences between
+# sentences, the room, the detective suspending it, the tone again), and the SFX. Writes
 # public/show/audio, manifest.json and src/show/tape.js for the film's version (mono.json "film").
 # usage: process.py                  the film's version
 #        process.py B --alt <dir>    one alternate version's tape only, to <dir>/tape-B.mp3 (+ .json)
@@ -17,7 +18,23 @@ ALT = args[args.index("--alt") + 1] if "--alt" in args else None
 VERSION = next((a for a in args if a in mono["versions"]), mono["film"])
 VER = mono["versions"][VERSION]
 TAKE = VER["pick"]
-HEAD = 0.95  # the record button, then the tape runs before he speaks
+BEEP = 1.1  # the interview recorder's tone, at the start and the end
+
+
+def dur(f):
+    return float(subprocess.run(["ffprobe", "-v", "error", "-show_entries", "format=duration", "-of", "csv=p=0", f], capture_output=True, text=True).stdout)
+
+
+# the detective's two lines, trimmed of their own silence at both ends
+INTER = {}
+for k in ("open", "close"):
+    f = os.path.join(raw, "inter", k + "-trim.wav")
+    subprocess.run(["ffmpeg", "-y", "-v", "error", "-i", os.path.join(raw, "inter", mono["interviewer"].get("pick", {}).get(k, k + "-1") + ".mp3"),
+                    "-af", "silenceremove=start_periods=1:start_threshold=-42dB,areverse,silenceremove=start_periods=1:start_threshold=-42dB,areverse",
+                    "-ac", "1", "-ar", "44100", f], check=True)
+    INTER[k] = {"file": f, "dur": dur(f)}
+OPEN_AT = 0.35 + BEEP + 0.75
+HEAD = OPEN_AT + INTER["open"]["dur"] + 0.85  # he starts after the detective
 GAPS = VER["gaps"]  # [{"after": "everything is.", "len": 6.2, "chair": true, "sfx": "plastic"}, ...]
 TAIL = mono["tail"]
 
@@ -122,9 +139,12 @@ for l in VER.get("lift", []):
 fc.append(f"{''.join(labels)}concat=n={len(labels)}:v=0:a=1,aformat=channel_layouts=mono,adelay={int(HEAD * 1000)}{''.join(',' + x for x in lifts)}[voice]")
 
 
-total = shift(end_t)
-chair_cut = next(c for c in cuts if c.get("chair"))
-chair_at = shift(chair_cut["at"]) + mono.get("chairAt", 0.9)
+said = shift(end_t)
+CLOSE_AT = said + VER.get("closeGap", 2.6)
+BEEP2 = CLOSE_AT + INTER["close"]["dur"] + 0.9
+total = BEEP2 + BEEP + 0.5
+chair_cut = next((c for c in cuts if c.get("chair")), None)
+chair_at = shift(chair_cut["at"]) + mono.get("chairAt", 0.9) if chair_cut else None
 # things on the tape that aren't him: the other man's one "hm", and what happens in the last silence
 extra_in, extra_fc, extra_lab = [], [], []
 if VER.get("hm"):
@@ -132,32 +152,42 @@ if VER.get("hm"):
     i = find(words, h["after"]) + len(h["after"].split()) - 1
     extra_in.append(os.path.join(raw, "mono", h.get("file", "hm-3") + ".mp3"))
     at = shift(words[i]["end"]) + h["delay"]
-    extra_fc.append(f"[{4 + len(extra_lab)}:a]aformat=channel_layouts=mono,lowpass=f=2400,volume={10 ** (h['db'] / 20):.3f},adelay={int(at * 1000)}[x{len(extra_lab)}]")
+    extra_fc.append(f"[{6 + len(extra_lab)}:a]aformat=channel_layouts=mono,lowpass=f=2400,volume={10 ** (h['db'] / 20):.3f},adelay={int(at * 1000)}[x{len(extra_lab)}]")
     extra_lab.append(f"[x{len(extra_lab)}]")
 for c in cuts:
     if c.get("sfx"):
         extra_in.append(os.path.join(raw, f"sfx-{c['sfx']}.mp3"))
         at = shift(c["at"]) + c.get("sfxAt", 0.6)
-        extra_fc.append(f"[{4 + len(extra_lab)}:a]aformat=channel_layouts=mono,lowpass=f=3200,volume={c.get('sfxVol', 0.35)},adelay={int(at * 1000)}[x{len(extra_lab)}]")
+        extra_fc.append(f"[{6 + len(extra_lab)}:a]aformat=channel_layouts=mono,lowpass=f=3200,volume={c.get('sfxVol', 0.35)},adelay={int(at * 1000)}[x{len(extra_lab)}]")
         extra_lab.append(f"[x{len(extra_lab)}]")
-# tape bed: hiss, mains hum, the kitchen; the record button and the chair are on the tape too
-fc.append(f"anoisesrc=r=44100:color=pink:amplitude=0.012:seed=7,highpass=f=1800,atrim=0:{total:.3f}[hiss]")
-fc.append(f"sine=f=60:r=44100,volume=0.0016,atrim=0:{total:.3f}[hum]")
-fc.append(f"[3:a]aloop=loop=-1:size=2e9,lowpass=f=1200,volume=0.32,atrim=0:{total:.3f}[kitchen]")
-fc.append("[1:a]atrim=0:1.1,volume=0.7[click]")
-fc.append(f"[2:a]volume=0.2,lowpass=f=3000,adelay={int(chair_at * 1000)}[chair]")
+# the interview room: ventilation, the strip light's buzz, the recorder's own floor; the tones at
+# either end; the detective further from the microphone than he is
+fc.append(f"anoisesrc=r=44100:color=brown:amplitude=0.05:seed=11,lowpass=f=420,highpass=f=60,atrim=0:{total:.3f}[vent]")
+fc.append(f"anoisesrc=r=44100:color=pink:amplitude=0.004:seed=7,highpass=f=2500,atrim=0:{total:.3f}[hiss]")
+fc.append(f"sine=f=100:r=44100,volume=0.0011,atrim=0:{total:.3f}[hum1]")
+fc.append(f"sine=f=300:r=44100,volume=0.0004,atrim=0:{total:.3f}[hum3]")
+tone = "sine=f=1000:r=44100,atrim=0:{d},afade=t=in:d=0.01,afade=t=out:st={o}:d=0.02,volume=0.085,adelay={ms}"
+fc.append(tone.format(d=BEEP, o=BEEP - 0.02, ms=350) + "[beep1]")
+fc.append(tone.format(d=BEEP, o=BEEP - 0.02, ms=int(BEEP2 * 1000)) + "[beep2]")
+far = "aformat=channel_layouts=mono,highpass=f=180,lowpass=f=4800,aecho=0.8:0.55:19|37|61:0.32|0.22|0.12,volume=0.6"
+fc.append(f"[1:a]{far},adelay={int(OPEN_AT * 1000)}[iopen]")
+fc.append(f"[2:a]{far},adelay={int(CLOSE_AT * 1000)}[iclose]")
+fc.append("[voice]aecho=0.9:0.4:13|29:0.16|0.08[near]")
+mixins = ["[near]", "[vent]", "[hiss]", "[hum1]", "[hum3]", "[beep1]", "[beep2]", "[iopen]", "[iclose]"]
+if chair_at is not None:
+    fc.append(f"[3:a]volume=0.2,lowpass=f=3000,adelay={int(chair_at * 1000)}[chair]")
+    mixins.append("[chair]")
 fc.extend(extra_fc)
-fc.append(f"[voice][hiss][hum][kitchen][click][chair]{''.join(extra_lab)}amix=inputs={6 + len(extra_lab)}:normalize=0:duration=first[mix]")
+fc.append(f"{''.join(mixins)}{''.join(extra_lab)}amix=inputs={len(mixins) + len(extra_lab)}:normalize=0:duration=longest[mix]")
 chain = ",".join([
-    "highpass=f=140", "lowpass=f=5600", "equalizer=f=2600:t=q:w=1.2:g=2.5",
-    "acompressor=threshold=-26dB:ratio=3:attack=8:release=220:makeup=4",
-    "vibrato=f=0.55:d=0.18", "vibrato=f=7.3:d=0.008",
-    "asoftclip=type=tanh",
-    f"atrim=0:{total:.3f}",
+    "highpass=f=90", "lowpass=f=7200", "equalizer=f=3000:t=q:w=1.0:g=1.5", "equalizer=f=220:t=q:w=1.0:g=1.5",
+    "acompressor=threshold=-24dB:ratio=3:attack=6:release=200:makeup=3.5",
+    "alimiter=limit=0.9",
+    f"apad=whole_dur={total:.3f},atrim=0:{total:.3f}",
 ])
 fc.append(f"[mix]{chain}[tape]")
 tmp = os.path.join(raw, "mono", "tape.wav")
-run(["ffmpeg", "-y", "-i", src, "-i", os.path.join(raw, "sfx-tapeclick.mp3"), "-i", os.path.join(raw, "sfx-chair.mp3"), "-i", os.path.join(raw, "sfx-room.mp3"),
+run(["ffmpeg", "-y", "-i", src, "-i", INTER["open"]["file"], "-i", INTER["close"]["file"], "-i", os.path.join(raw, "sfx-chair.mp3"), "-i", os.path.join(raw, "sfx-room.mp3"), "-i", os.path.join(raw, "sfx-tapeclick.mp3"),
      *[x for f in extra_in for x in ("-i", f)], "-filter_complex", ";".join(fc), "-map", "[tape]", "-ac", "1", "-ar", "44100", tmp])
 # two-pass loudness to the same level as the other clips
 m = subprocess.run(["ffmpeg", "-hide_banner", "-i", tmp, "-af", "loudnorm=I=-17.5:TP=-1.5:LRA=11:print_format=json", "-f", "null", "-"], capture_output=True, text=True).stderr
@@ -176,7 +206,8 @@ rms = [math.sqrt(sum(x * x for x in a16[k:k + hop]) / max(1, len(a16[k:k + hop])
 peak = max(rms) or 1
 env = [min(99, round(99 * math.sqrt(r / peak))) for r in rms]
 tw = [{"text": w["text"], "t": round(shift(w["t"]), 3), "end": round(shift(w["end"]), 3)} for w in words]
-marks = {"gaps": [[round(shift(c["at"]), 3), c["len"]] for c in cuts], "chair": round(chair_at, 3), "head": HEAD}
+marks = {"gaps": [[round(shift(c["at"]), 3), c["len"]] for c in cuts], "chair": round(chair_at, 3) if chair_at else None, "head": round(HEAD, 3),
+         "open": round(OPEN_AT, 3), "close": round(CLOSE_AT, 3), "beep2": round(BEEP2, 3), "said": round(said, 3)}
 # caption lines: the script's own sentences (with their dashes), timed by their words
 spoken = re.sub(r"\s+", " ", re.sub(r"\[[^\]]*\]", " ", mono[VER["textKey"]])).strip()
 lines, k = [], 0
@@ -187,6 +218,9 @@ for s in re.split(r"(?<=[.?!])\s+(?=[^a-z])", spoken):
     lines.append({"text": s.strip(), "t": tw[k]["t"], "end": tw[k + n - 1]["end"]})
     k += n
 assert k == len(tw), (k, len(tw))
+for k2, at in (("open", OPEN_AT), ("close", CLOSE_AT)):
+    lines.append({"text": mono["interviewer"]["captions"][k2], "t": round(at, 3), "end": round(at + INTER[k2]["dur"], 3), "who": "detective"})
+lines.sort(key=lambda l: l["t"])
 if ALT:
     json.dump({"version": VERSION, "take": TAKE, "dur": round(total, 3), "lines": lines, "note": VER.get("note", "")}, open(os.path.join(ALT, f"tape-{VERSION}.json"), "w"), ensure_ascii=False)
     print(f"{VERSION}: {TAKE} {total:.2f}s")

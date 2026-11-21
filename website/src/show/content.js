@@ -167,7 +167,8 @@ const hash01 = (i, k) => hash(i * 131 + k * 7919)
 // The hedge, photographed every morning from the same spot: one photograph, a hand's width off
 // each morning, in that morning's light, the green turning as the months go.
 export function hedgePhoto(ctx, x, y, w, h, i, opts = {}) {
-  const p = plates.hedge
+  // four mornings' light, rendered: clear, wet, autumn, fog
+  const p = plates["hedge-" + (i === 0 ? 0 : Math.floor(hash01(i, 4) * 4))] || plates["hedge-0"]
   if (!p) {
     ctx.fillStyle = "#4d5a45"
     ctx.fillRect(x, y, w, h)
@@ -358,7 +359,7 @@ const painters = {
     const rh = Math.min(h - ry - 30, m * 4.4)
     const ink = "#2f3540"
     ctx.strokeStyle = ink
-    ctx.lineWidth = 6
+    ctx.lineWidth = 4.5
     ctx.lineJoin = "miter"
     ctx.beginPath()
     ctx.moveTo(rx + rw - m * 1.3, ry + rh)
@@ -437,8 +438,9 @@ const painters = {
         roundRect(ctx, x + pw / 2 - 24, y + ph / 2 - 26, 48, 46, 6)
         ctx.fill()
       }
-      text(ctx, p.n || "", x + pw / 2, y + ph / 2 - 2, { size: 17, weight: 650, color: p.full ? INK : SOFT, align: "center" })
-      text(ctx, p.when || "", x + pw / 2, y + ph / 2 + 14, { size: 11, color: SOFT, align: "center" })
+      const picked = d.sel && d.sel[0] === i
+      text(ctx, p.n || "", x + pw / 2, y + ph / 2 - 2, { size: 17, weight: 650, color: p.full || picked ? INK : "#5d6470", align: "center" })
+      text(ctx, p.when || "", x + pw / 2, y + ph / 2 + 14, { size: 11, weight: 500, color: "#4f5662", align: "center" })
     }
     // dimensions on the first place
     ctx.strokeStyle = "rgba(61,111,208,.75)"

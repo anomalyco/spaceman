@@ -181,6 +181,15 @@ export class World {
     return made
   }
 
+  // A workspace's place in the bar swells for a moment: something just arrived there.
+  pulse(n) {
+    const c = this.bar.cells.find((c) => c.n === n)
+    if (!c) return
+    to(c.s, (n === this.active ? 1 : BAR.small) * 1.22, 0.12)
+    to(c.o, 1, 0.12)
+    c.pulseEnd = this.time + 0.32
+  }
+
   // The window fades and shrinks a little; its neighbours wait a beat, then close the gap.
   close(id) {
     const w = this.wins.get(id)
@@ -331,6 +340,7 @@ export class World {
         }
       }
       for (const k of ["x", "y", "w", "h", "a", "s", "off", "fo"]) step(w[k], dt)
+      if (w.a.x > 0.5) w.seen = true
       if (w.removeAt && this.time >= w.removeAt) {
         this.wins.delete(w.id)
         const l = this.listOf(w.ws)
@@ -347,6 +357,12 @@ export class World {
       if (!w.float && w.ws !== this.active && w.a.t === 0 && w.a.x < 0.002 && w.off.x !== 0) jump(w.off, 0)
     }
     const b = this.bar
+    for (const c of b.cells)
+      if (c.pulseEnd && this.time >= c.pulseEnd) {
+        c.pulseEnd = 0
+        to(c.s, c.n === this.active ? 1 : BAR.small, 0.4)
+        to(c.o, c.n === this.active ? 1 : 0.5, 0.6)
+      }
     for (const k of ["shown", "scale", "left", "right"]) step(b[k], dt)
     for (const c of b.cells) {
       step(c.s, dt)
@@ -463,7 +479,9 @@ export class World {
 
   menu() {
     const res = Math.min(4, this.res)
-    const key = this.clock + this.frontApp + this.status + this.active + res
+    // the Spaceman item fades and grows in over a quarter second when it first appears
+    const sIn = this.status ? Math.min(1, Math.max(0, (this.time - (this.statusIn ?? -9)) / 0.28)) : 0
+    const key = this.clock + this.frontApp + sIn.toFixed(2) + this.active + res
     if (this.menuCanvas && key === this.menuKey) return this.menuCanvas
     this.menuKey = key
     const c = this.menuCanvas || (this.menuCanvas = document.createElement("canvas"))
@@ -501,8 +519,14 @@ export class World {
     r -= 40
     wifi(ctx, r - 9, mid + 5, ink)
     r -= 30
-    if (this.status) {
+    if (sIn > 0) {
+      const e = 1 - (1 - sIn) ** 3
       const sx = r - 22
+      ctx.save()
+      ctx.globalAlpha = e
+      ctx.translate(sx + 11, mid)
+      ctx.scale(0.7 + 0.3 * e, 0.7 + 0.3 * e)
+      ctx.translate(-(sx + 11), -mid)
       ctx.fillStyle = ink
       ctx.beginPath()
       ctx.roundRect(sx, 5.5, 22, 15, 4)
@@ -511,6 +535,7 @@ export class World {
       ctx.font = `700 11px ${FONT}`
       ctx.textAlign = "center"
       ctx.fillText(String(this.active % 10), sx + 11, mid)
+      ctx.restore()
     }
     c.version = (c.version || 0) + 1
     return c
@@ -673,7 +698,8 @@ export class World {
         const ty = cy + (inset + fy * ih + 0.8 * s) * sc
         const tw = (fw * iw - 1.6 * s) * sc
         const th = (fh * ih - 1.6 * s) * sc
-        const wa = ca * clamp(w.a.x * 1.5)
+        // a workspace you're not on still shows what's in it; only unopened or closing windows are missing
+        const wa = ca * (c.n === this.active ? clamp(w.a.x * 1.5) : w.leaving || !w.seen ? 0 : 0.85)
         P(tx, ty, tw, th, { col: [1, 1, 1, 0.11], r: 3 * s * sc, a: wa })
         const size = Math.min(18 * s * sc, Math.min(tw, th) - 3 * s * sc)
         if (size > 3) P(tx + tw / 2 - size / 2, ty + th / 2 - size / 2, size, size, { tex: iconCanvas(w.app, 48), r: 0, a: wa })

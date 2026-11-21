@@ -16,7 +16,10 @@ const S: any = {
   world: w, SW, SH, reduced: false,
   get t() { return t },
   cam: { D: 1, cx: SW / 2, cy: SH / 2 },
-  grade: [0, 0, 0], fx: { ...POST_DEFAULT }, scene: { pull: 0, win: 0, fade: 0, kpush: 0 }, look: { focus: null, dof: 0.6 },
+  grade: [0, 0, 0], fx: { ...POST_DEFAULT }, scene: {}, look: { focus: null, dof: 0.6 },
+  three: { on: false, a: "CamChair", b: "CamChair", u: 0, glow: 1, black: 0, drift: 0.1, after: false },
+  shot(a: string, b: string, u: number) { Object.assign(S.three, { on: true, a, b, u }) },
+  flat() { S.three.on = false },
   sfx() {}, bed() {}, hint() {}, end() { ended = true },
 }
 let ended = false
@@ -33,7 +36,7 @@ while (t < END + 0.1 && !ended) {
   }
   for (const s of spans) if (t >= s.t0 && t - h < s.t1) s.fn(Math.min(1, Math.max(0, (t - s.t0) / (s.t1 - s.t0))), t)
   w.update(h)
-  if (++n % 2 === 0) trace.push({ t: +t.toFixed(4), cue: ci, cam: [S.cam.cx, S.cam.cy, S.cam.D], scene: { ...S.scene }, active: w.active, ...w.sample() })
+  if (++n % 2 === 0) trace.push({ t: +t.toFixed(4), cue: ci, cam: [S.cam.cx, S.cam.cy, S.cam.D], three: S.three.on ? [S.three.a, S.three.b, +S.three.u.toFixed(4)] : null, active: w.active, ...w.sample() })
 }
 console.log("ok", t.toFixed(2), "cues", ci, "/", cues.length, "frames", trace.length)
 if (out) await Bun.write(out, JSON.stringify(trace))

@@ -33,9 +33,11 @@ const report: Record<string, unknown> = { site }
 const FPS = 30
 const END = END_ + 0.6
 // keyframes: the middle of every other sentence, and every sentence from the signatures on
-const sig = word("Three of you signed", 60)
+const sig = word("Three of them signed", 60)
 const KEYS = LINES.filter((l: any, i: number) => i % 2 === 0 || l[1] >= sig - 0.1).map((l: any) => +((l[1] + l[2]) / 2).toFixed(2))
-const X2 = ["tiled themselves", "There's a bar", "Chatter opens", "Four years", "six foot two", "photograph attached", "Three of you signed", "Mark was in June", "They're both on six", "last thing", "plastic down", "Present"].map((p) => +(word(p, p === "Three of you signed" ? 60 : 0) + 0.9).toFixed(2))
+const X2 = [1.5, 4.5, ...["tiled themselves", "There's a bar", "Chatter opens", "Four years", "six foot two", "photograph attached", "Three of them signed", "Mark was in June", "They're both on six", "last thing", "I went over", "His light", "plastic down", "He's on six"].map((p) => +(word(p, p === "Three of them signed" ? 60 : 0) + 0.9).toFixed(2))]
+// --probe t1,t2,... : only these moments, 1440×900 WebGPU and Canvas 2D, then stop
+const probeArg = process.argv.find((a) => a.startsWith("--probe="))
 
 type Opts = { w?: number; h?: number; dpr?: number; query?: string; mobile?: boolean; muted?: boolean; reduced?: boolean }
 async function open(o: Opts = {}) {
@@ -67,6 +69,26 @@ async function press(page: Page, mobile = false) {
   await page.waitForFunction(() => document.querySelector("section")?.dataset.phase === "live", null, { timeout: 20000 })
 }
 const shot = (page: Page, path: string) => page.screenshot({ path, type: "jpeg", quality: 86 })
+
+if (probeArg) {
+  const times = probeArg.slice(8).split(",").map(Number)
+  for (const [name, q] of [["gpu", ""], ["c2d", "canvas2d"]] as const) {
+    const { page, errors, ctx } = await open({ w: 1440, h: 900, muted: true, query: q })
+    if (name === "gpu") await shot(page, join(out, "still.jpg"))
+    await press(page)
+    for (const t of times) {
+      await page.evaluate((t) => (window as any).__show.seek(t), t)
+      await shot(page, join(out, name + "-" + String(t).replace(".", "_") + ".jpg"))
+    }
+    report[name] = { errors, state: await state(page) }
+    await ctx.close()
+  }
+  writeFileSync(join(out, "report.json"), JSON.stringify(report, null, 1))
+  console.log(JSON.stringify(report, null, 1))
+  await browser.close()
+  server.stop()
+  process.exit(0)
+}
 
 // ── 1 · The film, WebGPU, captions on (--quick skips it: keyframes only) ─
 if (!quick) {

@@ -1,5 +1,5 @@
-// Photographic plates (one look across the film), fetched on the key press. The small wallpaper is
-// the only one the still uses. Each plate is an ImageBitmap with a .version, so both renderers can
+// Pictures inside his apps and the room's stills: Blender renders of our own scenes
+// (show/scenes/*, public/show/renders), fetched on the key press. Each plate is an ImageBitmap with a .version, so both renderers can
 // use it as a texture; blurOf() gives a soft copy for frosted materials.
 export const plates = {}
 const waiting = new Map()
@@ -7,7 +7,7 @@ const waiting = new Map()
 export function loadPlate(base, name) {
   if (plates[name]) return Promise.resolve(plates[name])
   if (waiting.has(name)) return waiting.get(name)
-  const p = fetch(base + "plates/" + name + ".jpg")
+  const p = fetch(base + "renders/" + name + ".jpg")
     .then((r) => (r.ok ? r.blob() : Promise.reject(new Error(String(r.status)))))
     .then((b) => createImageBitmap(b))
     .then((bm) => {

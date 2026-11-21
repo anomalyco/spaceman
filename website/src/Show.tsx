@@ -13,23 +13,14 @@ type ShowApi = {
   destroy(): void;
 };
 
-// The still is the exhibit: the recorder, years later, on a table in a records room. Its plate is
-// 1280 x 856; the view covers the section and keeps the recorder in frame on narrow screens.
-const EX = { w: 1280, h: 856, focus: [0.43, 0.6] };
-const RECORDER = { x: 350, y: 395, w: 362, h: 333 };
+// The still is the study at night with the screen asleep, rendered in Blender from the same camera
+// the film opens on (show/scenes/study). A click anywhere on it starts the film. The plate is
+// 1600 x 1000; the view covers the section and keeps the monitor in frame on narrow screens.
+const EX = { w: 1600, h: 1000, focus: [0.52, 0.42] };
 
-function Exhibit({ onStart, ready, live }: { onStart: () => void; ready: boolean; live: boolean }) {
+function Still({ onStart, live }: { onStart: () => void; live: boolean }) {
   const ref = useRef<SVGSVGElement>(null);
   const [vb, setVb] = useState(`0 0 ${EX.w} ${EX.h}`);
-  const [href, setHref] = useState("show/plates/exhibit-s.jpg");
-  // a sharper plate once the small one is up, for screens with more pixels than it has
-  useEffect(() => {
-    if (window.innerWidth * devicePixelRatio <= 1600) return;
-    const img = new Image();
-    img.onload = () => setHref(img.src);
-    const t = window.setTimeout(() => (img.src = "show/plates/exhibit-l.jpg"), 400);
-    return () => window.clearTimeout(t);
-  }, []);
   useEffect(() => {
     const el = ref.current;
     if (!el) return;
@@ -46,32 +37,19 @@ function Exhibit({ onStart, ready, live }: { onStart: () => void; ready: boolean
     ro.observe(el);
     return () => ro.disconnect();
   }, []);
-  const tag = ["Cassette recorder", "Kitchen, No. 14", "Found running.", "Side A"];
   return (
-    <svg ref={ref} viewBox={vb} preserveAspectRatio="xMidYMid slice" className={`absolute inset-0 size-full transition-opacity duration-700 ${live ? "opacity-0" : "opacity-100"}`}>
-      <title>Exhibit 31: a cassette recorder found running in the kitchen of No. 14</title>
-      <image href={href} width={EX.w} height={EX.h} />
-      <g transform="rotate(-30 604 572)" fill="#2b2119" fillOpacity={0.86} style={{ fontFamily: '"Courier New", Courier, ui-monospace, monospace' }}>
-        <text x={604} y={522} textAnchor="middle" fontSize={15} fontWeight={700} letterSpacing={1.5}>EXHIBIT 31</text>
-        <rect x={562} y={528} width={84} height={0.8} />
-        {tag.map((l, i) => (
-          <text key={l} x={604} y={546 + i * 15} textAnchor="middle" fontSize={10.5}>{l}</text>
-        ))}
-      </g>
-      <rect
-        role="button"
-        tabIndex={0}
-        aria-label="Play the recording"
-        aria-disabled={!ready}
-        onClick={onStart}
-        onKeyDown={(e) => (e.key === "Enter" || e.key === " ") && (e.preventDefault(), onStart())}
-        x={RECORDER.x}
-        y={RECORDER.y}
-        width={RECORDER.w}
-        height={RECORDER.h}
-        rx={14}
-        className={`fill-white/0 outline-none transition-[fill] duration-300 hover:fill-white/[.035] focus-visible:fill-white/[.05] ${ready ? "cursor-pointer" : "cursor-wait"}`}
-      />
+    <svg
+      ref={ref}
+      viewBox={vb}
+      preserveAspectRatio="xMidYMid slice"
+      role="button"
+      tabIndex={0}
+      aria-label="Play"
+      onClick={onStart}
+      onKeyDown={(e) => (e.key === "Enter" || e.key === " ") && (e.preventDefault(), onStart())}
+      className={`absolute inset-0 size-full cursor-pointer outline-none transition-opacity duration-700 ${live ? "pointer-events-none opacity-0" : "opacity-100"}`}
+    >
+      <image href="show/renders/intro.jpg" width={EX.w} height={EX.h} />
     </svg>
   );
 }
@@ -92,11 +70,12 @@ export function Show({ header }: { header: React.ReactNode }) {
   const context = useRef<AudioContext | null>(null);
   const [phase, setPhase] = useState<Phase>("still");
   const [card, setCard] = useState(false);
-  const [ready, setReady] = useState(false);
   const [caption, setCaption] = useState<Caption>(null);
   const [hint, setHint] = useState(false);
   const [cc, setCc] = useState<boolean | null>(null);
   const [touch, setTouch] = useState(false);
+  // a click before the engine has loaded starts the film as soon as it has
+  const pending = useRef(false);
 
   useEffect(() => {
     setTouch(matchMedia("(hover: none) and (pointer: coarse)").matches);
@@ -123,7 +102,11 @@ export function Show({ header }: { header: React.ReactNode }) {
             hint: (h: boolean) => setHint(h),
           },
         }) as ShowApi;
-        setReady(true);
+        if (pending.current) {
+          pending.current = false;
+          setCard(false);
+          void show.current.start({ context: context.current, muted: false });
+        }
       });
     // The engine is small; the voice bank and WebGPU wait for the key press.
     const idle = (window as unknown as { requestIdleCallback?: (f: () => void, o?: object) => number }).requestIdleCallback;
@@ -138,9 +121,14 @@ export function Show({ header }: { header: React.ReactNode }) {
   }, []);
 
   const start = useCallback(() => {
-    const s = show.current;
-    if (!s || (s.phase !== "still" && s.phase !== "ended")) return;
+    // the AudioContext is made inside the click, whenever the film itself gets going
     if (!context.current) context.current = newContext();
+    const s = show.current;
+    if (!s) {
+      pending.current = true;
+      return;
+    }
+    if (s.phase !== "still" && s.phase !== "ended") return;
     setCard(false);
     void s.start({ context: context.current, muted: false });
   }, []);
@@ -152,7 +140,10 @@ export function Show({ header }: { header: React.ReactNode }) {
       if (!m) return;
       const n = Number(m[1]);
       const s = show.current;
-      if (!s) return;
+      if (!s) {
+        if (n === 1 && e.altKey) start();
+        return;
+      }
       if (s.phase === "still" && n === 1) {
         e.preventDefault();
         start();
@@ -174,24 +165,15 @@ export function Show({ header }: { header: React.ReactNode }) {
     <section
       ref={section}
       data-phase={phase}
-      aria-label="Spaceman, a short film"
+      aria-label="Spaceman"
       className="relative h-[100svh] min-h-[480px] w-full overflow-hidden bg-[#08080a] select-none"
     >
-      {phase !== "ended" && <Exhibit onStart={start} ready={ready} live={phase === "live"} />}
+      {phase !== "ended" && <Still onStart={start} live={phase === "live"} />}
       <canvas ref={canvas} aria-hidden="true" onPointerDown={onTap} className={`absolute inset-0 size-full ${phase === "live" ? "opacity-100" : "pointer-events-none opacity-0"}`} />
 
       <div className={`pointer-events-none absolute inset-x-0 top-0 transition-opacity duration-500 ${live ? "opacity-0" : "opacity-100"}`}>
         <div className={live ? "" : "pointer-events-auto"}>{header}</div>
       </div>
-
-      {(phase === "still" || phase === "loading") && (
-        <div className={`pointer-events-none absolute inset-x-0 bottom-[7%] flex flex-col items-center gap-1.5 px-6 text-center transition-opacity duration-300 ${phase === "loading" ? "opacity-0" : "opacity-100"}`}>
-          <p className="text-[15px] text-[#e4e1da] [text-shadow:0_1px_12px_rgba(0,0,0,.9)]">
-            {touch ? "Tap the recorder." : "Press ⌥1, or click the recorder."}
-          </p>
-          <p className="text-[13px] text-[#9d9991] [text-shadow:0_1px_10px_rgba(0,0,0,.9)]">A short film about Spaceman, a tiling window manager for macOS · 2:30 · sound on</p>
-        </div>
-      )}
 
       {live && (
         <div className="absolute top-3 left-3 flex gap-2 sm:top-auto sm:left-auto sm:right-6 sm:bottom-6">
