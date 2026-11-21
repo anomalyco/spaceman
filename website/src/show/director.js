@@ -51,7 +51,7 @@ export function wordEnd(phrase, after) {
 }
 const LAST = WORDS[WORDS.length - 1]
 // the film ends on the last word, with a beat; the interview runs on under the card
-export const END = LAST[2] + 0.55
+export const END = LAST[2] + 1.1
 
 const NOTE = ["call about the gutters", "drill → return", "passwords??", "organize notes", "hedge (ask)"]
 
@@ -571,18 +571,9 @@ export function build(S) {
   })
   sw(six - 0.05, 6)
   push(six + 0.1, six + 1.0, () => frameOf("six", 1.25), "six")
+  // "Mark was in June." The plan: 16 and Mark, filled in, and the dashed third place. It sits there.
   const june = word("Mark was in June")
   push(june + 0.1, june + 1.0, () => frameOf("plan", 1.08), "plan")
-  const quick = word("It was quick")
-  push(quick, word("Nobody missed") + 1.6, () => {
-    const p = R("plan")
-    const D = Math.max(p.w.t / S.SW, p.h.t / S.SH) * 0.7
-    const hx = (S.SW * D) / 2
-    const hy = (S.SH * D) / 2
-    return { cx: clamp(p.x.t + p.w.t * 0.45, hx, S.SW - hx), cy: clamp(p.y.t + p.h.t * 0.5, hy, S.SH - hy), D }
-  })
-  const both = word("They're both on six")
-  at(both + 0.3, () => w.set("plan", { data: { sel: [0, 1] } }))
 
   // ── "Everything else had a place. He was the last thing." ──
   // the empty place on the plan, in the plan's own coordinates (see the plan painter)
@@ -593,14 +584,15 @@ export function build(S) {
   }
   const place = word("Everything else had")
   at(place, () => (w.clock = "Fri Nov 20  11:47 PM"))
-  push(place - 0.2, place + 1.2, () => frameOf("plan", 1.08), "plan")
   // "You're the last thing." The dashed third place is selected, and held.
   const lastThing = word("last thing")
   at(lastThing - 0.1, () => {
     w.set("plan", { data: { sel: [2, 2] } })
     S.sfx("key", 0.25)
   })
-  push(word("He was the last") - 0.05, wordEnd("last thing") + 0.2, () => {
+  // the pause after it (the aligner runs the last word's end through the silence)
+  const lastEnd = TAPE.marks.gaps.find((g) => g[0] > lastThing && g[0] < lastThing + 2)[0]
+  push(word("He was the last") - 0.05, lastEnd + 0.25, () => {
     const r = placeRect(2)
     const D = Math.min(1, (r.h * 1.9) / S.SH)
     const hx = (S.SW * D) / 2
@@ -610,10 +602,9 @@ export function build(S) {
 
   // ── The study, empty; his light; downstairs ──
   // once it has sat a moment, out through the screen into the room he isn't in
-  const lastEnd = wordEnd("last thing")
   const went = word("I went over")
-  const pull = lastEnd + 0.45
-  move(pull, went + 1.4, "screen", "CamRoom", (u) => easeInOut(u) ** 0.85)
+  const pull = lastEnd + 0.6
+  move(pull, went + 1.5, "screen", "CamRoom", (u) => easeInOut(u) ** 0.85)
   // "His light was on." Across the street, under the blind.
   const light = word("His light") - 0.05
   hold(light, word("I'd already put") - 0.05, "CamWindow", 0.5)
@@ -622,14 +613,16 @@ export function build(S) {
   hold(down, ACT[0] + 0.3, "Before", 0.35)
   // what happens downstairs happens in the dark, on the tape
   span(ACT[0] + 0.3, ACT[0] + 1.0, (u) => (S.three.black = smooth(u)))
-  // "He's on six now. With the others." The same floor, afterwards: low, close, held. Nothing moves.
-  const now6 = word("He's on six") - 0.04
-  at(now6, () => {
+  // "It never does." Then the light comes back on the same floor from the same place, afterwards, and
+  // the camera creeps down toward him through "He's on six now. With the others." and the hold after.
+  const never = TAPE.marks.gaps.filter((g) => g[0] > ACT[0] + ACT[1]).at(0)
+  const back = never[0] + 0.5
+  at(back, () => {
     S.three.black = 0
     S.three.after = true
     S.three.drift = 0
-    S.shot("After", "After", 0)
   })
+  span(back, END, (u) => S.shot("Before", "After", S.reduced ? 0 : easeInOut(u) ** 1.2))
   at(END, () => S.end())
 
   LOOKS = looks({ intro, install, tiled, hold0: HOLD[0], hold1: HOLD[1], house, hedge, again, six, place, pull, light, down })

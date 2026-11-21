@@ -15,7 +15,7 @@ import { LINES, TAPE } from "./tape.js"
 import { plates, loadPlate, coverUV } from "./plates.js"
 import { PHOTOS } from "./library.js"
 import { loadGLB, mul, perspective, lookAt, norm, sub, add, scale, cross, dot, lerp3 } from "./glb.js"
-import { clamp, mix } from "./springs.js"
+import { clamp, mix, smooth } from "./springs.js"
 
 // pictures inside his apps (renders of our own scenes), and the stills Canvas 2D uses for the room
 const PLATES = ["wall", "wall-s", "door", "across"]
@@ -203,7 +203,7 @@ export function createShow({ still, canvas, base, capture = false, reduced = fal
     // a camera from a set that isn't here yet falls back to the room
     const c = room.meta[setOf(name)]?.cameras[name] || room.meta.study.cameras.CamRoom
     const A = cssW / cssH
-    const k = A < 1.25 ? (1.25 / A) ** 0.6 : 1
+    const k = A < 1.25 ? (1.25 / A) ** 0.42 : 1
     const vfov = (2 * Math.atan(Math.tan(((c.vfov * Math.PI) / 180) / 2) * k) * 180) / Math.PI
     return { pos: c.pos, dir: c.dir, vfov, focus: c.focus || 3, aperture: c.focus ? 0.9 : 0, tm: 1 }
   }
@@ -217,10 +217,29 @@ export function createShow({ still, canvas, base, capture = false, reduced = fal
     const u = three.u
     // on one camera, u is a slow drift in along its axis
     const pos = three.b === a ? add(A.pos, scale(A.dir, three.drift * u)) : lerp3(A.pos, B.pos, u)
-    const dir = norm(lerp3(A.dir, B.dir, u))
+    let dir = norm(lerp3(A.dir, B.dir, u))
+    // off the screen, the camera keeps looking at what it was looking at on the screen, and only turns
+    // to the room's own point of interest in the second half, so the screen never slides out of frame
+    if (a === "screen" && B !== A) {
+      const w = smooth(clamp((u - 0.25) / 0.75))
+      const look = lerp3(add(A.pos, scale(A.dir, A.focus)), add(B.pos, scale(B.dir, B.focus)), w)
+      dir = norm(sub(look, pos))
+    } else if (three.b === "screen" && B !== A) {
+      // and onto it, the mirror: it turns to the screen first, then comes in
+      const w = smooth(clamp(u / 0.75))
+      const look = lerp3(add(A.pos, scale(A.dir, A.focus)), add(B.pos, scale(B.dir, B.focus)), w)
+      dir = norm(sub(look, pos))
+    }
     const vfov = mix(A.vfov, B.vfov, u)
-    // focus moves in dioptres, so it racks the way a lens does
-    const focus = 1 / mix(1 / A.focus, 1 / B.focus, u)
+    // focus moves in dioptres, so it racks the way a lens does; off the screen it stays on the screen
+    // until the last part of the move, then racks to the room
+    let focus = 1 / mix(1 / A.focus, 1 / B.focus, u)
+    if ((a === "screen" || three.b === "screen") && B !== A) {
+      const pf = panelFrame()
+      const mid = add(pf.tl, add(scale(pf.ex, 0.5), scale(pf.ey, 0.5)))
+      const onScreen = 1 / Math.max(0.05, dot(sub(mid, pos), dir))
+      focus = a === "screen" ? 1 / mix(onScreen, 1 / B.focus, smooth(clamp((u - 0.6) / 0.4))) : 1 / mix(1 / A.focus, onScreen, smooth(clamp(u / 0.4)))
+    }
     // the tone curve and the depth of field arrive in the first part of a move off the screen
     const off = A.tm < B.tm ? clamp(u * 2.5) : B.tm < A.tm ? clamp((1 - u) * 2.5) : A.tm
     const aperture = Math.max(A.aperture, B.aperture) * off
@@ -296,6 +315,7 @@ export function createShow({ still, canvas, base, capture = false, reduced = fal
     const x = M[0] * p[0] + M[4] * p[1] + M[8] * p[2] + M[12]
     const y = M[1] * p[0] + M[5] * p[1] + M[9] * p[2] + M[13]
     const w = M[3] * p[0] + M[7] * p[1] + M[11] * p[2] + M[15]
+    if (w <= 0.01) return null
     return [((x / w + 1) / 2) * iw, ((1 - y / w) / 2) * ih]
   }
   function drawStillShot(list) {
@@ -310,9 +330,10 @@ export function createShow({ still, canvas, base, capture = false, reduced = fal
     let k = cover
     let cx = img.width / 2
     let cy = img.height / 2
-    if (toScreen && room.meta.study) {
+    const near = toScreen && room.meta.study ? room.meta.study.screen.map((p) => project(name, p, img.width, img.height)) : null
+    if (near && near.every(Boolean)) {
       // push in until the monitor fills the frame
-      const pts = room.meta.study.screen.map((p) => project(name, p, img.width, img.height))
+      const pts = near
       const x0 = Math.min(...pts.map((p) => p[0]))
       const x1 = Math.max(...pts.map((p) => p[0]))
       const y0 = Math.min(...pts.map((p) => p[1]))
@@ -324,7 +345,22 @@ export function createShow({ still, canvas, base, capture = false, reduced = fal
       cy = mix(cy, (y0 + y1) / 2, e)
     } else k = cover * (1 + 0.05 * three.u)
     list.push({ x: cssW / 2 - cx * k, y: cssH / 2 - cy * k, w: img.width * k, h: img.height * k, tex: img, g: 0 })
-    if (three.glow < 1 && name === "chair") list.push({ x: 0, y: 0, w: cssW, h: cssH, col: [0, 0, 0, 0.5 * (1 - three.glow)], g: 0 })
+    // the stills were rendered with a blank panel: the desktop goes on it, as it is now
+    const pts = room.meta.study?.cameras[name] && room.meta.study.screen.map((p) => project(name, p, img.width, img.height))
+    if (pts && pts.every((p) => p && isFinite(p[0]) && isFinite(p[1]))) {
+      const X = pts.map((p) => cssW / 2 + (p[0] - cx) * k)
+      const Y = pts.map((p) => cssH / 2 + (p[1] - cy) * k)
+      const clip = [Math.min(...X), Math.min(...Y), Math.max(...X), Math.max(...Y)]
+      const bw = clip[2] - clip[0]
+      const bh = clip[3] - clip[1]
+      if (bw > 2 && bw < cssW * 6) {
+        const kk = Math.max(bw / SW, bh / SH)
+        setRes(world, kk, dpr())
+        world.draw(list, { k: kk, ox: (clip[0] + clip[2]) / 2 - (SW * kk) / 2, oy: (clip[1] + clip[3]) / 2 - (SH * kk) / 2 }, { clip, g: 1 })
+        list.push({ x: clip[0], y: clip[1], w: bw, h: bh, col: [0, 0, 0, 0.12 + 0.88 * (1 - clamp(three.glow))], g: 0, clip })
+      }
+    }
+    if (three.glow < 1 && name === "CamChair") list.push({ x: 0, y: 0, w: cssW, h: cssH, col: [0, 0, 0, 0.5 * (1 - three.glow)], g: 0 })
     if (three.black > 0) list.push({ x: 0, y: 0, w: cssW, h: cssH, col: [0, 0, 0, clamp(three.black)], g: 0 })
   }
 

@@ -26,7 +26,9 @@ def materials(season=0.0, wet=0.0):
     M["siding"] = clapboard("siding", (0.52, 0.53, 0.5))
     M["siding12"] = clapboard("siding12", (0.44, 0.41, 0.36))
     M["trim"] = mat("trim", (0.66, 0.66, 0.64), 0.5)
-    M["roof"] = noisy(mat("roof", rough=0.9), (0.06, 0.06, 0.065), (0.1, 0.1, 0.105), scale=30, bump=0.3)
+    M["roof"] = noisy(mat("roof", rough=0.9), (0.1, 0.098, 0.1), (0.17, 0.165, 0.165), scale=30, bump=0.3, mscale=(1, 1, 9))
+    M["gutter"] = mat("gutter", (0.55, 0.55, 0.53), 0.4)
+    M["blind"] = noisy(mat("blind", rough=1.0), (0.28, 0.27, 0.25), (0.34, 0.33, 0.3), scale=60, detail=2)
     M["door"] = mat("door14", (0.09, 0.14, 0.12), 0.45)
     M["darkglass"] = mat("darkglass", (0.012, 0.014, 0.018), 0.08)
     M["lamppost"] = mat("lamppost", (0.08, 0.08, 0.085), 0.5)
@@ -127,6 +129,13 @@ def house(name, x0, x1, y0, y1, G, M, siding, hh=5.6, body=True):
     r = obj_from_bm(name + "Roof", bm, M["roof"])
     r.location = ((x0 + x1) / 2, (y0 + y1) / 2, G + hh)
     out.append(r)
+    # the eave: a fascia board and a gutter along the front, a downpipe at the corner; a plinth
+    L = y1 - y0 + 0.6
+    out.append(box(name + "Fascia", (x0 - 0.44, (y0 + y1) / 2, G + hh - 0.06), (0.04, L, 0.2), M["trim"], 0.005))
+    out.append(box(name + "Gutter", (x0 - 0.5, (y0 + y1) / 2, G + hh - 0.1), (0.11, L, 0.1), M["gutter"], 0.02))
+    out.append(cyl(name + "Downpipe", (x0 - 0.08, y1 - 0.15, G + (hh - 0.1) / 2), 0.04, hh - 0.1, M["gutter"], 12))
+    if body:
+        out.append(box(name + "Plinth", ((x0 + x1) / 2, (y0 + y1) / 2, G + 0.18), (x1 - x0 + 0.05, y1 - y0 + 0.05, 0.36), M["concrete"], 0.01))
     return out
 
 
@@ -147,7 +156,10 @@ def window(fx, wy, wz, ww, wh, M, facing=-1, glass=True):
     out = []
     s = facing
     if glass:
-        out.append(box("win", (fx + s * 0.03, wy, wz), (0.06, ww, wh), M["darkglass"], 0.004))
+        out.append(box("win", (fx + s * 0.02, wy, wz), (0.04, ww, wh), M["darkglass"], 0.004))
+        # a dark room behind it, its blind part way down (a different way in every window)
+        k = 0.25 + 0.5 * ((math.sin(wy * 12.9898 + wz * 78.233) * 43758.5453) % 1.0)
+        out.append(box("blind", (fx + s * 0.045, wy, wz + wh / 2 - wh * k / 2), (0.004, ww - 0.02, wh * k), M["blind"], 0))
     out.append(box("winTrimL", (fx + s * 0.04, wy - ww / 2 - 0.05, wz), (0.06, 0.1, wh + 0.2), M["trim"], 0.006))
     out.append(box("winTrimR", (fx + s * 0.04, wy + ww / 2 + 0.05, wz), (0.06, 0.1, wh + 0.2), M["trim"], 0.006))
     out.append(box("winTrimT", (fx + s * 0.04, wy, wz + wh / 2 + 0.05), (0.06, ww + 0.2, 0.1), M["trim"], 0.006))

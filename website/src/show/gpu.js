@@ -156,7 +156,7 @@ fn agx(c: vec3f) -> vec3f {
   if (dof > 0.001) {
     let q = max(max(pu.focus.xy - px, px - pu.focus.zw), vec2f(0.0));
     var coc = dof * smoothstep(0.0, 0.42 * min(pu.res.x, pu.res.y), length(q));
-    if (three) { coc = dof * s0.a; }
+    if (three) { coc = dof * abs(s0.a); }
     if (coc > 0.002) {
       let b1 = tent(l1, i.uv);
       let b2 = tent(l2, i.uv);
@@ -168,7 +168,7 @@ fn agx(c: vec3f) -> vec3f {
   let wide = tent(l3, i.uv) * 0.55 + tent(l4, i.uv) * 0.45;
   let lw = max(dot(wide, vec3f(0.2126, 0.7152, 0.0722)), 1e-4);
   c += wide * (max(lw - pu.a.z, 0.0) / lw) * pu.a.y;
-  if (three) { c = mix(pow(max(c, vec3f(0.0)), vec3f(1.0 / 2.2)), agx(c), pu.c.z); }
+  if (three) { c = mix(pow(max(c, vec3f(0.0)), vec3f(1.0 / 2.2)), agx(c), pu.c.z * select(1.0, 0.0, s0.a < 0.0)); }
   // grade: exposure, warmth, saturation, contrast around mid grey
   c *= pu.b.z;
   c *= vec3f(1.0 + pu.c.x * 0.06, 1.0, 1.0 - pu.c.x * 0.08);
@@ -223,6 +223,8 @@ struct VO { @builtin(position) pos: vec4f, @location(0) uv: vec2f, @location(1) 
   c *= u.p.z;
   let z = distance(u.eye.xyz, i.w);
   let coc = clamp(abs(1.0 / u.d.x - 1.0 / max(z, 0.01)) * u.d.y, 0.0, 1.0);
+  // the panel is a display, not a lit surface: its alpha goes negative so the tone curve leaves it alone
+  if (kind > 0.5 && kind < 1.5) { return vec4f(c, -max(coc, 0.002)); }
   return vec4f(c, coc);
 }
 `

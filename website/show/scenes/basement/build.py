@@ -33,8 +33,9 @@ ROOM, DETAIL, BEFORE, AFTER = [], [], [], []
 # ── materials ──
 FLOOR = dict(color_a=(0.19, 0.185, 0.175), color_b=(0.28, 0.27, 0.255), scale=3.0, detail=8.0, rough=(0.7, 0.9), bump=0.1)
 floorm = noisy(mat("floorc", rough=0.85), **FLOOR)
-patchm = noisy(mat("patch", rough=0.8), (0.33, 0.325, 0.31), (0.38, 0.372, 0.355), scale=6, detail=6, bump=0.05)
-seam = mat("seam", (0.03, 0.03, 0.03), 0.9)
+# newer concrete: lighter, smoother, trowelled in long arcs
+patchm = noisy(mat("patch", rough=0.75), (0.36, 0.352, 0.335), (0.43, 0.42, 0.4), scale=2.5, detail=10, bump=0.03, mscale=(1, 3, 1))
+seam = mat("seam", (0.085, 0.082, 0.078), 0.9)
 joist = wood("joist", base=(0.5, 0.38, 0.24), dark=(0.36, 0.25, 0.14), scale=(1, 1, 14))
 tread = wood("tread", base=(0.44, 0.31, 0.18), dark=(0.3, 0.2, 0.1))
 sub = boards("subfloor", base=(0.4, 0.3, 0.19), dark=(0.28, 0.2, 0.12), width=0.2, length=2.4)
@@ -108,7 +109,7 @@ blockX, blockY = block("blockX", "X"), block("blockY", "Y")
 def wrap_material(bx, by):
     """Builder's plastic round him, taped at five places; blood through it at the head and chest, and
     pooled along the underside."""
-    m = mat("wrap", (0.56, 0.57, 0.58), 0.3)
+    m = mat("wrap", (0.46, 0.48, 0.5), 0.3)
     v = node(m, "ShaderNodeVectorMath")
     v.operation = "SUBTRACT"
     link(m, texcoord(m, "Object"), v.inputs[0])
@@ -127,7 +128,7 @@ def wrap_material(bx, by):
     els[0].color = (0, 0, 0, 1)
     els[1].position = 0.999
     els[1].color = (0, 0, 0, 1)
-    for b in (0.6, 0.3, -0.1, -0.5, -0.82):
+    for b in (0.71, 0.6, 0.3, -0.1, -0.5, -0.82):
         e = els.new((b - 0.028 + 1) / 2)
         e.color = (1, 1, 1, 1)
         e = els.new((b + 0.028 + 1) / 2)
@@ -159,7 +160,7 @@ def wrap_material(bx, by):
     link(m, low.outputs["Result"], a2.inputs[1])
     br = node(m, "ShaderNodeValToRGB")
     br.color_ramp.elements[0].position = 0.68
-    br.color_ramp.elements[0].color = (0.56, 0.57, 0.58, 1)
+    br.color_ramp.elements[0].color = (0.46, 0.48, 0.5, 1)
     br.color_ramp.elements[1].position = 0.86
     br.color_ramp.elements[1].color = (0.05, 0.002, 0.002, 1)
     e = br.color_ramp.elements.new(0.74)
@@ -203,6 +204,15 @@ def smear_material():
     return m
 
 
+def applied(o):
+    """o with its modifiers baked into its mesh."""
+    dg = bpy.context.evaluated_depsgraph_get()
+    me = D.meshes.new_from_object(o.evaluated_get(dg))
+    o.modifiers.clear()
+    o.data = me
+    return o
+
+
 def text(name, s, center, size, rot=(0, 0, 0), m=ink):
     cu = D.curves.new(name, "FONT")
     cu.body = s
@@ -228,22 +238,6 @@ def label(name, s, center, size=0.07):
     x, y, z = center
     t, w = text(name + "Text", s, (x, y, z + 0.0026), size)
     return [box(name, (x, y, z + 0.0012), (w + 0.06, size * 1.15, 0.0024), white, 0.0), t]
-
-
-def blob(name, cx, cy, r, z, m, seed, squash=(1.0, 1.0), segs=72):
-    rnd = random.Random(seed)
-    ph = [rnd.uniform(0, 2 * pi) for _ in range(5)]
-    amp = [0.3, 0.18, 0.12, 0.08, 0.06]
-    bm = bmesh.new()
-    c = bm.verts.new((cx, cy, z))
-    ring = []
-    for i in range(segs):
-        a = 2 * pi * i / segs
-        k = 1 + sum(amp[j] * math.sin((j + 2) * a + ph[j]) for j in range(5))
-        ring.append(bm.verts.new((cx + math.cos(a) * r * k * squash[0], cy + math.sin(a) * r * k * squash[1], z)))
-    for i in range(segs):
-        bm.faces.new([c, ring[i], ring[(i + 1) % segs]])
-    return obj_from_bm(name, bm, m)
 
 
 # ── the room ──
@@ -296,9 +290,9 @@ R.append(cyl("cord", (BULB[0], BULB[1], (BULB[2] + RH) / 2 + 0.05), 0.004, RH - 
 R.append(cyl("socket", (BULB[0], BULB[1], BULB[2] + 0.06), 0.018, 0.05, black, 16))
 # the two old places: newer concrete, saw-cut seams
 for (cx, name) in PLACES[:2]:
-    R.append(box("patch", (cx, (PY0 + PY1) / 2, 0.0005), (0.8, PY1 - PY0, 0.002), patchm, 0))
-    for (sx, sy, w, h) in [(cx, PY0, 0.82, 0.012), (cx, PY1, 0.82, 0.012), (cx - 0.4, (PY0 + PY1) / 2, 0.012, 2.02), (cx + 0.4, (PY0 + PY1) / 2, 0.012, 2.02)]:
-        R.append(box("seam", (sx, sy, 0.0008), (w, h, 0.002), seam, 0))
+    R.append(box("patch", (cx, (PY0 + PY1) / 2, 0.002), (0.8, PY1 - PY0, 0.004), patchm, 0.002, 3))
+    for (sx, sy, w, h) in [(cx, PY0, 0.81, 0.007), (cx, PY1, 0.81, 0.007), (cx - 0.4, (PY0 + PY1) / 2, 0.007, 2.01), (cx + 0.4, (PY0 + PY1) / 2, 0.007, 2.01)]:
+        R.append(box("seam", (sx, sy, 0.0042), (w, h, 0.001), seam, 0))
 
 
 def hung_plastic(name, axis, c0, c1, fixed, inward):
@@ -339,15 +333,43 @@ R.append(hung_plastic("sheetF", "X", 1.3, RW - 0.05, RD, 1))
 R.append(hung_plastic("sheetR", "Y", SY1 + 0.15, RD - 0.03, RW, 1))
 R.append(box("tapeF", ((1.3 + RW) / 2, RD - 0.012, RH - 0.05), (RW - 1.35, 0.004, 0.05), tape, 0))
 R.append(box("tapeR", (RW - 0.012, (SY1 + 0.15 + RD) / 2, RH - 0.05), (0.004, RD - SY1 - 0.18, 0.05), tape, 0))
-# the floor sheet over the third place, taped down at its edges
+# the floor sheet over the third place, taped down at its edges: flat but for the creases it was folded
+# in from the packet (a grid, alternately up and down) and a few broad soft waves
 FX0, FX1, FY0, FY1 = 3.6, RW - 0.06, 1.25, RD - 0.2
+from mathutils import noise as mnoise
 bm = bmesh.new()
-bmesh.ops.create_grid(bm, x_segments=60, y_segments=80, size=0.5)
+NXs, NYs = (120, 180) if QUICK else (240, 360)
+bmesh.ops.create_grid(bm, x_segments=NXs, y_segments=NYs, size=0.5)
+CX = [FX0 + (FX1 - FX0) * k / 4 for k in range(1, 4)]
+CY = [FY0 + (FY1 - FY0) * k / 6 for k in range(1, 6)]
+
+
+def sheet_z(x, y):
+    z = 0.006
+    for k, c in enumerate(CX):
+        z += (1 if k % 2 else -0.6) * 0.0026 * max(0.0, 1 - abs(x - c) / 0.012) ** 1.5
+    for k, c in enumerate(CY):
+        z += (1 if k % 2 == 0 else -0.6) * 0.0022 * max(0.0, 1 - abs(y - c) / 0.012) ** 1.5
+    z += 0.006 * max(0.0, mnoise.noise(Vector((x * 1.3, y * 0.9, 0.5))))
+    z += 0.0015 * mnoise.noise(Vector((x * 7.0, y * 5.0, 2.0)))
+    # held flat under the tape
+    e = min(x - FX0, FX1 - x, y - FY0, FY1 - y)
+    return 0.004 + (z - 0.004) * min(1.0, max(0.0, (e - 0.03) / 0.12))
+
+
 for v in bm.verts:
-    v.co = Vector((FX0 + (v.co.x + 0.5) * (FX1 - FX0), FY0 + (v.co.y + 0.5) * (FY1 - FY0), 0.011 + 0.005 * math.sin(v.co.x * 23 + v.co.y * 7) * math.sin(v.co.y * 31) + 0.003 * math.sin(v.co.x * 57 - v.co.y * 13)))
-R.append(obj_from_bm("floorSheet", bm, plastic))
+    x, y = FX0 + (v.co.x + 0.5) * (FX1 - FX0), FY0 + (v.co.y + 0.5) * (FY1 - FY0)
+    v.co = Vector((x, y, sheet_z(x, y)))
+sheet = obj_from_bm("floorSheet", bm, plastic)
+# the creases need the fine grid to be shaped, not to be drawn: most of it is flat
+dm = sheet.modifiers.new("lighter", "DECIMATE")
+dm.ratio = 0.12
+applied(sheet)
+for p in sheet.data.polygons:
+    p.use_smooth = True
+R.append(sheet)
 for (sx, sy, w, h) in [((FX0 + FX1) / 2, FY0, FX1 - FX0, 0.05), (FX0, (FY0 + FY1) / 2, 0.05, FY1 - FY0)]:
-    R.append(box("floorTape", (sx, sy, 0.02), (w, h, 0.002), tape, 0))
+    R.append(box("floorTape", (sx, sy, 0.006), (w, h, 0.002), tape, 0))
 
 # ── the labels (the third already printed) ──
 for k, (cx, name) in enumerate(PLACES):
@@ -361,74 +383,189 @@ BEFORE.append(cyl("tapeRoll", (3.4, 1.9, 0.025), 0.055, 0.05, tape, 32))
 BEFORE.append(cyl("tapeCore", (3.4, 1.9, 0.0505), 0.036, 0.002, mat("core", (0.42, 0.33, 0.2), 0.9), 32))
 
 # ── after: him, wrapped; the pool; the trail down the stairs and across the floor ──
-# the body: a cocoon lofted through cross-sections from the feet (y -0.93) to the head (y 0.97)
-PROF = [(-0.93, 0.07, 0.09), (-0.88, 0.13, 0.15), (-0.78, 0.12, 0.11), (-0.6, 0.15, 0.115), (-0.4, 0.17, 0.125),
-        (-0.15, 0.2, 0.14), (0.05, 0.225, 0.165), (0.2, 0.215, 0.16), (0.38, 0.27, 0.2), (0.53, 0.265, 0.19),
-        (0.61, 0.13, 0.12), (0.68, 0.12, 0.14), (0.79, 0.13, 0.18), (0.9, 0.11, 0.15), (0.97, 0.05, 0.08)]
-
-
-def prof(y):
-    if y <= PROF[0][0]:
-        return PROF[0][1:]
-    for a, b in zip(PROF, PROF[1:]):
-        if y <= b[0]:
-            t = (y - a[0]) / (b[0] - a[0])
-            t = t * t * (3 - 2 * t)
-            return (a[1] + (b[1] - a[1]) * t, a[2] + (b[2] - a[2]) * t)
-    return PROF[-1][1:]
-
-
-def sprof(y):
-    ws = [prof(y + d) for d in (-0.03, -0.015, 0, 0.015, 0.03)]
-    return (sum(w for w, _ in ws) / 5, sum(h for _, h in ws) / 5)
-
-
+# him, lying on his back, head turned away, one arm a little out, feet fallen apart, wound in the sheet:
+# ellipsoids in one mesh (with what the plastic bridges), voxel-remeshed and smoothed into one form, then
+# creased, pleated and pulled in at the tape.
+PARTS = [  # centre (x across, y along, z), radii, rotation (degrees)
+    ((0.0, 0.83, 0.115), (0.082, 0.1, 0.09), (0, 20, 0)), ((0.025, 0.755, 0.1), (0.06, 0.055, 0.055), (0, 20, 0)),
+    ((0.065, 0.83, 0.18), (0.016, 0.028, 0.02), (0, 40, 0)), ((0.01, 0.69, 0.08), (0.05, 0.07, 0.05), (0, 0, 0)),
+    ((0.0, 0.47, 0.115), (0.175, 0.16, 0.1), (0, 0, 0)), ((0.0, 0.53, 0.115), (0.2, 0.08, 0.09), (0, 0, 0)),
+    ((0.2, 0.56, 0.085), (0.07, 0.075, 0.06), (0, 0, 0)), ((-0.2, 0.56, 0.085), (0.07, 0.075, 0.06), (0, 0, 0)),
+    ((0.0, 0.24, 0.105), (0.155, 0.17, 0.095), (0, 0, 0)),
+    ((0.0, 0.03, 0.095), (0.17, 0.12, 0.085), (0, 0, 0)),
+    ((0.255, 0.4, 0.065), (0.052, 0.15, 0.048), (0, 0, -4)), ((-0.265, 0.4, 0.065), (0.052, 0.15, 0.048), (0, 0, 8)),
+    ((0.275, 0.12, 0.055), (0.042, 0.135, 0.038), (0, 0, -3)), ((-0.31, 0.13, 0.058), (0.042, 0.135, 0.038), (0, 0, 14)),
+    ((0.28, -0.07, 0.045), (0.035, 0.065, 0.022), (0, 0, 0)), ((-0.345, -0.05, 0.048), (0.035, 0.065, 0.022), (0, 0, 18)),
+    ((0.095, -0.25, 0.085), (0.085, 0.22, 0.075), (0, 0, -3)), ((-0.105, -0.25, 0.085), (0.085, 0.22, 0.075), (0, 0, 5)),
+    ((0.105, -0.45, 0.075), (0.055, 0.05, 0.055), (0, 0, 0)), ((-0.125, -0.45, 0.078), (0.055, 0.05, 0.055), (0, 0, 0)),
+    ((0.115, -0.64, 0.06), (0.052, 0.19, 0.05), (0, 0, -3)), ((-0.15, -0.64, 0.062), (0.052, 0.19, 0.05), (0, 0, 6)),
+    ((0.14, -0.86, 0.09), (0.042, 0.055, 0.085), (0, 30, 0)), ((-0.19, -0.86, 0.088), (0.042, 0.055, 0.085), (0, -45, 0)),
+]
+from mathutils import Euler
+# what the plastic bridges: between his arms and his sides, between his legs (bound together)
+PARTS += [((0.2, 0.3, 0.075), (0.07, 0.26, 0.055), (0, 0, 0)), ((-0.21, 0.3, 0.075), (0.075, 0.26, 0.055), (0, 0, 4)),
+          ((0.0, -0.42, 0.075), (0.11, 0.42, 0.06), (0, 0, 0)), ((0.0, -0.84, 0.065), (0.15, 0.07, 0.05), (0, 0, 0)),
+          ((0.0, 0.05, 0.12), (0.2, 0.2, 0.07), (0, 0, 0))]
 bm = bmesh.new()
-NR, NM = 150 if not QUICK else 70, 48
-rings = []
-for r in range(NR + 1):
-    y = -0.93 + 1.9 * r / NR
-    w, h = sprof(y)
-    zc = h * 0.45
-    ring = []
-    for k in range(NM):
-        th = 2 * pi * k / NM
-        c, s_ = math.cos(th), math.sin(th)
-        x = w * math.copysign(abs(c) ** 0.8, c)
-        if s_ >= 0:
-            z = zc + (h - zc) * s_
-            if y < -0.12:
-                z -= 0.035 * math.exp(-((x / 0.035) ** 2)) * min(1.0, (-0.12 - y) / 0.15) * s_
-        else:
-            z = zc - (zc - 0.012) * abs(s_) ** 0.5
-        ring.append(bm.verts.new((BX + x, BY + y, z)))
-    rings.append(ring)
-for r in range(NR):
-    for k in range(NM):
-        bm.faces.new([rings[r][k], rings[r][(k + 1) % NM], rings[r + 1][(k + 1) % NM], rings[r + 1][k]])
-for ring, y in ((rings[0], -0.95), (rings[-1], 0.99)):
-    c = bm.verts.new((BX, BY + y, prof(y)[1] * 0.45))
-    for k in range(NM):
-        bm.faces.new([ring[k], ring[(k + 1) % NM], c])
-bmesh.ops.recalc_face_normals(bm, faces=bm.faces)
+for (c, r, rot) in PARTS:
+    made = bmesh.ops.create_uvsphere(bm, u_segments=24, v_segments=16, radius=1.0)
+    Mr = Euler([rad(a) for a in rot]).to_matrix()
+    for v in made["verts"]:
+        v.co = Mr @ Vector((v.co.x * r[0], v.co.y * r[1], v.co.z * r[2])) + Vector((BX + c[0], BY + c[1], c[2] + 0.004))
+# the sheet's ends gathered past his head and feet, twisted and taped
+for (y0, y1, rr) in ((0.93, 1.04, 0.05), (-0.92, -0.99, 0.045)):
+    for k in range(6):
+        t = k / 5
+        made = bmesh.ops.create_uvsphere(bm, u_segments=16, v_segments=10, radius=1.0)
+        q = rr * (1 - 0.6 * t)
+        for v in made["verts"]:
+            v.co = Vector((v.co.x * q * 1.2, v.co.y * q, v.co.z * q * 0.8)) + Vector((BX + (0.01 if y0 > 0 else -0.03), BY + y0 + (y1 - y0) * t, 0.04 + 0.01 * t))
 body = obj_from_bm("body", bm, wrap_material(BX, BY))
+rm = body.modifiers.new("remesh", "REMESH")
+rm.mode = "VOXEL"
+rm.voxel_size = 0.014 if QUICK else 0.01
+print("remesh", rm.voxel_size, flush=True)
+ls = body.modifiers.new("smooth", "LAPLACIANSMOOTH")
+ls.lambda_factor = 1.0
+ls.iterations = 24
+applied(body)
+# the plastic: pulled in at the tape, pleated where it's pulled, creased round him where it was wound
+BANDS = (0.71, 0.6, 0.3, -0.1, -0.5, -0.82)
+for v in body.data.vertices:
+    x, y, z = v.co.x - BX, v.co.y - BY, v.co.z
+    n = v.normal
+    b = max(math.exp(-(((y - c) / 0.022) ** 2)) for c in BANDS)
+    near = max(math.exp(-(((y - c) / 0.09) ** 2)) for c in BANDS)
+    up = max(0.0, min(1.0, (z - 0.02) / 0.04))
+    wound = 1 - abs(mnoise.noise(Vector((x * 2.5, y * 16.0, z * 2.5))))
+    pleat = 1 - abs(mnoise.noise(Vector((x * 30.0, y * 3.0, z * 30.0))))
+    soft = mnoise.noise(Vector((x * 9.0, y * 9.0, z * 9.0)))
+    d = -0.01 * b + up * (0.011 * wound ** 3 + 0.008 * near * pleat ** 3 + 0.003 * soft)
+    v.co = v.co + n * d
 for p in body.data.polygons:
     p.use_smooth = True
 tex = D.textures.new("crinkle", "CLOUDS")
-tex.noise_scale = 0.045
+tex.noise_scale = 0.02
 dp = body.modifiers.new("crinkle", "DISPLACE")
 dp.texture = tex
 dp.texture_coords = "GLOBAL"
-dp.strength = 0.008
-tex2 = D.textures.new("folds", "CLOUDS")
-tex2.noise_scale = 0.16
-dp2 = body.modifiers.new("folds", "DISPLACE")
-dp2.texture = tex2
-dp2.texture_coords = "GLOBAL"
-dp2.strength = 0.018
+dp.strength = 0.002
 AFTER.append(body)
-for (cx, cy, r, sq, sd) in [(BX - 0.32, BY + 0.62, 0.34, (1.0, 1.3), 1), (BX + 0.28, BY + 0.3, 0.2, (1.0, 1.6), 2), (BX - 0.2, BY - 0.25, 0.12, (1.2, 1.0), 3)]:
-    AFTER.append(blob("pool", cx, cy, r, 0.021, blood, sd, sq))
+# the overlap of the sheet, loose on the floor along his right side
+bm = bmesh.new()
+rows = []
+for i in range(81):
+    y = -0.75 + 1.5 * i / 80
+    w, _ = (0.0, 0.0)
+    for (c, r, rot) in PARTS:
+        d = (y - c[1]) / r[1]
+        if abs(d) < 1 and c[0] > 0:
+            w = max(w, c[0] + r[0] * math.sqrt(1 - d * d))
+    reach = 0.07 + 0.05 * mnoise.noise(Vector((y * 3.0, 0.3, 0.7))) + 0.03 * math.sin(y * 9)
+    row = []
+    for j in range(7):
+        t = j / 6
+        row.append(bm.verts.new((BX + w - 0.02 + (reach + 0.02) * t, BY + y, 0.012 + 0.025 * (1 - t) ** 2 + 0.002 * math.sin(y * 40 + t * 5))))
+    rows.append(row)
+for i in range(80):
+    for j in range(6):
+        bm.faces.new([rows[i][j], rows[i][j + 1], rows[i + 1][j + 1], rows[i + 1][j]])
+bm.normal_update()
+if sum(f.normal.z for f in bm.faces) < 0:
+    bmesh.ops.reverse_faces(bm, faces=bm.faces)
+flap = obj_from_bm("flap", bm, wrap_material(BX, BY))
+for p in flap.data.polygons:
+    p.use_smooth = True
+AFTER.append(flap)
+print("body done", len(body.data.vertices), flush=True)
+
+
+def pool_material():
+    """Blood by its depth: near black where it's deep, red only in the thin rim, a little uneven."""
+    m = mat("pool", rough=0.12)
+    vc = node(m, "ShaderNodeVertexColor")
+    vc.layer_name = "rad"
+    sp = node(m, "ShaderNodeSeparateColor")
+    link(m, vc.outputs["Color"], sp.inputs[0])
+    n = node(m, "ShaderNodeTexNoise")
+    n.inputs["Scale"].default_value = 30.0
+    n.inputs["Detail"].default_value = 6.0
+    link(m, texcoord(m, "Object"), n.inputs["Vector"])
+    a = node(m, "ShaderNodeMath")
+    a.operation = "MULTIPLY_ADD"
+    link(m, n.outputs["Fac"], a.inputs[0])
+    a.inputs[1].default_value = 0.12
+    link(m, sp.outputs[0], a.inputs[2])
+    r = node(m, "ShaderNodeValToRGB")
+    els = r.color_ramp.elements
+    els[0].position, els[0].color = 0.05, (0.022, 0.001, 0.001, 1)
+    els[1].position, els[1].color = 1.1, (0.07, 0.004, 0.003, 1)
+    e = els.new(0.9)
+    e.color = (0.035, 0.0015, 0.0012, 1)
+    e = els.new(1.04)
+    e.color = (0.16, 0.012, 0.009, 1)
+    link(m, a.outputs[0], r.inputs["Fac"])
+    link(m, r.outputs["Color"], bsdf(m).inputs["Base Color"])
+    return m
+
+
+poolm = pool_material()
+
+
+def pool(name, cx, cy, r, z, seed, squash=(1.0, 1.0), segs=200, nring=7):
+    """A pool with an irregular, fractal edge (a few runs where it found a fold), domed slightly at its rim."""
+    rnd = random.Random(seed)
+    harm = [(j, rnd.uniform(0, 2 * pi), 0.3 / j ** 1.15 * rnd.uniform(0.4, 1.3)) for j in range(2, 48)]
+    runs = [(rnd.uniform(0, 2 * pi), rnd.uniform(0.08, 0.2), rnd.uniform(0.2, 0.6)) for _ in range(rnd.randint(1, 3))]
+
+    def edge(a):
+        k = 1 + sum(A * math.sin(j * a + p) for j, p, A in harm)
+        for (la, lw, lh) in runs:
+            d = math.atan2(math.sin(a - la), math.cos(a - la))
+            k += lh * math.exp(-((d / lw) ** 2))
+        return max(0.3, k)
+
+    bm = bmesh.new()
+    lay = bm.verts.layers.float_color.new("rad")
+    cv = bm.verts.new((cx, cy, z + 0.0022))
+    cv[lay] = (0, 0, 0, 1)
+    prev = None
+    for i in range(1, nring + 1):
+        t = i / nring
+        t2 = 1 - (1 - t) ** 1.6
+        ring = []
+        for k in range(segs):
+            a = 2 * pi * k / segs
+            e = edge(a) * r * t2
+            v = bm.verts.new((cx + math.cos(a) * e * squash[0], cy + math.sin(a) * e * squash[1], z + 0.0022 * (1 - t ** 6)))
+            v[lay] = (t, t, t, 1)
+            ring.append(v)
+        for k in range(segs):
+            if prev is None:
+                bm.faces.new([cv, ring[k], ring[(k + 1) % segs]])
+            else:
+                bm.faces.new([prev[k], ring[k], ring[(k + 1) % segs], prev[(k + 1) % segs]])
+        prev = ring
+    o = obj_from_bm(name, bm, poolm)
+    # laid over the sheet's creases, as a film
+    sw = o.modifiers.new("onto", "SHRINKWRAP")
+    sw.target = sheet
+    sw.wrap_method = "PROJECT"
+    sw.use_project_z = True
+    sw.use_negative_direction = True
+    sw.use_positive_direction = True
+    sw.offset = 0.0012
+    return applied(o)
+
+
+# under his head, run out toward the old places; through the plastic at his side; drops
+for (cx, cy, r, sq, sd) in [(BX - 0.2, BY + 0.78, 0.3, (1.15, 1.0), 11), (BX + 0.3, BY + 0.42, 0.13, (0.9, 1.5), 12), (BX - 0.26, BY + 0.1, 0.07, (1.2, 1.0), 13)]:
+    AFTER.append(pool("pool", cx, cy, r, 0.03, sd, sq))
+rd = random.Random(21)
+for k in range(14):
+    a = rd.uniform(pi * 0.5, pi * 1.4)
+    d = rd.uniform(0.45, 0.85)
+    AFTER.append(pool("drop", BX - 0.2 + math.cos(a) * d, BY + 0.7 + math.sin(a) * d * 0.8, rd.uniform(0.006, 0.02), 0.03, 100 + k, segs=40, nring=3))
 # the trail: from the foot of the stairs, round the old places, to the sheet
 path = [(0.55, 3.15), (0.85, 2.55), (1.15, 1.85), (1.7, 1.62), (2.6, 1.55), (3.3, 1.7), (3.62, 1.95)]
 

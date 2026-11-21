@@ -170,6 +170,14 @@ await keyframes("phone", { w: 390, h: 844, dpr: 3, mobile: true })
   await ctx.close()
 }
 
+// ── 2c · The page below the film, before any press (desktop and phone) ──
+for (const [name, o] of [["page", { w: 1440, h: 900 }], ["page-phone", { w: 390, h: 844, dpr: 3, mobile: true }]] as const) {
+  const { page, ctx } = await open({ muted: true, ...o })
+  await page.waitForTimeout(400)
+  await page.screenshot({ path: join(out, name + ".jpg"), type: "jpeg", quality: 80, fullPage: true })
+  await ctx.close()
+}
+
 // ── 3 · Real time: the busiest section at 1440×900 @2x ──────────────────
 if (!quick) {
   const { page, errors, ctx } = await open({ w: 1440, h: 900, dpr: 2 })

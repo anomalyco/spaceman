@@ -173,4 +173,29 @@ the ending goes, a diegetic start, and an ending that's brutal and unmistakable.
 - CamWindow: No. 14's front on its own 2048 atlas at 3× samples, the streetlight raking its clapboard, a night
   sky plane, the camera just under his blinds so the last slats cross the top of the frame.
 - Capture r4: trace check clean (5,227 frames, no issues), no errors on any path; CPU p95 1.4 ms at the ending.
-- Critic for this round not run yet.
+- Critic (gpt-6.1-sol, `critic-r4.md`): the body reads as a Halloween prop; No. 14 looks like a game set (old
+  bake); the plastic reads opaque and the two old places empty; Canvas 2D shows a white monitor; phone portrait
+  shows too much ceiling; the 3D screen is muddy; the plan reveal over-explains; sound unverified. Its ask for
+  play/mute/skip controls is rejected (Kit: no controls).
+
+## Round 5 · the pull, the screen, the ending, the body (12:45–)
+
+- Tape: 2.8 s of silence after "He was the last thing." (was 0.5) and 2.4 s after "It never does." (was 1.6);
+  tape 190.6 s, film 177.3 s. The aligner runs a word's end through a following silence, so the pull is timed
+  from the gap itself, not from the word.
+- The pull out of the screen: 4.5 s (was 1.4 s in practice: it started when the word ended, inside the
+  silence). The camera keeps looking at the point it looked at on the screen and only turns to the room in
+  the second half, and focus stays on the panel until the last 40%; the mirror of both on the way in.
+- The panel is a display, not a lit surface: it skips the tone curve (its alpha flags it), so the desktop in
+  the room is as bright and clean as the flat desktop it cuts from (it was grey through AgX).
+- Ending: after "It never does." the light comes back on the same floor from the same place, afterwards, and
+  the camera creeps down to the low close framing through "He's on six now. With the others." and a 1.1 s hold
+  (was 0.55 s) before the hard cut.
+- The plan reveal is one move: the plan framed at "Mark was in June", held, then the dashed 14 at "the last
+  thing" (the zoom, the 16/Mark selection and the re-frame are gone).
+- Basement: him, wound in the sheet (ellipsoids remeshed into one form, creased, pleated, pulled in at six
+  tape bands, the overlap loose on the floor); blood as pools with fractal edges and runs, shaded by depth and
+  laid over the floor sheet's creases; the floor sheet creased from its packet folds; the two old places as
+  newer, lighter concrete with a fine seam.
+- Canvas 2D: the desktop is drawn onto the stills' blank monitors. Phone portrait opens the field of view less
+  (exponent 0.42, was 0.6).
