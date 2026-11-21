@@ -7,6 +7,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."
 import bpy
 from mathutils import Vector
 from lib import *
+import street as street_mod
 
 A = args()
 QUICK = "quick" in A
@@ -26,7 +27,7 @@ WY0, WY1, WZ0, WZ1 = 1.70, 2.95, 0.90, 2.15  # the window opening in the east wa
 pi = math.pi
 rad = math.radians
 
-NEAR, ROOM, STREET = [], [], []
+NEAR, ROOM, STREET, LIT = [], [], [], []
 
 # ── materials ──
 plaster = noisy(mat("plaster", rough=0.9), (0.47, 0.455, 0.43), (0.53, 0.515, 0.49), scale=3.0, rough=(0.85, 0.95), bump=0.04)
@@ -49,17 +50,8 @@ slat = mat("slat", (0.62, 0.62, 0.6), 0.4)
 cord = mat("cord", (0.55, 0.54, 0.5), 0.9)
 glassm = mat("Glass", (0.7, 0.78, 0.82), 0.05)
 screenm = mat("Screen", (0.004, 0.004, 0.005), 0.1)
-# outside
-lawn = noisy(mat("lawn", rough=1.0), (0.03, 0.05, 0.02), (0.05, 0.07, 0.03), scale=2, detail=8)
-asphalt = noisy(mat("asphalt", rough=0.8), (0.05, 0.05, 0.052), (0.07, 0.07, 0.072), scale=6, detail=8)
-concrete = noisy(mat("concrete", rough=0.85), (0.25, 0.245, 0.235), (0.3, 0.295, 0.285), scale=4, detail=8)
-hedgem = noisy(mat("hedge", rough=0.9), (0.02, 0.045, 0.02), (0.05, 0.09, 0.035), scale=60, detail=6, bump=0.6)
-siding = mat("siding", (0.5, 0.5, 0.47), 0.7)
-trim = mat("trim", (0.62, 0.62, 0.6), 0.5)
-roof = noisy(mat("roof", rough=0.9), (0.07, 0.07, 0.075), (0.1, 0.1, 0.105), scale=30)
-darkglass = mat("darkglass", (0.01, 0.012, 0.015), 0.1)
-lamp_m = mat("lamppost", (0.08, 0.08, 0.085), 0.5)
-lit = mat("No14Window", (0.0, 0.0, 0.0), 1.0, emit=(1.0, 0.68, 0.38), strength=3.0)
+# outside: the street (show/scenes/street.py)
+SM = street_mod.materials()
 
 # ── the room ──
 def walls():
@@ -182,59 +174,15 @@ def desk():
 
 
 def street():
-    S = STREET
-    S.append(box("yard", ((RW + T + 9.5) / 2, 0, G - 0.05), (9.5 - RW - T, 80, 0.1), lawn, 0))
-    S.append(box("walk1", (10.25, 0, G - 0.03), (1.5, 80, 0.1), concrete, 0.01))
-    S.append(box("road", (14.5, 0, G - 0.1), (7.0, 80, 0.1), asphalt, 0))
-    S.append(box("kerb1", (11.0, 0, G - 0.06), (0.15, 80, 0.12), concrete, 0.01))
-    S.append(box("kerb2", (18.0, 0, G - 0.06), (0.15, 80, 0.12), concrete, 0.01))
-    S.append(box("walk2", (18.75, 0, G - 0.03), (1.5, 80, 0.1), concrete, 0.01))
-    S.append(box("yard14", (32, 0, G - 0.05), (23, 80, 0.1), lawn, 0))
-    S.append(box("path14", (22.8, 1.0, G - 0.02), (6.4, 1.2, 0.1), concrete, 0.01))
-    # the hedge, clipped, a little over six foot
-    for i, (y0, y1) in enumerate([(-9.0, 0.35), (1.65, 9.0)]):
-        h = box("hedge%d" % i, (20.3, (y0 + y1) / 2, G + 0.96), (0.95, y1 - y0, 1.92), hedgem, 0.12, 3)
-        sub = h.modifiers.new("sub", "SUBSURF")
-        sub.levels = sub.render_levels = 2
-        tex = bpy.data.textures.new("hedgeNoise", "CLOUDS")
-        tex.noise_scale = 0.25
-        dp = h.modifiers.new("disp", "DISPLACE")
-        dp.texture = tex
-        dp.strength = 0.06
-        S.append(h)
-    # No. 14
-    hx0, hx1, hy0, hy1, hh = 26.0, 33.5, -4.0, 8.0, 5.6
-    S.append(box("house14", ((hx0 + hx1) / 2, (hy0 + hy1) / 2, G + hh / 2), (hx1 - hx0, hy1 - hy0, hh), siding, 0.02))
-    bm = bmesh.new()
-    rw2, ridge = (hx1 - hx0) / 2 + 0.4, 2.6
-    vs = [bm.verts.new(v) for v in [(-rw2, hy0 - 0.4, 0), (rw2, hy0 - 0.4, 0), (0, hy0 - 0.4, ridge), (-rw2, hy1 + 0.4, 0), (rw2, hy1 + 0.4, 0), (0, hy1 + 0.4, ridge)]]
-    for f in [(0, 1, 2), (3, 5, 4), (0, 2, 5, 3), (1, 4, 5, 2), (0, 3, 4, 1)]:
-        bm.faces.new([vs[i] for i in f])
-    r = obj_from_bm("roof14", bm, roof)
-    r.location = ((hx0 + hx1) / 2, 0, G + hh)
-    S.append(r)
-    # windows on the front: ground floor two and the door; upstairs three, the middle one lit
-    fx = hx0 - 0.03
-    for (wy, wz, ww, wh) in [(-1.6, 1.2, 1.4, 1.3), (5.2, 1.2, 1.4, 1.3), (-1.6, 3.9, 1.2, 1.2), (5.2, 3.9, 1.2, 1.2)]:
-        S.append(box("win", (fx, wy, G + wz), (0.06, ww, wh), darkglass, 0.005))
-        S.append(box("winTrim", (fx + 0.01, wy, G + wz), (0.05, ww + 0.14, wh + 0.14), trim, 0.008))
-    S.append(box("door14", (fx, 1.0, G + 1.05), (0.06, 1.0, 2.1), roof, 0.01))
-    S.append(box("doorTrim", (fx + 0.01, 1.0, G + 1.1), (0.05, 1.16, 2.25), trim, 0.01))
-    S.append(box("litTrim", (fx + 0.01, 1.8, G + 3.9), (0.05, 1.34, 1.34), trim, 0.008))
-    # neighbours, either side
-    for k, yy in enumerate([-16.0, 18.0]):
-        S.append(box("house%d" % k, (29.5, yy, G + 2.8), (7.0, 10.0, 5.6), siding, 0.02))
-        S.append(box("nwin%d" % k, (25.97, yy, G + 3.9), (0.06, 1.2, 1.2), darkglass, 0.005))
-    # streetlights
-    for k, (px, py) in enumerate([(18.4, -6.0), (10.6, 8.5)]):
-        S.append(cyl("pole%d" % k, (px, py, G + 3.25), 0.07, 6.5, lamp_m, 16, r2=0.05))
-        S.append(box("arm%d" % k, (px + (-0.6 if px > 14 else 0.6), py, G + 6.45), (1.2, 0.08, 0.06), lamp_m, 0.01))
-        S.append(box("head%d" % k, (px + (-1.15 if px > 14 else 1.15), py, G + 6.4), (0.5, 0.22, 0.07), lamp_m, 0.01))
+    parts, lamp = street_mod.build(G, SM)
+    STREET.extend(parts["street"])
+    LIT.extend(parts["lit"])
+    return lamp
 
 
 walls()
 desk()
-street()
+lit14 = street()
 
 # not baked: the screen, the glass, No. 14's lit window
 mx, my, mz = 2.0, RD - 0.27, 1.07
@@ -248,27 +196,21 @@ screen = obj_from_bm("Screen", bm, screenm)
 screen.location = (mx, my - 0.0115, mz + 0.004)
 screen.rotation_euler = (pi / 2, 0, 0)
 glass = box("Glass", (RW + 0.08, (WY0 + WY1) / 2, (WZ0 + WZ1) / 2), (0.006, WY1 - WY0, WZ1 - WZ0), glassm, 0)
-litwin = box("No14Window", (26.0 - 0.06, 1.8, G + 3.9), (0.02, 1.2, 1.2), lit, 0)
 
 # ── light ──
-bg = world((0.0035, 0.005, 0.011), 1.0)
-cool = (0.72, 0.82, 1.0)
-lights_base = [
-    light("streetInto", "SPOT", (10.6 + 1.15, 8.5, G + 6.35), 5000, cool, 0.05, target=(RW, (WY0 + WY1) / 2, 1.2), spot=16, blend=0.5),
-    light("street14", "SPOT", (18.4 - 1.15, -6.0, G + 6.35), 9000, cool, 0.1, target=(17.0, -6.0, G), spot=130, blend=0.6),
-    light("streetOurs", "SPOT", (10.6 + 1.15, 8.5, G + 6.35), 9000, cool, 0.1, target=(11.7, 8.5, G), spot=130, blend=0.6),
-    light("moon", "SUN", (0, 0, 20), 0.05, (0.55, 0.65, 1.0), 0.02, target=(8, 12, 0)),
+bg, street_lights = street_mod.night(G)
+lights_base = street_lights + [
     light("hall", "AREA", (0.72, -0.7, 2.2), 30, (1.0, 0.72, 0.45), (0.5, 0.5), target=(0.72, -0.7, 0)),
-    light("lit14", "AREA", (25.5, 1.8, G + 3.9), 60, (1.0, 0.68, 0.38), (1.0, 1.0), target=(10, 1.8, G + 2.5)),
+    lit14,
 ]
 screen_light = light("screenLight", "AREA", (mx, my - 0.02, mz + 0.004), 22, (0.93, 0.91, 0.87), (PW, PH), target=(mx, my - 5, mz))
 screen_light.data.spread = rad(160)
 
 # ── bake ──
-res = {"Near": 1024 if QUICK else 2048, "Room": 2048 if QUICK else 4096, "Street": 1024 if QUICK else 2048}
+res = {"Near": 1024 if QUICK else 2048, "Room": 2048 if QUICK else 4096, "Street": 1024 if QUICK else 2048, "Lit14": 256 if QUICK else 512}
 eres = {k: v // 2 for k, v in res.items()}
 samples = 48 if QUICK else 400
-groups = {"Near": join("Near", NEAR), "Room": join("Room", ROOM), "Street": join("Street", STREET)}
+groups = {"Near": join("Near", NEAR), "Room": join("Room", ROOM), "Street": join("Street", STREET), "Lit14": join("Lit14", LIT)}
 for o in groups.values():
     uv_atlas(o)
 
@@ -287,14 +229,12 @@ for l in lights_base:
     l.hide_render = True
 screen_light.hide_render = False
 bg.inputs["Strength"].default_value = 0
-bsdf(lit).inputs["Emission Strength"].default_value = 0
 for name in ("Near", "Room"):
     o = groups[name]
     img = bake_into(o, name + "_emit", eres[name], samples // 2)
     s = auto_scale(img, 99.9)
     meta["emitScale"][name] = s
     baked[name][1] = save_jpeg(img, os.path.join(PREV, "..", "bake", name + "-emit.jpg"), s, k=2)
-bsdf(lit).inputs["Emission Strength"].default_value = 3.0
 
 # ── export ──
 for name, o in groups.items():
@@ -307,7 +247,7 @@ cams = [
     camera("CamRoom", (0.72, 0.25, 1.62), (2.35, 2.65, 1.0), 52, dof=4),
     camera("CamWindow", (RW - 0.42, 2.25, 1.06), (26.0, 1.8, G + 3.85), 24, dof=4),
 ]
-export_glb(os.path.join(OUT, "study.glb"), list(groups.values()) + [screen, glass, litwin] + cams)
+export_glb(os.path.join(OUT, "study.glb"), list(groups.values()) + [screen, glass] + cams)
 
 
 def gl(v):  # Blender Z-up → glTF Y-up
@@ -335,10 +275,10 @@ if "previews" in A:
     bsdf(sm).inputs["Emission Color"].default_value = (0.78, 0.77, 0.74, 1)
     bsdf(sm).inputs["Emission Strength"].default_value = 1.0
     for c in cams:
-        render_still(os.path.join(PREV, c.name + ".jpg"), c, 960, 600, 32)
+        render_still(os.path.join(PREV, c.name + ".jpg"), c, 1600, 1000, 64)
     # asleep: the screen dark, so the room has only the street's light (the page's first image)
     for name in ("Near", "Room"):
         emission_preview(groups[name], baked[name][0], meta["scale"][name], baked[name][1], meta["emitScale"].get(name, 1), 0.0)
     bsdf(sm).inputs["Emission Strength"].default_value = 0.0
-    render_still(os.path.join(PREV, "CamChair-asleep.jpg"), cams[1], 960, 600, 32)
-    render_still(os.path.join(PREV, "CamRoom-asleep.jpg"), cams[3], 960, 600, 32)
+    render_still(os.path.join(PREV, "CamChair-asleep.jpg"), cams[1], 1600, 1000, 64)
+    render_still(os.path.join(PREV, "CamRoom-asleep.jpg"), cams[3], 1600, 1000, 64)

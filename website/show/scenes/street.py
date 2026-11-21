@@ -130,6 +130,18 @@ def house(name, x0, x1, y0, y1, G, M, siding, hh=5.6, body=True):
     return out
 
 
+def cut(o, center, size):
+    """Cuts a box out of o (a boolean, applied when the set is joined); the cutter never renders."""
+    c = box("cutter", center, size, o.data.materials[0], 0)  # its faces take o's own material
+    c.hide_render = True
+    c.display_type = "WIRE"
+    m = o.modifiers.new("cut", "BOOLEAN")
+    m.operation = "DIFFERENCE"
+    m.object = c
+    m.solver = "EXACT"
+    return c
+
+
 def window(fx, wy, wz, ww, wh, M, facing=-1, glass=True):
     """Trim, sill and dark glass on a front at x = fx (facing -1: the front looks toward -x)."""
     out = []
@@ -161,7 +173,8 @@ def build(G, M, detail=False, ours=False, props=False):
     for i, (y0, y1) in enumerate([(-9.0, 0.35), (1.65, 9.0)]):
         S.append(hedge("hedge%d" % i, 20.3, y0, y1, G, M, 3 if detail else 2))
     hx0 = 26.0
-    S += house("house14", hx0, 33.5, -4.0, 8.0, G, M, M["siding"])
+    h14 = house("house14", hx0, 33.5, -4.0, 8.0, G, M, M["siding"])
+    S += h14
     for (wy, wz, ww, wh) in [(-1.6, 1.25, 1.4, 1.3), (5.2, 1.25, 1.4, 1.3), (-1.6, 3.9, 1.2, 1.2), (5.2, 3.9, 1.2, 1.2)]:
         S += window(hx0, wy, G + wz, ww, wh, M)
     S.append(box("door14", (hx0 - 0.03, 1.0, G + 1.05), (0.06, 0.95, 2.1), M["door"], 0.01))
@@ -174,11 +187,15 @@ def build(G, M, detail=False, ours=False, props=False):
     wy, wz, ww, wh = 1.8, G + 3.9, 1.2, 1.2
     L += window(hx0, wy, wz, ww, wh, M, glass=False)
     d = 2.6
+    # a real opening in No. 14's front, and a room behind it
+    cut(h14[0], (hx0 + 0.02, wy, wz), (0.3, ww, wh))
+    cut(h14[0], (hx0 + 0.12 + (d - 0.02) / 2, wy, wz), (d - 0.02 + 0.1, 3.2, 2.6))
     L.append(box("litBack", (hx0 + d, wy, wz), (0.05, 3.0, 2.4), M["plaster"], 0))
-    L.append(box("litL", (hx0 + d / 2, wy - 1.5, wz), (d, 0.05, 2.4), M["plaster"], 0))
-    L.append(box("litR", (hx0 + d / 2, wy + 1.5, wz), (d, 0.05, 2.4), M["plaster"], 0))
-    L.append(box("litC", (hx0 + d / 2, wy, wz + 1.2), (d, 3.0, 0.05), M["plaster"], 0))
-    L.append(box("litF", (hx0 + d / 2, wy, wz - 1.2), (d, 3.0, 0.05), M["plaster"], 0))
+    e0 = 0.14  # the room's walls start behind the front wall, not in its face
+    L.append(box("litL", (hx0 + (e0 + d) / 2, wy - 1.5, wz), (d - e0, 0.05, 2.4), M["plaster"], 0))
+    L.append(box("litR", (hx0 + (e0 + d) / 2, wy + 1.5, wz), (d - e0, 0.05, 2.4), M["plaster"], 0))
+    L.append(box("litC", (hx0 + (e0 + d) / 2, wy, wz + 1.2), (d - e0, 3.0, 0.05), M["plaster"], 0))
+    L.append(box("litF", (hx0 + (e0 + d) / 2, wy, wz - 1.2), (d - e0, 3.0, 0.05), M["plaster"], 0))
     L.append(box("curtain", (hx0 + 0.12, wy - 0.38, wz + 0.02), (0.04, 0.5, 1.26), M["curtain"], 0.02, 3))
     L.append(cyl("shade", (hx0 + 1.6, wy + 0.5, wz - 0.2), 0.2, 0.26, M["shade"], 32, r2=0.13))
     L.append(cyl("lampStem", (hx0 + 1.6, wy + 0.5, wz - 0.75), 0.015, 0.9, M["lamppost"], 12))
@@ -231,7 +248,6 @@ def no12(G, M):
     out += window(fx, yc, (WZ0 + WZ1) / 2, WY1 - WY0, WZ1 - WZ0, M, facing=1, glass=False)
     out += window(fx, -2.4, G + 1.25, 1.4, 1.3, M, facing=1)
     out.append(box("n12door", (fx + 0.03, -0.9, G + 1.05), (0.06, 0.95, 2.1), M["door"], 0.01))
-    out += house("n12", x0, fx, y0, y1, G + top - G - 0.0 + G - G, M, sid, body=False) if False else []
     r = house("n12", x0, fx, y0, y1, top - 5.6, M, sid, body=False)
     out += r
     return out

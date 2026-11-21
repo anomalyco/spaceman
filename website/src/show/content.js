@@ -2,6 +2,7 @@
 // (the context is already scaled). Contents are redrawn only when a window is marked dirty.
 import { APPS, FONT, MONO, iconCanvas, roundRect } from "./apps.js"
 import { plates, coverUV } from "./plates.js"
+import { photos as libraryPhotos } from "./library.js"
 
 export const BAR_H = 30
 const INK = "#2b2a28"
@@ -162,82 +163,8 @@ function paperBody(ctx, w, h, d) {
   }
 }
 
-const hash01 = (i, k) => hash(i * 131 + k * 7919)
-
-// The hedge, photographed every morning from the same spot: one photograph, a hand's width off
-// each morning, in that morning's light, the green turning as the months go.
-export function hedgePhoto(ctx, x, y, w, h, i, opts = {}) {
-  // four mornings' light, rendered: clear, wet, autumn, fog
-  const p = plates["hedge-" + (i === 0 ? 0 : Math.floor(hash01(i, 4) * 4))] || plates["hedge-0"]
-  if (!p) {
-    ctx.fillStyle = "#4d5a45"
-    ctx.fillRect(x, y, w, h)
-    return
-  }
-  const [u0, v0, u1, v1] = coverUV(p, w, h, 0.5, 0.5)
-  const m = 0.05
-  const jx = (hash01(i, 1) - 0.5) * 0.03
-  const jy = (hash01(i, 2) - 0.5) * 0.03
-  const sw = (u1 - u0) * (1 - 2 * m)
-  const sh = (v1 - v0) * (1 - 2 * m)
-  const sx = u0 + (u1 - u0) * m + jx
-  const sy = v0 + (v1 - v0) * m + jy
-  ctx.drawImage(p, sx * p.width, sy * p.height, sw * p.width, sh * p.height, x, y, w, h)
-  // the season: summer green to the browns of November; then that morning's light
-  const season = Math.min(1, i / 160)
-  ctx.save()
-  ctx.globalCompositeOperation = "soft-light"
-  ctx.fillStyle = `rgba(${Math.round(120 + 100 * season)},${Math.round(140 - 10 * season)},${Math.round(110 - 50 * season)},${0.25 + 0.3 * season})`
-  ctx.fillRect(x, y, w, h)
-  ctx.globalCompositeOperation = "source-over"
-  const light = hash01(i, 3)
-  ctx.fillStyle = light < 0.35 ? `rgba(30,40,55,${0.08 + light * 0.3})` : `rgba(255,226,180,${(light - 0.35) * 0.12})`
-  ctx.fillRect(x, y, w, h)
-  ctx.restore()
-  if (opts.measure) {
-    // the hedge's top and the limit below it, in the plate's own coordinates
-    const Y = (fy) => y + ((fy - sy) / sh) * h
-    const X = (fx) => x + ((fx - sx) / sw) * w
-    const top = Y(0.402)
-    const limit = Y(0.438)
-    const fs = Math.max(9, Math.min(15, w * 0.035))
-    ctx.fillStyle = "rgba(255,255,255,.92)"
-    ctx.fillRect(X(0.46), top - 0.6, X(0.86) - X(0.46), 1.4)
-    ctx.font = `600 ${fs}px ${FONT}`
-    ctx.textAlign = "left"
-    ctx.fillText(opts.measure, X(0.47), top - 5)
-    if (opts.limit) {
-      ctx.strokeStyle = "rgba(255,120,100,.95)"
-      ctx.setLineDash([5, 4])
-      ctx.lineWidth = 1.4
-      ctx.beginPath()
-      ctx.moveTo(X(0.46), limit)
-      ctx.lineTo(X(0.86), limit)
-      ctx.stroke()
-      ctx.setLineDash([])
-      ctx.fillStyle = "rgba(255,150,130,.98)"
-      ctx.fillText("6′ 0″ limit", X(0.47), limit + fs + 4)
-    }
-  }
-}
-
-export const day = (i) => {
-  const months = [["Jun", 30], ["Jul", 31], ["Aug", 31], ["Sep", 30], ["Oct", 31], ["Nov", 30]]
-  let d = i + 11
-  for (const [m, n] of months) {
-    if (d <= n) return `${m} ${d}`
-    d -= n
-  }
-  return "Nov 30"
-}
-export const heightAt = (i) => {
-  const quarter = Math.round(8 + Math.min(i, 120) * 0.03 + hash(i) * 0.8) // in quarter inches above 6′
-  const inch = quarter / 4
-  return `6′ ${inch % 1 === 0 ? inch : inch.toFixed(2).replace(/0$/, "")}″`
-}
-
 // A doorbell camera across the street at night. The lit window is No. 14's.
-const DOOR_WIN = [0.629, 0.176, 0.66, 0.229]
+const DOOR_WIN = [0.4709, 0.4226, 0.495, 0.4658]
 export function street(ctx, x, y, w, h, t, lit = 1) {
   const p = plates.door
   if (p) {
@@ -695,53 +622,7 @@ const painters = {
       text(ctx, e.t, 84, y + 20, { size: 13.5, weight: 600, color: "#4a2a26", max: w - 110 })
     }
   },
-  photos(ctx, w, h, d) {
-    ctx.fillStyle = "#ebe8e2"
-    ctx.fillRect(0, BAR_H, w, h - BAR_H)
-    // toolbar: the count, and a search field
-    const tb = 40
-    ctx.fillStyle = "#f4f2ee"
-    ctx.fillRect(0, BAR_H, w, tb)
-    ctx.fillStyle = RULE
-    ctx.fillRect(0, BAR_H + tb - 1, w, 1)
-    const n = d.count || 0
-    text(ctx, n === 1 ? "1 photo" : `${n} photos`, 16, BAR_H + 25, { size: 13, weight: 600, color: "#55514a" })
-    const sw = Math.min(220, w * 0.4)
-    ctx.fillStyle = "#e4e1db"
-    roundRect(ctx, w - sw - 12, BAR_H + 8, sw, 24, 7)
-    ctx.fill()
-    text(ctx, d.query || "Search", w - sw + 2, BAR_H + 24.5, { size: 13, color: d.query ? INK : "#9a968e", max: sw - 20 })
-    if (d.typing) {
-      ctx.font = `400 13px ${FONT}`
-      ctx.fillStyle = "#3d6fd0"
-      ctx.fillRect(w - sw + 3 + ctx.measureText(d.query || "").width, BAR_H + 12, 1.4, 16)
-    }
-    const top = BAR_H + tb
-    if (d.pick != null) {
-      // one morning, found
-      const pw = w - 24
-      const ph = h - top - 48
-      hedgePhoto(ctx, 12, top + 10, pw, ph, d.pick, { measure: heightAt(d.pick), limit: 1 })
-      text(ctx, `${day(d.pick)} · 6:0${2 + (d.pick % 3)} AM`, 14, h - 14, { size: 13.5, weight: 600, color: "#4d4a44" })
-      text(ctx, heightAt(d.pick), w - 14, h - 14, { size: 13.5, weight: 600, color: "#a1453a", align: "right" })
-      return
-    }
-    // the first mornings are big enough to read; the archive tightens as it grows
-    const cols = n <= 1 ? 1 : n <= 4 ? 2 : n <= 9 ? 3 : Math.max(3, Math.round(w / 104))
-    const cw = (w - 16) / cols
-    const rows = Math.ceil(n / cols)
-    const label = n <= 9 ? Math.min(15, Math.max(11, cw / 14)) : 0
-    const ch = n <= 9 ? Math.min(cw * 0.72, (h - top - 16) / Math.max(1, rows)) : cw * 0.66
-    const visibleRows = Math.floor((h - top - 10) / ch)
-    const first = Math.max(0, rows - visibleRows) * cols
-    for (let i = first; i < n; i++) {
-      const k = i - first
-      const x = 8 + (k % cols) * cw
-      const y = top + 8 + Math.floor(k / cols) * ch
-      hedgePhoto(ctx, x + 2, y + 2, cw - 4, ch - 4 - (label ? label + 8 : 0), i, { measure: n <= 3 && d.measured ? (i === 0 ? "6′ 2″" : heightAt(i)) : null, limit: d.limit && n <= 3 })
-      if (label) text(ctx, day(i), x + 4, y + ch - 7, { size: label, color: "#6d6961" })
-    }
-  },
+  photos: (...a) => libraryPhotos(...a),
   cam(ctx, w, h, d) {
     street(ctx, 0, BAR_H, w, h - BAR_H, d.time || "11:47:07 PM", d.lit ?? 1)
   },

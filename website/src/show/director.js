@@ -6,6 +6,7 @@
 import { easeInOut, smooth, clamp, mix } from "./springs.js"
 import { BAR_H } from "./content.js"
 import { WORDS, TAPE } from "./tape.js"
+import { MORNINGS, PICK, gridOf, indexOf, heightAt } from "./library.js"
 
 // the visitor's turn (Option+1/2/3 really switch) is the first long silence on the tape
 const G0 = TAPE.marks.gaps.find((g) => g[1] > 5)
@@ -428,40 +429,78 @@ export function build(S) {
   push(hedge - 0.85, hedge, home, null)
 
   // ── The hedge ──
-  open(hedge, 5, { id: "hedge", app: "viewer", kind: "photos", title: "No. 14 — Hedge", data: { count: 1 } })
+  // His photo library, open on the first morning: June 11, measured.
+  const first = indexOf(0)
+  open(hedge, 5, { id: "hedge", app: "viewer", kind: "photos", title: "Photos", data: { count: 1, open: first, openT: 1 } })
   at(hedge, () => (w.clock = dayClock(0)))
   push(hedge + 0.2, hedge + 1.1, () => frameOf("hedge", 1.04), "hedge")
-  at(word("six foot two") + 0.1, () => (w.set("hedge", { data: { measured: 1 } }), S.sfx("shutter", 0.35)))
+  at(word("six foot two") + 0.1, () => (w.set("hedge", { data: { measured: 1, measure: "6′ 2″" } }), S.sfx("shutter", 0.35)))
   at(word("The limit") + 0.2, () => w.set("hedge", { data: { limit: 1 } }))
-  // "I've photographed it every morning since." A hundred and sixty mornings.
+  // "I've photographed it every morning since." The photo closes into its tile, and the mornings
+  // fill the library, the newest always at the bottom. A hundred and sixty of them.
   const since = word("photographed")
+  span(since - 0.1, since + 0.45, (u) => w.set("hedge", { data: { openT: 1 - (S.reduced ? (u < 0.5 ? 0 : 1) : easeInOut(u)) } }))
+  at(since + 0.46, () => w.set("hedge", { data: { open: null, measured: 0, limit: 0 } }))
   let shots = 1
-  span(since, since + 4.4, (u) => {
-    const n = 1 + Math.floor(159 * u * u)
+  span(since + 0.35, since + 3.4, (u) => {
+    const n = 1 + Math.floor((MORNINGS - 1) * u ** 1.7)
     if (n !== shots) {
       if (n <= 4 || n === 24 || n === 70) S.sfx("shutter", n <= 4 ? 0.35 : 0.25)
       shots = n
-      w.set("hedge", { data: { count: n, measured: n <= 3 ? 1 : 0 } })
+      w.set("hedge", { data: { count: n } })
       w.clock = dayClock(n - 1)
     }
   })
-  // "...find any one of them in a second."
+  // "...find any one of them in a second." Two flicks up through November and October, each one
+  // a throw that slows on its own (velocity decaying exponentially), the second landing on August.
   const find = word("find any one")
-  type(find + 0.1, "Aug 14", (s) => w.set("hedge", { data: { query: s, typing: 1 } }), 3)
-  at(word("Any morning"), () => {
-    w.set("hedge", { data: { pick: 64, typing: 0 } })
-    S.sfx("key2", 0.25)
+  const grid = () => gridOf(R("hedge").w.t, R("hedge").h.t, MORNINGS)
+  const pickAt = indexOf(PICK)
+  const flick = (t0, t1, tau, to) => {
+    let from = null
+    let goal = null
+    span(t0, t1, (u, t) => {
+      if (from == null) {
+        const g = grid()
+        const cur = R("hedge").data.scroll
+        from = cur == null ? g.maxScroll : cur
+        goal = to(g, from)
+      }
+      const k = (1 - Math.exp(-(Math.min(t, t1) - t0) / tau)) / (1 - Math.exp(-(t1 - t0) / tau))
+      w.set("hedge", { data: { scroll: S.reduced ? (u < 0.5 ? from : goal) : from + (goal - from) * k, bar: 1 } })
+    })
+  }
+  at(find - 0.6, () => {
+    const p = R("hedge")
+    w.cursorTo(p.x.t + p.w.t * 0.56, p.y.t + p.h.t * 0.6, find - 0.1)
   })
+  flick(find + 0.05, find + 1.2, 0.36, (g, from) => g.scrollTo(pickAt) + (from - g.scrollTo(pickAt)) * 0.16)
+  flick(find + 1.25, word("Any morning") - 0.15, 0.24, (g) => g.scrollTo(pickAt))
+  span(word("Any morning") - 0.15, word("Any morning") + 0.5, (u) => w.set("hedge", { data: { bar: 1 - smooth(u) } }))
+  // "Any morning you like." August 14: the click, and the photo opens out of its tile.
+  const anyM = word("Any morning")
+  const tileAt = () => {
+    const p = R("hedge")
+    const g = grid()
+    const r = g.tile(pickAt, p.data.scroll ?? g.scrollTo(pickAt))
+    return [p.x.t + r.x + r.w * 0.5, p.y.t + r.y + r.h * 0.55]
+  }
+  clickAt(anyM + 0.05, "hedge", tileAt, () => w.set("hedge", { data: { sel: pickAt } }), 0.55)
+  at(anyM + 0.14, () => {
+    w.set("hedge", { data: { open: pickAt, openT: 0, measure: heightAt(PICK), measured: 1, limit: 1 } })
+    w.clock = dayClock(MORNINGS - 1)
+  })
+  span(anyM + 0.14, anyM + 0.52, (u) => w.set("hedge", { data: { openT: S.reduced ? (u < 0.5 ? 0 : 1) : 1 - (1 - u) ** 3 } }))
 
   // ── The minutes, again ──
   const again = word("sent the minutes round")
   push(again - 0.5, again + 0.4, home, null)
   at(again - 0.1, () => {
-    w.clock = "Wed Nov 11  9:12 PM"
+    w.clock = "Wed Nov 18  9:12 PM"
     w.setFocus("minutes")
     w.set("minutes", { title: "HOA — Minutes (awaiting corrections)", data: { banner: ["Sent to 8 households · Jun 10"] } })
   })
-  at(again + 0.75, () => (w.set("minutes", { data: { banner: ["Sent to 8 households · Jun 10", "Sent again to 8 households · Nov 11"] } }), S.sfx("thunk", 0.2)))
+  at(again + 0.75, () => (w.set("minutes", { data: { banner: ["Sent to 8 households · Jun 10", "Sent again to 8 households · Nov 18"] } }), S.sfx("thunk", 0.2)))
 
   // ── The only reply ──
   const only = word("He was the only")

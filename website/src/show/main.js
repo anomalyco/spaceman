@@ -13,11 +13,12 @@ import { createGPU, POST_DEFAULT } from "./gpu.js"
 import { Audio } from "./audio.js"
 import { LINES, TAPE } from "./tape.js"
 import { plates, loadPlate, coverUV } from "./plates.js"
+import { PHOTOS } from "./library.js"
 import { loadGLB, mul, perspective, lookAt, norm, sub, add, scale, cross, dot, lerp3 } from "./glb.js"
 import { clamp, mix } from "./springs.js"
 
 // pictures inside his apps (renders of our own scenes), and the stills Canvas 2D uses for the room
-const PLATES = ["wall", "hedge-0", "hedge-1", "hedge-2", "hedge-3", "door", "across"]
+const PLATES = ["wall", "wall-s", "door", "across"]
 const STILLS = { CamChair: "chair", CamRoom: "room", CamWindow: "window", Before: "before", After: "after" }
 const HANDOFF_FOV = 30
 
@@ -268,7 +269,7 @@ export function createShow({ still, canvas, base, capture = false, reduced = fal
       .then((x) => x.json())
       .then((m) => (manifest = m))
       .catch(() => null)
-    platesIn = Promise.all(PLATES.map((p) => loadPlate(base, p)))
+    platesIn = Promise.all([...PLATES.map((p) => loadPlate(base, p)), ...PHOTOS.map((p) => loadPlate(base, p, "photos/"))])
     prepping = Promise.all([
       manifestIn.then((m) => m && audio.load(m)),
       loadPlate(base, "wall"),

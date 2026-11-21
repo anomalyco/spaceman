@@ -307,6 +307,8 @@ def bake_into(o, name, res, samples, margin=6):
     """Bakes diffuse light × albedo of object o (all its materials) into one float image."""
     img = D.images.new(name, res, res, float_buffer=True, alpha=False)
     for slot in o.material_slots:
+        if slot.material is None:
+            continue
         nt = slot.material.node_tree
         n = nt.nodes.new("ShaderNodeTexImage")
         n.image = img
@@ -321,6 +323,8 @@ def bake_into(o, name, res, samples, margin=6):
     sc.render.bake.margin = margin
     bpy.ops.object.bake(type="DIFFUSE", pass_filter={"DIRECT", "INDIRECT", "COLOR"}, margin=margin, use_clear=True)
     for slot in o.material_slots:
+        if slot.material is None:
+            continue
         nt = slot.material.node_tree
         if "BAKE_TARGET" in nt.nodes:
             nt.nodes.remove(nt.nodes["BAKE_TARGET"])

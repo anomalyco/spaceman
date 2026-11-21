@@ -81,9 +81,10 @@ if (probeArg) {
       await shot(page, join(out, name + "-" + String(t).replace(".", "_") + ".jpg"))
     }
     report[name] = { errors, state: await state(page) }
+    // written after each pass, so a crash in the next one still leaves this one's report
+    writeFileSync(join(out, "report.json"), JSON.stringify(report, null, 1))
     await ctx.close()
   }
-  writeFileSync(join(out, "report.json"), JSON.stringify(report, null, 1))
   console.log(JSON.stringify(report, null, 1))
   await browser.close()
   server.stop()

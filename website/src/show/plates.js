@@ -1,13 +1,13 @@
 // Pictures inside his apps and the room's stills: Blender renders of our own scenes
-// (show/scenes/*, public/show/renders), fetched on the key press. Each plate is an ImageBitmap with a .version, so both renderers can
+// (show/scenes/*, public/show/renders), and the phone photos in his library (public/show/photos), fetched on the key press. Each plate is an ImageBitmap with a .version, so both renderers can
 // use it as a texture; blurOf() gives a soft copy for frosted materials.
 export const plates = {}
 const waiting = new Map()
 
-export function loadPlate(base, name) {
+export function loadPlate(base, name, dir = "renders/") {
   if (plates[name]) return Promise.resolve(plates[name])
   if (waiting.has(name)) return waiting.get(name)
-  const p = fetch(base + "renders/" + name + ".jpg")
+  const p = fetch(base + dir + name + ".jpg")
     .then((r) => (r.ok ? r.blob() : Promise.reject(new Error(String(r.status)))))
     .then((b) => createImageBitmap(b))
     .then((bm) => {
