@@ -1,11 +1,14 @@
-// WebGPU renderer: one instanced rounded-rect pipeline. Primitives come from the display list in
-// draw order; consecutive primitives sharing a texture go out in one draw call. Canvas textures are
-// re-uploaded only when their version changes.
-const FLOATS = 20 // five vec4f per primitive, matching struct P
+// WebGPU renderer. The display list is drawn by one instanced rounded-rect pipeline into a
+// half-float scene texture; a downsample chain of that scene then feeds one post pass that adds
+// depth of field around the camera's subject, soft bloom, the grade, a vignette and film grain.
+// Consecutive primitives sharing a texture go out in one draw call; canvas textures are re-uploaded
+// only when their version changes.
+const FLOATS = 24 // six vec4f per primitive, matching struct P
+const LEVELS = 4
 
-const WGSL = /* wgsl */ `
+const PRIM = /* wgsl */ `
 struct U { view: vec4f, grade: vec4f }
-struct P { rect: vec4f, col: vec4f, p: vec4f, clip: vec4f, q: vec4f }
+struct P { rect: vec4f, col: vec4f, p: vec4f, clip: vec4f, q: vec4f, uv: vec4f }
 @group(0) @binding(0) var<uniform> u: U;
 @group(0) @binding(1) var<storage, read> ps: array<P>;
 @group(1) @binding(0) var tex: texture_2d<f32>;
@@ -42,6 +45,7 @@ fn sdBox(p: vec2f, b: vec2f, r: f32) -> f32 {
   var rgb = p.col.rgb;
   var a = p.col.a;
   if (p.p.z > 0.0) {
+    // a soft shadow: a blurred box, a little below its window
     let s = p.p.z;
     let d = sdBox(w - (p.rect.xy + half) - vec2f(0.0, s * 0.35), half, r);
     let k = clamp(1.0 - (d + s * 0.25) / (s * 1.25), 0.0, 1.0);
@@ -54,14 +58,15 @@ fn sdBox(p: vec2f, b: vec2f, r: f32) -> f32 {
       cov = clamp(0.5 - d * dpr, 0.0, 1.0);
     }
     if (p.q.y > 0.5) {
-      let uv = (w - p.rect.xy) / p.rect.zw;
+      let f = (w - p.rect.xy) / p.rect.zw;
+      let uv = mix(p.uv.xy, p.uv.zw, f);
       let t = textureSampleLevel(tex, samp, uv, 0.0);
-      // texture is premultiplied; col tints it
+      // texture is premultiplied; col tints it (and may push it past 1 for light sources)
       if (t.a > 0.0001) { rgb = t.rgb / t.a * p.col.rgb; } else { rgb = vec3f(0.0); }
       a = t.a * p.col.a;
     }
   }
-  // grade: g.x darkness, g.y coolness, g.z desaturation
+  // the story's grade: g.x darkness, g.y coolness, g.z desaturation
   let gw = p.q.x;
   if (gw > 0.0) {
     let lum = dot(rgb, vec3f(0.299, 0.587, 0.114));
@@ -75,6 +80,93 @@ fn sdBox(p: vec2f, b: vec2f, r: f32) -> f32 {
 }
 `
 
+const FULL = /* wgsl */ `
+struct VO { @builtin(position) pos: vec4f, @location(0) uv: vec2f }
+@vertex fn vs(@builtin(vertex_index) vi: u32) -> VO {
+  let x = f32((vi << 1u) & 2u);
+  let y = f32(vi & 2u);
+  var o: VO;
+  o.pos = vec4f(x * 2.0 - 1.0, 1.0 - y * 2.0, 0.0, 1.0);
+  o.uv = vec2f(x, y);
+  return o;
+}
+`
+
+// Dual-filter downsample: the centre and four diagonal half-texel taps.
+const DOWN = FULL + /* wgsl */ `
+@group(0) @binding(0) var src: texture_2d<f32>;
+@group(0) @binding(1) var samp: sampler;
+@fragment fn fs(i: VO) -> @location(0) vec4f {
+  let ts = 1.0 / vec2f(textureDimensions(src));
+  var c = textureSampleLevel(src, samp, i.uv, 0.0) * 4.0;
+  c += textureSampleLevel(src, samp, i.uv + vec2f(-ts.x, -ts.y), 0.0);
+  c += textureSampleLevel(src, samp, i.uv + vec2f(ts.x, -ts.y), 0.0);
+  c += textureSampleLevel(src, samp, i.uv + vec2f(-ts.x, ts.y), 0.0);
+  c += textureSampleLevel(src, samp, i.uv + vec2f(ts.x, ts.y), 0.0);
+  return c / 8.0;
+}
+`
+
+const POST = FULL + /* wgsl */ `
+struct PU { res: vec4f, focus: vec4f, a: vec4f, b: vec4f, c: vec4f }
+@group(0) @binding(0) var<uniform> pu: PU;
+@group(0) @binding(1) var samp: sampler;
+@group(0) @binding(2) var scene: texture_2d<f32>;
+@group(0) @binding(3) var l1: texture_2d<f32>;
+@group(0) @binding(4) var l2: texture_2d<f32>;
+@group(0) @binding(5) var l3: texture_2d<f32>;
+@group(0) @binding(6) var l4: texture_2d<f32>;
+// a 3x3 tent around uv, in that level's texels
+fn tent(t: texture_2d<f32>, uv: vec2f) -> vec3f {
+  let ts = 1.0 / vec2f(textureDimensions(t));
+  var c = textureSampleLevel(t, samp, uv, 0.0).rgb * 4.0;
+  c += (textureSampleLevel(t, samp, uv + vec2f(ts.x, 0.0), 0.0).rgb + textureSampleLevel(t, samp, uv - vec2f(ts.x, 0.0), 0.0).rgb + textureSampleLevel(t, samp, uv + vec2f(0.0, ts.y), 0.0).rgb + textureSampleLevel(t, samp, uv - vec2f(0.0, ts.y), 0.0).rgb) * 2.0;
+  c += textureSampleLevel(t, samp, uv + ts, 0.0).rgb + textureSampleLevel(t, samp, uv - ts, 0.0).rgb + textureSampleLevel(t, samp, uv + vec2f(ts.x, -ts.y), 0.0).rgb + textureSampleLevel(t, samp, uv + vec2f(-ts.x, ts.y), 0.0).rgb;
+  return c / 16.0;
+}
+fn hash(p: vec2f) -> f32 {
+  var q = fract(p * vec2f(0.1031, 0.1030));
+  q += dot(q, q.yx + 33.33);
+  return fract((q.x + q.y) * q.x);
+}
+@fragment fn fs(i: VO) -> @location(0) vec4f {
+  let px = i.uv * pu.res.xy;
+  var c = textureSampleLevel(scene, samp, i.uv, 0.0).rgb;
+  // depth of field: sharp on the subject, softer with distance from it
+  let dof = pu.a.x;
+  if (dof > 0.001) {
+    let q = max(max(pu.focus.xy - px, px - pu.focus.zw), vec2f(0.0));
+    let coc = dof * smoothstep(0.0, 0.42 * min(pu.res.x, pu.res.y), length(q));
+    if (coc > 0.002) {
+      let b1 = tent(l1, i.uv);
+      let b2 = tent(l2, i.uv);
+      let b = mix(b1, b2, smoothstep(0.35, 1.0, coc));
+      c = mix(c, b, smoothstep(0.0, 0.35, coc));
+    }
+  }
+  // soft bloom from the wide levels
+  let wide = tent(l3, i.uv) * 0.55 + tent(l4, i.uv) * 0.45;
+  let lw = max(dot(wide, vec3f(0.2126, 0.7152, 0.0722)), 1e-4);
+  c += wide * (max(lw - pu.a.z, 0.0) / lw) * pu.a.y;
+  // grade: exposure, warmth, saturation, contrast around mid grey
+  c *= pu.b.z;
+  c *= vec3f(1.0 + pu.c.x * 0.06, 1.0, 1.0 - pu.c.x * 0.08);
+  let l = dot(c, vec3f(0.2126, 0.7152, 0.0722));
+  c = mix(vec3f(l), c, pu.b.w);
+  c = (c - 0.5) * pu.c.y + 0.5;
+  // vignette, measured on the short side so phones and desktops darken alike
+  let d = (i.uv - 0.5) * pu.res.xy / min(pu.res.x, pu.res.y);
+  c *= 1.0 - pu.a.w * smoothstep(0.35, 1.05, length(d));
+  // grain (moves every frame), stronger in the shadows; then a dither against banding
+  let n = hash(px + vec2f(pu.b.y * 37.0, pu.b.y * 91.0)) + hash(px * 1.7 + vec2f(pu.b.y * 13.0, 7.0)) - 1.0;
+  c += n * pu.b.x * (1.0 - 0.6 * clamp(l, 0.0, 1.0));
+  c += (hash(px + 0.5) - 0.5) / 255.0;
+  return vec4f(clamp(c, vec3f(0.0), vec3f(1.0)), 1.0);
+}
+`
+
+export const POST_DEFAULT = { focus: null, dof: 0, bloom: 0.18, threshold: 0.62, vignette: 0.22, grain: 0.018, exposure: 1, saturation: 1, warmth: 0, contrast: 1 }
+
 export async function createGPU(canvas) {
   if (!navigator.gpu) return null
   const adapter = await navigator.gpu.requestAdapter({ powerPreference: "high-performance" })
@@ -84,20 +176,24 @@ export async function createGPU(canvas) {
   if (!ctx) return null
   const format = navigator.gpu.getPreferredCanvasFormat()
   ctx.configure({ device, format, alphaMode: "opaque" })
-  const module = device.createShaderModule({ code: WGSL })
+  const HDR = "rgba16float"
   const blend = { color: { srcFactor: "one", dstFactor: "one-minus-src-alpha" }, alpha: { srcFactor: "one", dstFactor: "one-minus-src-alpha" } }
-  const pipeline = await device.createRenderPipelineAsync({
-    layout: "auto",
-    vertex: { module, entryPoint: "vs" },
-    fragment: { module, entryPoint: "fs", targets: [{ format, blend }] },
-    primitive: { topology: "triangle-list" },
-  })
+  const primMod = device.createShaderModule({ code: PRIM })
+  const downMod = device.createShaderModule({ code: DOWN })
+  const postMod = device.createShaderModule({ code: POST })
+  const [pipeline, down, post] = await Promise.all([
+    device.createRenderPipelineAsync({ layout: "auto", vertex: { module: primMod, entryPoint: "vs" }, fragment: { module: primMod, entryPoint: "fs", targets: [{ format: HDR, blend }] }, primitive: { topology: "triangle-list" } }),
+    device.createRenderPipelineAsync({ layout: "auto", vertex: { module: downMod, entryPoint: "vs" }, fragment: { module: downMod, entryPoint: "fs", targets: [{ format: HDR }] }, primitive: { topology: "triangle-list" } }),
+    device.createRenderPipelineAsync({ layout: "auto", vertex: { module: postMod, entryPoint: "vs" }, fragment: { module: postMod, entryPoint: "fs", targets: [{ format }] }, primitive: { topology: "triangle-list" } }),
+  ])
   const ubuf = device.createBuffer({ size: 32, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST })
+  const pbuf = device.createBuffer({ size: 80, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST })
   let cap = 0
   let sbuf = null
   let bg0 = null
   let data = new Float32Array(0)
   const sampler = device.createSampler({ magFilter: "linear", minFilter: "linear" })
+  const clampS = device.createSampler({ magFilter: "linear", minFilter: "linear", addressModeU: "clamp-to-edge", addressModeV: "clamp-to-edge" })
   const texs = new Map() // canvas -> { tex, bg, version, w, h }
   const white = document.createElement("canvas")
   white.width = white.height = 2
@@ -107,6 +203,25 @@ export async function createGPU(canvas) {
   white.version = 1
   let lost = false
   device.lost.then(() => (lost = true))
+
+  // render targets, rebuilt when the canvas size changes
+  let rt = null
+  function targets(w, h) {
+    if (rt && rt.w === w && rt.h === h) return rt
+    if (rt) for (const t of [rt.scene, ...rt.levels]) t.destroy()
+    const mk = (tw, th) => device.createTexture({ size: [Math.max(1, tw), Math.max(1, th)], format: HDR, usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.TEXTURE_BINDING })
+    const scene = mk(w, h)
+    const levels = []
+    for (let k = 1; k <= LEVELS; k++) levels.push(mk(Math.ceil(w / 2 ** k), Math.ceil(h / 2 ** k)))
+    const srcs = [scene, ...levels]
+    const downBG = levels.map((_, k) => device.createBindGroup({ layout: down.getBindGroupLayout(0), entries: [{ binding: 0, resource: srcs[k].createView() }, { binding: 1, resource: clampS }] }))
+    const postBG = device.createBindGroup({
+      layout: post.getBindGroupLayout(0),
+      entries: [{ binding: 0, resource: { buffer: pbuf } }, { binding: 1, resource: clampS }, ...srcs.map((t, k) => ({ binding: 2 + k, resource: t.createView() }))],
+    })
+    rt = { w, h, scene, levels, downBG, postBG }
+    return rt
+  }
 
   function grow(n) {
     if (n <= cap) return
@@ -135,12 +250,13 @@ export async function createGPU(canvas) {
     return e
   }
 
+  let frame = 0
   return {
     kind: "webgpu",
     get lost() {
       return lost
     },
-    render(list, W, H, dpr, grade) {
+    render(list, W, H, dpr, grade, fx = POST_DEFAULT) {
       grow(list.length)
       const groups = []
       let cur = null
@@ -149,15 +265,25 @@ export async function createGPU(canvas) {
         const o = i * FLOATS
         const col = p.col || [1, 1, 1, 1]
         const cl = p.clip || [-1e9, -1e9, 1e9, 1e9]
-        data.set([p.x, p.y, p.w, p.h, col[0], col[1], col[2], col[3] ?? 1, p.r ?? 0, p.a ?? 1, p.shadow || 0, p.ring || 0, cl[0], cl[1], cl[2], cl[3], p.g || 0, p.tex ? 1 : 0, 0, 0], o)
+        const uv = p.uv || [0, 0, 1, 1]
+        data.set([p.x, p.y, p.w, p.h, col[0], col[1], col[2], col[3] ?? 1, p.r ?? 0, p.a ?? 1, p.shadow || 0, p.ring || 0, cl[0], cl[1], cl[2], cl[3], p.g || 0, p.tex ? 1 : 0, 0, 0, uv[0], uv[1], uv[2], uv[3]], o)
         const t = p.tex || white
         if (!cur || cur.t !== t) groups.push((cur = { t, first: i, n: 0 }))
         cur.n++
       }
+      const tw = ctx.getCurrentTexture()
+      const R = targets(tw.width, tw.height)
+      const k = tw.width / W
+      const f = fx.focus ? fx.focus.map((v) => v * k) : [0, 0, tw.width, tw.height]
       device.queue.writeBuffer(ubuf, 0, new Float32Array([W, H, dpr, 0, grade[0], grade[1], grade[2], 0]))
+      device.queue.writeBuffer(
+        pbuf,
+        0,
+        new Float32Array([tw.width, tw.height, 1 / tw.width, 1 / tw.height, ...f, fx.dof ?? 0, fx.bloom ?? 0, fx.threshold ?? 0.6, fx.vignette ?? 0, fx.grain ?? 0, frame++ % 997, fx.exposure ?? 1, fx.saturation ?? 1, fx.warmth ?? 0, fx.contrast ?? 1, 0, 0]),
+      )
       if (list.length) device.queue.writeBuffer(sbuf, 0, data, 0, list.length * FLOATS)
       const enc = device.createCommandEncoder()
-      const pass = enc.beginRenderPass({ colorAttachments: [{ view: ctx.getCurrentTexture().createView(), clearValue: { r: 0.03, g: 0.03, b: 0.035, a: 1 }, loadOp: "clear", storeOp: "store" }] })
+      const pass = enc.beginRenderPass({ colorAttachments: [{ view: R.scene.createView(), clearValue: { r: 0.03, g: 0.03, b: 0.035, a: 1 }, loadOp: "clear", storeOp: "store" }] })
       pass.setPipeline(pipeline)
       pass.setBindGroup(0, bg0)
       for (const g of groups) {
@@ -165,6 +291,18 @@ export async function createGPU(canvas) {
         pass.draw(6, g.n, 0, g.first)
       }
       pass.end()
+      for (let l = 0; l < LEVELS; l++) {
+        const dp = enc.beginRenderPass({ colorAttachments: [{ view: R.levels[l].createView(), loadOp: "clear", storeOp: "store", clearValue: { r: 0, g: 0, b: 0, a: 1 } }] })
+        dp.setPipeline(down)
+        dp.setBindGroup(0, R.downBG[l])
+        dp.draw(3)
+        dp.end()
+      }
+      const pp = enc.beginRenderPass({ colorAttachments: [{ view: tw.createView(), loadOp: "clear", storeOp: "store", clearValue: { r: 0, g: 0, b: 0, a: 1 } }] })
+      pp.setPipeline(post)
+      pp.setBindGroup(0, R.postBG)
+      pp.draw(3)
+      pp.end()
       device.queue.submit([enc.finish()])
     },
     // Drop textures whose canvases are gone.
@@ -179,8 +317,10 @@ export async function createGPU(canvas) {
     done: () => device.queue.onSubmittedWorkDone(),
     destroy() {
       for (const e of texs.values()) e.tex.destroy()
+      if (rt) for (const t of [rt.scene, ...rt.levels]) t.destroy()
       sbuf?.destroy()
       ubuf.destroy()
+      pbuf.destroy()
       device.destroy()
     },
   }

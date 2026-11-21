@@ -1,29 +1,19 @@
-// The show engine. createShow() draws the still with Canvas 2D (nothing else is loaded); start()
-// runs inside the key press: it brings up WebGPU (or Canvas 2D), fetches the voice bank and plays
-// the film. ?capture exposes window.__show for deterministic frame stepping.
-import { World, MENU_H } from "./world.js"
+// The show engine. createShow() draws the still with Canvas 2D (only the small wallpaper is
+// fetched); start() runs inside the key press: it brings up WebGPU (or Canvas 2D), fetches the tape,
+// the effects and the plates, and plays the film. The picture is cut to the tape's word times
+// (tape.js), so it runs the same with or without sound. ?capture exposes window.__show for
+// deterministic frame stepping and a motion trace.
+import { World } from "./world.js"
 import { build, pile, HOLD, END } from "./director.js"
 import { createCanvas2D } from "./canvas2d.js"
-import { createGPU } from "./gpu.js"
+import { createGPU, POST_DEFAULT } from "./gpu.js"
 import { Audio } from "./audio.js"
-import { roomPrims, headPrims, frontPrims, makeOuter, stampCanvas, Z_HEAD, Z_FRONT } from "./levels.js"
-import { clamp, mix, smooth, easeInOut } from "./springs.js"
+import { LINES, TAPE } from "./tape.js"
+import { plates, loadPlate, coverUV } from "./plates.js"
+import { glowCanvas, STUDY, KITCHEN, coverView, zoomT } from "./levels.js"
+import { clamp, mix } from "./springs.js"
 
-const LINES = {
-  march: "I'd had some of those windows open since March.",
-  "same-note": "Three of them were the same note. I closed two.",
-  mail: "Mail went to two.",
-  internet: "The internet went to three.",
-  rule: "Then I wrote a rule. Chatter opens on two.",
-  "not-closed": "It isn't closed. It's on two.",
-  drill: "I returned the drill. I'd had it four years. He said I didn't need to.",
-  house: "Household things went on four.",
-  minutes: "Nobody else wanted to take the minutes.",
-  hedge: "Number fourteen's hedge is six foot two. The limit is six feet.",
-  second: "I started recording the height after our second conversation.",
-  circulated: "Nobody corrected the minutes. I circulated them again.",
-  light: "Number fourteen leaves a light on.",
-}
+const PLATES = ["wall", "hedge", "door", "across", "study", "kitchen"]
 
 export function createShow({ still, canvas, base, capture = false, reduced = false, on = {} }) {
   const emit = (k, v) => on[k]?.(v)
@@ -32,7 +22,6 @@ export function createShow({ still, canvas, base, capture = false, reduced = fal
   let SW = 1440
   let SH = 900
   let world = null
-  let outer = null
   let renderer = null
   let phase = "still"
   let t = 0
@@ -45,11 +34,15 @@ export function createShow({ still, canvas, base, capture = false, reduced = fal
   let dprScale = 1
   let caption = null
   let manifest = null
+  let tapeAt = null // { ctx, t } when the tape started: the film follows the tape's clock
   const cam = { D: 1, cx: 0, cy: 0 }
   const grade = [0, 0, 0]
-  const pull = { a: 0, b: 0, from: null }
+  const fx = { ...POST_DEFAULT }
+  const scene = { pull: 0, win: 0, fade: 0, kpush: 0 }
+  const look = { focus: null, dof: 0.6 }
   const audio = new Audio(base + "audio/", { log: capture })
   const stats = { intervals: [], cpu: [], frames: 0 }
+  const trace = []
 
   function measure() {
     const r = (canvas || still).getBoundingClientRect()
@@ -71,8 +64,8 @@ export function createShow({ still, canvas, base, capture = false, reduced = fal
     w.frontApp = "Jot"
     for (const def of pile(SW, SH)) w.add(def)
     w.setFocus("notes")
-    w.cursor.x.x = w.cursor.x.t = SW * 0.7
-    w.cursor.y.x = w.cursor.y.t = SH * 0.62
+    w.cursor.x = SW * 0.7
+    w.cursor.y = SH * 0.62
     return w
   }
 
@@ -95,93 +88,123 @@ export function createShow({ still, canvas, base, capture = false, reduced = fal
     return d
   }
 
+  // Window canvases are painted at the device pixels they cover, so text stays sharp in a push.
   function setRes(w, k, d) {
-    const r = Math.round(clamp(k * d, 0.5, 4) * 4) / 4
+    const r = Math.round(clamp(k * d, 0.5, 5) * 4) / 4
     if (w.res !== r) {
       w.res = r
-      for (const x of w.wins.values()) x.dirty = true
       w.menuCanvas = null
       w.keys.canvas = null
     }
   }
 
   // ── Projection ─────────────────────────────────────────────────────────
-  const PHOTO_H = 4.6 // the photographed part of the house front, in screen heights
-  const D_END = Z_FRONT + PHOTO_H
-
-  function camera() {
-    if (pull.a <= 0) return { D: cam.D, cx: cam.cx, cy: cam.cy }
-    if (!pull.from) pull.from = { ...cam }
-    const f = pull.from
-    const e = reduced ? stepped(pull.a) : easeInOut(pull.a)
-    const D = Math.exp(mix(Math.log(f.D), Math.log(D_END), e))
-    const lc = smooth(clamp((Math.log(D) - Math.log(f.D)) / (Math.log(1.6) - Math.log(f.D) || 1)))
-    return { D, cx: mix(f.cx, SW / 2, lc), cy: mix(f.cy, SH / 2, lc) }
-  }
-  // Reduced motion: three held framings with cuts between them instead of a continuous zoom.
-  const stepped = (u) => (u < 0.3 ? 0 : u < 0.62 ? 0.55 : 1)
-
-  // Plane at depth z → CSS px, given the frame→px transform F.
-  function planeT(z, c, F) {
-    const s = 1 / (c.D - z)
-    return { k: s * F.k, ox: (SW / 2 - c.cx * s) * F.k + F.ox, oy: (SH / 2 - c.cy * s) * F.k + F.oy, s }
+  // The camera looks at part of his screen: D is the fraction of the screen in view.
+  function camT(F) {
+    const s = 1 / cam.D
+    return { k: s * F.k, ox: (SW / 2 - cam.cx * s) * F.k + F.ox, oy: (SH / 2 - cam.cy * s) * F.k + F.oy }
   }
 
-  function pushPrims(list, prims, T, opts) {
-    for (const p of prims) list.push({ ...p, x: p.x * T.k + T.ox, y: p.y * T.k + T.oy, w: p.w * T.k, h: p.h * T.k, r: (p.r || 0) * T.k, ring: (p.ring || 0) * T.k, a: (p.a ?? 1) * opts.am, clip: opts.clip, g: opts.g })
+  function focusRect(T) {
+    const id = look.focus
+    const w = id && world.wins.get(id)
+    if (!w) return null
+    return [w.x.x * T.k + T.ox, w.y.x * T.k + T.oy, (w.x.x + w.w.x) * T.k + T.ox, (w.y.x + w.h.x) * T.k + T.oy]
   }
 
-  const photoRegion = () => ({ x: SW / 2 - (PHOTO_H * SW) / 2, y: SH / 2 - (PHOTO_H * SH) / 2, w: PHOTO_H * SW, h: PHOTO_H * SH })
-
-  function inner(list, F, clip, am) {
-    const c = camera()
-    const T0 = planeT(0, c, F)
-    const light = 1 - grade[0] * 0.6
-    const opts = { clip, g: 1, am }
-    if (c.D > 1.001) pushPrims(list, roomPrims(SW, SH, light), T0, { ...opts, g: 0 })
-    setRes(world, F.k * T0.s, dpr())
-    world.draw(list, T0, { clip, g: 1, am })
-    if (c.D - Z_HEAD > 0.4) {
-      const a = clamp((c.D - Z_HEAD - 0.4) / 0.5)
-      if (a > 0) pushPrims(list, headPrims(SW, SH, light), planeT(Z_HEAD, c, F), { clip, g: 0, am: am * a })
+  // The study: his screen is a photograph's monitor; the world is drawn into it.
+  let pullFrom = null
+  function studyT(F) {
+    const img = plates.study
+    const M = STUDY.screen
+    const g = Math.min(M.w / SW, M.h / SH)
+    const G = { k: g, ox: M.x + (M.w - SW * g) / 2, oy: M.y + (M.h - SH * g) / 2 }
+    if (!pullFrom) {
+      // where the pull starts: exactly the framing the camera had on the screen
+      const T0 = camT(F)
+      const k = T0.k / g
+      pullFrom = { k, ox: T0.ox - k * G.ox, oy: T0.oy - k * G.oy }
     }
-    if (c.D - Z_FRONT > 0.05) {
-      const TF = planeT(Z_FRONT, c, F)
-      const fr = frontPrims(SW, SH, photoRegion(), light, TF.s)
-      pushPrims(list, fr.prims, TF, { clip, g: 0, am })
-    }
+    const A = cssW / cssH
+    const tall = A < 1
+    const wide = coverView(img, cssW, cssH, tall ? STUDY.tallFocus : STUDY.focus, 1)
+    const near = coverView(img, cssW, cssH, STUDY.window, tall ? 1.7 : 2.6)
+    let P = zoomT(pullFrom, wide, stepIf(scene.pull))
+    if (scene.win > 0) P = zoomT(wide, near, stepIf(scene.win))
+    return { P, G }
+  }
+
+  // Reduced motion: held framings with cuts between them instead of continuous moves.
+  const stepIf = (u) => (reduced ? (u < 0.5 ? 0 : 1) : ease(u))
+  const ease = (u) => {
+    u = clamp(u)
+    return u < 0.5 ? 4 * u * u * u : 1 - (-2 * u + 2) ** 3 / 2
+  }
+
+  function drawStudy(list, F) {
+    const img = plates.study
+    const { P, G } = studyT(F)
+    list.push({ x: P.ox, y: P.oy, w: img.width * P.k, h: img.height * P.k, tex: img, g: 0 })
+    const M = STUDY.screen
+    const mx = P.ox + M.x * P.k
+    const my = P.oy + M.y * P.k
+    const mw = M.w * P.k
+    const mh = M.h * P.k
+    const clip = [mx, my, mx + mw, my + mh]
+    list.push({ x: mx, y: my, w: mw, h: mh, col: [0.02, 0.02, 0.025, 1], r: 1.5 * P.k })
+    // past a portrait desktop's edges, the monitor shows the wallpaper
+    const wall = world.wall
+    list.push({ x: mx, y: my, w: mw, h: mh, tex: wall, uv: coverUV(wall, mw, mh), r: 1.5 * P.k, clip })
+    list.push({ x: mx, y: my, w: mw, h: mh, col: [0, 0, 0, 0.45], r: 1.5 * P.k, clip })
+    const T = { k: G.k * P.k, ox: P.ox + G.ox * P.k, oy: P.oy + G.oy * P.k }
+    setRes(world, T.k, dpr())
+    world.draw(list, T, { clip, g: 1 })
+    // the panel's own sheen, and its light on the desk and the wall around it
+    const glow = glowCanvas()
+    list.push({ x: mx, y: my, w: mw, h: mh, col: [1, 1, 1, 0.035], r: 1.5 * P.k, clip })
+    list.push({ x: mx - mw * 0.9, y: my - mh * 0.7, w: mw * 2.8, h: mh * 2.6, tex: glow, col: [0.55, 0.62, 0.8, 0.16], g: 0 })
+    fx.focus = scene.win > 0.2 ? [P.ox + STUDY.window.x * img.width * P.k - 80, P.oy + STUDY.window.y * img.height * P.k - 60, P.ox + STUDY.window.x * img.width * P.k + 80, P.oy + STUDY.window.y * img.height * P.k + 60] : clip
+  }
+
+  // The kitchen across the street, where the recorder is.
+  function drawKitchen(list, a) {
+    const img = plates.kitchen
+    const tall = cssW < cssH
+    const K0 = coverView(img, cssW, cssH, tall ? KITCHEN.tallFocus : KITCHEN.focus, tall ? 1.05 : 1.04)
+    const K1 = coverView(img, cssW, cssH, KITCHEN.recorder, tall ? 1.5 : 1.55)
+    const P = zoomT(K0, K1, reduced ? 0 : clamp(scene.kpush))
+    list.push({ x: P.ox, y: P.oy, w: img.width * P.k, h: img.height * P.k, tex: img, a, g: 0 })
+    // the record light
+    const lx = P.ox + KITCHEN.light.x * img.width * P.k
+    const ly = P.oy + KITCHEN.light.y * img.height * P.k
+    const s = 70 * P.k
+    list.push({ x: lx - s, y: ly - s, w: 2 * s, h: 2 * s, tex: glowCanvas(), col: [1.6, 0.25, 0.18, 0.35], a, g: 0 })
+    list.push({ x: lx - 15 * P.k, y: ly - 10 * P.k, w: 30 * P.k, h: 20 * P.k, col: [1.5, 0.3, 0.22, 0.45], r: 6 * P.k, a, g: 0 })
+    if (a > 0.5) fx.focus = [lx - 260 * P.k, ly - 220 * P.k, lx + 260 * P.k, ly + 160 * P.k]
   }
 
   function buildList() {
     const list = []
     const F = fit()
-    if (pull.b <= 0 || !outer) {
-      inner(list, F, null, 1)
-      if (F.ox > 0.5 || F.oy > 0.5) letterbox(list, F)
-      return list
+    fx.focus = null
+    const plateEnd = scene.pull > 0 && plates.study
+    if (scene.fade < 1) {
+      if (!plateEnd) {
+        const T = camT(F)
+        setRes(world, T.k, dpr())
+        world.draw(list, T, { g: 1 })
+        fx.focus = focusRect(T)
+        if (F.ox > 0.5 || F.oy > 0.5) letterbox(list, F)
+      } else drawStudy(list, F)
     }
-    // Stage B: the other desktop, zooming out from the photograph.
-    const pw = outer.wins.get("o-photo")
-    const pr = outer.photoRect
-    const u = reduced ? (pull.b < 0.5 ? 0 : 1) : easeInOut(pull.b)
-    const zFull = SW / pr.w
-    const z = Math.exp(mix(Math.log(zFull), 0, u))
-    const cx = mix(pr.x + pr.w / 2, SW / 2, u)
-    const cy = mix(pr.y + pr.h / 2, SH / 2, u)
-    const TO = { k: z * F.k, ox: (SW / 2 - cx * z) * F.k + F.ox, oy: (SH / 2 - cy * z) * F.k + F.oy }
-    setRes(outer, TO.k, dpr())
-    outer.draw(list, TO, { g: 0, part: "base" })
-    const off = pw.off.x
-    const px = { x: (pr.x + off) * TO.k + TO.ox, y: pr.y * TO.k + TO.oy, w: pr.w * TO.k, h: pr.h * TO.k }
-    const FI = { k: px.w / SW, ox: px.x, oy: px.y }
-    const clip = [px.x, px.y, px.x + px.w, px.y + px.h]
-    inner(list, FI, clip, pw.a.x)
-    const st = stampCanvas("11/20/2026  11:48 PM")
-    const sh = px.h * 0.045
-    list.push({ x: px.x + px.w - sh * 9.4, y: px.y + px.h - sh * 1.7, w: sh * 8.1, h: sh, tex: st, a: clamp(pull.b * 3) * pw.a.x, clip })
-    outer.draw(list, TO, { g: 0, part: "top" })
-    if (F.ox > 0.5 || F.oy > 0.5) letterbox(list, F)
+    if (scene.fade > 0 && plates.kitchen) drawKitchen(list, clamp(scene.fade))
     return list
+  }
+
+  function postFx() {
+    // depth of field grows with the push, so a full-screen view is sharp everywhere
+    const depth = scene.pull > 0 || scene.fade > 0 ? 1 : clamp((1 - cam.D) / 0.45)
+    return { ...fx, dof: fx.focus ? look.dof * depth : 0 }
   }
 
   function letterbox(list, F) {
@@ -207,65 +230,77 @@ export function createShow({ still, canvas, base, capture = false, reduced = fal
     get SH() {
       return SH
     },
+    get t() {
+      return t
+    },
+    reduced,
     cam,
     grade,
-    pull,
-    say(at, id) {
-      cues.push({ t: at, fn: () => speak(id, at) })
-    },
+    fx,
+    scene,
+    look,
     sfx(name, gain = 1) {
       audio.play("sfx-" + name + ".mp3", { t, gain })
     },
-    room(v, tc) {
-      roomLevel = v
-      audio.roomLevel(v, t, tc)
+    bed(name, v, tc) {
+      audio.bed("sfx-" + name + ".mp3", v, t, tc)
     },
     hint(v) {
       emit("hint", v)
     },
-    outerKey() {
-      audio.play("sfx-key2.mp3", { t, gain: 0.8 })
-      if (outer) outer.switchTo(6, { quiet: true })
-    },
     end() {
       phase = "ended"
-      emit("caption", null)
+      setCaption(null)
       audio.stopAll()
+      tapeAt = null
       emit("phase", "ended")
     },
   }
-  let roomLevel = 0
 
-  function speak(id, at) {
-    const v = audio.voiceFile(id)
-    const dur = v?.dur ?? LINES[id].split(" ").length * 0.38
-    // one sentence at a time, so the caption never runs ahead of the voice
-    const sentences = []
-    for (const w of v?.words || []) {
-      const last = sentences[sentences.length - 1]
-      if (!last || /[.?!]$/.test(last.text)) sentences.push({ t: w.t, text: w.text })
-      else last.text += " " + w.text
+  // ── The tape ───────────────────────────────────────────────────────────
+  function startTape() {
+    const tape = audio.tape
+    if (!tape || phase !== "live" || t >= tape.dur - 0.05) return
+    const h = audio.play(tape.file, { t, offset: t, kind: "voice" })
+    tapeAt = h ? { ctx: audio.ctx.currentTime, t } : null
+  }
+  audio.onReady = (file) => {
+    if (file === audio.tape?.file && phase === "live" && !tapeAt) {
+      startTape()
+      audio.restoreBeds(t)
     }
-    caption = { id, text: sentences[0]?.text || LINES[id], t0: at, t1: at + dur + 0.5, sentences, k: 0 }
-    emit("caption", caption)
-    audio.play(v?.file || id + ".mp3", { t, kind: "voice" })
+  }
+
+  // one sentence at a time, held a moment after it ends unless the next one starts
+  let li = 0
+  function captions() {
+    while (li < LINES.length && t > LINES[li][2] + 0.6) li++
+    const L = LINES[li]
+    const on = L && t >= L[1] - 0.05 && (li + 1 >= LINES.length || t < LINES[li + 1][1] - 0.05)
+    setCaption(on ? L[0] : null)
+  }
+  function setCaption(text) {
+    if (text === caption) return
+    caption = text
+    emit("caption", text ? { text } : null)
   }
 
   function setup() {
     world = makeWorld()
-    outer = null
     t = 0
     ci = 0
+    li = 0
     grade.fill(0)
-    pull.a = pull.b = 0
-    pull.from = null
+    Object.assign(fx, POST_DEFAULT)
+    Object.assign(scene, { pull: 0, win: 0, fade: 0, kpush: 0 })
+    look.focus = null
+    pullFrom = null
     cam.D = 1
     cam.cx = SW / 2
     cam.cy = SH / 2
-    cues = []
-    spans = []
+    trace.length = 0
     const b = build(S)
-    cues = [...cues, ...b.cues].sort((x, y) => x.t - y.t)
+    cues = b.cues
     spans = b.spans
   }
 
@@ -279,23 +314,11 @@ export function createShow({ still, canvas, base, capture = false, reduced = fal
       t += h
       while (ci < cues.length && cues[ci].t <= t) cues[ci++].fn()
       for (const s of spans) if (t >= s.t0 && t - h < s.t1) s.fn(clamp((t - s.t0) / (s.t1 - s.t0)), t)
-      if (pull.a >= 0.995 && !outer) outer = makeOuter(SW, SH, world.res)
-      if (pull.b <= 0) world.update(h)
-      else outer?.update(h)
+      world.update(h)
       if (phase !== "live") break
     }
     t = Math.max(t, Math.min(t1, END))
-    if (caption && t > caption.t1) {
-      caption = null
-      emit("caption", null)
-    } else if (caption?.sentences.length > 1) {
-      let k = 0
-      while (k + 1 < caption.sentences.length && t >= caption.t0 + caption.sentences[k + 1].t - 0.05) k++
-      if (k !== caption.k) {
-        caption = { ...caption, k, text: caption.sentences[k].text }
-        emit("caption", caption)
-      }
-    }
+    if (phase === "live") captions()
   }
 
   function render() {
@@ -303,20 +326,28 @@ export function createShow({ still, canvas, base, capture = false, reduced = fal
     const c0 = performance.now()
     const d = sizeCanvas(canvas)
     const list = phase === "ended" ? [] : buildList()
-    renderer.render(list, cssW, cssH, d, grade)
+    renderer.render(list, cssW, cssH, d, grade, postFx())
     renderer.sweep()
     stats.cpu.push(performance.now() - c0)
     if (stats.cpu.length > 600) stats.cpu.shift()
   }
 
+  // While the tape plays, its clock leads: a long frame never lets the picture fall behind it.
+  function tapeTime() {
+    if (!tapeAt || !audio.on) return null
+    return tapeAt.t + (audio.ctx.currentTime - tapeAt.ctx)
+  }
+
   function frame(now) {
     raf = 0
-    const dt = last ? Math.min(0.05, (now - last) / 1000) : 1 / 60
+    let dt = last ? Math.min(0.05, (now - last) / 1000) : 1 / 60
     if (last) {
       stats.intervals.push(now - last)
       if (stats.intervals.length > 600) stats.intervals.shift()
     }
     last = now
+    const tt = tapeTime()
+    if (tt != null) dt = clamp(tt - t, 0, 0.12)
     advance(dt)
     render()
     adapt()
@@ -370,7 +401,7 @@ export function createShow({ still, canvas, base, capture = false, reduced = fal
   // ── The still ──────────────────────────────────────────────────────────
   let stillR = null
   function drawStill() {
-    if (!still) return
+    if (!still || phase !== "still") return
     measure()
     stillR ||= createCanvas2D(still)
     const d = sizeCanvas(still)
@@ -378,12 +409,14 @@ export function createShow({ still, canvas, base, capture = false, reduced = fal
     const list = []
     world.draw(list, fit(), { g: 1 })
     letterbox(list, fit())
-    stillR.render(list, cssW, cssH, d, [0.08, 0.3, 0])
+    stillR.render(list, cssW, cssH, d, [0, 0, 0])
   }
 
   logical()
   setup()
   drawStill()
+  // the only fetch before the key press: a 17 KB wallpaper for the still
+  loadPlate(base, "wall-s").then(() => drawStill())
 
   const api = {
     get phase() {
@@ -402,16 +435,21 @@ export function createShow({ still, canvas, base, capture = false, reduced = fal
       emit("phase", "loading")
       audio.attach(context, muted)
       const wantGPU = !new URLSearchParams(location.search).has("canvas2d")
+      const platesIn = Promise.all(PLATES.map((p) => loadPlate(base, p)))
       const [m, r] = await Promise.all([
         manifest ? manifest : fetch(base + "audio/manifest.json").then((x) => x.json()).catch(() => null),
         renderer ? renderer : (wantGPU ? createGPU(canvas).catch(() => null) : Promise.resolve(null)).then((g) => g || createCanvas2D(canvas)),
       ])
       manifest = m
       renderer = r
-      if (manifest) await audio.load(manifest)
+      // the wallpaper first (the first frame needs it); the rest arrive long before they're seen
+      await Promise.race([Promise.all([manifest ? audio.load(manifest) : null, loadPlate(base, "wall")]), new Promise((res) => setTimeout(res, 2500))])
+      if (capture) await platesIn
+      for (const w of world.wins.values()) w.dirty = true
       phase = "live"
       emit("phase", "live")
       last = 0
+      startTape()
       render()
       schedule()
     },
@@ -419,11 +457,9 @@ export function createShow({ still, canvas, base, capture = false, reduced = fal
       audio.setMuted(muted, context)
       if (!muted && phase === "live") {
         audio.stopAll()
-        if (roomLevel > 0) audio.roomLevel(roomLevel, t, 0.3)
-        if (caption) {
-          const v = audio.voiceFile(caption.id)
-          if (v && t - caption.t0 < v.dur) audio.play(v.file, { t, offset: t - caption.t0, kind: "voice" })
-        }
+        tapeAt = null
+        startTape()
+        audio.restoreBeds(t)
       }
     },
     skip() {
@@ -439,9 +475,9 @@ export function createShow({ still, canvas, base, capture = false, reduced = fal
     // A tap on the bar during the visitor's turn: which workspace was it?
     tap(x, y) {
       if (phase !== "live" || !world) return false
-      const F = fit()
-      const lx = (x - F.ox) / F.k
-      const ly = (y - F.oy) / F.k
+      const T = camT(fit())
+      const lx = (x - T.ox) / T.k
+      const ly = (y - T.oy) / T.k
       const g = world.barGeom()
       if (ly < g.y - 20 || ly > g.y + g.h + 20) return false
       for (let n = 1; n <= world.bar.cells.length; n++) {
@@ -460,12 +496,19 @@ export function createShow({ still, canvas, base, capture = false, reduced = fal
     },
   }
 
+  function sample() {
+    return { t: +t.toFixed(4), cue: ci, cam: [+cam.cx.toFixed(2), +cam.cy.toFixed(2), +cam.D.toFixed(5)], scene: { ...scene }, active: world.active, ...world.sample() }
+  }
+
   if (capture) {
     window.__show = {
       api,
-      // Advance the clock by n steps of dt and render once.
+      // Advance the clock by n steps of dt and render once; every step lands in the trace.
       async step(dt = 1 / 30, n = 1) {
-        for (let i = 0; i < n; i++) advance(dt)
+        for (let i = 0; i < n; i++) {
+          advance(dt)
+          trace.push(sample())
+        }
         render()
         await renderer?.done()
       },
@@ -494,9 +537,11 @@ export function createShow({ still, canvas, base, capture = false, reduced = fal
           requestAnimationFrame(loop)
         })
       },
-      state: () => ({ t: +t.toFixed(3), phase, active: world.active, D: +camera().D.toFixed(3), pullA: pull.a, pullB: pull.b, renderer: renderer?.kind, dprScale }),
+      state: () => ({ t: +t.toFixed(3), phase, active: world.active, D: +cam.D.toFixed(3), scene: { ...scene }, renderer: renderer?.kind, dprScale, plates: Object.keys(plates) }),
+      trace: (from = 0) => trace.slice(from),
       audioLog: () => audio.log,
       stats: summary,
+      tape: TAPE,
     }
   }
 
@@ -509,6 +554,6 @@ export function createShow({ still, canvas, base, capture = false, reduced = fal
     return { n: stats.intervals.length, interval: { p50: q(stats.intervals, 0.5), p95: q(stats.intervals, 0.95), p99: q(stats.intervals, 0.99), max: q(stats.intervals, 1) }, cpu: { p50: q(stats.cpu, 0.5), p95: q(stats.cpu, 0.95), max: q(stats.cpu, 1) }, over20: stats.intervals.filter((x) => x > 20).length, dprScale }
   }
 
-  void MENU_H
+  void mix
   return api
 }

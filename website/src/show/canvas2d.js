@@ -1,5 +1,6 @@
 // Canvas 2D fallback. Same display list, drawn with clips and drawImage. Grading darkens a
-// primitive by overdrawing its shape; shadows use a soft offset fill instead of shadowBlur.
+// primitive by overdrawing its shape; shadows use a soft offset fill instead of shadowBlur. The
+// post effects (depth of field, bloom, grain) are WebGPU-only; this draws the story plainly.
 import { roundRect } from "./apps.js"
 
 // A tinted copy of a (white) texture, for glows.
@@ -7,7 +8,7 @@ const tints = new WeakMap()
 function tinted(tex, col) {
   let m = tints.get(tex)
   if (!m) tints.set(tex, (m = new Map()))
-  const key = col.slice(0, 3).map((v) => Math.round(v * 40)).join()
+  const key = col.slice(0, 3).map((v) => Math.round(Math.min(1, v) * 40)).join()
   let c = m.get(key)
   if (c) return c
   c = document.createElement("canvas")
@@ -16,7 +17,7 @@ function tinted(tex, col) {
   const x = c.getContext("2d")
   x.drawImage(tex, 0, 0)
   x.globalCompositeOperation = "source-in"
-  x.fillStyle = `rgb(${(col[0] * 255) | 0},${(col[1] * 255) | 0},${(col[2] * 255) | 0})`
+  x.fillStyle = `rgb(${Math.min(255, col[0] * 255) | 0},${Math.min(255, col[1] * 255) | 0},${Math.min(255, col[2] * 255) | 0})`
   x.fillRect(0, 0, c.width, c.height)
   m.set(key, c)
   return c
@@ -28,7 +29,8 @@ export function createCanvas2D(canvas) {
   return {
     kind: "canvas2d",
     lost: false,
-    render(list, W, H, dpr, grade) {
+    render(list, W, H, dpr, grade, fx) {
+      void fx
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0)
       ctx.fillStyle = "#08080a"
       ctx.fillRect(0, 0, W, H)
@@ -72,14 +74,20 @@ export function createCanvas2D(canvas) {
         } else if (p.tex) {
           if (!p.tex.width || !p.tex.height) continue
           const img = col[0] < 0.999 || col[1] < 0.999 || col[2] < 0.999 ? tinted(p.tex, col) : p.tex
-          ctx.globalAlpha = (p.a ?? 1) * (col[3] ?? 1)
+          ctx.globalAlpha = Math.min(1, (p.a ?? 1) * (col[3] ?? 1))
+          const draw = () => {
+            if (p.uv) {
+              const [u0, v0, u1, v1] = p.uv
+              ctx.drawImage(img, u0 * img.width, v0 * img.height, (u1 - u0) * img.width, (v1 - v0) * img.height, p.x, p.y, p.w, p.h)
+            } else ctx.drawImage(img, p.x, p.y, p.w, p.h)
+          }
           if (r > 0.5) {
             ctx.save()
             roundRect(ctx, p.x, p.y, p.w, p.h, r)
             ctx.clip()
-            ctx.drawImage(img, p.x, p.y, p.w, p.h)
+            draw()
             ctx.restore()
-          } else ctx.drawImage(img, p.x, p.y, p.w, p.h)
+          } else draw()
         } else {
           ctx.fillStyle = css
           if (r > 0.5) {

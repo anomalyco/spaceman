@@ -1,6 +1,7 @@
-// Web Audio for the show. Nothing is fetched before the key press. The bank is small (about
-// 500 KB), so it is fetched in one go on start; the show begins once the first lines are decoded
-// or after 2.5 s, whichever comes first. Every play() is logged so captures can be mixed offline.
+// Web Audio for the show. Nothing is fetched before the key press. On start the tape and the
+// effects are fetched in one go (about 830 KB); the film begins once they are decoded or after
+// 2.5 s, whichever is first, and the tape joins late at the right offset if it was still on its
+// way. Every play() is logged so captures can be mixed offline.
 export class Audio {
   constructor(base, { log = false } = {}) {
     this.base = base
@@ -11,8 +12,9 @@ export class Audio {
     this.muted = false
     this.hidden = false
     this.manifest = null
-    this.room = null
+    this.beds = new Map() // file -> { gain, h, level }
     this.live = new Set()
+    this.onReady = null
   }
 
   attach(ctx, muted) {
@@ -29,17 +31,18 @@ export class Audio {
     comp.threshold.value = -10
     comp.ratio.value = 4
     this.master.connect(comp).connect(ctx.destination)
-    this.roomGain = ctx.createGain()
-    this.roomGain.gain.value = 0
-    this.roomGain.connect(this.master)
     for (const f of this.bytes.keys()) void this.decode(f)
     this.sync()
+  }
+
+  get tape() {
+    return this.manifest?.voice?.tape?.takes?.[0] ?? null
   }
 
   async load(manifest) {
     this.manifest = manifest
     const files = new Set(Object.values(manifest.sfx || {}).map((s) => s.file || s))
-    for (const line of Object.values(manifest.voice)) files.add(line.takes[line.pick ?? 0]?.file ?? line.takes[0].file)
+    if (this.tape) files.add(this.tape.file)
     const all = Promise.all([...files].map((f) => this.fetchOne(f)))
     await Promise.race([all, new Promise((r) => setTimeout(r, 2500))])
   }
@@ -60,6 +63,7 @@ export class Audio {
     this.bufs.set(file, null)
     try {
       this.bufs.set(file, await this.ctx.decodeAudioData(b.slice(0)))
+      this.onReady?.(file)
     } catch {
       this.bufs.delete(file)
     }
@@ -67,6 +71,10 @@ export class Audio {
 
   get on() {
     return !!this.ctx && !this.muted && !this.hidden
+  }
+
+  has(file) {
+    return !!this.bufs.get(file)
   }
 
   setMuted(muted, ctx) {
@@ -86,38 +94,45 @@ export class Audio {
     else this.ctx.resume().catch(() => {})
   }
 
-  // t is show time, for the log. offset starts a clip part-way through (after an unmute).
-  play(file, { t = 0, gain = 1, offset = 0, rate = 1, loop = false, kind = "sfx" } = {}) {
+  // t is show time, for the log. offset starts a clip part-way through.
+  play(file, { t = 0, gain = 1, offset = 0, rate = 1, loop = false, kind = "sfx", dest = null } = {}) {
     this.log?.push({ t: +t.toFixed(3), file, gain, offset: +offset.toFixed(3), rate, loop, kind })
     if (!this.on) return null
     const buf = this.bufs.get(file)
-    if (!buf || offset >= buf.duration) return null
+    if (!buf || (!loop && offset >= buf.duration)) return null
     const src = this.ctx.createBufferSource()
     src.buffer = buf
     src.loop = loop
     src.playbackRate.value = rate
     const g = this.ctx.createGain()
     g.gain.value = gain
-    src.connect(g).connect(loop ? this.roomGain : this.master)
-    src.start(0, offset)
+    src.connect(g).connect(dest || this.master)
+    src.start(0, loop ? offset % buf.duration : offset)
     const h = { src, g, file }
     this.live.add(h)
     src.onended = () => this.live.delete(h)
     return h
   }
 
-  voiceFile(id) {
-    const line = this.manifest?.voice[id]
-    if (!line) return null
-    return line.takes[line.pick ?? 0] ?? line.takes[0]
+  // A bed: a loop whose level the show rides (the study, the night outside).
+  bed(file, v, t, tc = 0.6) {
+    this.log?.push({ t: +t.toFixed(3), file, gain: v, kind: "level" })
+    let b = this.beds.get(file)
+    if (!b) this.beds.set(file, (b = { level: 0, h: null, gain: null }))
+    b.level = v
+    if (!this.on) return
+    if (!b.gain) {
+      b.gain = this.ctx.createGain()
+      b.gain.gain.value = 0
+      b.gain.connect(this.master)
+    }
+    if (!b.h && this.has(file)) b.h = this.play(file, { t, loop: true, kind: "bed", dest: b.gain })
+    b.gain.gain.setTargetAtTime(v, this.ctx.currentTime, tc)
   }
 
-  // The room: a loop whose level the show rides.
-  roomLevel(v, t, tc = 0.6) {
-    this.log?.push({ t: +t.toFixed(3), file: "room-level", gain: v, kind: "level" })
-    if (!this.on) return
-    if (!this.room) this.room = this.play("sfx-room.mp3", { t, loop: true, gain: 1, kind: "room" })
-    this.roomGain.gain.setTargetAtTime(v, this.ctx.currentTime, tc)
+  // After an unmute or a late decode: bring the beds back at their levels.
+  restoreBeds(t) {
+    for (const [file, b] of this.beds) if (b.level > 0) this.bed(file, b.level, t, 0.3)
   }
 
   stopAll() {
@@ -127,7 +142,11 @@ export class Audio {
       } catch {}
     }
     this.live.clear()
-    this.room = null
+    for (const b of this.beds.values()) {
+      b.h = null
+      b.gain?.disconnect()
+      b.gain = null
+    }
   }
 
   close() {

@@ -1,6 +1,7 @@
 // Window painters. Each window owns a canvas; paint() draws its chrome and contents at logical size
 // (the context is already scaled). Contents are redrawn only when a window is marked dirty.
 import { APPS, FONT, MONO, iconCanvas, roundRect } from "./apps.js"
+import { plates, coverUV } from "./plates.js"
 
 export const BAR_H = 30
 const INK = "#2b2a28"
@@ -36,30 +37,64 @@ function text(ctx, s, x, y, { size = 14, weight = 400, color = INK, align = "lef
   ctx.fillText(max ? fit(ctx, s, max) : s, x, y)
 }
 
+// The title bar is translucent: the frosted desktop under the window shows through it.
 function chrome(ctx, w, win, focused) {
-  ctx.fillStyle = win.kind === "sticky" ? "#f3dc7a" : win.dark ? "#26282c" : "#ebe8e2"
+  const dark = win.dark
+  ctx.clearRect(0, 0, w, BAR_H)
+  ctx.fillStyle = win.kind === "sticky" ? "rgba(244,222,124,.97)" : dark ? (focused ? "rgba(40,42,47,.84)" : "rgba(34,36,40,.86)") : focused ? "rgba(240,237,231,.74)" : "rgba(236,233,228,.84)"
   ctx.fillRect(0, 0, w, BAR_H)
-  ctx.fillStyle = win.dark ? "rgba(255,255,255,.08)" : "rgba(0,0,0,.09)"
-  ctx.fillRect(0, BAR_H - 1, w, 1)
-  const lights = focused ? ["#e0675d", "#e2b248", "#62b55a"] : ["#c9c5be", "#c9c5be", "#c9c5be"]
-  lights.forEach((c, i) => {
-    ctx.fillStyle = win.dark && !focused ? "#4a4d52" : c
+  ctx.fillStyle = dark ? "rgba(255,255,255,.07)" : "rgba(0,0,0,.1)"
+  ctx.fillRect(0, BAR_H - 0.5, w, 0.5)
+  const lights = ["#ec6a5e", "#f4bf4f", "#61c554"]
+  lights.forEach((col, i) => {
+    const cx = 16 + i * 19
+    const cy = BAR_H / 2
     ctx.beginPath()
-    ctx.arc(16 + i * 19, BAR_H / 2, 6, 0, Math.PI * 2)
+    ctx.arc(cx, cy, 6, 0, Math.PI * 2)
+    if (focused) {
+      const g = ctx.createLinearGradient(0, cy - 6, 0, cy + 6)
+      g.addColorStop(0, col)
+      g.addColorStop(1, shade(col, 0.88))
+      ctx.fillStyle = g
+    } else ctx.fillStyle = dark ? "#4a4d52" : "#d3cfc8"
     ctx.fill()
+    ctx.strokeStyle = focused ? "rgba(0,0,0,.18)" : dark ? "rgba(255,255,255,.06)" : "rgba(0,0,0,.1)"
+    ctx.lineWidth = 0.6
+    ctx.stroke()
   })
   const ic = 16
   const label = win.title
-  ctx.font = `600 13.5px ${FONT}`
+  ctx.font = `600 13px ${FONT}`
   const tw = Math.min(ctx.measureText(label).width, w - 150)
   const x0 = Math.max(76, w / 2 - (tw + ic + 6) / 2)
-  if (w > 170) ctx.drawImage(iconCanvas(win.app, ic * 2), x0, BAR_H / 2 - ic / 2, ic, ic)
-  text(ctx, label, x0 + (w > 170 ? ic + 6 : 0), BAR_H / 2 + 5, {
-    size: 13.5,
+  if (w > 170) ctx.drawImage(iconCanvas(win.app, ic * 3), x0, BAR_H / 2 - ic / 2, ic, ic)
+  text(ctx, label, x0 + (w > 170 ? ic + 6 : 0), BAR_H / 2 + 4.5, {
+    size: 13,
     weight: 600,
-    color: win.dark ? "#d7d4ce" : focused ? INK : "#6f6b64",
+    color: dark ? (focused ? "#e2dfd9" : "#9b9892") : focused ? INK : "#8a867e",
     max: w - x0 - 12 - ic,
   })
+}
+
+function shade(hex, k) {
+  const n = parseInt(hex.slice(1), 16)
+  const f = (v) => Math.round(v * k)
+  return `rgb(${f(n >> 16)},${f((n >> 8) & 255)},${f(n & 255)})`
+}
+
+// Wrap words into lines no wider than max; returns the lines.
+function wrap(ctx, s, max) {
+  const out = []
+  let line = ""
+  for (const word of s.split(" ")) {
+    const t = line ? line + " " + word : word
+    if (ctx.measureText(t).width > max && line) {
+      out.push(line)
+      line = word
+    } else line = t
+  }
+  if (line) out.push(line)
+  return out
 }
 
 function lines(ctx, list, x, y, w, { size = 15, gap = 25, check = false } = {}) {
@@ -114,125 +149,80 @@ function paperBody(ctx, w, h, d) {
     }
     y += 26
   }
-  lines(ctx, d.lines || [], 26, y, w - 52, { size: d.size || 15, gap: d.gap || 25, check: d.check })
+  const end = lines(ctx, d.lines || [], 26, y, w - 52, { size: d.size || 15, gap: d.gap || 25, check: d.check })
+  if (d.caret) {
+    // the insertion point, after the last line
+    const last = d.lines?.[d.lines.length - 1]
+    const s = typeof last === "string" ? last : last?.t || ""
+    ctx.font = `400 ${d.size || 15}px ${FONT}`
+    const lx = 26 + Math.min(ctx.measureText(s).width, w - 52) + 1.5
+    const ly = end - (d.gap || 25)
+    ctx.fillStyle = "#3d6fd0"
+    ctx.fillRect(lx, ly - (d.size || 15) + 1, 1.5, (d.size || 15) + 3)
+  }
 }
 
-// Hedge, as photographed every morning from the same spot. One plate per kind of weather, painted
-// once; each morning is that plate a hair off-register, in that morning's light.
-const plates = new Map()
-function plate(kind) {
-  if (plates.has(kind)) return plates.get(kind)
-  const W = 480
-  const H = 330
-  const c = document.createElement("canvas")
-  c.width = W
-  c.height = H
-  const ctx = c.getContext("2d")
-  const sky = kind === 0 ? ["#8e9aa6", "#b9c1c7"] : kind === 1 ? ["#9fb7cc", "#dbe4e8"] : ["#b7c2c9", "#e6e6e0"]
-  const g = ctx.createLinearGradient(0, 0, 0, H)
-  g.addColorStop(0, sky[0])
-  g.addColorStop(0.5, sky[1])
-  ctx.fillStyle = g
-  ctx.fillRect(0, 0, W, H)
-  // the house behind, a roofline and a gutter
-  ctx.fillStyle = "rgba(70,74,80,.35)"
-  ctx.fillRect(0, H * 0.08, W, H * 0.2)
-  ctx.fillStyle = "rgba(40,42,46,.4)"
-  ctx.fillRect(0, H * 0.08, W, 3)
-  // lawn and the sidewalk with its joint
-  const lg = ctx.createLinearGradient(0, H * 0.74, 0, H)
-  lg.addColorStop(0, "#5f6f52")
-  lg.addColorStop(1, "#788a66")
-  ctx.fillStyle = lg
-  ctx.fillRect(0, H * 0.74, W, H * 0.26)
-  ctx.fillStyle = "#b9b4a8"
-  ctx.fillRect(0, H * 0.9, W, H * 0.1)
-  ctx.fillStyle = "rgba(0,0,0,.18)"
-  ctx.fillRect(W * 0.58, H * 0.9, 2, H * 0.1)
-  // the hedge: a dark mass, then leaves
-  const top = H * 0.24
-  ctx.fillStyle = "#1f331e"
-  ctx.beginPath()
-  ctx.moveTo(0, H * 0.8)
-  ctx.lineTo(0, top + 6)
-  for (let k = 0; k <= 24; k++) ctx.lineTo((W * k) / 24, top + (hash(k * 31 + 5) - 0.5) * 9)
-  ctx.lineTo(W, H * 0.8)
-  ctx.fill()
-  const greens = ["#2a4428", "#355a31", "#406a3a", "#2f4d2c", "#4b7a42"]
-  for (let k = 0; k < 2600; k++) {
-    const x = hash(k * 3 + 1) * W
-    const y = top + Math.pow(hash(k * 7 + 2), 0.8) * (H * 0.8 - top)
-    const r = 1.5 + hash(k * 11 + 3) * 3.5
-    const lit = 1 - (y - top) / (H * 0.6)
-    ctx.fillStyle = greens[Math.floor(hash(k * 13 + 4) * (lit > 0.5 ? 5 : 3.2))]
-    ctx.beginPath()
-    ctx.arc(x, y, r, 0, Math.PI * 2)
-    ctx.fill()
+const hash01 = (i, k) => hash(i * 131 + k * 7919)
+
+// The hedge, photographed every morning from the same spot: one photograph, a hand's width off
+// each morning, in that morning's light, the green turning as the months go.
+export function hedgePhoto(ctx, x, y, w, h, i, opts = {}) {
+  const p = plates.hedge
+  if (!p) {
+    ctx.fillStyle = "#4d5a45"
+    ctx.fillRect(x, y, w, h)
+    return
   }
-  const sh = ctx.createLinearGradient(0, H * 0.55, 0, H * 0.8)
-  sh.addColorStop(0, "rgba(0,0,0,0)")
-  sh.addColorStop(1, "rgba(0,0,0,.35)")
-  ctx.fillStyle = sh
-  ctx.fillRect(0, H * 0.55, W, H * 0.25)
-  // the neighbor's fence joint at the left
-  ctx.fillStyle = "#8a7a62"
-  ctx.fillRect(0, H * 0.3, W * 0.05, H * 0.5)
-  ctx.fillStyle = "rgba(0,0,0,.25)"
-  ctx.fillRect(W * 0.05, H * 0.3, 2, H * 0.5)
-  // the measuring pole
-  ctx.fillStyle = "#e9e3d4"
-  ctx.fillRect(W * 0.78, H * 0.16, 9, H * 0.66)
-  ctx.fillStyle = "#b33a2e"
-  for (let k = 0; k < 7; k++) ctx.fillRect(W * 0.78, H * (0.16 + k * 0.1), 9, H * 0.05)
-  if (kind === 0) {
-    ctx.strokeStyle = "rgba(255,255,255,.16)"
-    ctx.lineWidth = 1
-    for (let k = 0; k < 90; k++) {
-      const px = hash(k * 17) * W
-      const py = hash(k * 23) * H * 0.85
+  const [u0, v0, u1, v1] = coverUV(p, w, h, 0.5, 0.5)
+  const m = 0.05
+  const jx = (hash01(i, 1) - 0.5) * 0.03
+  const jy = (hash01(i, 2) - 0.5) * 0.03
+  const sw = (u1 - u0) * (1 - 2 * m)
+  const sh = (v1 - v0) * (1 - 2 * m)
+  const sx = u0 + (u1 - u0) * m + jx
+  const sy = v0 + (v1 - v0) * m + jy
+  ctx.drawImage(p, sx * p.width, sy * p.height, sw * p.width, sh * p.height, x, y, w, h)
+  // the season: summer green to the browns of November; then that morning's light
+  const season = Math.min(1, i / 160)
+  ctx.save()
+  ctx.globalCompositeOperation = "soft-light"
+  ctx.fillStyle = `rgba(${Math.round(120 + 100 * season)},${Math.round(140 - 10 * season)},${Math.round(110 - 50 * season)},${0.25 + 0.3 * season})`
+  ctx.fillRect(x, y, w, h)
+  ctx.globalCompositeOperation = "source-over"
+  const light = hash01(i, 3)
+  ctx.fillStyle = light < 0.35 ? `rgba(30,40,55,${0.08 + light * 0.3})` : `rgba(255,226,180,${(light - 0.35) * 0.12})`
+  ctx.fillRect(x, y, w, h)
+  ctx.restore()
+  if (opts.measure) {
+    // the hedge's top and the limit below it, in the plate's own coordinates
+    const Y = (fy) => y + ((fy - sy) / sh) * h
+    const X = (fx) => x + ((fx - sx) / sw) * w
+    const top = Y(0.402)
+    const limit = Y(0.438)
+    const fs = Math.max(9, Math.min(15, w * 0.035))
+    ctx.fillStyle = "rgba(255,255,255,.92)"
+    ctx.fillRect(X(0.46), top - 0.6, X(0.86) - X(0.46), 1.4)
+    ctx.font = `600 ${fs}px ${FONT}`
+    ctx.textAlign = "left"
+    ctx.fillText(opts.measure, X(0.47), top - 5)
+    if (opts.limit) {
+      ctx.strokeStyle = "rgba(255,120,100,.95)"
+      ctx.setLineDash([5, 4])
+      ctx.lineWidth = 1.4
       ctx.beginPath()
-      ctx.moveTo(px, py)
-      ctx.lineTo(px - 2, py + 9)
+      ctx.moveTo(X(0.46), limit)
+      ctx.lineTo(X(0.86), limit)
       ctx.stroke()
+      ctx.setLineDash([])
+      ctx.fillStyle = "rgba(255,150,130,.98)"
+      ctx.fillText("6′ 0″ limit", X(0.47), limit + fs + 4)
     }
   }
-  const v = ctx.createRadialGradient(W / 2, H / 2, H * 0.3, W / 2, H / 2, W * 0.62)
-  v.addColorStop(0, "rgba(0,0,0,0)")
-  v.addColorStop(1, "rgba(0,0,0,.28)")
-  ctx.fillStyle = v
-  ctx.fillRect(0, 0, W, H)
-  plates.set(kind, c)
-  return c
 }
 
-export function hedgePhoto(ctx, x, y, w, h, i, measured) {
-  const r = hash(i * 7 + 3)
-  const p = plate(r < 0.3 ? 0 : r < 0.7 ? 1 : 2)
-  // handheld from the same spot: a few pixels off each morning
-  const jx = (hash(i * 5 + 9) - 0.5) * p.width * 0.03
-  const jy = (hash(i * 9 + 2) - 0.5) * p.height * 0.03
-  const m = 0.04
-  ctx.drawImage(p, p.width * m + jx, p.height * m + jy, p.width * (1 - 2 * m), p.height * (1 - 2 * m), x, y, w, h)
-  // that morning's light, and the house's shadow across the lawn as the year turns
-  const warm = hash(i * 3 + 7)
-  ctx.fillStyle = warm < 0.5 ? `rgba(255,214,160,${0.05 + warm * 0.1})` : `rgba(150,170,200,${(warm - 0.5) * 0.14})`
-  ctx.fillRect(x, y, w, h)
-  const len = Math.min(0.9, 0.2 + i / 220)
-  ctx.fillStyle = "rgba(20,26,20,.22)"
-  ctx.fillRect(x, y + h * 0.74, w * len, h * 0.16)
-  const top = y + h * 0.24
-  if (measured) {
-    ctx.fillStyle = "rgba(255,255,255,.88)"
-    ctx.fillRect(x + w * 0.4, top - 1, w * 0.36, 1.2)
-    ctx.font = `600 ${Math.max(8, w * 0.1)}px ${FONT}`
-    ctx.textAlign = "left"
-    ctx.fillText(measured, x + w * 0.42, top - 4)
-  }
-}
-
-const day = (i) => {
+export const day = (i) => {
   const months = [["Jun", 30], ["Jul", 31], ["Aug", 31], ["Sep", 30], ["Oct", 31], ["Nov", 30]]
-  let d = i + 3
+  let d = i + 11
   for (const [m, n] of months) {
     if (d <= n) return `${m} ${d}`
     d -= n
@@ -245,94 +235,82 @@ export const heightAt = (i) => {
   return `6′ ${inch % 1 === 0 ? inch : inch.toFixed(2).replace(/0$/, "")}″`
 }
 
-// A street at night, from a doorbell camera. Across the street, one window is lit.
+// A doorbell camera across the street at night. The lit window is No. 14's.
+const DOOR_WIN = [0.629, 0.176, 0.66, 0.229]
 export function street(ctx, x, y, w, h, t, lit = 1) {
-  const g = ctx.createLinearGradient(0, y, 0, y + h)
-  g.addColorStop(0, "#0d1116")
-  g.addColorStop(1, "#1a1f22")
-  ctx.fillStyle = g
-  ctx.fillRect(x, y, w, h)
-  // houses across the street
-  const base = y + h * 0.62
-  const houses = [0.02, 0.36, 0.7]
-  houses.forEach((hx, k) => {
-    const hw = w * 0.28
-    const hh = h * 0.3
-    const left = x + w * hx
-    ctx.fillStyle = k === 1 ? "#1d2328" : "#181d21"
-    ctx.fillRect(left, base - hh, hw, hh)
-    ctx.beginPath()
-    ctx.moveTo(left - hw * 0.05, base - hh)
-    ctx.lineTo(left + hw / 2, base - hh - h * 0.12)
-    ctx.lineTo(left + hw * 1.05, base - hh)
+  const p = plates.door
+  if (p) {
+    const [u0, v0, u1, v1] = coverUV(p, w, h, 0.55, 0.4)
+    ctx.drawImage(p, u0 * p.width, v0 * p.height, (u1 - u0) * p.width, (v1 - v0) * p.height, x, y, w, h)
+    if (lit < 1) {
+      const X = (fx) => x + ((fx - u0) / (u1 - u0)) * w
+      const Y = (fy) => y + ((fy - v0) / (v1 - v0)) * h
+      ctx.fillStyle = `rgba(40,38,33,${1 - lit})`
+      ctx.fillRect(X(DOOR_WIN[0]), Y(DOOR_WIN[1]), X(DOOR_WIN[2]) - X(DOOR_WIN[0]), Y(DOOR_WIN[3]) - Y(DOOR_WIN[1]))
+    }
+  } else {
     ctx.fillStyle = "#14181c"
-    ctx.fill()
-    for (let j = 0; j < 2; j++) {
-      const wx = left + hw * (0.18 + j * 0.44)
-      const wy = base - hh * 0.75
-      const on = k === 1 && j === 1 && lit
-      ctx.fillStyle = on ? `rgba(236,196,120,${0.85 * lit})` : "#101417"
-      ctx.fillRect(wx, wy, hw * 0.2, hh * 0.32)
-      if (on) {
-        const glow = ctx.createRadialGradient(wx + hw * 0.1, wy + hh * 0.16, 0, wx + hw * 0.1, wy + hh * 0.16, hw * 0.5)
-        glow.addColorStop(0, `rgba(236,196,120,${0.18 * lit})`)
-        glow.addColorStop(1, "rgba(236,196,120,0)")
-        ctx.fillStyle = glow
-        ctx.fillRect(wx - hw * 0.4, wy - hh * 0.5, hw, hh * 1.2)
-      }
-    }
-    if (k === 1) {
-      // No. 14's hedge, along the front
-      ctx.fillStyle = "#0e1510"
-      ctx.fillRect(left - hw * 0.1, base - hh * 0.32, hw * 1.2, hh * 0.32)
-    }
-  })
-  ctx.fillStyle = "#121619"
-  ctx.fillRect(x, base, w, h * 0.12)
-  ctx.fillStyle = "#1c2124"
-  ctx.fillRect(x, base + h * 0.12, w, h)
-  // street lamp pool
-  const lamp = ctx.createRadialGradient(x + w * 0.2, base + h * 0.2, 0, x + w * 0.2, base + h * 0.2, w * 0.3)
-  lamp.addColorStop(0, "rgba(200,170,110,.12)")
-  lamp.addColorStop(1, "rgba(200,170,110,0)")
-  ctx.fillStyle = lamp
-  ctx.fillRect(x, y, w, h)
-  // fisheye vignette
-  const v = ctx.createRadialGradient(x + w / 2, y + h / 2, Math.min(w, h) * 0.3, x + w / 2, y + h / 2, Math.max(w, h) * 0.75)
-  v.addColorStop(0, "rgba(0,0,0,0)")
-  v.addColorStop(1, "rgba(0,0,0,.55)")
-  ctx.fillStyle = v
-  ctx.fillRect(x, y, w, h)
-  const fs = Math.max(9, Math.min(13, w * 0.025))
-  text(ctx, "FRONT  ·  " + t, x + 12, y + 12 + fs, { size: fs, weight: 500, color: "rgba(230,235,240,.75)", font: MONO })
-  ctx.fillStyle = "#c8443a"
+    ctx.fillRect(x, y, w, h)
+  }
+  const fs = Math.max(9, Math.min(13, w * 0.022))
+  ctx.fillStyle = "rgba(0,0,0,.35)"
+  ctx.fillRect(x, y, w, fs + 18)
+  text(ctx, "FRONT  ·  " + t, x + 12, y + 9 + fs, { size: fs, weight: 500, color: "rgba(235,238,240,.86)", font: MONO })
+  ctx.fillStyle = "#d2463b"
   ctx.beginPath()
-  ctx.arc(x + w - 18, y + 12 + fs * 0.6, 4, 0, Math.PI * 2)
+  ctx.arc(x + w - 16, y + 9 + fs * 0.62, 3.6, 0, Math.PI * 2)
   ctx.fill()
+  text(ctx, "LIVE", x + w - 24, y + 9 + fs, { size: fs * 0.92, weight: 600, color: "rgba(235,238,240,.86)", font: MONO, align: "right" })
 }
 
-function silhouette(ctx, x, y, w, h, seed, off) {
-  ctx.fillStyle = off ? "#2c2f33" : ["#4b5157", "#585049", "#4d5248", "#504a55"][seed % 4]
-  ctx.fillRect(x, y, w, h)
-  if (off) return
-  const cx = x + w * (0.5 + (hash(seed) - 0.5) * 0.1)
-  ctx.fillStyle = "rgba(20,20,22,.78)"
-  ctx.beginPath()
-  ctx.arc(cx, y + h * 0.44, Math.min(w, h) * 0.17, 0, Math.PI * 2)
-  ctx.fill()
-  ctx.beginPath()
-  ctx.ellipse(cx, y + h * 1.02, Math.min(w, h) * 0.42, h * 0.36, 0, Math.PI, 0)
-  ctx.fill()
+// A translucent sidebar: the frosted desktop shows through (the window canvas stays clear here).
+function sidebar(ctx, w, h, sw, dark) {
+  ctx.clearRect(0, BAR_H, sw, h - BAR_H)
+  ctx.fillStyle = dark ? "rgba(30,32,36,.78)" : "rgba(232,229,223,.7)"
+  ctx.fillRect(0, BAR_H, sw, h - BAR_H)
+  ctx.fillStyle = dark ? "rgba(255,255,255,.06)" : "rgba(0,0,0,.09)"
+  ctx.fillRect(sw - 0.5, BAR_H, 0.5, h - BAR_H)
 }
+
+function sideItem(ctx, label, y, sw, { sel, count, icon, focused = true } = {}) {
+  if (sel) {
+    ctx.fillStyle = focused ? "rgba(0,0,0,.09)" : "rgba(0,0,0,.06)"
+    roundRect(ctx, 8, y - 18, sw - 16, 26, 6)
+    ctx.fill()
+  }
+  if (icon) {
+    ctx.fillStyle = "#4b7fd0"
+    ctx.globalAlpha = 0.85
+    roundRect(ctx, 18, y - 11, 12, 12, 3)
+    ctx.fill()
+    ctx.globalAlpha = 1
+  }
+  text(ctx, label, icon ? 38 : 20, y, { size: 13, weight: sel ? 600 : 400, max: sw - 70 })
+  if (count) text(ctx, count, sw - 16, y, { size: 12, color: SOFT, align: "right" })
+}
+
+const ARTICLE = [
+  "Every autumn the same question comes up on the street: which kind of guard actually keeps a gutter clear? We put four types on the same stretch of roofline for a year and went up the ladder once a month.",
+  "Mesh guards kept out the most leaves but needed brushing after every storm. Foam inserts were the cheapest and the quickest to fit, and the first to clog with seeds.",
+  "Brush guards sat in the gutter like a bottle brush. They were easy to lift out and clean, but pine needles wove into them by spring.",
+  "Reverse-curve guards worked best on the long run over the porch, where water comes off the roof fastest. They are also the most visible from the street.",
+]
 
 const painters = {
-  jot(ctx, w, h, d) {
+  jot(ctx, w, h, d, win, focused) {
+    const side = w > 560 ? 180 : 0
     ctx.fillStyle = "#fbf8ef"
-    ctx.fillRect(0, BAR_H, w, h - BAR_H)
+    ctx.fillRect(side, BAR_H, w - side, h - BAR_H)
+    if (side) {
+      sidebar(ctx, w, h, side)
+      ;(d.list || ["notes", "return drill", "groceries", "passwords??"]).forEach((n, i) => sideItem(ctx, n, BAR_H + 34 + i * 30, side, { sel: i === 0, focused }))
+    }
     let y = BAR_H + 38
-    text(ctx, d.heading || "", 24, y, { size: 20, weight: 650, max: w - 48 })
-    y += 32
-    lines(ctx, d.lines || [], 24, y, w - 48, { size: 15, gap: 25, check: d.check })
+    text(ctx, d.heading || "", side + 24, y, { size: 20, weight: 650, max: w - side - 48 })
+    y += 14
+    if (d.edited) text(ctx, d.edited, side + 24, y + 12, { size: 12, color: SOFT })
+    y += d.edited ? 40 : 18
+    lines(ctx, d.lines || [], side + 24, y, w - side - 48, { size: 15, gap: 25, check: d.check })
   },
   sticky(ctx, w, h, d) {
     ctx.fillStyle = "#f8e58c"
@@ -340,108 +318,186 @@ const painters = {
     text(ctx, d.text, 20, BAR_H + 38, { size: 19, weight: 500, color: "#4a3f12", max: w - 40, font: '"Marker Felt", "Comic Neue", ' + FONT })
     if (d.done) {
       ctx.fillStyle = "#6c5a14"
-      ctx.font = `500 19px ${FONT}`
+      ctx.font = `500 19px "Marker Felt", "Comic Neue", ${FONT}`
       ctx.fillRect(20, BAR_H + 31, Math.min(ctx.measureText(d.text).width, w - 40), 1.6)
     }
   },
   paper(ctx, w, h, d) {
     paperBody(ctx, w, h, d)
   },
-  mail(ctx, w, h, d) {
+  mail(ctx, w, h, d, win, focused) {
+    const side = w > 760 ? 168 : 0
+    const listW = w - side > 500 ? Math.min(320, (w - side) * 0.44) : w - side
     ctx.fillStyle = PAGE
-    ctx.fillRect(0, BAR_H, w, h - BAR_H)
-    const listW = w > 520 ? Math.min(330, w * 0.42) : w
-    let y = BAR_H
+    ctx.fillRect(side, BAR_H, w - side, h - BAR_H)
+    if (side) {
+      sidebar(ctx, w, h, side)
+      text(ctx, "Mailboxes", 18, BAR_H + 26, { size: 11, weight: 600, color: SOFT })
+      sideItem(ctx, "Inbox", BAR_H + 52, side, { sel: 1, count: d.count || "4,812", icon: 1, focused })
+      sideItem(ctx, "Flagged", BAR_H + 82, side, { icon: 1 })
+      sideItem(ctx, "Sent", BAR_H + 112, side, { icon: 1 })
+      text(ctx, "Folders", 18, BAR_H + 150, { size: 11, weight: 600, color: SOFT })
+      sideItem(ctx, "HOA", BAR_H + 176, side, { icon: 1, count: "212" })
+      sideItem(ctx, "Receipts", BAR_H + 206, side, { icon: 1 })
+    }
+    // rows slide when a new message arrives at the top (d.slide: 0 → 1)
+    const rowH = 66
+    let y = BAR_H - (1 - (d.slide ?? 1)) * rowH
+    ctx.save()
+    ctx.beginPath()
+    ctx.rect(side, BAR_H, listW, h - BAR_H)
+    ctx.clip()
     for (const [i, m] of (d.list || []).entries()) {
       if (y > h) break
-      ctx.fillStyle = i === d.sel ? "#dfe8f6" : PAGE
-      ctx.fillRect(0, y, listW, 66)
+      const x0 = side
+      ctx.fillStyle = i === d.sel ? (focused ? "#d9e5f7" : "#e6e6e4") : PAGE
+      ctx.fillRect(x0, y, listW, rowH)
       if (m.unread) {
         ctx.fillStyle = "#4b7fd0"
         ctx.beginPath()
-        ctx.arc(13, y + 21, 4, 0, Math.PI * 2)
+        ctx.arc(x0 + 13, y + 21, 4, 0, Math.PI * 2)
         ctx.fill()
       }
-      text(ctx, m.from, 26, y + 25, { size: 14, weight: 650, max: listW - 90 })
-      text(ctx, m.when || "", listW - 12, y + 25, { size: 12, color: SOFT, align: "right" })
-      text(ctx, m.subject, 26, y + 47, { size: 13.5, color: "#55514a", max: listW - 40 })
+      text(ctx, m.from, x0 + 26, y + 25, { size: 14, weight: 650, max: listW - 100 })
+      text(ctx, m.when || "", x0 + listW - 12, y + 25, { size: 12, color: SOFT, align: "right" })
+      text(ctx, (m.clip ? "📎 " : "") + m.subject, x0 + 26, y + 47, { size: 13.5, color: "#55514a", max: listW - 40 })
       ctx.fillStyle = RULE
-      ctx.fillRect(26, y + 65, listW - 26, 1)
-      y += 66
+      ctx.fillRect(x0 + 26, y + rowH - 1, listW - 26, 1)
+      y += rowH
     }
-    if (listW < w) {
+    ctx.restore()
+    if (side + listW < w - 40) {
+      const x0 = side + listW
       ctx.fillStyle = RULE
-      ctx.fillRect(listW, BAR_H, 1, h)
+      ctx.fillRect(x0, BAR_H, 1, h)
       const m = d.open
       if (m) {
-        text(ctx, m.subject, listW + 28, BAR_H + 44, { size: 19, weight: 650, max: w - listW - 56 })
-        text(ctx, m.from, listW + 28, BAR_H + 70, { size: 13, color: SOFT, max: w - listW - 56 })
-        lines(ctx, m.body || [], listW + 28, BAR_H + 112, w - listW - 56, { size: 15, gap: 24 })
+        const mw = w - x0 - 56
+        text(ctx, m.subject, x0 + 28, BAR_H + 44, { size: 19, weight: 650, max: mw })
+        text(ctx, m.from, x0 + 28, BAR_H + 68, { size: 13, color: SOFT, max: mw })
+        if (m.when) text(ctx, m.when, w - 24, BAR_H + 68, { size: 12, color: SOFT, align: "right" })
+        ctx.fillStyle = RULE
+        ctx.fillRect(x0 + 28, BAR_H + 84, mw, 1)
+        const end = lines(ctx, m.body || [], x0 + 28, BAR_H + 116, mw, { size: 15, gap: 24 })
+        if (m.attach) {
+          // the attachment, as a chip with a thumbnail
+          const ax = x0 + 28
+          const ay = end + 4
+          ctx.fillStyle = m.attachSel ? "#d9e5f7" : "#efece6"
+          roundRect(ctx, ax, ay, 230, 64, 10)
+          ctx.fill()
+          ctx.strokeStyle = "rgba(0,0,0,.1)"
+          ctx.lineWidth = 1
+          roundRect(ctx, ax + 0.5, ay + 0.5, 229, 63, 10)
+          ctx.stroke()
+          const a = plates.across
+          if (a) {
+            const [u0, v0, u1, v1] = coverUV(a, 64, 48)
+            ctx.save()
+            roundRect(ctx, ax + 8, ay + 8, 64, 48, 5)
+            ctx.clip()
+            ctx.drawImage(a, u0 * a.width, v0 * a.height, (u1 - u0) * a.width, (v1 - v0) * a.height, ax + 8, ay + 8, 64, 48)
+            ctx.restore()
+          }
+          text(ctx, m.attach, ax + 84, ay + 28, { size: 13.5, weight: 600, max: 140 })
+          text(ctx, "JPEG image · 2.4 MB", ax + 84, ay + 47, { size: 12, color: SOFT })
+        }
       }
     }
   },
   browser(ctx, w, h, d) {
-    ctx.fillStyle = "#e3e0da"
+    // tabs live in the translucent title area's continuation
+    ctx.clearRect(0, BAR_H, w, 34)
+    ctx.fillStyle = "rgba(226,223,217,.8)"
     ctx.fillRect(0, BAR_H, w, 34)
     const n = d.tabs || 1
-    const tw = Math.max(9, Math.min(160, (w - 20) / n))
+    const tw = Math.max(9, Math.min(170, (w - 20) / n))
     for (let i = 0; i < n && 10 + i * tw < w; i++) {
-      ctx.fillStyle = i === 0 ? PAGE : "#d6d2cb"
-      roundRect(ctx, 10 + i * tw, BAR_H + 6, tw - 2, 28, 5)
-      ctx.fill()
-      if (tw > 60) text(ctx, d.tabTitle || "", 18 + i * tw, BAR_H + 25, { size: 12, color: "#5a564f", max: tw - 18 })
+      if (i === 0) {
+        ctx.fillStyle = PAGE
+        roundRect(ctx, 10, BAR_H + 5, tw - 2, 29, 7)
+        ctx.fill()
+      } else if (i > 0) {
+        ctx.fillStyle = "rgba(0,0,0,.12)"
+        ctx.fillRect(10 + i * tw - 1, BAR_H + 13, 1, 13)
+      }
+      if (tw > 60) text(ctx, TAB_TITLES[i % TAB_TITLES.length], 22 + i * tw, BAR_H + 24, { size: 12, color: i === 0 ? INK : "#6a665f", max: tw - 26 })
     }
     ctx.fillStyle = PAGE
     ctx.fillRect(0, BAR_H + 34, w, h)
     ctx.fillStyle = "#ebe8e2"
-    roundRect(ctx, 14, BAR_H + 44, w - 28, 26, 13)
+    roundRect(ctx, 14, BAR_H + 43, w - 28, 26, 13)
     ctx.fill()
-    text(ctx, d.url || "", 30, BAR_H + 62, { size: 12.5, color: SOFT, max: w - 60 })
-    let y = BAR_H + 104
-    text(ctx, d.heading || "", 26, y, { size: 22, weight: 700, max: w - 52 })
-    y += 22
-    for (let i = 0; i < 9 && y < h; i++) {
-      ctx.fillStyle = i % 4 === 0 ? "#dcd7cf" : "#e8e4dd"
-      ctx.fillRect(26, y, (w - 52) * (i % 4 === 3 ? 0.6 : 1), i % 4 === 0 ? 70 : 10)
-      y += i % 4 === 0 ? 84 : 20
+    text(ctx, d.url || "", 32, BAR_H + 61, { size: 12.5, color: "#5d5953", max: w - 64 })
+    const cw = Math.min(w - 52, 620)
+    const x0 = (w - cw) / 2
+    let y = BAR_H + 108
+    text(ctx, d.heading || "", x0, y, { size: 24, weight: 700, max: cw, font: SERIF })
+    y += 24
+    text(ctx, "By the Home Desk · 6 min read", x0, y, { size: 12.5, color: SOFT })
+    y += 30
+    ctx.font = `400 15px ${SERIF}`
+    for (const para of ARTICLE) {
+      for (const ln of wrap(ctx, para, cw)) {
+        if (y > h - 8) return
+        text(ctx, ln, x0, y, { size: 15, color: "#33312d", font: SERIF })
+        y += 23
+      }
+      y += 12
     }
   },
   chat(ctx, w, h, d) {
     ctx.fillStyle = PAGE
     ctx.fillRect(0, BAR_H, w, h - BAR_H)
-    let y = BAR_H + 30
+    text(ctx, d.who || "Dana", 20, BAR_H + 30, { size: 14, weight: 650 })
+    text(ctx, d.when || "Today 11:52 PM", w - 20, BAR_H + 30, { size: 12, color: SOFT, align: "right" })
+    ctx.fillStyle = RULE
+    ctx.fillRect(0, BAR_H + 44, w, 1)
+    let y = BAR_H + 62
     for (const m of d.msgs || []) {
       ctx.font = `400 15px ${FONT}`
-      const bw = Math.min(w * 0.72, ctx.measureText(m.t).width + 28)
+      const bw = Math.min(w * 0.76, ctx.measureText(m.t).width + 28)
       const x = m.me ? w - bw - 18 : 18
-      ctx.fillStyle = m.me ? "#7a64c4" : "#e6e2db"
-      roundRect(ctx, x, y, bw, 36, 17)
+      ctx.fillStyle = m.me ? "#7a64c4" : "#e8e4dd"
+      roundRect(ctx, x, y, bw, 36, 18)
       ctx.fill()
       text(ctx, m.t, x + 14, y + 23, { size: 15, color: m.me ? "#fff" : INK, max: bw - 24 })
-      if (m.note) text(ctx, m.note, m.me ? w - 20 : 20, y + 54, { size: 12, color: SOFT, align: m.me ? "right" : "left" })
-      y += m.note ? 70 : 48
+      if (m.note) text(ctx, m.note, m.me ? w - 22 : 22, y + 54, { size: 12, color: SOFT, align: m.me ? "right" : "left" })
+      y += m.note ? 70 : 46
     }
   },
+  // A screenshot from March: his desktop as it was, every window on top of another.
   shot(ctx, w, h) {
-    ctx.fillStyle = "#3a3c40"
+    ctx.fillStyle = "#2a2c30"
     ctx.fillRect(0, BAR_H, w, h - BAR_H)
-    const pw = w - 40
-    const ph = Math.min(h - BAR_H - 40, pw * 0.62)
-    const x = 20
-    const y = BAR_H + 20
-    const g = ctx.createLinearGradient(0, y, 0, y + ph)
-    g.addColorStop(0, "#4c5866")
-    g.addColorStop(1, "#6d6a68")
-    ctx.fillStyle = g
-    ctx.fillRect(x, y, pw, ph)
-    for (let i = 0; i < 14; i++) {
-      ctx.fillStyle = i % 5 === 3 ? "#f3dc7a" : "#ece9e3"
-      const rx = x + hash(i * 3) * pw * 0.7
-      const ry = y + hash(i * 5 + 1) * ph * 0.6
-      ctx.fillRect(rx, ry, pw * 0.25, ph * 0.3)
-      ctx.strokeStyle = "rgba(0,0,0,.25)"
-      ctx.strokeRect(rx, ry, pw * 0.25, ph * 0.3)
+    const pw = w - 32
+    const ph = Math.min(h - BAR_H - 32, pw * 0.5625)
+    const x = 16
+    const y = BAR_H + (h - BAR_H - ph) / 2
+    const wall = plates["wall-s"] || plates.wall
+    if (wall) {
+      const [u0, v0, u1, v1] = coverUV(wall, pw, ph)
+      ctx.drawImage(wall, u0 * wall.width, v0 * wall.height, (u1 - u0) * wall.width, (v1 - v0) * wall.height, x, y, pw, ph)
+    } else {
+      ctx.fillStyle = "#5b6a80"
+      ctx.fillRect(x, y, pw, ph)
     }
+    for (let i = 0; i < 16; i++) {
+      const rx = x + hash(i * 3) * pw * 0.68
+      const ry = y + 6 + hash(i * 5 + 1) * ph * 0.55
+      const rw = pw * (0.2 + hash(i * 7) * 0.12)
+      const rh = ph * (0.26 + hash(i * 11) * 0.14)
+      ctx.fillStyle = "rgba(0,0,0,.25)"
+      ctx.fillRect(rx + 1, ry + 2, rw, rh)
+      ctx.fillStyle = i % 5 === 3 ? "#f3dc7a" : i % 4 === 1 ? "#f7f5f1" : "#efece6"
+      ctx.fillRect(rx, ry, rw, rh)
+      ctx.fillStyle = "#e3dfd8"
+      ctx.fillRect(rx, ry, rw, Math.max(3, rh * 0.09))
+      ctx.fillStyle = "rgba(60,58,54,.45)"
+      for (let k = 0; k < 4; k++) ctx.fillRect(rx + rw * 0.1, ry + rh * (0.25 + k * 0.15), rw * (0.4 + hash(i * 13 + k) * 0.4), Math.max(1, rh * 0.03))
+    }
+    ctx.strokeStyle = "rgba(255,255,255,.12)"
+    ctx.strokeRect(x + 0.5, y + 0.5, pw - 1, ph - 1)
   },
   daybook(ctx, w, h, d) {
     ctx.fillStyle = PAGE
@@ -449,7 +505,7 @@ const painters = {
     text(ctx, d.date || "", 22, BAR_H + 34, { size: 17, weight: 650 })
     const top = BAR_H + 52
     const hour = 40
-    for (let i = 0; i < 12; i++) {
+    for (let i = 0; i < 14; i++) {
       const y = top + i * hour
       if (y > h) break
       ctx.fillStyle = RULE
@@ -461,61 +517,71 @@ const painters = {
       ctx.fillStyle = e.color || "#e9c9c4"
       roundRect(ctx, 72, y + 2, w - 88, e.len * hour - 4, 6)
       ctx.fill()
-      text(ctx, e.t, 82, y + 20, { size: 13.5, weight: 600, color: "#4a2a26", max: w - 110 })
+      ctx.fillStyle = "rgba(0,0,0,.18)"
+      ctx.fillRect(72, y + 4, 3, e.len * hour - 8)
+      text(ctx, e.t, 84, y + 20, { size: 13.5, weight: 600, color: "#4a2a26", max: w - 110 })
     }
   },
   photos(ctx, w, h, d) {
-    ctx.fillStyle = "#e9e6e0"
+    ctx.fillStyle = "#ebe8e2"
     ctx.fillRect(0, BAR_H, w, h - BAR_H)
+    // toolbar: the count, and a search field
+    const tb = 40
+    ctx.fillStyle = "#f4f2ee"
+    ctx.fillRect(0, BAR_H, w, tb)
+    ctx.fillStyle = RULE
+    ctx.fillRect(0, BAR_H + tb - 1, w, 1)
     const n = d.count || 0
+    text(ctx, n === 1 ? "1 photo" : `${n} photos`, 16, BAR_H + 25, { size: 13, weight: 600, color: "#55514a" })
+    const sw = Math.min(220, w * 0.4)
+    ctx.fillStyle = "#e4e1db"
+    roundRect(ctx, w - sw - 12, BAR_H + 8, sw, 24, 7)
+    ctx.fill()
+    text(ctx, d.query || "Search", w - sw + 2, BAR_H + 24.5, { size: 13, color: d.query ? INK : "#9a968e", max: sw - 20 })
+    if (d.typing) {
+      ctx.font = `400 13px ${FONT}`
+      ctx.fillStyle = "#3d6fd0"
+      ctx.fillRect(w - sw + 3 + ctx.measureText(d.query || "").width, BAR_H + 12, 1.4, 16)
+    }
+    const top = BAR_H + tb
+    if (d.pick != null) {
+      // one morning, found
+      const pw = w - 24
+      const ph = h - top - 48
+      hedgePhoto(ctx, 12, top + 10, pw, ph, d.pick, { measure: heightAt(d.pick), limit: 1 })
+      text(ctx, `${day(d.pick)} · 6:0${2 + (d.pick % 3)} AM`, 14, h - 14, { size: 13.5, weight: 600, color: "#4d4a44" })
+      text(ctx, heightAt(d.pick), w - 14, h - 14, { size: 13.5, weight: 600, color: "#a1453a", align: "right" })
+      return
+    }
     // the first mornings are big enough to read; the archive tightens as it grows
-    const cols = n <= 1 ? 1 : n <= 4 ? 2 : n <= 9 ? 3 : Math.max(2, Math.round(w / 118))
+    const cols = n <= 1 ? 1 : n <= 4 ? 2 : n <= 9 ? 3 : Math.max(3, Math.round(w / 104))
     const cw = (w - 16) / cols
     const rows = Math.ceil(n / cols)
-    const ch = n <= 9 ? Math.min(cw * 0.86, (h - BAR_H - 16) / Math.max(1, rows)) : cw * 0.86
-    const label = Math.min(18, Math.max(11, cw / 11))
-    const visibleRows = Math.floor((h - BAR_H - 10) / ch)
+    const label = n <= 9 ? Math.min(15, Math.max(11, cw / 14)) : 0
+    const ch = n <= 9 ? Math.min(cw * 0.72, (h - top - 16) / Math.max(1, rows)) : cw * 0.66
+    const visibleRows = Math.floor((h - top - 10) / ch)
     const first = Math.max(0, rows - visibleRows) * cols
     for (let i = first; i < n; i++) {
       const k = i - first
       const x = 8 + (k % cols) * cw
-      const y = BAR_H + 8 + Math.floor(k / cols) * ch
-      hedgePhoto(ctx, x + 3, y + 3, cw - 6, ch - label - 11, i, d.measured && i >= d.measuredFrom ? heightAt(i) : null)
-      text(ctx, day(i), x + 4, y + ch - 6, { size: label, color: "#6d6961" })
+      const y = top + 8 + Math.floor(k / cols) * ch
+      hedgePhoto(ctx, x + 2, y + 2, cw - 4, ch - 4 - (label ? label + 8 : 0), i, { measure: n <= 3 && d.measured ? (i === 0 ? "6′ 2″" : heightAt(i)) : null, limit: d.limit && n <= 3 })
+      if (label) text(ctx, day(i), x + 4, y + ch - 7, { size: label, color: "#6d6961" })
     }
   },
   cam(ctx, w, h, d) {
-    street(ctx, 0, BAR_H, w, h - BAR_H, d.time || "11:48:07 PM", d.lit ?? 1)
+    street(ctx, 0, BAR_H, w, h - BAR_H, d.time || "11:47:07 PM", d.lit ?? 1)
   },
-  call(ctx, w, h, d) {
-    ctx.fillStyle = "#1c1d20"
+  // A photo, opened from a message.
+  photo(ctx, w, h, d) {
+    ctx.fillStyle = "#18191c"
     ctx.fillRect(0, BAR_H, w, h - BAR_H)
-    const people = d.people || []
-    const cols = people.length > 1 && w > h * 0.9 ? 2 : 1
-    const rows = Math.ceil(people.length / cols)
-    const gw = (w - 12 * (cols + 1)) / cols
-    const gh = (h - BAR_H - 12 * (rows + 1)) / rows
-    people.forEach((p, i) => {
-      const x = 12 + (i % cols) * (gw + 12)
-      const y = BAR_H + 12 + Math.floor(i / cols) * (gh + 12)
-      ctx.save()
-      roundRect(ctx, x, y, gw, gh, 10)
-      ctx.clip()
-      silhouette(ctx, x, y, gw, gh, i, p.off)
-      if (p.off) text(ctx, p.initial || p.name[0], x + gw / 2, y + gh / 2 + 14, { size: 40, weight: 600, color: "#8a8d92", align: "center" })
-      ctx.restore()
-      ctx.fillStyle = "rgba(0,0,0,.45)"
-      roundRect(ctx, x + 10, y + gh - 34, 18 + p.name.length * 8.5, 24, 6)
-      ctx.fill()
-      text(ctx, p.name, x + 19, y + gh - 17, { size: 13, weight: 600, color: "#f0eee9" })
-    })
-    if (d.toast) {
-      ctx.font = `500 14px ${FONT}`
-      const tw = ctx.measureText(d.toast).width + 28
-      ctx.fillStyle = "rgba(40,41,45,.92)"
-      roundRect(ctx, w / 2 - tw / 2, BAR_H + 24, tw, 32, 8)
-      ctx.fill()
-      text(ctx, d.toast, w / 2, BAR_H + 45, { size: 14, weight: 500, color: "#e9e7e2", align: "center" })
+    const p = plates[d.plate || "across"]
+    if (p) {
+      const pw = w
+      const ph = h - BAR_H
+      const [u0, v0, u1, v1] = coverUV(p, pw, ph, 0.5, 0.42)
+      ctx.drawImage(p, u0 * p.width, v0 * p.height, (u1 - u0) * p.width, (v1 - v0) * p.height, 0, BAR_H, pw, ph)
     }
   },
   sheet(ctx, w, h, d) {
@@ -547,11 +613,6 @@ const painters = {
       x = 0
       row.cells.forEach((c, i) => {
         text(ctx, c, x + 12, y + 20, { size: 14, color: row.strike ? "#9a968e" : INK, max: widths[i] * w - 16 })
-        if (row.strike && i === 0) {
-          ctx.font = `400 14px ${FONT}`
-          ctx.fillStyle = "#8a857c"
-          ctx.fillRect(x + 12, y + 15, Math.min(ctx.measureText(c).width, widths[i] * w - 16), 1.4)
-        }
         x += widths[i] * w
       })
       ctx.fillStyle = "rgba(0,0,0,.06)"
@@ -565,99 +626,54 @@ const painters = {
       ctx.fillRect(x, top, 1, h)
     }
   },
-  // The stranger's photo viewer: the photo area stays transparent (the live scene shows through);
-  // a strip of earlier nights runs underneath.
-  viewer2(ctx, w, h, d) {
-    ctx.fillStyle = "#1b1c1f"
-    ctx.fillRect(0, BAR_H, w, h - BAR_H)
-    const hole = photoHole(w, h, d.aspect || 1.6)
-    ctx.clearRect(hole.x, hole.y, hole.w, hole.h)
-    ctx.fillStyle = "#2a2b2e"
-    ctx.fillRect(0, h - 96, w, 96)
-    const n = 7
-    const tw = Math.min(110, (w - 24) / n - 8)
-    const th = tw * 0.66
-    for (let i = 0; i < n; i++) {
-      const x = 12 + i * (tw + 8)
-      const y = h - 96 + 12
-      ctx.fillStyle = "#15181d"
-      ctx.fillRect(x, y, tw, th)
-      ctx.fillStyle = "#0c0e11"
-      ctx.fillRect(x, y, tw, th * 0.18)
-      ctx.fillStyle = i === n - 1 ? "rgba(150,170,205,.9)" : "rgba(150,170,205,.75)"
-      ctx.fillRect(x + tw * 0.5, y + th * 0.36, tw * 0.13, th * 0.26)
-      ctx.fillStyle = "#10140f"
-      ctx.fillRect(x, y + th * 0.82, tw, th * 0.18)
-      if (i === n - 1) {
-        ctx.strokeStyle = "#e9e6df"
-        ctx.lineWidth = 2
-        ctx.strokeRect(x - 1, y - 1, tw + 2, th + 2)
-      }
-      text(ctx, `Nov ${14 + i}`, x + tw / 2, y + th + 18, { size: 11.5, color: "#b8b4ac", align: "center" })
-    }
-  },
-  settings(ctx, w, h, d) {
-    ctx.fillStyle = "#f2f0ec"
-    ctx.fillRect(0, BAR_H, w, h - BAR_H)
-    const side = 150
-    ctx.fillStyle = "#e7e4de"
-    ctx.fillRect(0, BAR_H, side, h - BAR_H)
-    ;["General", "Rules", "Workspaces", "Shortcuts", "Activity"].forEach((s, i) => {
-      if (s === "Rules") {
-        ctx.fillStyle = "#d5d1ca"
-        roundRect(ctx, 8, BAR_H + 14 + i * 32, side - 16, 28, 6)
-        ctx.fill()
-      }
-      text(ctx, s, 20, BAR_H + 33 + i * 32, { size: 14, weight: s === "Rules" ? 600 : 400 })
-    })
-    const x0 = side + 22
+  settings(ctx, w, h, d, win, focused) {
+    const side = 160
+    ctx.fillStyle = "#f4f2ee"
+    ctx.fillRect(side, BAR_H, w - side, h - BAR_H)
+    sidebar(ctx, w, h, side)
+    ;["General", "Rules", "Workspaces", "Shortcuts", "Activity"].forEach((s, i) => sideItem(ctx, s, BAR_H + 36 + i * 32, side, { sel: s === "Rules", focused }))
+    const x0 = side + 24
     text(ctx, "Rules", x0, BAR_H + 38, { size: 18, weight: 650 })
-    text(ctx, "Checked in order. The first rule that matches applies.", x0, BAR_H + 60, { size: 12.5, color: SOFT, max: w - x0 - 20 })
+    text(ctx, "Checked in order. The first rule that matches a new window applies.", x0, BAR_H + 60, { size: 12.5, color: SOFT, max: w - x0 - 20 })
     const cols = [["App", 0], ["Window title", 0.27], ["Action", 0.6], ["Workspace", 0.8]]
-    const tw = w - x0 - 20
-    let y = BAR_H + 88
+    const tw = w - x0 - 22
+    let y = BAR_H + 90
     cols.forEach(([c, f]) => text(ctx, c, x0 + f * tw, y, { size: 12, weight: 600, color: SOFT }))
     y += 10
     for (const r of d.rules || []) {
-      ctx.fillStyle = r.hl ? "#e3ecdc" : "#fbfaf8"
-      roundRect(ctx, x0 - 8, y, tw + 8, 34, 6)
+      ctx.fillStyle = r.hl ? "#e1ebda" : "#ffffff"
+      roundRect(ctx, x0 - 8, y, tw + 8, 34, 7)
       ctx.fill()
+      ctx.strokeStyle = "rgba(0,0,0,.07)"
+      ctx.lineWidth = 1
+      roundRect(ctx, x0 - 7.5, y + 0.5, tw + 7, 33, 7)
+      ctx.stroke()
       const cells = [r.app, r.title ? `“${r.title}”` : "Any", r.action, r.ws ?? "—"]
       cells.forEach((c, i) => {
         if (c == null) return
         const f = cols[i][1]
-        if (i === 0 && c) ctx.drawImage(iconCanvas(r.icon || "paper", 36), x0 + f * tw, y + 8, 18, 18)
-        text(ctx, String(c), x0 + f * tw + (i === 0 ? 24 : 0), y + 22, { size: 13.5, color: i === 1 && !r.title ? SOFT : INK, max: (i === 3 ? 0.2 : cols[i + 1][1] - f) * tw - 26 })
+        if (i === 0 && c) ctx.drawImage(iconCanvas(r.icon || "paper", 54), x0 + f * tw, y + 8, 18, 18)
+        text(ctx, String(c), x0 + f * tw + (i === 0 ? 24 : 0), y + 22, { size: 13.5, color: (i === 1 && !r.title) || (i === 3 && r.ws == null) ? SOFT : INK, max: (i === 3 ? 0.2 : cols[i + 1][1] - f) * tw - 26 })
       })
-      if (r.cursor) {
-        ctx.fillStyle = INK
+      if (r.cursor != null) {
+        ctx.fillStyle = "#3d6fd0"
         const f = cols[r.cursor][1]
         ctx.font = `400 13.5px ${FONT}`
-        ctx.fillRect(x0 + f * tw + (r.cursor === 0 ? 24 : 0) + ctx.measureText(String(cells[r.cursor] || "")).width + 2, y + 9, 1.5, 17)
+        ctx.fillRect(x0 + f * tw + (r.cursor === 0 ? 24 : 0) + ctx.measureText(String(cells[r.cursor] || "")).width + 1.5, y + 9, 1.5, 17)
       }
       y += 40
     }
-    if (d.add) text(ctx, "+  Add Rule", x0, y + 22, { size: 13.5, weight: 600, color: "#4b7fd0" })
+    if (d.add) text(ctx, "+  Add Rule", x0, y + 22, { size: 13.5, weight: 600, color: "#3d6fd0" })
   },
 }
 
+const SERIF = 'Charter, "Iowan Old Style", Georgia, serif'
+const TAB_TITLES = ["Gutter guards: which kind?", "Hedge height bylaws", "Laser measure reviews", "Pinecrest HOA", "How to take minutes", "Cordless drills compared"]
+
 export function paintWindow(ctx, w, h, win, focused) {
   ctx.clearRect(0, 0, w, h)
-  ;(painters[win.kind] || painters.paper)(ctx, w, h, win.data || {}, win)
+  ;(painters[win.kind] || painters.paper)(ctx, w, h, win.data || {}, win, focused)
   chrome(ctx, w, win, focused)
 }
 
 export { text, hash }
-
-// Where the photograph sits inside the viewer window (window-local units).
-export function photoHole(w, h, aspect) {
-  const aw = w - 24
-  const ah = h - BAR_H - 96 - 24
-  let pw = aw
-  let ph = pw / aspect
-  if (ph > ah) {
-    ph = ah
-    pw = ph * aspect
-  }
-  return { x: (w - pw) / 2, y: BAR_H + 12 + (ah - ph) / 2, w: pw, h: ph }
-}

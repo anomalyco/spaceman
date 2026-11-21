@@ -158,7 +158,7 @@ export function Show({ header }: { header: React.ReactNode }) {
               <span className="text-[15px] text-[#ece9e3]">{touch ? "Tap to play" : "Press ⌥1 or click to play"}</span>
             </button>
             <p className="flex items-center gap-2 text-[13px] text-[#a19d96]">
-              A short film, 1:41
+              A short film, 1:53
               <span aria-hidden="true">·</span>
               <button type="button" onClick={toggleSound} aria-pressed={!muted} className="rounded-full border border-white/12 bg-black/40 px-3 py-1 text-[13px] text-[#d8d5ce] hover:bg-black/60">
                 {muted ? "Sound off" : "Sound on"}

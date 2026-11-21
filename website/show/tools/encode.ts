@@ -50,14 +50,23 @@ async function mixAudio(out: string, log: any[], secs: number, audioDir: string)
     parts.push(`[${k}:a]atrim=start=${off},asetpts=PTS-STARTPTS,volume=${e.gain ?? 1},adelay=${Math.round(e.t * 1000)}:all=1[a${i}]`)
   })
   const labels = parts.map((p) => p.slice(p.lastIndexOf("[")))
-  const room = join(audioDir, "sfx-room.mp3")
-  if (levels.length && existsSync(room)) {
-    inputs.push("-stream_loop", "-1", "-i", room)
+  // each bed follows its own logged levels (older logs name only the room, as "room-level")
+  const beds = new Map<string, any[]>()
+  for (const l of levels) {
+    const f = l.file === "room-level" ? "sfx-room.mp3" : l.file
+    beds.set(f, [...(beds.get(f) || []), l])
+  }
+  let b = 0
+  for (const [file, ls] of beds) {
+    const f = join(audioDir, file)
+    if (!existsSync(f)) continue
+    inputs.push("-stream_loop", "-1", "-i", f)
     const k = n++
+    // a stepped envelope, smoothed so level changes ramp like the live gain does
     let expr = "0"
-    for (const l of levels) expr = `if(gte(t\\,${l.t})\\,${l.gain}\\,${expr})`
-    parts.push(`[${k}:a]atrim=0:${secs},volume='${expr}':eval=frame[room]`)
-    labels.push("[room]")
+    for (const l of ls) expr = `if(gte(t\\,${l.t})\\,${l.gain}\\,${expr})`
+    parts.push(`[${k}:a]atrim=0:${secs},volume='${expr}':eval=frame,lowpass=f=12000[bed${b}]`)
+    labels.push(`[bed${b++}]`)
   }
   const graph = parts.join(";") + `;${labels.join("")}amix=inputs=${labels.length}:normalize=0,atrim=0:${secs},loudnorm=I=-16:TP=-1.5[out]`
   const file = join(out, "mix.m4a")

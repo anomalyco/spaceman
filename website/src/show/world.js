@@ -2,6 +2,7 @@
 // units. draw() appends rounded-rect primitives to a display list that both renderers consume.
 import { APPS, FONT, iconCanvas } from "./apps.js"
 import { paintWindow, BAR_H } from "./content.js"
+import { plates, blurOf, coverUV } from "./plates.js"
 import { sp, to, jump, step, clamp } from "./springs.js"
 
 export const MENU_H = 26
@@ -9,6 +10,9 @@ const GAP = 8
 const EDGE_PAD = 10
 // The Grow track: { w: 50, ht: 32, small: 0.62, gap: 8, pad: 3 }
 const BAR = { w: 50, ht: 32, small: 0.62, gap: 8, pad: 3, edge: 12, inner: 42 }
+// A tiler's moves are short: windows land in about a third of a second, a beat apart.
+const TILE_D = 0.34
+const STAGGER = 0.024
 
 export function tile(n, a) {
   const out = []
@@ -22,11 +26,11 @@ export function tile(n, a) {
   else if (n === 3) fr.push([0, 0, 0.5, 1], [0.5, 0, 0.5, 0.5], [0.5, 0.5, 0.5, 0.5])
   else {
     const aspect = portrait ? a.h / a.w : a.w / a.h
-    const cols = n === 4 ? 2 : Math.max(2, Math.round(Math.sqrt(n * aspect * 0.8)))
-    const rows = Math.ceil(n / cols)
+    // rows as even as they can be, the fuller rows last: 7 is 3 over 4, never 3, 3 and a lone 1
+    const rows = n === 4 ? 2 : Math.max(1, Math.round(Math.sqrt(n / (aspect * 0.8))))
     let k = 0
     for (let r = 0; r < rows; r++) {
-      const inRow = Math.min(cols, n - k)
+      const inRow = Math.floor(n / rows) + (r >= rows - (n % rows) ? 1 : 0)
       for (let c = 0; c < inRow; c++, k++) fr.push([c / inRow, r / rows, 1 / inRow, 1 / rows])
     }
   }
@@ -44,7 +48,6 @@ export class World {
     this.area = { x: EDGE_PAD - GAP / 2, y: MENU_H + EDGE_PAD - GAP / 2, w: SW - 2 * EDGE_PAD + GAP, h: SH - MENU_H - 2 * EDGE_PAD - 80 + GAP }
     this.wins = new Map()
     this.order = new Map() // ws -> [ids] in tile order
-    this.full = new Set() // workspaces in Fullscreen Layout
     this.active = 1
     this.focus = null
     this.tiling = false
@@ -55,14 +58,17 @@ export class World {
     this.frontApp = "Jot"
     this.menuCanvas = null
     this.menuKey = ""
-    // bar
-    this.bar = { shown: sp(0, 0.5), scale: sp(1, 0.45), cells: [], left: sp(0, 0.3), right: sp(0, 0.3), count: 0 }
-    this.cursor = { x: sp(SW * 0.62, 0.6), y: sp(SH * 0.55, 0.6), a: sp(1, 0.3), press: sp(0, 0.08) }
-    this.keys = { label: null, a: sp(0, 0.25), until: 0 }
+    this.bar = { shown: sp(0, 0.42), scale: sp(1, 0.4), cells: [], left: sp(0, 0.3), right: sp(0, 0.3), count: 0 }
+    this.cursor = { x: SW * 0.62, y: SH * 0.55, vx: 0, vy: 0, path: null, a: sp(1, 0.3), press: sp(0, 0.09) }
+    this.keys = { label: null, a: sp(0, 0.2), until: 0 }
     this.time = 0
-    this.wall = wallpaper(opts.wall || "night")
     this.lastFocus = {}
     this.reduced = !!opts.reduced
+    this.repaints = 0
+  }
+
+  get wall() {
+    return plates.wall || plates["wall-s"] || fallbackWall()
   }
 
   add(def) {
@@ -70,13 +76,14 @@ export class World {
       ws: 1,
       float: false,
       ...def,
-      x: sp(def.at?.[0] ?? 100, 0.42),
-      y: sp(def.at?.[1] ?? 100, 0.42),
-      w: sp(def.at?.[2] ?? 480, 0.42),
-      h: sp(def.at?.[3] ?? 340, 0.42),
-      a: sp(def.hidden ? 0 : 1, 0.22),
-      s: sp(1, 0.3),
+      x: sp(def.at?.[0] ?? 100, TILE_D),
+      y: sp(def.at?.[1] ?? 100, TILE_D),
+      w: sp(def.at?.[2] ?? 480, TILE_D),
+      h: sp(def.at?.[3] ?? 340, TILE_D),
+      a: sp(def.hidden ? 0 : 1, 0.2),
+      s: sp(1, 0.26),
       off: sp(0, 0.2),
+      fo: sp(0, 0.24),
       z: ++this.z,
       canvas: null,
       dirty: true,
@@ -97,40 +104,41 @@ export class World {
 
   rectsOf(ws) {
     const ids = this.listOf(ws).filter((id) => !this.wins.get(id).leaving)
-    if (this.full.has(ws)) return new Map(ids.map((id) => [id, { x: this.area.x + GAP / 2, y: this.area.y + GAP / 2, w: this.area.w - GAP, h: this.area.h - GAP }]))
     const rs = tile(ids.length, this.area)
     return new Map(ids.map((id, i) => [id, rs[i]]))
   }
 
-  // Retarget every tiled window on the active workspace to its tile.
-  reflow(snap = false) {
+  // Retarget every tiled window on the active workspace to its tile, a beat apart in tile order.
+  reflow({ snap = false, delay = 0 } = {}) {
     if (!this.tiling) return
+    let i = 0
     for (const [id, r] of this.rectsOf(this.active)) {
       const w = this.wins.get(id)
-      for (const k of ["x", "y", "w", "h"]) (snap ? jump : to)(w[k], r[k])
-      if (Math.abs(w.cw - r.w) > 0.5 || Math.abs(w.ch - r.h) > 0.5) w.dirty = true
+      if (snap) for (const k of ["x", "y", "w", "h"]) jump(w[k], r[k])
+      else if (Math.abs(w.x.t - r.x) + Math.abs(w.y.t - r.y) + Math.abs(w.w.t - r.w) + Math.abs(w.h.t - r.h) > 0.5) {
+        w.target = r
+        w.delay = delay + i++ * STAGGER
+      }
     }
   }
 
   tileNow() {
     this.tiling = true
-    let i = 0
-    for (const [id, r] of this.rectsOf(this.active)) {
-      const w = this.wins.get(id)
-      // a cascade: each window leaves a beat after the one before it
-      w.delay = i++ * 0.035
-      w.target = r
-    }
+    this.reflow()
   }
 
   setFocus(id) {
     const prev = this.wins.get(this.focus)
-    if (prev) prev.dirty = true
+    if (prev && prev.id !== id) {
+      prev.dirty = true
+      to(prev.fo, 0)
+    }
     this.focus = id
     const w = this.wins.get(id)
     if (w) {
       w.z = ++this.z
       w.dirty = true
+      to(w.fo, 1)
       this.frontApp = APPS[w.app]?.name || "Jot"
       this.lastFocus[w.ws] = id
     }
@@ -145,57 +153,54 @@ export class World {
     w.dirty = true
   }
 
-  open(def, { route } = {}) {
+  open(def, { focus = true } = {}) {
     const w = this.add({ ...def, hidden: true })
-    if (!w.float) {
-      const l = this.listOf(w.ws)
-      // opened on the active workspace first, then routed
-      if (route != null && w.ws !== this.active) {
-        l.splice(l.indexOf(w.id), 1)
-        w.ws = this.active
-        this.listOf(this.active).push(w.id)
-      }
-    }
-    const rs = this.rectsOf(this.active)
-    const r = rs.get(w.id) || { x: def.at[0], y: def.at[1], w: def.at[2], h: def.at[3] }
+    const r = (!w.float && this.tiling && this.rectsOf(w.ws).get(w.id)) || { x: def.at[0], y: def.at[1], w: def.at[2], h: def.at[3] }
     for (const k of ["x", "y", "w", "h"]) jump(w[k], r[k])
-    jump(w.s, 0.94)
+    jump(w.s, 0.95)
     to(w.s, 1)
     to(w.a, 1)
-    this.reflow()
-    this.setFocus(w.id)
+    if (w.ws === this.active) this.reflow()
+    if (focus) this.setFocus(w.id)
     return w
   }
 
+  // The window fades and shrinks a little; its neighbours wait a beat, then close the gap.
   close(id) {
     const w = this.wins.get(id)
+    if (!w) return
     w.leaving = true
-    to(w.s, 0.94)
-    to(w.a, 0)
-    w.removeAt = this.time + 0.3
-    this.reflow()
+    to(w.s, 0.95, 0.22)
+    to(w.a, 0, 0.18)
+    w.removeAt = this.time + 0.32
+    if (this.focus === id) this.focus = null
+    this.reflow({ delay: 0.07 })
   }
 
   // Option+Shift+n: the window leaves for workspace n, shrinking into its little layout in the bar.
   move(id, ws) {
     const w = this.wins.get(id)
     const from = this.listOf(w.ws)
-    from.splice(from.indexOf(id), 1)
+    if (from.includes(id)) from.splice(from.indexOf(id), 1)
+    w.float = false
     this.ensureCell(ws)
     w.ws = ws
     this.listOf(ws).push(id)
     const c = this.cellRect(ws)
+    w.target = null
     if (this.reduced) {
-      to(w.a, 0, 0.3)
+      to(w.a, 0, 0.24)
     } else {
-      to(w.x, c.x, 0.5)
-      to(w.y, c.y, 0.5)
-      to(w.w, c.w, 0.5)
-      to(w.h, c.h, 0.5)
-      to(w.a, 0, 0.45)
+      // one duration for every edge, so no edge doubles back on its way into the bar
+      for (const k of ["x", "y", "w", "h"]) to(w[k], c[k], 0.34)
+      to(w.a, 0, 0.3)
     }
-    w.flying = this.time + 0.55
-    this.reflow()
+    w.flying = this.time + 0.42
+    if (this.focus === id) {
+      const next = [...this.rectsOf(this.active).keys()].pop()
+      if (next) this.setFocus(next)
+    }
+    this.reflow({ delay: 0.05 })
   }
 
   switchTo(ws, { quiet } = {}) {
@@ -205,39 +210,44 @@ export class World {
     for (const w of this.wins.values()) {
       if (w.float || w.leaving) continue
       if (w.ws === this.active) {
-        to(w.off, -dir * 36 || -0.001, 0.16)
-        to(w.a, 0, 0.12)
+        to(w.off, -dir * 32 || -0.001, 0.16)
+        to(w.a, 0, 0.11)
       }
     }
     const prev = this.active
     this.active = ws
     for (const [id, r] of this.rectsOf(ws)) {
       const w = this.wins.get(id)
+      w.target = null
       for (const k of ["x", "y", "w", "h"]) jump(w[k], r[k])
-      jump(w.off, dir * 36)
-      to(w.off, 0, 0.24)
+      jump(w.off, dir * 32)
+      to(w.off, 0, 0.22)
       jump(w.a, 0)
-      to(w.a, 1, 0.16)
+      to(w.a, 1, 0.15)
+      jump(w.s, 1)
       if (Math.abs(w.cw - r.w) > 0.5 || Math.abs(w.ch - r.h) > 0.5) w.dirty = true
     }
-    const top = [...this.rectsOf(ws).keys()].pop()
-    if (top) this.setFocus(this.lastFocus?.[ws] ?? top)
+    const ids = [...this.rectsOf(ws).keys()]
+    const keep = this.lastFocus?.[ws]
+    if (ids.length) this.setFocus(ids.includes(keep) ? keep : ids[ids.length - 1])
     this.barGo(prev, ws)
     if (!quiet) this.keyCast(["⌥", String(ws % 10)])
   }
 
-  keyCast(label, hold = 1.1) {
+  keyCast(label, hold = 1.0) {
+    const same = this.keys.label && this.keys.a.t > 0 && this.keys.label.length === label.length
     this.keys.label = label
     this.keys.until = this.time + hold
     to(this.keys.a, 1)
     this.keys.canvas = null
+    if (!same) this.keys.pop = this.time
   }
 
   // ─── Bar ────────────────────────────────────────────────────────────────
   ensureCell(ws) {
     while (this.bar.cells.length < ws) {
       const n = this.bar.cells.length + 1
-      this.bar.cells.push({ n, s: sp(0, 0.35), o: sp(0, 0.35) })
+      this.bar.cells.push({ n, s: sp(0, 0.3), o: sp(0, 0.3) })
       const c = this.bar.cells[n - 1]
       to(c.s, n === this.active ? 1 : BAR.small)
       to(c.o, n === this.active ? 1 : 0.5)
@@ -254,6 +264,7 @@ export class World {
     })
   }
 
+  // The marker: its leading edge 0.26 s, its trailing edge 0.42 s.
   barGo(from, ws) {
     const dir = Math.sign(ws - from)
     this.bar.cells.forEach((c, j) => {
@@ -298,18 +309,20 @@ export class World {
       if (w.target) {
         w.delay -= dt
         if (w.delay <= 0) {
-          for (const k of ["x", "y", "w", "h"]) to(w[k], w.target[k], 0.46)
+          for (const k of ["x", "y", "w", "h"]) to(w[k], w.target[k], TILE_D)
           w.dirty = true
           w.target = null
         }
       }
-      for (const k of ["x", "y", "w", "h", "a", "s", "off"]) step(w[k], dt)
+      for (const k of ["x", "y", "w", "h", "a", "s", "off", "fo"]) step(w[k], dt)
       if (w.removeAt && this.time >= w.removeAt) {
         this.wins.delete(w.id)
         const l = this.listOf(w.ws)
         if (l.includes(w.id)) l.splice(l.indexOf(w.id), 1)
       }
       if (w.flying && this.time >= w.flying) w.flying = 0
+      // once a workspace's windows have faded out, they rest where they are
+      if (!w.float && w.ws !== this.active && w.a.t === 0 && w.a.x < 0.002 && w.off.x !== 0) jump(w.off, 0)
     }
     const b = this.bar
     for (const k of ["shown", "scale", "left", "right"]) step(b[k], dt)
@@ -317,17 +330,73 @@ export class World {
       step(c.s, dt)
       step(c.o, dt)
     }
-    const cu = this.cursor
-    for (const k of ["x", "y", "a", "press"]) step(cu[k], dt)
+    this.stepCursor(dt)
     if (this.keys.label && this.time > this.keys.until) to(this.keys.a, 0)
     step(this.keys.a, dt)
   }
 
+  // The cursor travels on a slight arc, speeding up and settling (a Hermite curve that starts with
+  // whatever velocity it had), and takes longer for longer trips, the way a hand does.
   moveCursor(x, y, d) {
-    const dist = Math.hypot(x - this.cursor.x.t, y - this.cursor.y.t)
-    const dur = d ?? clamp(0.35 + dist / 2200, 0.35, 0.9)
-    to(this.cursor.x, x, dur)
-    to(this.cursor.y, y, dur)
+    const c = this.cursor
+    const dx = x - c.x
+    const dy = y - c.y
+    const dist = Math.hypot(dx, dy)
+    if (dist < 0.5) return
+    const dur = d ?? cursorTime(dist)
+    let nx = -dy / dist
+    let ny = dx / dist
+    if (ny > 0 || (Math.abs(ny) < 0.2 && nx * dx < 0)) {
+      nx = -nx
+      ny = -ny
+    }
+    c.path = { x0: c.x, y0: c.y, x1: x, y1: y, mx: c.vx * dur, my: c.vy * dur, t0: this.time, dur, bx: nx * dist * 0.06, by: ny * dist * 0.06 }
+  }
+
+  // Set off in time to arrive at arriveAt (show time), or now if the trip needs longer.
+  cursorTo(x, y, arriveAt) {
+    const c = this.cursor
+    const dist = Math.hypot(x - c.x, y - c.y)
+    if (dist < 0.5) return
+    // a trip that would land late is made quicker, so the click never lands on a moving cursor
+    const dur = Math.max(0.22, Math.min(cursorTime(dist), arriveAt - this.time))
+    // a hand already moving doesn't stop to wait: it carries on to the new point
+    const t0 = c.path ? this.time : Math.max(this.time, arriveAt - dur)
+    this.moveCursor(x, y, dur)
+    const p = this.cursor.path
+    if (t0 > this.time + 1e-4) {
+      // waiting to move: no carried velocity
+      p.t0 = t0
+      p.mx = p.my = 0
+    }
+  }
+
+  stepCursor(dt) {
+    const c = this.cursor
+    step(c.a, dt)
+    step(c.press, dt)
+    const p = c.path
+    if (!p) {
+      c.vx = c.vy = 0
+      return
+    }
+    const s = clamp((this.time - p.t0) / p.dur)
+    const s2 = s * s
+    const s3 = s2 * s
+    const h00 = 2 * s3 - 3 * s2 + 1
+    const h10 = s3 - 2 * s2 + s
+    const h01 = -2 * s3 + 3 * s2
+    const bulge = Math.sin(Math.PI * s) ** 2
+    const x = h00 * p.x0 + h10 * p.mx + h01 * p.x1 + p.bx * bulge
+    const y = h00 * p.y0 + h10 * p.my + h01 * p.y1 + p.by * bulge
+    c.vx = (x - c.x) / dt
+    c.vy = (y - c.y) / dt
+    c.x = x
+    c.y = y
+    if (s >= 1) {
+      c.path = null
+      c.vx = c.vy = 0
+    }
   }
 
   click() {
@@ -336,14 +405,23 @@ export class World {
   }
 
   // ─── Drawing ────────────────────────────────────────────────────────────
+  // Window canvases follow the camera's zoom (device pixels x zoom), so text stays sharp in a
+  // push. A canvas is only re-rasterised when its scale is 20% off, at most two per frame for
+  // zoom alone, the focused window first.
   ensureCanvas(w) {
     const tw = Math.max(40, w.w.t)
     const th = Math.max(40, w.h.t)
-    // the world's resolution, capped so no window canvas passes about 2.2 megapixels
-    const res = Math.max(0.5, Math.floor(Math.min(this.res, Math.sqrt(2.2e6 / (tw * th))) * 4) / 4)
-    const sizeChanged = Math.abs(w.cw - tw) > 0.5 || Math.abs(w.ch - th) > 0.5 || w.res !== res
-    if (!w.dirty && !sizeChanged && w.canvas) return
+    const cap = w.id === this.focus || w.float ? 7e6 : 2.6e6
+    const want = Math.max(0.5, Math.min(this.res, Math.sqrt(cap / (tw * th))))
+    const sizeChanged = Math.abs(w.cw - tw) > 0.5 || Math.abs(w.ch - th) > 0.5
+    const resOff = !w.res || want > w.res * 1.2 || want < w.res / 1.6
+    if (!w.dirty && !sizeChanged && w.canvas && !resOff) return
     if (w.flying && w.canvas) return
+    if (!w.dirty && !sizeChanged && w.canvas && resOff) {
+      if (this.repaints >= 2) return
+      this.repaints++
+    }
+    const res = Math.round(want * 8) / 8
     w.cw = tw
     w.ch = th
     w.res = res
@@ -362,43 +440,55 @@ export class World {
   }
 
   menu() {
-    const key = this.clock + this.frontApp + this.status + this.active + this.res
+    const res = Math.min(4, this.res)
+    const key = this.clock + this.frontApp + this.status + this.active + res
     if (this.menuCanvas && key === this.menuKey) return this.menuCanvas
     this.menuKey = key
     const c = this.menuCanvas || (this.menuCanvas = document.createElement("canvas"))
-    const res = this.res
     c.width = Math.ceil(this.SW * res)
     c.height = Math.ceil(MENU_H * res)
     const ctx = c.getContext("2d")
     ctx.setTransform(res, 0, 0, res, 0, 0)
     ctx.clearRect(0, 0, this.SW, MENU_H)
-    ctx.fillStyle = "rgba(236,233,227,.86)"
+    // a light frosted strip: the blurred desktop shows through underneath
+    ctx.fillStyle = "rgba(246,243,238,.58)"
     ctx.fillRect(0, 0, this.SW, MENU_H)
-    ctx.fillStyle = "#2b2a28"
+    ctx.fillStyle = "rgba(0,0,0,.12)"
+    ctx.fillRect(0, MENU_H - 1 / res, this.SW, 1 / res)
+    const ink = "#1f1e1c"
+    ctx.fillStyle = ink
     ctx.textBaseline = "middle"
-    ctx.font = `700 13.5px ${FONT}`
+    const mid = MENU_H / 2 + 0.5
+    ctx.font = `700 13px ${FONT}`
     ctx.textAlign = "left"
-    ctx.fillText(this.frontApp, 16, MENU_H / 2 + 1)
-    let x = 24 + ctx.measureText(this.frontApp).width
-    ctx.font = `400 13.5px ${FONT}`
-    if (this.SW > 700)
+    ctx.fillText(this.frontApp, 16, mid)
+    let x = 30 + ctx.measureText(this.frontApp).width
+    ctx.font = `400 13px ${FONT}`
+    if (this.SW > 760)
       for (const m of ["File", "Edit", "View", "Window", "Help"]) {
-        ctx.fillText(m, x, MENU_H / 2 + 1)
-        x += ctx.measureText(m).width + 18
+        ctx.fillText(m, x, mid)
+        x += ctx.measureText(m).width + 19
       }
     ctx.textAlign = "right"
-    ctx.fillText(this.clock, this.SW - 14, MENU_H / 2 + 1)
+    ctx.font = `500 13px ${FONT}`
+    let r = this.SW - 14
+    ctx.fillText(this.clock, r, mid)
+    r -= ctx.measureText(this.clock).width + 16
+    // status items, right to left: battery, wifi, then Spaceman's workspace number
+    battery(ctx, r - 24, mid, ink)
+    r -= 40
+    wifi(ctx, r - 9, mid + 5, ink)
+    r -= 30
     if (this.status) {
-      const cw = ctx.measureText(this.clock).width
-      const sx = this.SW - 30 - cw - 22
-      ctx.fillStyle = "#2b2a28"
+      const sx = r - 22
+      ctx.fillStyle = ink
       ctx.beginPath()
-      ctx.roundRect(sx, 5, 22, 16, 4)
+      ctx.roundRect(sx, 5.5, 22, 15, 4)
       ctx.fill()
-      ctx.fillStyle = "#ece9e3"
+      ctx.fillStyle = "#f4f1ec"
       ctx.font = `700 11px ${FONT}`
       ctx.textAlign = "center"
-      ctx.fillText(String(this.active % 10), sx + 11, MENU_H / 2 + 1)
+      ctx.fillText(String(this.active % 10), sx + 11, mid)
     }
     c.version = (c.version || 0) + 1
     return c
@@ -407,7 +497,7 @@ export class World {
   keyCanvas() {
     if (this.keys.canvas) return this.keys.canvas
     const c = (this.keys.canvas = document.createElement("canvas"))
-    const res = this.res
+    const res = Math.min(4, this.res)
     const label = this.keys.label || []
     const kw = 44
     const W = label.length * (kw + 8) + 16
@@ -417,18 +507,23 @@ export class World {
     c.lh = 60
     const ctx = c.getContext("2d")
     ctx.setTransform(res, 0, 0, res, 0, 0)
-    ctx.fillStyle = "rgba(24,24,27,.82)"
+    ctx.fillStyle = "rgba(22,22,25,.62)"
     ctx.beginPath()
-    ctx.roundRect(0, 0, W, 60, 14)
+    ctx.roundRect(0, 0, W, 60, 15)
     ctx.fill()
     label.forEach((k, i) => {
       const x = 8 + i * (kw + 8)
-      ctx.fillStyle = "rgba(255,255,255,.12)"
+      const g = ctx.createLinearGradient(0, 8, 0, 52)
+      g.addColorStop(0, "rgba(255,255,255,.17)")
+      g.addColorStop(1, "rgba(255,255,255,.09)")
+      ctx.fillStyle = g
       ctx.beginPath()
       ctx.roundRect(x, 8, kw, 44, 9)
       ctx.fill()
-      ctx.fillStyle = "#f3f1ec"
-      ctx.font = `500 ${k.length > 1 ? 15 : 22}px ${FONT}`
+      ctx.fillStyle = "rgba(255,255,255,.22)"
+      ctx.fillRect(x + 6, 8, kw - 12, 1 / res)
+      ctx.fillStyle = "#f5f3ee"
+      ctx.font = `500 ${k.length > 1 ? 15 : 21}px ${FONT}`
       ctx.textAlign = "center"
       ctx.textBaseline = "middle"
       ctx.fillText(k, x + kw / 2, 31)
@@ -440,14 +535,26 @@ export class World {
   // T maps logical units to CSS px: px = x * T.k + T.ox. clip is in CSS px; g grades; am scales
   // alpha. part is "base" (wallpaper and windows), "top" (menu bar, bar, keys, cursor) or "all".
   draw(list, T, { clip = null, g = 1, am = 1, part = "all" } = {}) {
+    this.repaints = 0
     const P = (x, y, w, h, o) => list.push({ g, ...o, x: x * T.k + T.ox, y: y * T.k + T.oy, w: w * T.k, h: h * T.k, clip, a: (o.a ?? 1) * am, r: (o.r ?? 0) * T.k, ring: o.ring ? o.ring * T.k : 0, shadow: o.shadow ? o.shadow * T.k : 0 })
+    this.hair = 1 / Math.max(1, this.res)
+    this.wallUV = coverUV(this.wall, this.SW, this.SH, 0.5, 0.42)
     if (part !== "top") this.drawBase(P)
     if (part !== "base") this.drawTop(P)
   }
 
+  // the blurred desktop under a rect, for frosted materials
+  frost(P, x, y, w, h, o) {
+    const [u0, v0, u1, v1] = this.wallUV
+    const U = (px) => u0 + (px / this.SW) * (u1 - u0)
+    const V = (py) => v0 + (py / this.SH) * (v1 - v0)
+    P(x, y, w, h, { ...o, tex: blurOf(this.wall), uv: [U(x), V(y), U(x + w), V(y + h)] })
+  }
+
   drawBase(P) {
-    P(0, 0, this.SW, this.SH, { tex: this.wall, r: 0 })
+    P(0, 0, this.SW, this.SH, { tex: this.wall, uv: this.wallUV, r: 0 })
     const wins = [...this.wins.values()].sort((a, b) => (a.float ? 1e6 : 0) + a.z - ((b.float ? 1e6 : 0) + b.z))
+    const hair = this.hair
     for (const w of wins) {
       if (w.a.x < 0.003) continue
       if (!w.float && w.ws !== this.active && !w.flying && w.off.x === 0) continue
@@ -457,28 +564,46 @@ export class World {
       const hh = w.h.x * s
       const x = w.x.x + (w.w.x - ww) / 2 + w.off.x
       const y = w.y.x + (w.h.x - hh) / 2
-      const r = Math.min(10, ww * 0.12)
-      P(x, y, ww, hh, { shadow: w.float ? 34 : 18, col: [0, 0, 0, w.float ? 0.5 : 0.32], r, a: w.a.x })
-      P(x, y, ww, hh, { tex: w.canvas, r, a: w.a.x })
-      P(x, y, ww, hh, { ring: 0.8, col: [0, 0, 0, 0.22], r, a: w.a.x })
+      const r = Math.min(11, ww * 0.1, hh * 0.1)
+      const a = w.a.x
+      const f = w.fo.x
+      const lift = w.float ? 1 : 0
+      // two shadows: a wide soft one that grows with focus and height, and a tight contact one
+      P(x, y, ww, hh, { shadow: 22 + 16 * f + 26 * lift, col: [0, 0, 0, 0.16 + 0.12 * f + 0.12 * lift], r, a })
+      P(x, y, ww, hh, { shadow: 4 + 2 * f, col: [0, 0, 0, 0.26 + 0.06 * f], r, a })
+      this.frost(P, x, y, ww, hh, { r, a })
+      P(x, y, ww, hh, { tex: w.canvas, r, a })
+      // device-pixel hairlines: a dark edge outside, a faint light edge inside
+      P(x - hair, y - hair, ww + 2 * hair, hh + 2 * hair, { ring: hair, col: [0, 0, 0, 0.3 + 0.08 * f], r: r + hair, a })
+      P(x, y, ww, hh, { ring: hair, col: [1, 1, 1, w.dark ? 0.1 : 0.42], r, a })
     }
   }
 
   drawTop(P) {
+    this.frost(P, 0, 0, this.SW, MENU_H, { r: 0 })
     P(0, 0, this.SW, MENU_H, { tex: this.menu(), r: 0 })
     this.drawBar(P)
-    // key cast
+    // key cast, beside the bar, so the keys and what they did are one glance
     if (this.keys.a.x > 0.01 && this.keys.label) {
       const c = this.keyCanvas()
       const bg = this.barGeom()
-      // beside the bar, so the keys and what they did are one glance
-      P(Math.max(EDGE_PAD, bg.x - c.lw - 14), bg.y + bg.h / 2 - c.lh / 2, c.lw, c.lh, { tex: c, r: 14, a: this.keys.a.x, g: 0 })
+      const k = this.keys.a.x
+      const s = 0.94 + 0.06 * k
+      const kx = Math.max(EDGE_PAD, bg.x - c.lw - 14)
+      const ky = bg.y + bg.h / 2 - c.lh / 2
+      const kw = c.lw * s
+      const kh = c.lh * s
+      const ox = kx + (c.lw - kw) / 2
+      const oy = ky + (c.lh - kh) / 2
+      P(ox, oy, kw, kh, { shadow: 18, col: [0, 0, 0, 0.3], r: 15 * s, a: k, g: 0 })
+      this.frost(P, ox, oy, kw, kh, { r: 15 * s, a: k, g: 0 })
+      P(ox, oy, kw, kh, { tex: c, r: 15 * s, a: k, g: 0 })
+      P(ox, oy, kw, kh, { ring: this.hair, col: [1, 1, 1, 0.16], r: 15 * s, a: k, g: 0 })
     }
-    // cursor
     const cu = this.cursor
     if (cu.a.x > 0.01) {
-      const s = 1 - cu.press.x * 0.15
-      P(cu.x.x - 3 * s, cu.y.x - 2 * s, 26 * s, 34 * s, { tex: cursorCanvas(), r: 0, a: cu.a.x })
+      const s = 1 - cu.press.x * 0.14
+      P(cu.x - 3 * s, cu.y - 2 * s, 26 * s, 34 * s, { tex: cursorCanvas(), r: 0, a: cu.a.x })
     }
   }
 
@@ -488,13 +613,18 @@ export class World {
     const g = this.barGeom()
     const sc = g.sc
     const a = clamp(b.shown.x * 1.4)
-    P(g.x, g.y, g.w, g.h, { shadow: 16, col: [0, 0, 0, 0.35], r: g.h / 2, a })
-    P(g.x, g.y, g.w, g.h, { col: [0.188, 0.188, 0.212, 1], r: g.h / 2, a })
-    P(g.x + sc, g.y + sc, g.w - 2 * sc, g.h - 2 * sc, { col: [0.086, 0.086, 0.094, 1], r: g.h / 2 - sc, a })
+    const R = g.h / 2
+    P(g.x, g.y, g.w, g.h, { shadow: 26, col: [0, 0, 0, 0.3], r: R, a })
+    P(g.x, g.y, g.w, g.h, { shadow: 5, col: [0, 0, 0, 0.3], r: R, a })
+    this.frost(P, g.x, g.y, g.w, g.h, { r: R, a })
+    P(g.x, g.y, g.w, g.h, { col: [0.075, 0.075, 0.085, 0.74], r: R, a })
+    P(g.x, g.y, g.w, g.h, { ring: this.hair * 1.2, col: [1, 1, 1, 0.16], r: R, a })
+    P(g.x - this.hair, g.y - this.hair, g.w + 2 * this.hair, g.h + 2 * this.hair, { ring: this.hair, col: [0, 0, 0, 0.45], r: R + this.hair, a })
     const mh = (BAR.ht + BAR.pad * 2) * sc
     const my = g.y + sc + (BAR.inner * sc - mh) / 2
-    P(g.x + b.left.x * sc, my, Math.max(0, b.right.x - b.left.x) * sc, mh, { col: [1, 1, 1, 0.1], r: 9 * sc, a })
-    P(g.x + b.left.x * sc, my, Math.max(0, b.right.x - b.left.x) * sc, mh, { ring: 0.5 * sc, col: [1, 1, 1, 0.2], r: 9 * sc, a })
+    const mw = Math.max(0, b.right.x - b.left.x) * sc
+    P(g.x + b.left.x * sc, my, mw, mh, { col: [1, 1, 1, 0.1], r: 9 * sc, a })
+    P(g.x + b.left.x * sc, my, mw, mh, { ring: 0.5 * sc, col: [1, 1, 1, 0.24], r: 9 * sc, a })
     let x = BAR.edge
     for (const c of b.cells) {
       const s = c.s.x
@@ -521,23 +651,71 @@ export class World {
         const ty = cy + (inset + fy * ih + 0.8 * s) * sc
         const tw = (fw * iw - 1.6 * s) * sc
         const th = (fh * ih - 1.6 * s) * sc
-        P(tx, ty, tw, th, { col: [1, 1, 1, 0.11], r: 3 * s * sc, a: ca })
+        const wa = ca * clamp(w.a.x * 1.5)
+        P(tx, ty, tw, th, { col: [1, 1, 1, 0.11], r: 3 * s * sc, a: wa })
         const size = Math.min(18 * s * sc, Math.min(tw, th) - 3 * s * sc)
-        if (size > 3) P(tx + tw / 2 - size / 2, ty + th / 2 - size / 2, size, size, { tex: iconCanvas(w.app, 48), r: 0, a: ca })
+        if (size > 3) P(tx + tw / 2 - size / 2, ty + th / 2 - size / 2, size, size, { tex: iconCanvas(w.app, 48), r: 0, a: wa })
       }
       x += cw + BAR.gap
     }
   }
+
+  // Positions of everything that moves, for the motion trace.
+  sample() {
+    const o = { cursor: [+this.cursor.x.toFixed(2), +this.cursor.y.toFixed(2)], bar: [+this.bar.left.x.toFixed(2), +this.bar.right.x.toFixed(2), +this.bar.scale.x.toFixed(4), +this.bar.shown.x.toFixed(3)], wins: {} }
+    for (const w of this.wins.values()) {
+      const vis = w.float || w.ws === this.active || w.flying || w.off.x !== 0
+      if (!vis) continue
+      o.wins[w.id] = [+(w.x.x + w.off.x).toFixed(2), +w.y.x.toFixed(2), +(w.w.x * w.s.x).toFixed(2), +(w.h.x * w.s.x).toFixed(2), +w.a.x.toFixed(3)]
+    }
+    return o
+  }
+}
+
+// Fitts-like: longer trips take longer, but not proportionally.
+const cursorTime = (dist) => clamp(0.26 + 0.1 * Math.log2(1 + dist / 24), 0.3, 0.95)
+
+function wifi(ctx, x, y, ink) {
+  ctx.strokeStyle = ink
+  ctx.lineWidth = 1.7
+  ctx.lineCap = "round"
+  for (const r of [4.5, 8.5, 12.5]) {
+    ctx.beginPath()
+    ctx.arc(x, y, r, Math.PI * 1.25, Math.PI * 1.75)
+    ctx.stroke()
+  }
+  ctx.fillStyle = ink
+  ctx.beginPath()
+  ctx.arc(x, y, 1.6, 0, Math.PI * 2)
+  ctx.fill()
+}
+
+function battery(ctx, x, y, ink) {
+  ctx.strokeStyle = ink
+  ctx.globalAlpha = 0.55
+  ctx.lineWidth = 1
+  ctx.beginPath()
+  ctx.roundRect(x + 0.5, y - 5.5, 22, 11, 3)
+  ctx.stroke()
+  ctx.fillStyle = ink
+  ctx.fillRect(x + 23.5, y - 2, 1.6, 4)
+  ctx.globalAlpha = 1
+  ctx.beginPath()
+  ctx.roundRect(x + 2.5, y - 3.5, 15, 7, 1.5)
+  ctx.fill()
 }
 
 let cursorTex = null
 function cursorCanvas() {
   if (cursorTex) return cursorTex
   const c = (cursorTex = document.createElement("canvas"))
-  c.width = 52
-  c.height = 68
+  c.width = 104
+  c.height = 136
   const ctx = c.getContext("2d")
-  ctx.scale(2, 2)
+  ctx.scale(4, 4)
+  ctx.shadowColor = "rgba(0,0,0,.35)"
+  ctx.shadowBlur = 2
+  ctx.shadowOffsetY = 0.8
   ctx.beginPath()
   ctx.moveTo(4, 3)
   ctx.lineTo(4, 26)
@@ -547,40 +725,41 @@ function cursorCanvas() {
   ctx.lineTo(13, 19.5)
   ctx.lineTo(20.5, 19.5)
   ctx.closePath()
+  ctx.fillStyle = "#fff"
+  ctx.fill()
+  ctx.shadowColor = "transparent"
+  ctx.beginPath()
+  ctx.moveTo(5.6, 6.6)
+  ctx.lineTo(5.6, 22.2)
+  ctx.lineTo(9.9, 18)
+  ctx.lineTo(13.9, 27.6)
+  ctx.lineTo(15.1, 27.1)
+  ctx.lineTo(11, 18.1)
+  ctx.lineTo(17, 18.1)
+  ctx.closePath()
   ctx.fillStyle = "#111"
-  ctx.strokeStyle = "#fff"
-  ctx.lineWidth = 1.6
-  ctx.lineJoin = "round"
-  ctx.stroke()
   ctx.fill()
   c.version = 1
   return c
 }
 
-const walls = {}
-// A quiet gradient desktop. night: his; tidy: the other desktop.
-function wallpaper(kind) {
-  if (walls[kind]) return walls[kind]
-  const c = (walls[kind] = document.createElement("canvas"))
+let wallTex = null
+// Until the photograph arrives: a gradient in its colours (dusk over hills).
+function fallbackWall() {
+  if (wallTex) return wallTex
+  const c = (wallTex = document.createElement("canvas"))
   c.width = 320
-  c.height = 200
+  c.height = 180
   const ctx = c.getContext("2d")
-  const g = ctx.createLinearGradient(0, 0, 320, 200)
-  if (kind === "tidy") {
-    g.addColorStop(0, "#2f3a3a")
-    g.addColorStop(1, "#1d2324")
-  } else {
-    g.addColorStop(0, "#4a5868")
-    g.addColorStop(0.6, "#38424f")
-    g.addColorStop(1, "#262c35")
-  }
+  const g = ctx.createLinearGradient(0, 0, 0, 180)
+  g.addColorStop(0, "#5b6a80")
+  g.addColorStop(0.55, "#8a8393")
+  g.addColorStop(0.75, "#4b4d5a")
+  g.addColorStop(1, "#23252d")
   ctx.fillStyle = g
-  ctx.fillRect(0, 0, 320, 200)
-  const r = ctx.createRadialGradient(220, 60, 0, 220, 60, 220)
-  r.addColorStop(0, kind === "tidy" ? "rgba(140,170,160,.18)" : "rgba(200,190,170,.16)")
-  r.addColorStop(1, "rgba(0,0,0,0)")
-  ctx.fillStyle = r
-  ctx.fillRect(0, 0, 320, 200)
+  ctx.fillRect(0, 0, 320, 180)
   c.version = 1
   return c
 }
+
+export { BAR_H }
