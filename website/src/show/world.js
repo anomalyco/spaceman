@@ -41,7 +41,7 @@ export class World {
   constructor(SW, SH, opts = {}) {
     this.SW = SW
     this.SH = SH
-    this.area = { x: EDGE_PAD - GAP / 2, y: MENU_H + EDGE_PAD - GAP / 2, w: SW - 2 * EDGE_PAD + GAP, h: SH - MENU_H - 2 * EDGE_PAD - 66 + GAP }
+    this.area = { x: EDGE_PAD - GAP / 2, y: MENU_H + EDGE_PAD - GAP / 2, w: SW - 2 * EDGE_PAD + GAP, h: SH - MENU_H - 2 * EDGE_PAD - 80 + GAP }
     this.wins = new Map()
     this.order = new Map() // ws -> [ids] in tile order
     this.full = new Set() // workspaces in Fullscreen Layout

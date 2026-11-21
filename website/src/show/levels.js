@@ -154,9 +154,9 @@ export function makeOuter(SW, SH, res) {
   o.frontApp = "Viewer"
   const viewer = o.add({ id: "o-photo", app: "viewer", kind: "viewer2", title: "No. 12 — Study", ws: 5, data: {} })
   o.add({ id: "o-height", app: "sheets", kind: "sheet", title: "Hedge — Height", ws: 5, data: { cols: ["Date", "Height"], widths: [0.55, 0.45], rows: ["Nov 14", "Nov 15", "Nov 16", "Nov 17", "Nov 18", "Nov 19", "Nov 20"].map((d) => ({ cells: [d, "6′ 0″"] })) } })
-  o.add({ id: "o-min", app: "paper", kind: "paper", title: "Minutes — Corrections", ws: 5, data: { heading: "Corrections", lines: ["Item 2. I did not agree to this.", "Item 3. Measured from the", "street side, not the path.", "Item 4. I was present.", { gap: 1 }, { t: "Not sent", soft: 1 }] } })
-  const others = { 1: ["postbox", "mail", "Postbox"], 2: ["browsy", "browser", "Browsy"], 3: ["jot", "jot", "Jot"], 4: ["daybook", "daybook", "Daybook"], 6: ["daybook", "daybook", "Daybook — Saturday"] }
-  for (const [n, [app, kind, title]] of Object.entries(others)) o.add({ id: "o-x" + n, app, kind, title, ws: +n, data: kind === "daybook" ? { date: "Saturday, November 21", events: [{ t: "Mow", at: 9, len: 1, color: "#d9e3cf" }] } : { heading: title } })
+  o.add({ id: "o-min", app: "paper", kind: "paper", title: "Minutes — Corrections", ws: 5, data: { heading: "Corrections from No. 14", lines: ["Item 2. I did not agree to this.", "Item 3. Measured from the", "street side, not the path.", "Item 4. I was present.", { gap: 1 }, { t: "Not sent", soft: 1 }] } })
+  const others = { 1: ["postbox", "mail", "Postbox"], 2: ["browsy", "browser", "Browsy"], 3: ["jot", "jot", "Jot"], 4: ["daybook", "daybook", "Daybook"] }
+  for (const [n, [app, kind, title]] of Object.entries(others)) o.add({ id: "o-x" + n, app, kind, title, ws: +n, data: kind === "daybook" ? { date: "Saturday, November 21", events: [] } : { heading: title } })
   o.active = 5
   o.ensureCell(6)
   for (const c of o.bar.cells) {
@@ -180,7 +180,7 @@ export function makeOuter(SW, SH, res) {
         "o-height": { x: a.x + a.w * 0.64 + 4, y: a.y + 4, w: a.w * 0.36 - 8, h: a.h * 0.5 - 8 },
         "o-min": { x: a.x + a.w * 0.64 + 4, y: a.y + a.h * 0.5 + 4, w: a.w * 0.36 - 8, h: a.h * 0.5 - 8 },
       }
-  o.rectsOf = (ws) => (ws === 5 ? new Map(Object.entries(rects)) : new Map([["o-x" + ws, { x: a.x + 4, y: a.y + 4, w: a.w - 8, h: a.h - 8 }]]))
+  o.rectsOf = (ws) => (ws === 5 ? new Map(Object.entries(rects)) : new Map(o.wins.has("o-x" + ws) ? [["o-x" + ws, { x: a.x + 4, y: a.y + 4, w: a.w - 8, h: a.h - 8 }]] : []))
   for (const [id, r] of Object.entries(rects)) {
     const w = o.wins.get(id)
     for (const k of ["x", "y", "w", "h"]) w[k].x = w[k].t = r[k]

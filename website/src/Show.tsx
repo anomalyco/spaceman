@@ -138,7 +138,8 @@ export function Show({ header }: { header: React.ReactNode }) {
       </div>
 
       {phase === "still" && (
-        <div className="absolute inset-0 flex flex-col items-center justify-center gap-4 bg-[radial-gradient(ellipse_at_center,rgba(8,8,10,.55),rgba(8,8,10,.15)_60%,transparent)]">
+        <div className="absolute inset-0 flex flex-col items-center justify-center gap-4 bg-[radial-gradient(ellipse_at_center,rgba(8,8,10,.62),rgba(8,8,10,.18)_55%,transparent)]">
+          <p className="text-[15px] text-[#c9c5bd]">A tiling window manager for macOS.</p>
           <button
             type="button"
             onClick={start}
@@ -155,17 +156,21 @@ export function Show({ header }: { header: React.ReactNode }) {
             </span>
             <span className="text-[15px] text-[#d8d5ce]">{touch ? "Tap to play" : "Press ⌥1 to play"}</span>
           </button>
-          <p className="text-[13px] text-[#8d8a84]">A short film. 1:41{muted ? ", sound off" : ", with sound"}.</p>
+          <p className="flex items-center gap-2 text-[13px] text-[#8d8a84]">
+            A short film, 1:41
+            <span aria-hidden="true">·</span>
+            <button type="button" onClick={toggleSound} aria-pressed={!muted} className="rounded-full border border-white/12 bg-black/40 px-3 py-1 text-[13px] text-[#d8d5ce] hover:bg-black/60">
+              {muted ? "Sound off" : "Sound on"}
+            </button>
+          </p>
         </div>
       )}
 
-      {(phase === "still" || live) && (
+      {live && (
         <div className="absolute right-4 bottom-4 flex gap-2 sm:right-6 sm:bottom-6">
-          {live && (
-            <button type="button" onClick={() => show.current?.skip()} className="h-9 rounded-full border border-white/10 bg-black/45 px-4 text-[13px] text-[#d8d5ce] backdrop-blur hover:bg-black/60">
-              Skip
-            </button>
-          )}
+          <button type="button" onClick={() => show.current?.skip()} className="h-9 rounded-full border border-white/10 bg-black/45 px-4 text-[13px] text-[#d8d5ce] backdrop-blur hover:bg-black/60">
+            Skip
+          </button>
           <button type="button" onClick={() => setCc(!captions)} aria-pressed={captions} className={`h-9 rounded-full border border-white/10 px-3 text-[12px] font-semibold tracking-wide backdrop-blur ${captions ? "bg-[#ece9e3] text-[#151517]" : "bg-black/45 text-[#d8d5ce] hover:bg-black/60"}`}>
             CC
           </button>

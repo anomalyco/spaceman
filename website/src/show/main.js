@@ -141,8 +141,8 @@ export function createShow({ still, canvas, base, capture = false, reduced = fal
     if (c.D > 1.001) pushPrims(list, roomPrims(SW, SH, light), T0, { ...opts, g: 0 })
     setRes(world, F.k * T0.s, dpr())
     world.draw(list, T0, { clip, g: 1, am })
-    if (c.D - Z_HEAD > 0.15) {
-      const a = clamp((c.D - Z_HEAD - 0.15) / 0.55)
+    if (c.D - Z_HEAD > 0.4) {
+      const a = clamp((c.D - Z_HEAD - 0.4) / 0.5)
       if (a > 0) pushPrims(list, headPrims(SW, SH, light), planeT(Z_HEAD, c, F), { clip, g: 0, am: am * a })
     }
     if (c.D - Z_FRONT > 0.05) {

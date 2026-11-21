@@ -399,18 +399,20 @@ const painters = {
     ctx.fillStyle = "#e9e6e0"
     ctx.fillRect(0, BAR_H, w, h - BAR_H)
     const n = d.count || 0
-    const cols = Math.max(2, Math.round(w / 118))
+    // the first mornings are big enough to read; the archive tightens as it grows
+    const cols = n <= 1 ? 1 : n <= 4 ? 2 : n <= 9 ? 3 : Math.max(2, Math.round(w / 118))
     const cw = (w - 16) / cols
-    const ch = cw * 0.86
     const rows = Math.ceil(n / cols)
+    const ch = n <= 9 ? Math.min(cw * 0.86, (h - BAR_H - 16) / Math.max(1, rows)) : cw * 0.86
+    const label = Math.min(18, Math.max(11, cw / 11))
     const visibleRows = Math.floor((h - BAR_H - 10) / ch)
     const first = Math.max(0, rows - visibleRows) * cols
     for (let i = first; i < n; i++) {
       const k = i - first
       const x = 8 + (k % cols) * cw
       const y = BAR_H + 8 + Math.floor(k / cols) * ch
-      hedgePhoto(ctx, x + 3, y + 3, cw - 6, ch - 22, i, d.measured && i >= d.measuredFrom ? heightAt(i) : null)
-      text(ctx, day(i), x + 4, y + ch - 6, { size: 11, color: "#6d6961" })
+      hedgePhoto(ctx, x + 3, y + 3, cw - 6, ch - label - 11, i, d.measured && i >= d.measuredFrom ? heightAt(i) : null)
+      text(ctx, day(i), x + 4, y + ch - 6, { size: label, color: "#6d6961" })
     }
   },
   cam(ctx, w, h, d) {
