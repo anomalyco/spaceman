@@ -13,6 +13,8 @@ import { LINES } from "../../src/show/tape.js"
 
 const [distArg = "../../dist", outArg = "cap"] = process.argv.slice(2).filter((a) => !a.startsWith("--"))
 const quick = process.argv.includes("--quick")
+// --trace: step the whole film without screenshots (motion trace + trace-check), then the real-time perf pass
+const traceOnly = process.argv.includes("--trace")
 const dist = resolve(distArg)
 const out = resolve(outArg)
 const audioDir = join(dist, "show/audio")
@@ -112,7 +114,7 @@ if (!quick) {
     if (f === Math.round((HOLD[0] + 1.6) * FPS)) await page.keyboard.press("Alt+Digit2")
     if (f === Math.round((HOLD[0] + 3.1) * FPS)) await page.keyboard.press("Alt+Digit3")
     if (f === Math.round((HOLD[0] + 4.6) * FPS)) await page.keyboard.press("Alt+Digit1")
-    await shot(page, join(frames, String(f).padStart(5, "0") + ".jpg"))
+    if (!traceOnly) await shot(page, join(frames, String(f).padStart(5, "0") + ".jpg"))
     await step(page, 1 / FPS)
     if (f % 15 === 0) states.push({ f, t, ...(await state(page)) })
     if (f % 300 === 0) console.log("frame", f)
@@ -126,7 +128,8 @@ if (!quick) {
   writeFileSync(join(out, "audio-log.json"), JSON.stringify(log))
   await ctx.close()
 
-  await encode(out, total, FPS, audioDir)
+  if (!traceOnly) await encode(out, total, FPS, audioDir)
+  else rmSync(frames, { recursive: true, force: true })
   await $`bun ${join(import.meta.dir, "trace-check.ts")} ${join(out, "trace.json")} --json ${join(out, "trace-check.json")}`.nothrow()
 }
 
@@ -156,12 +159,14 @@ if (quick) {
   await page.context().close()
   await keyframes("gpu", {})
 }
-await keyframes("canvas2d", { query: "canvas2d" })
-await keyframes("reduced", { reduced: true })
-await keyframes("phone", { w: 390, h: 844, dpr: 3, mobile: true })
+if (!traceOnly) {
+  await keyframes("canvas2d", { query: "canvas2d" })
+  await keyframes("reduced", { reduced: true })
+  await keyframes("phone", { w: 390, h: 844, dpr: 3, mobile: true })
+}
 
 // ── 2b · Full-size 2x stills, to check edges and text at 100% ───────────
-{
+if (!traceOnly) {
   const { page, ctx } = await open({ w: 1440, h: 900, dpr: 2, muted: true })
   await press(page)
   const dir = join(out, "x2")
@@ -174,7 +179,7 @@ await keyframes("phone", { w: 390, h: 844, dpr: 3, mobile: true })
 }
 
 // ── 2c · The page below the film, before any press (desktop and phone) ──
-for (const [name, o] of [["page", { w: 1440, h: 900 }], ["page-phone", { w: 390, h: 844, dpr: 3, mobile: true }]] as const) {
+for (const [name, o] of traceOnly ? [] : ([["page", { w: 1440, h: 900 }], ["page-phone", { w: 390, h: 844, dpr: 3, mobile: true }]] as const)) {
   const { page, ctx } = await open({ muted: true, ...o })
   await page.waitForTimeout(400)
   await page.screenshot({ path: join(out, name + ".jpg"), type: "jpeg", quality: 80, fullPage: true })

@@ -288,3 +288,10 @@ Then, from the probes (p6a, p6b) and the r5 frames at 100%:
     couple of minutes earlier in summer and later after November starts (p6k at 108: 6:02, 6:09, 6:03, 6:06…).
     Not taken: #1 (another body pass; the close is the joke's landing and b10 is fresh), #4/#6 (the plates
     were re-baked an hour ago), #10 (the three notes are the same note on purpose; the line says so).
+22. Its #5, the keys in the bar close-up (59.95) were as big as the bar's cells on a phone. Above the bar they are
+    now 70% size, 10 px over it, so the bar stays the subject (p6l, desktop and phone).
+23. Motion trace and perf (r6t, 15:16): the full film at 30 fps in 5321 frames, `trace-check` no issues. A new
+    `capture.ts --trace` steps the film without screenshots, because the full screenshot pass no longer fits
+    HiveMind's 30-minute browser cap (r6 was killed at frame 3,600 of 5,303). Main-thread time per frame at
+    1440×900 @2x: busiest section p50 1.0 / p95 3.2 / max 11.2 ms (r5: 1.0 / 3.6 / 9.0); ending p50 0.9 / p95
+    1.4 / max 3.4 ms. No errors on WebGPU, Canvas 2D, reduced motion or phone.

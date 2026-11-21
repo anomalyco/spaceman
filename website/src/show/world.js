@@ -645,15 +645,16 @@ export class World {
       const c = this.keyCanvas()
       const bg = this.barGeom()
       const k = this.keys.a.x
-      const s = 0.94 + 0.06 * k
-      // in the close-up on the bar the keys would be cropped off its side, so they sit on top of it
+      // in the close-up on the bar the keys would be cropped off its side, so they sit on top of it,
+      // smaller, so the bar stays the subject
       const up = this.keysAbove
+      const s = (0.94 + 0.06 * k) * (up ? 0.7 : 1)
       const kx = up ? bg.x + bg.w / 2 - c.lw / 2 : Math.max(EDGE_PAD, bg.x - c.lw - 14)
       const ky = up ? bg.y - c.lh - 12 : bg.y + bg.h / 2 - c.lh / 2
       const kw = c.lw * s
       const kh = c.lh * s
       const ox = kx + (c.lw - kw) / 2
-      const oy = ky + (c.lh - kh) / 2
+      const oy = up ? bg.y - kh - 10 : ky + (c.lh - kh) / 2
       P(ox, oy, kw, kh, { shadow: 18, col: [0, 0, 0, 0.3], r: 15 * s, a: k, g: 0 })
       this.frost(P, ox, oy, kw, kh, { r: 15 * s, a: k, g: 0 })
       P(ox, oy, kw, kh, { tex: c, r: 15 * s, a: k, g: 0 })
