@@ -1,0 +1,126 @@
+{
+ "voice": "8olojUk4IXpvKgaOCHXj",
+ "stages": {
+  "close": {
+   "tag": "[quiet, close to the mic, unhurried, plain, matter-of-fact, a little tired]",
+   "stability": 0.5,
+   "takes": 2
+  },
+  "plain": {
+   "tag": "[calm, measured, plain, sincere, like a man describing his week]",
+   "stability": 0.5,
+   "takes": 2
+  },
+  "cold": {
+   "tag": "[very calm, quiet, precise, certain, no warmth, slow]",
+   "stability": 0.5,
+   "takes": 2
+  }
+ },
+ "lines": [
+  {
+   "id": "march",
+   "stage": "close",
+   "text": "I'd had some of those windows open since March."
+  },
+  {
+   "id": "same-note",
+   "stage": "close",
+   "text": "Three of them were the same note. I closed two."
+  },
+  {
+   "id": "mail",
+   "stage": "plain",
+   "text": "Mail went to two. The internet went to three."
+  },
+  {
+   "id": "rule",
+   "stage": "plain",
+   "text": "Then I wrote a rule. Chatter opens on two."
+  },
+  {
+   "id": "not-closed",
+   "stage": "plain",
+   "text": "It isn't closed. It's on two."
+  },
+  {
+   "id": "drill",
+   "stage": "plain",
+   "text": "I returned the drill. I'd had it four years. He said I didn't need to."
+  },
+  {
+   "id": "house",
+   "stage": "plain",
+   "text": "The house has a workspace."
+  },
+  {
+   "id": "minutes",
+   "stage": "plain",
+   "text": "Nobody wanted to take the minutes. So I take the minutes."
+  },
+  {
+   "id": "hedge",
+   "stage": "cold",
+   "text": "Number fourteen's hedge is six foot two. The limit is six feet."
+  },
+  {
+   "id": "second",
+   "stage": "cold",
+   "text": "I started recording the height after the second conversation."
+  },
+  {
+   "id": "circulated",
+   "stage": "cold",
+   "text": "Nobody corrected the minutes. I circulated them again."
+  },
+  {
+   "id": "space",
+   "stage": "cold",
+   "text": "Everyone gets the same amount of space.",
+   "pick": 1
+  },
+  {
+   "id": "light",
+   "stage": "cold",
+   "text": "Number fourteen leaves a light on."
+  }
+ ],
+ "sfx": [
+  {
+   "id": "room",
+   "text": "quiet room tone at night, faint refrigerator hum in another room, very soft distant traffic, no music",
+   "dur": 12,
+   "loop": true
+  },
+  {
+   "id": "thunk",
+   "text": "a single very soft muted wooden thunk, small, close, dry",
+   "dur": 0.6
+  },
+  {
+   "id": "close",
+   "text": "a single soft short paper swish, very quiet, dry",
+   "dur": 0.6
+  },
+  {
+   "id": "key",
+   "text": "a single laptop keyboard key press, soft scissor switch click, close mic, dry",
+   "dur": 0.5
+  },
+  {
+   "id": "key2",
+   "text": "a single key press on a heavier older mechanical keyboard in a different quiet room, dry",
+   "dur": 0.5
+  },
+  {
+   "id": "shutter",
+   "text": "a single quiet digital camera shutter click, dry, close",
+   "dur": 0.5
+  },
+  {
+   "id": "car",
+   "text": "one car passing slowly far away on a wet street at night, quiet, no horn",
+   "dur": 4
+  }
+ ]
+}
