@@ -165,6 +165,22 @@ export class World {
     return w
   }
 
+  // Several windows at once (a workspace being filled): each goes straight to its final tile and they
+  // appear a beat apart, so nothing already on screen is moved twice.
+  openMany(defs, { gap = 0.16 } = {}) {
+    const ws = defs[0].ws
+    const made = defs.map((d) => this.add({ ...d, hidden: true }))
+    const rs = this.rectsOf(ws)
+    made.forEach((m, i) => {
+      const r = (this.tiling && rs.get(m.id)) || { x: m.at?.[0] ?? 100, y: m.at?.[1] ?? 100, w: m.at?.[2] ?? 480, h: m.at?.[3] ?? 340 }
+      for (const k of ["x", "y", "w", "h"]) jump(m[k], r[k])
+      jump(m.s, 0.95)
+      m.revealAt = this.time + i * gap
+    })
+    if (ws === this.active) this.reflow()
+    return made
+  }
+
   // The window fades and shrinks a little; its neighbours wait a beat, then close the gap.
   close(id) {
     const w = this.wins.get(id)
@@ -321,6 +337,12 @@ export class World {
         if (l.includes(w.id)) l.splice(l.indexOf(w.id), 1)
       }
       if (w.flying && this.time >= w.flying) w.flying = 0
+      if (w.revealAt !== undefined && this.time >= w.revealAt) {
+        w.revealAt = undefined
+        to(w.s, 1)
+        to(w.a, 1)
+        if (w.ws === this.active) this.setFocus(w.id)
+      }
       // once a workspace's windows have faded out, they rest where they are
       if (!w.float && w.ws !== this.active && w.a.t === 0 && w.a.x < 0.002 && w.off.x !== 0) jump(w.off, 0)
     }

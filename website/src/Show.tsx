@@ -21,6 +21,15 @@ const RECORDER = { x: 350, y: 395, w: 362, h: 333 };
 function Exhibit({ onStart, ready, live }: { onStart: () => void; ready: boolean; live: boolean }) {
   const ref = useRef<SVGSVGElement>(null);
   const [vb, setVb] = useState(`0 0 ${EX.w} ${EX.h}`);
+  const [href, setHref] = useState("show/plates/exhibit-s.jpg");
+  // a sharper plate once the small one is up, for screens with more pixels than it has
+  useEffect(() => {
+    if (window.innerWidth * devicePixelRatio <= 1600) return;
+    const img = new Image();
+    img.onload = () => setHref(img.src);
+    const t = window.setTimeout(() => (img.src = "show/plates/exhibit-l.jpg"), 400);
+    return () => window.clearTimeout(t);
+  }, []);
   useEffect(() => {
     const el = ref.current;
     if (!el) return;
@@ -41,7 +50,7 @@ function Exhibit({ onStart, ready, live }: { onStart: () => void; ready: boolean
   return (
     <svg ref={ref} viewBox={vb} preserveAspectRatio="xMidYMid slice" className={`absolute inset-0 size-full transition-opacity duration-700 ${live ? "opacity-0" : "opacity-100"}`}>
       <title>Exhibit 31: a cassette recorder found running in the kitchen of No. 14</title>
-      <image href="show/plates/exhibit-s.jpg" width={EX.w} height={EX.h} />
+      <image href={href} width={EX.w} height={EX.h} />
       <g transform="rotate(-30 604 572)" fill="#2b2119" fillOpacity={0.86} style={{ fontFamily: '"Courier New", Courier, ui-monospace, monospace' }}>
         <text x={604} y={522} textAnchor="middle" fontSize={15} fontWeight={700} letterSpacing={1.5}>EXHIBIT 31</text>
         <rect x={562} y={528} width={84} height={0.8} />
@@ -106,7 +115,8 @@ export function Show({ header }: { header: React.ReactNode }) {
           on: {
             phase: (p: Phase) => {
               setPhase(p);
-              if (p === "ended") window.setTimeout(() => setCard(true), capture ? 0 : 700);
+              // a hard cut: the last image, then the card, nothing between
+              if (p === "ended") setCard(true);
               if (p === "live") setCard(false);
             },
             caption: (c: Caption) => setCaption(c),
@@ -204,7 +214,7 @@ export function Show({ header }: { header: React.ReactNode }) {
       )}
 
       {phase === "ended" && (
-        <div className={`absolute inset-0 flex flex-col items-center justify-center gap-7 bg-[#08080a] px-6 text-center transition-opacity duration-500 ${card ? "opacity-100" : "opacity-0"}`}>
+        <div className={`absolute inset-0 flex flex-col items-center justify-center gap-7 bg-[#08080a] px-6 text-center ${card ? "opacity-100" : "opacity-0"}`}>
           <p className="text-[clamp(28px,4.4vw,46px)] font-medium tracking-tight text-[#f2f1ee]">For your windows.</p>
           <div className="flex flex-col items-center gap-3">
             <a href={DOWNLOAD_URL} className="rounded-full bg-[#f0efec] px-7 py-3 text-[15px] font-medium text-[#111214] transition-opacity hover:opacity-85 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#cfcac0]">

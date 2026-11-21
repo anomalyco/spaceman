@@ -1,111 +1,78 @@
-# Final monologue: "Leave it on"
+# The monologue (version C, the film's tape)
 
-Built from draft B (critique-m-B.md, astra: best voice, 8/10 straight face) with fixes from all three
-critiques (critique-m-A.md, critique-m-C.md, sol).
+Kit's PVC on ElevenLabs v4, take `c2`, tape-treated by `show/voice/process.py`. Times are on the processed tape (150.5 s). Alternates A and B are in `show/voice/mono.json` (`textA`, `textB`).
 
-## What it is
-
-A cassette recording made by No. 14 at his kitchen table, near midnight on Friday, November 20.
-No. 12 has walked across the street because No. 14's light was on, and because No. 14 finally
-answered the re-circulated minutes, with a photograph of No. 12's study attached. No. 14 never
-speaks. No. 12 explains, calmly and in order, how he keeps things. It is played back years later
-(the tape hiss, the band-limit, the wow). Nothing says what happened next.
-
-The film's picture is No. 12's screen: the story he tells, as he lived it. The first line ("your
-light was on") only makes sense at the end, when the doorbell feed shows No. 14's light coming on,
-the camera pulls back through No. 12's study (the chair is empty) and crosses the street to a
-kitchen table: two mugs, a chair pulled out, a cassette recorder with its red lamp lit.
-"Leave it on." Hard cut to "For your windows."
-
-## Fixes taken from the critiques
-
-- Route Chatter, not "Dana's messages" (all three). "I did read both messages" lets her unanswered
-  message do the work.
-- No "it's on two" after the browser went to three (all three). He goes back to check instead, and
-  the picture shows ⌥2 / ⌥3 finding them.
-- No six-foot-two / six-oh-two rhyme (A, C). The count stays: "A hundred and sixty mornings."
-- No explanation of the reversal (B): the photograph arrives attached to No. 14's reply to the
-  minutes, and he recognises his own study "from this side".
-- "Are you recording this? / Good." cut (B). Only "Leave it on." remains, after a silence long
-  enough for someone to reach for the recorder. It also means the light.
-- The visitor's turn is a pause in the tape (room tone), not him addressing the visitor.
-- No horror button lines ("All of it", "Your light's on", "I'd keep it that way").
-- About 200 words, so he never has to hurry.
-
-## Kit's character note (Nov 21)
-
-> He's clearly hypnotized by the pure efficiency.
-
-That is the motive and the through-line. He isn't angry or cruel; he is entranced by how well
-everything works once it has a place, and he keeps applying it: to things (windows), then tasks (the
-rule, the drill), then people (Dana on two, the street on five, and No. 14, "the last thing"). The
-detail he lingers on is how clean it was, how nothing was ever lost again, how quickly he could get to
-anything; never the thing he did. The product is what he rhapsodises about.
-
-## Text (performance tags in brackets are not spoken)
-
-> — your light was on. I hope that's all— I hope that's all right. I won't stay long.
->
-> I want to explain how I keep things. Then it'll make sense.
->
-> I'd had some of those windows open since March. February, some of them. Three of them were, uh... the
-> same note. I closed two.
->
-> And then everything went side by side. Nothing on top of anything. Nothing behind anything. You could
-> see all of it at once... It's very clean.
->
-> Mail went to two. The browser went to three. I went back to make sure, and they were just... there.
-> Exactly where I'd put them. Nothing was ever lost again. There's a bar along the bottom, so you always
-> know where everything is. You're never more than one key away from anything.
->
-> *(the tape runs on: 6.4 s of room tone, the visitor's turn)*
->
-> Then I made a rule. Chatter opens on two. You don't have to decide anymore. It just goes. I did read
-> both messages.
->
-> I gave Mark his drill back. Four years. It's a better drill than mine, actually. But it had a place,
-> and the place was his.
->
-> Four is the house. Five is the street. Nobody else wanted to take the minutes.
->
-> Your hedge is six foot two. The limit is six feet. We've talked about it... twice. I've photographed it
-> every morning since. A hundred and sixty mornings, and I can find any one of them in a second. Any
-> morning you like.
->
-> I sent the minutes round again. You're the only one who replied.
->
-> There was a photograph attached. It took me a minute to recognise the study. From this side.
->
-> Everything else has a place now. You're the last thing.
->
-> *(an exhale)* Can I sit? ...I'll sit.
->
-> *(3.2 s more: a chair, a cup set down, the tape running)*
->
-> Leave it on.
-
-## Performance
-
-Eleven v4, Kit's PVC, one request per take with timestamps (`show/voice/mono.ts`, `mono.json`).
-Three rounds of takes:
-
-- m1–m6 (first text, stability 0.35/0.5/0.65): 62–92 s. m1 misread "were" as "with".
-- n1–n4 (with a written self-correction and an "uh"): n1 had the best arc (−21 → −25 LUFS by quarter,
-  pauses 0.5–1.4 s) but predates Kit's character note.
-- p1–p5 (final text, after the character note): **p1 picked**: 101.9 s, loudness falls gently
-  (−23.4 → −24.5 LUFS by quarter, never louder), the written stumble ("I hope that's all— I hope that's
-  all right") and the exhale before "Can I sit?" both came out. p3 doubled "I won't stay long", p4 ran
-  127 s, p5 got louder at the end, p2 ran 115 s.
-
-Nobody has listened to any take. Checked by Scribe transcript (all words, no spoken tags), silence
-detection and loudness per quarter and per sentence (`show/tools/voice-check.py`).
-
-## Tape
-
-`show/voice/process.py`: the record button (on the tape), 0.95 s of tape before he speaks, the take
-with two pauses opened in the silences between sentences (6.4 s after "away from anything.", 3.2 s
-after "I'll sit." with a chair and a cup), then a bed of hiss, 60 Hz hum and a kitchen, band-limited
-140 Hz–5.6 kHz, a presence lift, gentle compression, wow (0.55 Hz, about ±0.14 %) and flutter (7.3 Hz),
-soft saturation, two-pass loudness to −17.5 LUFS (measured −17.9 integrated, LRA 3.4; every sentence
-between −16.2 and −19.7 LUFS after lifting "there.", "It's very clean." and "Leave it on.").
-113.4 s, 22 kHz mono 40 kb/s.
+| Time | Line |
+| --- | --- |
+| 0:01.2 | — your light was on. |
+| 0:02.1 | I hope that's all— I hope that's all right. |
+| 0:04.0 | I won't stay long. |
+| 0:05.7 | I want to explain how I keep things. |
+| 0:08.0 | Then it'll make sense. |
+| 0:09.9 | I'd had some of those windows open since March. |
+| 0:12.4 | February, some of them. |
+| 0:13.8 | Three of them were, uh... the same note. |
+| 0:16.1 | I closed two. |
+| 0:18.0 | Then I installed a small program. |
+| 0:19.9 | It's called Spaceman. |
+| 0:21.9 | And the windows tiled themselves. |
+| 0:23.9 | Side by side. |
+| 0:25.1 | Nothing on top of anything. |
+| 0:26.6 | Nothing behind anything. |
+| 0:27.9 | You could see all of it at once... |
+| 0:29.7 | I tasted the sweet flesh of efficiency. |
+| 0:32.6 | Mail went to workspace two. |
+| 0:34.3 | The browser went to three. |
+| 0:35.8 | I went back to make sure, and they were just... there. |
+| 0:38.7 | Exactly where I'd put them. |
+| 0:40.2 | Nothing was ever lost again. |
+| 0:41.8 | There's a bar along the bottom, so you always know where everything is. |
+| 0:45.1 | You're never more than one key away from anything. |
+| 0:54.0 | Then I made a rule. |
+| 0:55.1 | Chatter opens on two. |
+| 0:56.5 | You don't have to decide anymore. |
+| 0:58.0 | It just goes. |
+| 0:59.2 | I did read both messages. |
+| 1:01.3 | I gave Mark his drill back. |
+| 1:02.9 | Four years. |
+| 1:03.8 | It's a better drill than mine, actually. |
+| 1:05.7 | But it had a place, and the place was his. |
+| 1:08.4 | Four is the house. |
+| 1:09.6 | Five is the street. |
+| 1:10.8 | Nobody else wanted to take the minutes. |
+| 1:13.3 | Your hedge is six foot two. |
+| 1:15.1 | The limit is six feet. |
+| 1:16.5 | We've talked about it... twice. |
+| 1:18.4 | I've photographed it every morning since. |
+| 1:20.5 | A hundred and sixty mornings, and I can find any one of them in a second. |
+| 1:24.4 | Any morning you like. |
+| 1:26.1 | I sent the minutes round again. |
+| 1:27.7 | You're the only one who replied. |
+| 1:29.8 | There was a photograph attached. |
+| 1:31.4 | It took me a minute to recognise the study. |
+| 1:33.9 | From this side. |
+| 1:35.3 | Three of you signed the same note. |
+| 1:37.1 | About the cameras. |
+| 1:38.3 | I closed two. |
+| 1:40.6 | Sixteen was in March. |
+| 1:41.9 | Mark was in June, the day I gave him his drill back. |
+| 1:44.8 | It was quick, and it was very clean. |
+| 1:47.1 | Nobody missed either of them for a week. |
+| 1:49.1 | Six is downstairs. |
+| 1:50.6 | They're both on six. |
+| 1:52.9 | Everything else has a place now. |
+| 1:54.6 | You're the last thing. |
+| 1:56.3 | Can I sit? |
+| 1:57.0 | ...I'll sit. |
+| 2:00.5 | You took a while to come down. |
+| 2:02.0 | I've put the plastic down. |
+| 2:03.6 | Side by side. |
+| 2:04.7 | Nothing on top of anything. |
+| 2:06.2 | Nothing behind anything. |
+| 2:08.1 | It won't take long. |
+| 2:09.3 | It never does. |
+| 2:11.9 | Leave it on. |
+| 2:13.0 | Somebody should take the minutes. |
+| 2:22.8 | Minutes. |
+| 2:24.1 | Friday, November the twentieth. |
+| 2:26.8 | Present... one. |

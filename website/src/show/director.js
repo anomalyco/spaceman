@@ -227,6 +227,12 @@ export function build(S) {
       S.sfx("thunk", 0.3)
     })
 
+  const openMany = (t, ws, defs) =>
+    at(t, () => {
+      w.openMany(defs.map((d) => ({ ws, ...d })))
+      S.sfx("thunk", 0.3)
+    })
+
   span(0, END, (u, t) => applyLook(S, t))
   const BAR_BASE = 1.5
   const BAR_BIG = 2.2
@@ -378,16 +384,20 @@ export function build(S) {
   // ── 4 · The house ──
   const house = word("Four is the house")
   sw(house, 4, "Tue Jun 9  9:30 PM")
-  open(house + 0.25, 4, { id: "groceries", app: "sheets", kind: "sheet", title: "Groceries — Standing Order", data: { cols: ["Item", "Qty", "Day"], widths: [0.5, 0.25, 0.25], rows: [["Eggs", "12", "Sun"], ["Milk", "1 gal", "Sun"], ["Bread", "1", "Sun"], ["Coffee", "2 lb", "Sun"], ["Apples", "6", "Sun"], ["Paper towels", "2", "1st Sun"]].map((cells) => ({ cells })) } })
-  open(house + 0.5, 4, { id: "laundry", app: "jot", kind: "jot", title: "Laundry — Rotation", data: { heading: "Laundry — Rotation", lines: ["Mon  whites", "Wed  darks", "Fri  towels", "Sun  sheets"] } })
-  open(house + 0.75, 4, { id: "friday", app: "daybook", kind: "daybook", title: "Daybook — Friday", data: { date: "Friday, June 12", events: [{ t: "Dinner (4)", at: 18.5, len: 2.5, color: "#e9d5c4" }] } })
+  openMany(house + 0.25, 4, [
+    { id: "groceries", app: "sheets", kind: "sheet", title: "Groceries — Standing Order", data: { cols: ["Item", "Qty", "Day"], widths: [0.5, 0.25, 0.25], rows: [["Eggs", "12", "Sun"], ["Milk", "1 gal", "Sun"], ["Bread", "1", "Sun"], ["Coffee", "2 lb", "Sun"], ["Apples", "6", "Sun"], ["Paper towels", "2", "1st Sun"]].map((cells) => ({ cells })) } },
+    { id: "laundry", app: "jot", kind: "jot", title: "Laundry — Rotation", data: { heading: "Laundry — Rotation", lines: ["Mon  whites", "Wed  darks", "Fri  towels", "Sun  sheets"] } },
+    { id: "friday", app: "daybook", kind: "daybook", title: "Daybook — Friday", data: { date: "Friday, June 12", events: [{ t: "Dinner (4)", at: 18.5, len: 2.5, color: "#e9d5c4" }] } },
+  ])
 
   // ── 5 · The street ──
   const street = word("Five is the street")
   sw(street + 0.05, 5)
-  open(street + 0.3, 5, { id: "minutes", app: "paper", kind: "paper", title: "HOA — Minutes", data: { heading: "Pinecrest HOA — Minutes", sub: "Meeting of June 9 · taken by No. 12", size: 14, gap: 23, lines: ["Present: 9 of 9", "1. Trash cans out of view by 8 PM", "    on collection days.", "2. Hedges and fences: six feet maximum.", "3. Minutes: No. 12."] } })
-  open(street + 0.55, 5, { id: "trash", app: "sheets", kind: "sheet", title: "Trash Cans — Collection", data: { cols: ["House", "Out", "In by 8"], widths: [0.4, 0.3, 0.3], rows: [["No. 8", "✓", "✓"], ["No. 10", "✓", "8:40 PM"], ["No. 12", "✓", "✓"], ["No. 14", "✓", "—"], ["No. 16", "✓", "✓"]].map((cells) => ({ cells })) } })
-  open(street + 0.8, 5, { id: "door", app: "doorbell", kind: "cam", title: "Doorbell — Front", dark: 1, data: { time: "9:31:02 PM", lit: 0 } })
+  openMany(street + 0.3, 5, [
+    { id: "minutes", app: "paper", kind: "paper", title: "HOA — Minutes", data: { heading: "Pinecrest HOA — Minutes", sub: "Meeting of June 9 · taken by No. 12", size: 14, gap: 23, lines: ["Present: 9 of 9", "1. Trash cans out of view by 8 PM", "    on collection days.", "2. Hedges and fences: six feet maximum.", "3. Minutes: No. 12."] } },
+    { id: "trash", app: "sheets", kind: "sheet", title: "Trash Cans — Collection", data: { cols: ["House", "Out", "In by 8"], widths: [0.4, 0.3, 0.3], rows: [["No. 8", "✓", "✓"], ["No. 10", "✓", "8:40 PM"], ["No. 12", "✓", "✓"], ["No. 14", "✓", "—"], ["No. 16", "✓", "✓"]].map((cells) => ({ cells })) } },
+    { id: "door", app: "doorbell", kind: "cam", title: "Doorbell — Front", dark: 1, data: { time: "9:31:02 PM", lit: 0 } },
+  ])
   const mins = word("Nobody else wanted")
   at(mins, () => w.setFocus("minutes"))
   push(mins + 0.1, mins + 1.1, () => frameOf("minutes", 1.2), "minutes")
@@ -473,12 +483,13 @@ export function build(S) {
   // The same three notes as at the start, and the same two clicks.
   const signed = word("Three of you signed")
   push(signed - 0.6, signed + 0.2, home, null)
-  at(signed - 0.4, () => (w.clock = "Thu Feb 26  10:02 PM"))
   clickAt(signed - 0.3, "photo", closeBtn, () => (w.close("photo"), S.sfx("close", 0.45)), 0.7)
   const NOTE14 = (n, who) => ({ heading: "About the cameras", edited: "Signed " + who, lines: ["We'd like the two cameras on No. 12", "that face our houses taken down.", { gap: 1 }, { t: "— " + n, soft: 1 }] })
-  open(signed + 0.25, 2, { id: "cam16", app: "jot", kind: "jot", title: "cameras — No. 16", data: NOTE14("No. 16", "Feb 26") })
-  open(signed + 0.5, 2, { id: "cam10", app: "jot", kind: "jot", title: "cameras — No. 10", data: NOTE14("No. 10", "Feb 26") })
-  open(signed + 0.75, 2, { id: "cam14", app: "jot", kind: "jot", title: "cameras — No. 14", data: NOTE14("No. 14", "Feb 27") })
+  openMany(signed + 0.25, 2, [
+    { id: "cam16", app: "jot", kind: "jot", title: "cameras — No. 16", data: NOTE14("No. 16", "Feb 26") },
+    { id: "cam10", app: "jot", kind: "jot", title: "cameras — No. 10", data: NOTE14("No. 10", "Feb 26") },
+    { id: "cam14", app: "jot", kind: "jot", title: "cameras — No. 14", data: NOTE14("No. 14", "Feb 27") },
+  ])
   const closed2 = word("I closed two")
   clickAt(word("closed") + 0.02, "cam16", closeBtn, () => (w.close("cam16"), S.sfx("close", 0.7)))
   clickAt(word("two") + 0.05, "cam10", closeBtn, () => (w.close("cam10"), S.sfx("close", 0.7)))
@@ -487,7 +498,7 @@ export function build(S) {
   // ── Six ──
   const sixteen = word("Sixteen was in March")
   const six = sixteen - 0.35
-  const PLAN = (n) => ({ edited: "Edited Jun 11", places: [{ n: "16", when: "Mar 3", full: n > 0 }, { n: "10", when: "Jun 11", full: n > 1 }, { n: "14", when: "" }] })
+  const PLAN = (n) => ({ edited: "Edited Jun 11", places: [{ n: "16", when: "Mar 3", full: n > 0 }, { n: "Mark", when: "Jun 11", full: n > 1 }, { n: "14", when: "" }] })
   at(six - 0.5, () => {
     w.ensureCell(6)
     w.clock = "Fri Nov 20  11:40 PM"
@@ -546,10 +557,13 @@ export function build(S) {
   span(floor, ACT[0] + 0.4, (u) => (S.scene.fpush = u))
   // what happens in the kitchen happens in the dark, on the tape
   span(ACT[0] + 0.5, ACT[0] + 1.4, (u) => (S.scene.black = smooth(u)))
-  const minutes = ACT[0] + ACT[1]
-  at(minutes - 1.6, () => (S.scene.after = 1))
-  span(minutes - 1.6, minutes - 0.2, (u) => (S.scene.black = 1 - smooth(u)))
-  span(minutes - 1.6, END, (u) => (S.scene.apush = u))
+  // "Minutes. Friday, November the twentieth." in the dark; "Present..." cuts to the floor afterwards
+  const present = word("Present") - 0.04
+  at(present, () => {
+    S.scene.after = 1
+    S.scene.black = 0
+  })
+  span(present, END + 1.5, (u) => (S.scene.apush = u))
   void plastic
   at(END, () => S.end())
 
