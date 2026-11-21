@@ -160,3 +160,17 @@ the ending goes, a diegetic start, and an ending that's brutal and unmistakable.
   skip, no sound toggle, captions toggle kept.
 - Workspaces filled in one move (`openMany`): the five retargets the trace check flagged at the house,
   street and signatures are gone; one remains (the bar marker's deliberate return to 1).
+
+
+# Third pass: the 3D film (Nov 21)
+
+## Round 4 · photos library and the window shot (11:40–12:55)
+
+- His Photos library replaces the hedge viewer: 14 phone photos (image model, see `photos.md`), 214 tiles
+  captioned by date and time, the first morning measured, fill to 160 mornings, two decaying flicks up to
+  August, Aug 14 opening out of its tile.
+- Basement rebaked with Room/Detail baked with both states hidden (the stray shadow in After is gone).
+- CamWindow: No. 14's front on its own 2048 atlas at 3× samples, the streetlight raking its clapboard, a night
+  sky plane, the camera just under his blinds so the last slats cross the top of the frame.
+- Capture r4: trace check clean (5,227 frames, no issues), no errors on any path; CPU p95 1.4 ms at the ending.
+- Critic for this round not run yet.
