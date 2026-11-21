@@ -4,7 +4,7 @@
 
 use std::path::PathBuf;
 
-use spaceman::WorkspaceId;
+use spaceman::{WorkspaceId, config::HudStyle};
 use toml_edit::{ArrayOfTables, DocumentMut, Item, Table, value};
 
 const EMPTY: &str = "# Spaceman configuration.\nversion = 1\n";
@@ -150,10 +150,33 @@ impl Doc {
     }
 
     pub fn set_hud(&mut self, enabled: bool) {
-        if enabled {
+        self.set_setting("hud", (!enabled).then(|| value(false)));
+    }
+
+    /// How the Workspace HUD draws its row, from `settings.hud_style` (defaults to layouts).
+    pub fn hud_style(&self) -> HudStyle {
+        self.doc
+            .get("settings")
+            .and_then(Item::as_table_like)
+            .and_then(|table| table.get("hud_style"))
+            .and_then(Item::as_str)
+            .and_then(HudStyle::parse)
+            .unwrap_or_default()
+    }
+
+    pub fn set_hud_style(&mut self, style: HudStyle) {
+        self.set_setting(
+            "hud_style",
+            (style != HudStyle::default()).then(|| value(style.as_str())),
+        );
+    }
+
+    /// Sets `key` in `[settings]`, or removes it (and an emptied table) for `None`, the default.
+    fn set_setting(&mut self, key: &str, item: Option<Item>) {
+        let Some(item) = item else {
             let empty =
                 if let Some(table) = self.doc.get_mut("settings").and_then(Item::as_table_mut) {
-                    table.remove("hud");
+                    table.remove(key);
                     table.is_empty()
                 } else {
                     false
@@ -162,7 +185,7 @@ impl Doc {
                 self.doc.remove("settings");
             }
             return;
-        }
+        };
         let entry = self
             .doc
             .entry("settings")
@@ -171,7 +194,7 @@ impl Doc {
             *entry = Item::Table(Table::new());
         }
         if let Some(table) = entry.as_table_mut() {
-            table.insert("hud", value(false));
+            table.insert(key, item);
         }
     }
 

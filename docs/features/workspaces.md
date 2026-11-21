@@ -43,15 +43,26 @@ Displays                                                    // ws.displays
 
 Workspace HUD ([settings] hud, on by default)               // ws.hud
 ├── A switch, a window moved to another workspace, a split-axis or Fullscreen Layout toggle
-│   -> capsule near the bottom of the primary display: mini layout, "Workspace 3", "2 windows"
-│      (or "2 windows · Fullscreen", "Vertical split", ...); never a window title
+│   -> a capsule near the bottom of every display, each with its own row: every workspace on that
+│      display holding windows, plus the visible one, in order; a marker on the visible one
+├── hud_style = "layouts" (default) -> each workspace as its layout with an app icon per tile, the
+│   │  visible one larger (others .62×, dimmed); an empty one is a dot; Fullscreen Layout is one
+│   │  tile with the front app's icon and the others smaller beside it
+│   └── "icons" -> each workspace as its number and its apps' icons (one per app, tile order); the
+│      visible group bright, the others dimmed; nothing changes size
+├── No text but workspace numbers, and never a window title; icons are looked up by bundle ID
 ├── Appears: fades in, scales from .96 and rises 6 pt; stays 1.15 s after the last event; leaves
 │   the same way back in about 0.2 s
 ├── Another switch while it's up, or on its way out -> the same capsule carries on from where it
-│   is: changed characters roll (up going to a later workspace, down going back), the mini
-│   layout's tiles slide out and in the way of travel, the width follows; another kind of
-│   message ("Moved to Workspace 4", "Vertical split") fades over the old phrase in place
+│   is: the marker's leading edge sets off first and its trailing edge catches up; in Layouts the
+│   cells grow and shrink and their neighbours slide. Only the display that switched moves its
+│   marker; every capsule holds and leaves together
+├── Shown again after hiding -> the marker (and in Layouts the large cell) starts on the
+│   workspace the switch left and travels as the capsule fades in
+├── A workspace joins or leaves the row -> it fades and scales in place; a moved window's icon
+│   leaves one workspace and appears in the other; the marker stays with you
 ├── The same workspace's layout changes -> its tiles move to their new frames
+├── More workspaces than fit -> the row scrolls to keep the visible one in view, its cut edge fades
 └── Reduce Motion -> the same changes as a short fade, with nothing travelling or scaling
 ```
 
@@ -114,14 +125,20 @@ on the same letter.
 - Live harness (not run): `scripts/live-workspaces.sh` switches 6/7/8 by real hotkeys, moves without
   switching, rapid-switch coalescing, and hard-kill recovery. Needs two displays and AeroSpace.
 
-- Unit, `agent/src/hud/tests.rs`: when the HUD shows, holds, leaves and comes back, which way a
-  switch travels, and its title-free labels. `agent/src/hud/motion_tests.rs` steps the overlay's
-  own view at 120 Hz on a virtual clock and reads back each frame's presented rects, opacity and
-  scale: a burst of switches, a hide and a show pass Rune's motion gate (no pop, jump, swapped
-  text, cut fade or overshoot); the exit is under 1/255 opacity before the panel is ordered out;
-  a switch during the exit turns the capsule around within one frame's step; Reduce Motion moves
-  nothing. Not covered: the panel itself (ordering in and out, the first show's fade, how it
-  composites over other apps) and how the motion looks on a display.
+- Unit, `src/app/tests/dispatch.rs` and `src/app/tests/switching.rs`: the HUD event's rows per
+  display, the visible workspace on each, and `from` only on the display that switched.
+- Unit, `agent/src/hud/tests.rs`: when the HUD shows, holds, leaves and comes back, a fresh show
+  starting on the workspace the switch left, the Layouts row's width, the Icons apps, and which
+  panel each display keeps as displays come and go. `agent/src/hud/motion_tests.rs` steps the
+  overlay's own view at 120 Hz on a virtual clock, for both styles, and reads back each frame's
+  presented rects, opacity and scale: a burst of switches, a hide and a show pass Rune's motion
+  gate (no pop, jump, cut fade or overshoot); the marker goes one way per switch, its leading
+  edge first, and a switch mid-flight carries it on without slowing; shown again, it starts where
+  the switch left; the other display's row stays at rest; a moved window's icon changes groups;
+  the widest row fits the panel with the marker in view; Reduce Motion moves nothing. Not
+  covered: the panels themselves (ordering in and out, the first show's fade, moving between
+  displays, a display unplugged while one is up) and how the motion looks on a display.
+  Multi-display has not been seen on real hardware.
 
 ## Gotchas
 
@@ -145,5 +162,5 @@ on the same letter.
 - The HUD's first appearance after launch only fades in: its panel has drawn nothing yet for the
   capsule to rise from. Every later one enters with the full motion.
 - Try the HUD's motion without switching workspaces in the Playground (`⇧⌘D`, HUD > hud-switch):
-  `N`/`P` step a workspace, `R` and `B` switch several quickly, `M` moves a window, `L` changes
-  the layout, `H` hides and shows it.
+  both styles at once. `N`/`P` step a workspace, `R` and `B` switch several quickly, `M` moves
+  a window, `L` changes the layout, `H` hides it and shows the next workspace.

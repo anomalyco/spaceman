@@ -32,6 +32,7 @@ version = 1
 
 [settings]
 hud = true                            # optional (default: true); non-activating Workspace HUD
+hud_style = "layouts"                 # optional (default: "layouts"); or "icons"
 
 [[rules]]
 bundle_id = "com.example.Application" # optional exact match
@@ -138,7 +139,7 @@ normal recovery data.
 ## Applying Changes
 
 Edits saved in Spaceman Settings or in an external editor take effect automatically: rule changes,
-workspace display assignments, and `settings.hud` reload without restarting. Global shortcuts for a
+workspace display assignments, `settings.hud`, and `settings.hud_style` reload without restarting. Global shortcuts for a
 newly added named workspace letter (`Option+A` ... `Option+Z`) register on the next app start:
 
 ```sh

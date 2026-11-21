@@ -252,6 +252,11 @@ impl Engine {
         self.layout.root_axis()
     }
 
+    /// Each tile's slot, window and frame in `output`, in layout order.
+    pub(crate) fn preview_placements(&self, output: crate::Rect) -> Vec<Placement> {
+        placements_for(&self.layout, &self.model, output)
+    }
+
     pub(crate) fn preview(&self, output: crate::Rect) -> Vec<crate::Rect> {
         self.layout
             .placements(output)

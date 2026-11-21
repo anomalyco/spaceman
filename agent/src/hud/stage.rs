@@ -1,16 +1,17 @@
-//! The HUD in the Playground: the capsule over a mock desktop, with triggers that drive the
-//! same flow and view as the live overlay, so its motion can be tried without switching a
+//! The HUD in the Playground: both styles over a mock desktop, with triggers that drive the
+//! same flow and view as the live overlay, so their motion can be tried without switching a
 //! real workspace.
 
 use rune::{El, Play, Playground, col, el};
 use spaceman::{
-    Axis, Rect, WorkspaceId,
-    app::{UiHudEvent, UiHudKind, UiHudLayout},
+    Rect, WorkspaceId,
+    app::{UiHudDisplay, UiHudTile, UiHudWorkspace},
+    config::HudStyle,
 };
 
-use super::{HudFlow, LEAVE_MS, pill};
+use super::{FRESH_MS, HudFlow, Icons, LEAVE_MS, grow, pill};
 use crate::{
-    Pane, Ui,
+    Pane, Ui, apps,
     controls::Paint,
     playground::{Scene, reset_fixture},
 };
@@ -19,54 +20,174 @@ use crate::{
 const DEMO_WORKSPACES: u8 = 5;
 /// Between the switches of a burst: quick presses, each landing while the last still moves.
 const BURST_GAP: f64 = 0.16;
+const STAGE_W: f32 = 640.0;
+const STAGE_H: f32 = 380.0;
 
-/// The stage's HUD: a flow on the Playground's logical clock.
+/// How a demo workspace lays out its windows.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum Shape {
+    /// The first window on the left, the rest stacked on the right.
+    Main,
+    Columns,
+    Rows,
+    Fullscreen,
+}
+
+#[derive(Clone, Debug)]
+struct DemoWorkspace {
+    shape: Shape,
+    apps: Vec<&'static str>,
+}
+
+/// The stage's HUD: a flow on the Playground's logical clock, over a desktop of demo
+/// workspaces the triggers switch between and rearrange.
 #[derive(Clone, Debug)]
 pub struct HudPreview {
     flow: HudFlow,
+    icons: Icons,
+    workspaces: Vec<DemoWorkspace>,
+    visible: u8,
 }
 
 impl HudPreview {
-    fn showing(event: UiHudEvent) -> Self {
-        let mut flow = HudFlow::new(true);
-        flow.trigger(event, 0);
-        Self { flow }
+    fn showing(visible: u8, workspaces: Vec<DemoWorkspace>) -> Self {
+        let mut catalog = apps::Catalog::default();
+        let icons = workspaces
+            .iter()
+            .flat_map(|workspace| workspace.apps.iter())
+            .filter_map(|bundle| Some(((*bundle).to_owned(), catalog.get(bundle).icon?)))
+            .collect();
+        let mut preview = Self {
+            flow: HudFlow::new(true),
+            icons,
+            workspaces,
+            visible,
+        };
+        let row = preview.row(None);
+        preview.flow.trigger(row, 0);
+        // Nothing to travel from: land at rest.
+        preview.flow.mark_drawn();
+        preview.flow.tick(FRESH_MS);
+        preview
     }
 
-    fn workspace(&self) -> u8 {
-        self.flow
-            .view("", false)
-            .and_then(|view| view.event.workspace.number())
-            .unwrap_or(1)
+    /// The row the runtime would send: every occupied workspace and the visible one.
+    fn row(&self, from: Option<u8>) -> UiHudDisplay {
+        UiHudDisplay {
+            id: "stage".to_owned(),
+            visible: WorkspaceId::new(self.visible).ok(),
+            from: from.and_then(|from| WorkspaceId::new(from).ok()),
+            workspaces: self
+                .workspaces
+                .iter()
+                .zip(1..)
+                .filter(|(workspace, number)| !workspace.apps.is_empty() || *number == self.visible)
+                .filter_map(|(workspace, number)| hud_workspace(number, workspace))
+                .collect(),
+        }
+    }
+
+    fn workspace(&mut self, number: u8) -> &mut DemoWorkspace {
+        let index = usize::from(number.max(1) - 1).min(self.workspaces.len() - 1);
+        &mut self.workspaces[index]
     }
 }
 
-/// Full-window Playground preview stage showing how the non-activating HUD sits above a desktop.
+fn hud_workspace(number: u8, workspace: &DemoWorkspace) -> Option<UiHudWorkspace> {
+    let count = workspace.apps.len() as i32;
+    let tiles = workspace
+        .apps
+        .iter()
+        .zip(0..)
+        .map(|(bundle, index)| UiHudTile {
+            key: u64::from(number) * 100 + u64::try_from(index).unwrap_or(0),
+            rect: tile_rect(workspace.shape, index, count),
+            bundle: Some((*bundle).to_owned()),
+        })
+        .collect();
+    Some(UiHudWorkspace {
+        workspace: WorkspaceId::new(number).ok()?,
+        fullscreen: workspace.shape == Shape::Fullscreen,
+        tiles,
+        floating: Vec::new(),
+    })
+}
+
+fn tile_rect(shape: Shape, index: i32, count: i32) -> Rect {
+    let (w, h) = (1500, 1100);
+    let rect = |x, y, width, height| Rect {
+        x,
+        y,
+        width,
+        height,
+    };
+    match shape {
+        Shape::Fullscreen => rect(0, 0, w, h),
+        Shape::Columns => rect(index * w / count, 0, w / count, h),
+        Shape::Rows => rect(0, index * h / count, w, h / count),
+        Shape::Main if count == 1 => rect(0, 0, w, h),
+        Shape::Main if index == 0 => rect(0, 0, 860, h),
+        Shape::Main => {
+            let rest = count - 1;
+            rect(860, (index - 1) * h / rest, w - 860, h / rest)
+        }
+    }
+}
+
+/// A different layout and set of apps on each demo workspace; the fourth is empty.
+fn demo() -> Vec<DemoWorkspace> {
+    let workspace = |shape, apps: &[&'static str]| DemoWorkspace {
+        shape,
+        apps: apps.to_vec(),
+    };
+    vec![
+        workspace(
+            Shape::Main,
+            &["com.apple.Terminal", "com.apple.Safari", "com.apple.Notes"],
+        ),
+        workspace(Shape::Columns, &["com.apple.MobileSMS", "com.apple.mail"]),
+        workspace(Shape::Fullscreen, &["com.apple.finder", "com.apple.Music"]),
+        workspace(Shape::Columns, &[]),
+        workspace(Shape::Columns, &["com.apple.iCal"]),
+    ]
+}
+
+/// Full-window Playground stage: the visible workspace's windows, with the Layouts capsule
+/// and the Icons capsule under it, both on the same flow.
 pub fn stage(preview: &HudPreview, p: Paint, reduce_motion: bool) -> El {
-    const STAGE_W: f32 = 560.0;
-    const STAGE_H: f32 = 340.0;
     const PAD: f32 = 16.0;
     let inner_w = STAGE_W - 2.0 * p.hair - PAD * 2.0;
     let inner_h = STAGE_H - 2.0 * p.hair - PAD * 2.0;
-
-    let view = preview.flow.view("hud-stage", reduce_motion);
-    // The windows keep to their own layer, so one fading out never draws over the capsule.
+    preview.flow.mark_drawn();
+    let view = preview.flow.view(reduce_motion);
+    // The windows keep to their own layer, so one fading out never draws over the capsules.
     let mut windows = el()
         .key("stage-windows")
         .pin(Some(0.0), Some(0.0), Some(0.0), Some(0.0));
-    match view.as_ref().map(|view| &view.event.preview) {
-        Some(UiHudLayout::Fullscreen) => {
-            windows = windows.child(stage_window(0, (PAD, PAD, inner_w, inner_h), p));
+    let visible = view.as_ref().and_then(|view| {
+        let visible = view.row.visible?;
+        view.row
+            .workspaces
+            .iter()
+            .find(|entry| entry.workspace == visible)
+    });
+    if let Some(entry) = visible {
+        let tiles = if entry.fullscreen {
+            &entry.tiles[..entry.tiles.len().min(1)]
+        } else {
+            &entry.tiles[..]
+        };
+        for tile in tiles {
+            let frame = grow::scale_tile(tile.rect, PAD, inner_w, inner_h, 4.0, 12.0);
+            windows = windows.child(stage_window(tile.key, frame, p));
         }
-        Some(UiHudLayout::Split(tiles)) => {
-            for (index, rect) in tiles.iter().enumerate() {
-                let frame = pill::scale_tile(*rect, PAD, inner_w, inner_h, 4.0, 12.0);
-                windows = windows.child(stage_window(index, frame, p));
-            }
-        }
-        None => {}
     }
-
+    let capsule = |key: &str, style| {
+        el().key(key).w_full().children(
+            view.as_ref()
+                .map(|view| pill::slot(view, style, &preview.icons, STAGE_W, p)),
+        )
+    };
     let mock = col()
         .key("desktop-mock")
         .w(STAGE_W)
@@ -74,11 +195,13 @@ pub fn stage(preview: &HudPreview, p: Paint, reduce_motion: bool) -> El {
         .radius(p.k.radius.xl)
         .fill(p.k.c.bg_base)
         .border(p.hair, p.k.c.border_weak)
-        .pb(28.0)
+        .pb(24.0)
+        .gap(14.0)
         .center_y()
         .child(windows)
         .child(el().key("screen-spacer").grow(1.0))
-        .children(view.map(|view| pill::slot(&view, p)));
+        .child(capsule("layouts", HudStyle::Layouts))
+        .child(capsule("icons", HudStyle::Icons));
 
     col()
         .key("hud-stage")
@@ -89,8 +212,8 @@ pub fn stage(preview: &HudPreview, p: Paint, reduce_motion: bool) -> El {
         .child(mock)
 }
 
-fn stage_window(index: usize, (x, y, w, h): (f32, f32, f32, f32), p: Paint) -> El {
-    el().key(format!("stage-tile{index}"))
+fn stage_window(key: u64, (x, y, w, h): (f32, f32, f32, f32), p: Paint) -> El {
+    el().key(format!("stage-tile{key}"))
         .absolute(x, y)
         .w(w)
         .h(h)
@@ -111,7 +234,7 @@ pub fn triggers(playground: Playground<Ui>) -> Playground<Ui> {
             step(ui, play, DEMO_WORKSPACES - 1);
         })
         .trigger(SCENE, 'b', "Back and forth", |ui, play| {
-            let here = ui.hud_preview.as_ref().map_or(1, HudPreview::workspace);
+            let here = visible(ui);
             let there = if here == 1 { 3 } else { 1 };
             burst(ui, play, &[there, here]);
         })
@@ -119,34 +242,56 @@ pub fn triggers(playground: Playground<Ui>) -> Playground<Ui> {
             SCENE,
             'm',
             "Move a window to the next workspace",
-            |ui, play| {
-                let here = ui.hud_preview.as_ref().map_or(1, HudPreview::workspace);
-                play.clear();
-                let moved = UiHudEvent {
-                    kind: UiHudKind::Moved,
-                    ..demo(here % DEMO_WORKSPACES + 1)
-                };
-                show(ui, play, moved);
-            },
+            move_window,
         )
         .trigger(SCENE, 'l', "Change this workspace's layout", relayout)
-        .trigger(SCENE, 'h', "Hide, then show", hide_then_show)
+        .trigger(
+            SCENE,
+            'h',
+            "Hide, then show the next workspace",
+            hide_then_show,
+        )
 }
 
 fn millis(seconds: f64) -> u64 {
     (seconds * 1_000.0).round() as u64
 }
 
-fn show(ui: &mut Ui, play: &mut Play<'_, Ui>, event: UiHudEvent) {
-    if let Some(preview) = &mut ui.hud_preview {
-        preview.flow.trigger(event, millis(play.now()));
+fn visible(ui: &Ui) -> u8 {
+    ui.hud_preview.as_ref().map_or(1, |preview| preview.visible)
+}
+
+/// Shows the row as it is now; `from` is the workspace a switch left.
+fn show(ui: &mut Ui, play: &mut Play<'_, Ui>, from: Option<u8>) {
+    let now_ms = millis(play.now());
+    let Some(preview) = &mut ui.hud_preview else {
+        return;
+    };
+    let fresh = !preview.flow.is_up();
+    let row = preview.row(from);
+    preview.flow.trigger(row, now_ms);
+    if fresh {
+        // As the overlay's poll does once the panel has drawn.
+        play.after((FRESH_MS + 10) as f64 / 1_000.0, |ui, play| {
+            if let Some(preview) = &mut ui.hud_preview {
+                preview.flow.tick(millis(play.now()));
+            }
+        });
     }
 }
 
+fn switch(ui: &mut Ui, play: &mut Play<'_, Ui>, to: u8) {
+    let Some(preview) = &mut ui.hud_preview else {
+        return;
+    };
+    let from = std::mem::replace(&mut preview.visible, to);
+    show(ui, play, (from != to).then_some(from));
+}
+
 fn step(ui: &mut Ui, play: &mut Play<'_, Ui>, by: u8) {
-    let here = ui.hud_preview.as_ref().map_or(1, HudPreview::workspace);
+    let here = visible(ui);
     play.clear();
-    show(ui, play, demo((here - 1 + by) % DEMO_WORKSPACES + 1));
+    switch(ui, play, (here - 1 + by) % DEMO_WORKSPACES + 1);
 }
 
 fn burst(ui: &mut Ui, play: &mut Play<'_, Ui>, workspaces: &[u8]) {
@@ -154,74 +299,49 @@ fn burst(ui: &mut Ui, play: &mut Play<'_, Ui>, workspaces: &[u8]) {
     let Some((&first, rest)) = workspaces.split_first() else {
         return;
     };
-    show(ui, play, demo(first));
+    switch(ui, play, first);
     for (index, &workspace) in rest.iter().enumerate() {
         play.after(BURST_GAP * (index + 1) as f64, move |ui, play| {
-            show(ui, play, demo(workspace));
+            switch(ui, play, workspace);
         });
     }
 }
 
-/// Steps this workspace through its layouts: columns, rows, Fullscreen Layout, and back.
-fn relayout(ui: &mut Ui, play: &mut Play<'_, Ui>) {
-    let Some(view) = ui
-        .hud_preview
-        .as_ref()
-        .and_then(|preview| preview.flow.view("", false))
-    else {
-        return;
-    };
-    let windows = view.event.windows.max(2);
-    let (kind, preview) = match (&view.event.preview, view.event.kind) {
-        (UiHudLayout::Fullscreen, _) => (
-            UiHudKind::Fullscreen { enabled: false },
-            split(windows, Axis::Horizontal),
-        ),
-        (
-            UiHudLayout::Split(_),
-            UiHudKind::Layout {
-                axis: Axis::Vertical,
-            },
-        ) => (
-            UiHudKind::Fullscreen { enabled: true },
-            UiHudLayout::Fullscreen,
-        ),
-        (UiHudLayout::Split(_), _) => (
-            UiHudKind::Layout {
-                axis: Axis::Vertical,
-            },
-            split(windows, Axis::Vertical),
-        ),
-    };
-    let event = UiHudEvent {
-        workspace: view.event.workspace,
-        kind,
-        preview,
-        windows,
-    };
-    play.clear();
-    show(ui, play, event);
-}
-
-/// `windows` equal tiles side by side, or stacked for a vertical split.
-fn split(windows: usize, axis: Axis) -> UiHudLayout {
-    let count = windows.max(1) as i32;
-    UiHudLayout::Split(
-        (0..count)
-            .map(|index| match axis {
-                Axis::Horizontal => tile_rect(index * (1500 / count), 0, 1500 / count, 1100),
-                Axis::Vertical => tile_rect(0, index * (1100 / count), 1500, 1100 / count),
-            })
-            .collect(),
-    )
-}
-
-fn hide_then_show(ui: &mut Ui, play: &mut Play<'_, Ui>) {
-    let now_ms = millis(play.now());
+/// Moves this workspace's last window to the next workspace; the marker stays here.
+fn move_window(ui: &mut Ui, play: &mut Play<'_, Ui>) {
     let Some(preview) = &mut ui.hud_preview else {
         return;
     };
-    let Some(event) = preview.flow.view("", false).map(|view| view.event.clone()) else {
+    let here = preview.visible;
+    let Some(app) = preview.workspace(here).apps.pop() else {
+        return;
+    };
+    preview.workspace(here % DEMO_WORKSPACES + 1).apps.push(app);
+    play.clear();
+    show(ui, play, None);
+}
+
+/// Steps this workspace through its layouts: columns, rows, Fullscreen Layout, and back.
+fn relayout(ui: &mut Ui, play: &mut Play<'_, Ui>) {
+    let Some(preview) = &mut ui.hud_preview else {
+        return;
+    };
+    let here = preview.visible;
+    let workspace = preview.workspace(here);
+    workspace.shape = match workspace.shape {
+        Shape::Main | Shape::Fullscreen => Shape::Columns,
+        Shape::Columns => Shape::Rows,
+        Shape::Rows => Shape::Fullscreen,
+    };
+    play.clear();
+    show(ui, play, None);
+}
+
+/// Lets the HUD leave, then switches to the next workspace: it comes back with the marker on
+/// the workspace it left, and the marker travels as the capsule fades in.
+fn hide_then_show(ui: &mut Ui, play: &mut Play<'_, Ui>) {
+    let now_ms = millis(play.now());
+    let Some(preview) = &mut ui.hud_preview else {
         return;
     };
     preview.flow.set_enabled(false, now_ms);
@@ -233,69 +353,35 @@ fn hide_then_show(ui: &mut Ui, play: &mut Play<'_, Ui>) {
             preview.flow.tick(millis(play.now()));
         }
     });
-    play.after(leave + 0.4, move |ui, play| show(ui, play, event));
+    play.after(leave + 0.4, |ui, play| {
+        let here = visible(ui);
+        switch(ui, play, here % DEMO_WORKSPACES + 1);
+    });
 }
 
-/// A different layout for each demo workspace.
-fn demo(workspace: u8) -> UiHudEvent {
-    let (preview, windows) = match workspace {
-        1 => (
-            UiHudLayout::Split(vec![
-                tile_rect(0, 0, 860, 1100),
-                tile_rect(860, 0, 640, 550),
-                tile_rect(860, 550, 640, 550),
-            ]),
-            3,
-        ),
-        2 => (split(2, Axis::Horizontal), 2),
-        3 => (UiHudLayout::Fullscreen, 2),
-        4 => (UiHudLayout::Split(Vec::new()), 0),
-        _ => (split(1, Axis::Horizontal), 1),
-    };
-    UiHudEvent {
-        workspace: WorkspaceId::new(workspace).unwrap_or(WorkspaceId::ONE),
-        kind: UiHudKind::Workspace,
-        preview,
-        windows,
-    }
-}
-
-const fn tile_rect(x: i32, y: i32, width: i32, height: i32) -> Rect {
-    Rect {
-        x,
-        y,
-        width,
-        height,
-    }
-}
-
-fn hud_scene(ui: &mut Ui, event: UiHudEvent) {
+fn hud_scene(ui: &mut Ui, visible: u8, workspaces: Vec<DemoWorkspace>) {
     reset_fixture(ui, Pane::Rules);
-    ui.hud_preview = Some(HudPreview::showing(event));
+    ui.hud_preview = Some(HudPreview::showing(visible, workspaces));
+}
+
+/// The demo workspaces and five more, so the row overflows the capsule.
+fn many() -> Vec<DemoWorkspace> {
+    let extra = ["com.apple.Preview", "com.apple.TextEdit", "com.apple.Maps"];
+    let mut workspaces = demo();
+    workspaces.extend((0..5).map(|index| {
+        let mut apps = extra.to_vec();
+        apps.rotate_left(index % 3);
+        DemoWorkspace {
+            shape: Shape::Columns,
+            apps,
+        }
+    }));
+    workspaces
 }
 
 pub(crate) const SCENES: &[Scene] = &[
-    ("hud-switch", |ui| hud_scene(ui, demo(1))),
-    ("hud-moved", |ui| {
-        hud_scene(
-            ui,
-            UiHudEvent {
-                workspace: WorkspaceId::FOUR,
-                kind: UiHudKind::Moved,
-                preview: split(2, Axis::Horizontal),
-                windows: 2,
-            },
-        );
-    }),
-    ("hud-fullscreen", |ui| {
-        hud_scene(
-            ui,
-            UiHudEvent {
-                workspace: WorkspaceId::ONE,
-                kind: UiHudKind::Fullscreen { enabled: true },
-                preview: UiHudLayout::Fullscreen,
-                windows: 2,
-            },
-        );
-    }),
+    ("hud-switch", |ui| hud_scene(ui, 1, demo())),
+    ("hud-empty", |ui| hud_scene(ui, 4, demo())),
+    ("hud-fullscreen", |ui| hud_scene(ui, 3, demo())),
+    ("hud-many", |ui| hud_scene(ui, 7, many())),
 ];

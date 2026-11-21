@@ -277,7 +277,7 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
         self.workspaces.engine_mut(workspace).toggle_axis();
         let axis = self.workspaces.engine(workspace).root_axis();
         let mut status = self.relayout_persist(workspace, &outputs, cancelled)?;
-        status.hud = Some(self.hud_for(workspace, UiHudKind::Layout { axis }));
+        status.hud = Some(self.hud_for(workspace, UiHudKind::Layout { axis }, None, &outputs));
         Ok(status)
     }
 
@@ -334,7 +334,8 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
         self.workspaces.set_fullscreen_layout(workspace, enabled);
         self.pending_fullscreen_focus_restore.remove(&workspace);
         let mut status = self.relayout_persist(workspace, &outputs, cancelled)?;
-        status.hud = Some(self.hud_for(workspace, UiHudKind::Fullscreen { enabled }));
+        status.hud =
+            Some(self.hud_for(workspace, UiHudKind::Fullscreen { enabled }, None, &outputs));
         Ok(status)
     }
 

@@ -141,8 +141,9 @@ mod tests {
             "Shortcuts/shortcuts",
             "Activity/activity",
             "HUD/hud-switch",
-            "HUD/hud-moved",
+            "HUD/hud-empty",
             "HUD/hud-fullscreen",
+            "HUD/hud-many",
         ] {
             assert!(
                 grouped.contains(&expected),

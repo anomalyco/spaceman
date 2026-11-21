@@ -79,6 +79,7 @@ The menu-bar control shows active workspace/layout glyphs and runtime errors. It
   hover) and its `Option` shortcut. Choosing one switches to it;
 - `Disable Tiling`, or `Enable Tiling` while paused;
 - `Workspace HUD`, checked while the non-activating workspace capsule (`[settings] hud = true`) is enabled;
+  `Settings > General > HUD style` picks how it draws each workspace (`Layouts` or `Icons`, `[settings] hud_style`);
 - `Launch at Login`, shown checked when macOS has enabled the signed app bundle;
 - `Settings...` (`⌘,`), opening the Rune Settings window (`General`, `Rules`, `Workspaces`, `Shortcuts`, and `Activity`, plus `⇧⌘D` Playground);
 - `Check for Updates...`;

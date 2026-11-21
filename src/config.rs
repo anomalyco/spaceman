@@ -7,11 +7,45 @@ use crate::{DisplaySelector, ObservedWindow, WorkspaceId, Workspaces};
 #[derive(Clone, Copy, Debug)]
 struct AppSettings {
     hud: bool,
+    hud_style: HudStyle,
 }
 
 impl Default for AppSettings {
     fn default() -> Self {
-        Self { hud: true }
+        Self {
+            hud: true,
+            hud_style: HudStyle::default(),
+        }
+    }
+}
+
+/// How the Workspace HUD draws each workspace in its row: `settings.hud_style`.
+#[derive(Clone, Copy, Debug, Default, Deserialize, Eq, PartialEq)]
+#[serde(rename_all = "lowercase")]
+pub enum HudStyle {
+    /// Each workspace as its layout, with an app icon in every tile; the current one larger.
+    #[default]
+    Layouts,
+    /// Each workspace as its number and the icons of its apps.
+    Icons,
+}
+
+impl HudStyle {
+    #[must_use]
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Layouts => "layouts",
+            Self::Icons => "icons",
+        }
+    }
+
+    #[must_use]
+    pub fn parse(value: &str) -> Option<Self> {
+        match value {
+            "layouts" => Some(Self::Layouts),
+            "icons" => Some(Self::Icons),
+            _ => None,
+        }
     }
 }
 
@@ -61,11 +95,16 @@ struct RawConfig {
 struct RawSettings {
     #[serde(default = "default_hud")]
     hud: bool,
+    #[serde(default)]
+    hud_style: HudStyle,
 }
 
 impl Default for RawSettings {
     fn default() -> Self {
-        Self { hud: true }
+        Self {
+            hud: true,
+            hud_style: HudStyle::default(),
+        }
     }
 }
 
@@ -143,6 +182,7 @@ impl Config {
         Ok(Self {
             settings: AppSettings {
                 hud: raw.settings.hud,
+                hud_style: raw.settings.hud_style,
             },
             rules,
             workspace_monitors,
@@ -152,6 +192,11 @@ impl Config {
     #[must_use]
     pub const fn hud(&self) -> bool {
         self.settings.hud
+    }
+
+    #[must_use]
+    pub const fn hud_style(&self) -> HudStyle {
+        self.settings.hud_style
     }
 
     pub fn load() -> Result<Self, String> {
@@ -402,5 +447,31 @@ monitor = "main"
                 .hud()
         );
         assert!(Config::parse("version = 1\n[settings]\nunknown = true\n").is_err());
+    }
+
+    #[test]
+    fn parses_hud_style_with_layouts_default() {
+        assert_eq!(Config::default().hud_style(), HudStyle::Layouts);
+        assert_eq!(
+            Config::parse("version = 1").unwrap().hud_style(),
+            HudStyle::Layouts
+        );
+        assert_eq!(
+            Config::parse("version = 1\n[settings]\nhud = false\n")
+                .unwrap()
+                .hud_style(),
+            HudStyle::Layouts
+        );
+        for style in [HudStyle::Layouts, HudStyle::Icons] {
+            let source = format!(
+                "version = 1\n[settings]\nhud_style = {:?}\n",
+                style.as_str()
+            );
+            assert_eq!(Config::parse(&source).unwrap().hud_style(), style);
+            assert_eq!(HudStyle::parse(style.as_str()), Some(style));
+        }
+        assert!(Config::parse("version = 1\n[settings]\nhud_style = \"grid\"\n").is_err());
+        assert!(Config::parse("version = 1\n[settings]\nhud_style = true\n").is_err());
+        assert_eq!(HudStyle::parse("Icons"), None);
     }
 }
