@@ -278,3 +278,13 @@ Then, from the probes (p6a, p6b) and the r5 frames at 100%:
     out, so it catches the streetlight instead of reading as a black cut-out; the screen's light spreads 180°,
     so the pool on the desk has no edge. CamWindow went 7 cm too high in s16 (five slats over the roof); s17
     sits at 1.15 m, two soft slats across the top, the ridge clear.
+20. Critic r6 (gpt-6.2-astra, 15:10, `critic-r6.md`). Its #3, "Mail is rubber" at 126.5: a window that grew or
+    shrank stretched its old pixels until the re-raster landed, so text squashed vertically, and the closed note
+    faded over 0.32 s under the growing neighbours. Now a resizing window shows its content at the size it was laid
+    out, cropped or revealed from the top left with the window's background filling the rest (the way an app
+    re-lays itself), and a closed window is gone in 0.1 s. Checked frame by frame at 126.2–126.7 (p6k), and at
+    22.9, 43.4–45.6, 68.6, 88.3 (p6j): no squashed text anywhere.
+21. Its #2, the archive's clock cycled 6:02 / 6:03 / 6:04. Morning times now come from a hash: 6:01–6:16, a
+    couple of minutes earlier in summer and later after November starts (p6k at 108: 6:02, 6:09, 6:03, 6:06…).
+    Not taken: #1 (another body pass; the close is the joke's landing and b10 is fresh), #4/#6 (the plates
+    were re-baked an hour ago), #10 (the three notes are the same note on purpose; the line says so).

@@ -196,9 +196,10 @@ export class World {
     const w = this.wins.get(id)
     if (!w) return
     w.leaving = true
-    to(w.s, 0.95, 0.22)
-    to(w.a, 0, 0.18)
-    w.removeAt = this.time + 0.32
+    // a closed window is gone almost at once, as on a Mac; the others don't grow over its ghost
+    to(w.s, 0.97, 0.14)
+    to(w.a, 0, 0.1)
+    w.removeAt = this.time + 0.2
     if (this.focus === id) this.focus = null
     this.reflow({ delay: 0.07 })
   }
@@ -621,7 +622,14 @@ export class World {
       P(x, y, ww, hh, { shadow: 22 + 16 * f + 26 * lift, col: [0, 0, 0, 0.16 + 0.12 * f + 0.12 * lift], r, a })
       P(x, y, ww, hh, { shadow: 4 + 2 * f, col: [0, 0, 0, 0.26 + 0.06 * f], r, a })
       this.frost(P, x, y, ww, hh, { r, a })
-      P(x, y, ww, hh, { tex: w.canvas, r, a })
+      // the content is laid out at the size the window is going to, and a resize reveals or crops it
+      // from the top left the way an app re-lays itself, instead of stretching the old pixels
+      const cwS = (w.cw || ww) * s
+      const chS = (w.ch || hh) * s
+      const dw = Math.min(ww, cwS)
+      const dh = Math.min(hh, chS)
+      if (dw < ww - 0.5 || dh < hh - 0.5) P(x, y, ww, hh, { tex: w.canvas, uv: [0.96, 0.96, 0.965, 0.965], r, a })
+      P(x, y, dw, dh, { tex: w.canvas, uv: [0, 0, dw / cwS, dh / chS], r, a })
       // device-pixel hairlines: a dark edge outside, a faint light edge inside
       P(x - hair, y - hair, ww + 2 * hair, hh + 2 * hair, { ring: hair, col: [0, 0, 0, 0.3 + 0.08 * f], r: r + hair, a })
       P(x, y, ww, hh, { ring: hair, col: [1, 1, 1, w.dark ? 0.1 : 0.42], r, a })

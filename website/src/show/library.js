@@ -57,9 +57,14 @@ function morningPlate(i) {
 
 // Oldest first. m: the morning it belongs after (it shows once that many mornings exist).
 export const LIB = (() => {
+  // he goes out at about the same time, not the same minute: earlier in summer, a late run in winter
+  const morningTime = (i) => {
+    const m = Math.round(1 + h01(i, 12) * 6 + h01(i, 13) * h01(i, 14) * 9 - (i > 40 && i < 110 ? 2 : 0) + (i > 120 ? 3 : 0))
+    return "6:" + String(Math.max(0, m)).padStart(2, "0") + " AM"
+  }
   const L = [{ plate: "sixteen", date: "Mar 3", time: "4:12 PM", m: -1 }]
   for (let i = 0; i < MORNINGS; i++) {
-    L.push({ plate: morningPlate(i), date: day(i), time: "6:0" + (2 + (i % 3)) + " AM", m: i, morning: i })
+    L.push({ plate: morningPlate(i), date: day(i), time: morningTime(i), m: i, morning: i })
     if (i === 0) L.push({ plate: "drill", date: "Jun 11", time: "9:40 PM", m: 0 })
     if (i === 154) L.push({ plate: "label", date: "Nov 12", time: "10:18 PM", m: i, dark: 1 })
     if (i === 156) L.push({ plate: "plastic", date: "Nov 14", time: "6:31 PM", m: i, dark: 1 })
