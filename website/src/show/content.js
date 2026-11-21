@@ -312,6 +312,177 @@ const painters = {
     y += d.edited ? 40 : 18
     lines(ctx, d.lines || [], side + 24, y, w - side - 48, { size: 15, gap: 25, check: d.check })
   },
+  // A floor plan: the room downstairs, drawn to scale, the way he draws everything.
+  plan(ctx, w, h, d, win, focused) {
+    ctx.fillStyle = "#eef1f4"
+    ctx.fillRect(0, BAR_H, w, h - BAR_H)
+    const top = BAR_H + 34
+    ctx.save()
+    ctx.beginPath()
+    ctx.rect(0, top, w, h - top)
+    ctx.clip()
+    for (let x = 0; x < w; x += 16) {
+      ctx.fillStyle = x % 80 === 0 ? "rgba(60,90,130,.12)" : "rgba(60,90,130,.055)"
+      ctx.fillRect(x, top, 1, h - top)
+    }
+    for (let y = top; y < h; y += 16) {
+      ctx.fillStyle = (y - top) % 80 === 0 ? "rgba(60,90,130,.12)" : "rgba(60,90,130,.055)"
+      ctx.fillRect(0, y, w, 1)
+    }
+    ctx.restore()
+    // toolbar
+    ctx.fillStyle = focused ? "#e2e6eb" : "#e7eaee"
+    ctx.fillRect(0, BAR_H, w, 34)
+    ctx.fillStyle = "rgba(0,0,0,.09)"
+    ctx.fillRect(0, top - 1, w, 1)
+    let tx = 16
+    for (const [i, t] of ["Select", "Wall", "Room", "Label", "Measure"].entries()) {
+      ctx.font = `500 12.5px ${FONT}`
+      const tw = ctx.measureText(t).width + 18
+      if (i === 0) {
+        ctx.fillStyle = "rgba(0,0,0,.08)"
+        roundRect(ctx, tx - 9, BAR_H + 7, tw, 20, 5)
+        ctx.fill()
+      }
+      text(ctx, t, tx, BAR_H + 21.5, { size: 12.5, weight: 500, color: i === 0 ? INK : SOFT })
+      tx += tw + 4
+    }
+    text(ctx, "Basement  ·  1:50", w - 16, BAR_H + 21.5, { size: 12, color: SOFT, align: "right" })
+    text(ctx, "Downstairs", 28, top + 34, { size: 19, weight: 650 })
+    text(ctx, d.edited || "Edited Jun 11", 28, top + 54, { size: 12, color: SOFT })
+    // the room: 5.6 m by about 4 m, walls, the stairs, the boiler, a shelf
+    const rx = 28
+    const ry = top + 76
+    const rw = w - 56
+    const m = rw / 5.6
+    const rh = Math.min(h - ry - 30, m * 4.4)
+    const ink = "#2f3540"
+    ctx.strokeStyle = ink
+    ctx.lineWidth = 6
+    ctx.lineJoin = "miter"
+    ctx.beginPath()
+    ctx.moveTo(rx + rw - m * 1.3, ry + rh)
+    ctx.lineTo(rx, ry + rh)
+    ctx.lineTo(rx, ry)
+    ctx.lineTo(rx + rw, ry)
+    ctx.lineTo(rx + rw, ry + rh)
+    ctx.lineTo(rx + rw - m * 0.4, ry + rh)
+    ctx.stroke()
+    // door swing
+    ctx.lineWidth = 1.2
+    ctx.strokeStyle = "rgba(47,53,64,.5)"
+    ctx.beginPath()
+    ctx.arc(rx + rw - m * 0.4, ry + rh, m * 0.9, Math.PI, Math.PI * 1.5)
+    ctx.stroke()
+    // stairs
+    const sx = rx + 3
+    const sy = ry + 3
+    const sw = m * 0.95
+    const sh = m * 2.2
+    ctx.strokeStyle = "rgba(47,53,64,.55)"
+    ctx.lineWidth = 1
+    ctx.strokeRect(sx + 0.5, sy + 0.5, sw, sh)
+    for (let i = 1; i < 11; i++) {
+      ctx.beginPath()
+      ctx.moveTo(sx, sy + (sh * i) / 11 + 0.5)
+      ctx.lineTo(sx + sw, sy + (sh * i) / 11 + 0.5)
+      ctx.stroke()
+    }
+    text(ctx, "up", sx + sw / 2, sy + sh + 16, { size: 11, color: SOFT, align: "center" })
+    // boiler and shelf
+    ctx.strokeStyle = "rgba(47,53,64,.55)"
+    ctx.strokeRect(rx + 3.5, ry + rh - m * 0.75 - 3.5, m * 0.7, m * 0.7)
+    text(ctx, "boiler", rx + 3 + m * 0.35, ry + rh - m * 0.32, { size: 10.5, color: SOFT, align: "center" })
+    ctx.strokeRect(rx + rw - m * 0.45 - 3.5, ry + m * 0.6, m * 0.45, m * 2.1)
+    text(ctx, "shelf", rx + rw - m * 0.22 - 3.5, ry + m * 0.6 + m * 1.05 + 4, { size: 10.5, color: SOFT, align: "center" })
+    // three places along the far wall, side by side, 0.8 by 2.0 m each
+    const pw = m * 0.8
+    const ph = m * 2.0
+    const py = ry + m * 0.45
+    const px0 = rx + m * 1.55
+    const gap = m * 0.35
+    const places = d.places || []
+    for (let i = 0; i < 3; i++) {
+      const p = places[i] || {}
+      const x = Math.round(px0 + i * (pw + gap)) + 0.5
+      const y = Math.round(py) + 0.5
+      if (p.full) {
+        ctx.fillStyle = "#d3d8df"
+        ctx.fillRect(x, y, pw, ph)
+        ctx.save()
+        ctx.beginPath()
+        ctx.rect(x, y, pw, ph)
+        ctx.clip()
+        ctx.strokeStyle = "rgba(47,53,64,.2)"
+        ctx.lineWidth = 1
+        for (let k = -ph; k < pw + ph; k += 9) {
+          ctx.beginPath()
+          ctx.moveTo(x + k, y)
+          ctx.lineTo(x + k - ph, y + ph)
+          ctx.stroke()
+        }
+        ctx.restore()
+        ctx.strokeStyle = ink
+        ctx.lineWidth = 1.6
+        ctx.setLineDash([])
+      } else {
+        ctx.strokeStyle = "rgba(47,53,64,.6)"
+        ctx.lineWidth = 1.3
+        ctx.setLineDash([6, 5])
+      }
+      ctx.strokeRect(x, y, pw, ph)
+      ctx.setLineDash([])
+      ctx.fillStyle = p.full ? "rgba(238,241,244,.9)" : "rgba(238,241,244,0)"
+      if (p.full) {
+        roundRect(ctx, x + pw / 2 - 24, y + ph / 2 - 26, 48, 46, 6)
+        ctx.fill()
+      }
+      text(ctx, p.n || "", x + pw / 2, y + ph / 2 - 2, { size: 17, weight: 650, color: p.full ? INK : SOFT, align: "center" })
+      text(ctx, p.when || "", x + pw / 2, y + ph / 2 + 14, { size: 11, color: SOFT, align: "center" })
+    }
+    // dimensions on the first place
+    ctx.strokeStyle = "rgba(61,111,208,.75)"
+    ctx.fillStyle = "rgba(61,111,208,.9)"
+    ctx.lineWidth = 1
+    const dx = Math.round(px0 - m * 0.28) + 0.5
+    ctx.beginPath()
+    ctx.moveTo(dx, py)
+    ctx.lineTo(dx, py + ph)
+    ctx.moveTo(dx - 4, py + 0.5)
+    ctx.lineTo(dx + 4, py + 0.5)
+    ctx.moveTo(dx - 4, py + ph - 0.5)
+    ctx.lineTo(dx + 4, py + ph - 0.5)
+    ctx.stroke()
+    ctx.save()
+    ctx.translate(dx - 6, py + ph / 2)
+    ctx.rotate(-Math.PI / 2)
+    text(ctx, "2.00 m", 0, 0, { size: 11, weight: 500, color: "rgba(61,111,208,.95)", align: "center" })
+    ctx.restore()
+    const dy = Math.round(py + ph + m * 0.22) + 0.5
+    ctx.beginPath()
+    ctx.moveTo(px0, dy)
+    ctx.lineTo(px0 + pw, dy)
+    ctx.moveTo(px0 + 0.5, dy - 4)
+    ctx.lineTo(px0 + 0.5, dy + 4)
+    ctx.moveTo(px0 + pw - 0.5, dy - 4)
+    ctx.lineTo(px0 + pw - 0.5, dy + 4)
+    ctx.stroke()
+    text(ctx, "0.80", px0 + pw / 2, dy + 15, { size: 11, weight: 500, color: "rgba(61,111,208,.95)", align: "center" })
+    // the selection, with its handles
+    if (d.sel) {
+      const [a, b] = d.sel
+      const x0 = px0 + a * (pw + gap) - 5
+      const x1 = px0 + b * (pw + gap) + pw + 5
+      ctx.strokeStyle = "#3d7be0"
+      ctx.lineWidth = 1.5
+      ctx.strokeRect(Math.round(x0) + 0.5, Math.round(py - 5) + 0.5, Math.round(x1 - x0), Math.round(ph + 10))
+      ctx.fillStyle = "#fff"
+      for (const [hx, hy] of [[x0, py - 5], [x1, py - 5], [x0, py + ph + 5], [x1, py + ph + 5]]) {
+        ctx.fillRect(hx - 3.5, hy - 3.5, 7, 7)
+        ctx.strokeRect(hx - 3.5, hy - 3.5, 7, 7)
+      }
+    }
+  },
   sticky(ctx, w, h, d) {
     ctx.fillStyle = "#f8e58c"
     ctx.fillRect(0, BAR_H, w, h - BAR_H)

@@ -8,6 +8,8 @@ import { mkdirSync, rmSync, writeFileSync, existsSync } from "node:fs"
 import { join, resolve } from "node:path"
 import { $ } from "bun"
 import { encode, grid } from "./encode.ts"
+import { END as END_, HOLD, word } from "../../src/show/director.js"
+import { LINES } from "../../src/show/tape.js"
 
 const [distArg = "../../dist", outArg = "cap"] = process.argv.slice(2).filter((a) => !a.startsWith("--"))
 const quick = process.argv.includes("--quick")
@@ -29,7 +31,11 @@ const site = `http://127.0.0.1:${server.port}`
 const browser = await chromium.launch({ headless: true, channel: "chromium", args: ["--enable-unsafe-webgpu", "--enable-features=Vulkan", "--use-angle=metal", "--mute-audio", "--autoplay-policy=no-user-gesture-required"] })
 const report: Record<string, unknown> = { site }
 const FPS = 30
-const END = 113.6
+const END = END_ + 0.6
+// keyframes: the middle of every other sentence, and every sentence from the signatures on
+const sig = word("Three of you signed", 60)
+const KEYS = LINES.filter((l: any, i: number) => i % 2 === 0 || l[1] >= sig - 0.1).map((l: any) => +((l[1] + l[2]) / 2).toFixed(2))
+const X2 = ["tiled themselves", "There's a bar", "Chatter opens", "Four years", "six foot two", "photograph attached", "Three of you signed", "Mark was in June", "They're both on six", "last thing", "plastic down", "Present"].map((p) => +(word(p, p === "Three of you signed" ? 60 : 0) + 0.9).toFixed(2))
 
 type Opts = { w?: number; h?: number; dpr?: number; query?: string; mobile?: boolean; muted?: boolean; reduced?: boolean }
 async function open(o: Opts = {}) {
@@ -56,7 +62,7 @@ const S = (page: Page, js: string) => page.evaluate(js)
 const step = (page: Page, dt: number, n = 1) => page.evaluate(([dt, n]) => (window as any).__show.step(dt, n), [dt, n])
 const state = (page: Page) => page.evaluate(() => (window as any).__show.state())
 async function press(page: Page, mobile = false) {
-  if (mobile) await page.tap("section button[aria-label]")
+  if (mobile) await page.tap('section [role="button"][aria-label]')
   else await page.keyboard.press("Alt+Digit1")
   await page.waitForFunction(() => document.querySelector("section")?.dataset.phase === "live", null, { timeout: 20000 })
 }
@@ -77,9 +83,9 @@ if (!quick) {
   for (let f = 0; f < total; f++) {
     const t = f / FPS
     // the visitor's turn: Option+2, Option+3, Option+1
-    if (f === Math.round(49 * FPS)) await page.keyboard.press("Alt+Digit2")
-    if (f === Math.round(50.5 * FPS)) await page.keyboard.press("Alt+Digit3")
-    if (f === Math.round(52 * FPS)) await page.keyboard.press("Alt+Digit1")
+    if (f === Math.round((HOLD[0] + 1.6) * FPS)) await page.keyboard.press("Alt+Digit2")
+    if (f === Math.round((HOLD[0] + 3.1) * FPS)) await page.keyboard.press("Alt+Digit3")
+    if (f === Math.round((HOLD[0] + 4.6) * FPS)) await page.keyboard.press("Alt+Digit1")
     await shot(page, join(frames, String(f).padStart(5, "0") + ".jpg"))
     await step(page, 1 / FPS)
     if (f % 15 === 0) states.push({ f, t, ...(await state(page)) })
@@ -99,7 +105,6 @@ if (!quick) {
 }
 
 // ── 2 · Keyframes on the other paths ────────────────────────────────────
-const KEYS = [2, 12, 17, 21, 24, 31.4, 36, 42.6, 50, 56.4, 60, 62, 66, 72, 75, 79, 86, 90, 92, 95.5, 99, 103.4, 105.5, 108, 112.5]
 async function keyframes(name: string, o: Opts) {
   const { page, errors, ctx } = await open({ muted: true, ...o })
   await press(page, o.mobile)
@@ -135,7 +140,7 @@ await keyframes("phone", { w: 390, h: 844, dpr: 3, mobile: true })
   await press(page)
   const dir = join(out, "x2")
   mkdirSync(dir, { recursive: true })
-  for (const t of [24, 42.6, 56.4, 66, 79, 95.5, 103.4, 105.5, 112.5]) {
+  for (const t of X2) {
     await page.evaluate((t) => (window as any).__show.seek(t), t)
     await page.screenshot({ path: join(dir, String(t).replace(".", "_") + ".png") })
   }
@@ -146,9 +151,9 @@ await keyframes("phone", { w: 390, h: 844, dpr: 3, mobile: true })
 if (!quick) {
   const { page, errors, ctx } = await open({ w: 1440, h: 900, dpr: 2 })
   await press(page)
-  await page.evaluate(() => (window as any).__show.seek(54))
+  await page.evaluate((t) => (window as any).__show.seek(t), HOLD[1] + 2)
   report.perfBusy = await page.evaluate(() => (window as any).__show.perf(20000))
-  await page.evaluate(() => (window as any).__show.seek(100))
+  await page.evaluate((t) => (window as any).__show.seek(t), END - 40)
   report.perfEnding = await page.evaluate(() => (window as any).__show.perf(12000))
   report.perfErrors = errors
   await ctx.close()

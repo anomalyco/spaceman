@@ -18,6 +18,12 @@ export const KITCHEN = {
   light: { x: 0.19, y: 0.736 },
 }
 
+// The kitchen floor, from the door (floor.jpg), and afterwards (after.jpg): same camera.
+export const FLOOR = {
+  floor: { f0: { x: 0.5, y: 0.52 }, f1: { x: 0.5, y: 0.6 }, tall0: { x: 0.5, y: 0.6 }, tall1: { x: 0.5, y: 0.64 }, z0: 1.0, z1: 1.18, focus: { x: 0.5, y: 0.62, w: 0.16, h: 0.24 } },
+  after: { f0: { x: 0.5, y: 0.58 }, f1: { x: 0.5, y: 0.76 }, tall0: { x: 0.5, y: 0.72 }, tall1: { x: 0.5, y: 0.82 }, z0: 1.02, z1: 1.3, focus: { x: 0.5, y: 0.84, w: 0.3, h: 0.12 } },
+}
+
 // The plate-to-CSS transform that covers a W x H viewport at zoom z, centred on f (kept inside).
 export function coverView(img, W, H, f, z = 1) {
   const k = Math.max(W / img.width, H / img.height) * z

@@ -8,14 +8,64 @@ type Caption = { text: string; high?: boolean } | null;
 type ShowApi = {
   phase: Phase;
   start(o: { context: AudioContext | null; muted: boolean }): Promise<void>;
-  setMuted(muted: boolean, context: AudioContext | null): void;
   key(n: number): boolean;
   tap(x: number, y: number): boolean;
-  skip(): void;
   destroy(): void;
 };
 
-const MUTE_KEY = "spaceman-show-muted";
+// The still is the exhibit: the recorder, years later, on a table in a records room. Its plate is
+// 1280 x 856; the view covers the section and keeps the recorder in frame on narrow screens.
+const EX = { w: 1280, h: 856, focus: [0.43, 0.6] };
+const RECORDER = { x: 350, y: 395, w: 362, h: 333 };
+
+function Exhibit({ onStart, ready, live }: { onStart: () => void; ready: boolean; live: boolean }) {
+  const ref = useRef<SVGSVGElement>(null);
+  const [vb, setVb] = useState(`0 0 ${EX.w} ${EX.h}`);
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    const ro = new ResizeObserver(() => {
+      const r = el.getBoundingClientRect();
+      if (!r.width || !r.height) return;
+      const A = r.width / r.height;
+      const w = A > EX.w / EX.h ? EX.w : EX.h * A;
+      const h = A > EX.w / EX.h ? EX.w / A : EX.h;
+      const x = Math.min(EX.w - w, Math.max(0, EX.focus[0] * EX.w - w / 2));
+      const y = Math.min(EX.h - h, Math.max(0, EX.focus[1] * EX.h - h / 2));
+      setVb(`${x.toFixed(1)} ${y.toFixed(1)} ${w.toFixed(1)} ${h.toFixed(1)}`);
+    });
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+  const tag = ["Cassette recorder", "Kitchen, No. 14", "Found running.", "Side A"];
+  return (
+    <svg ref={ref} viewBox={vb} preserveAspectRatio="xMidYMid slice" className={`absolute inset-0 size-full transition-opacity duration-700 ${live ? "opacity-0" : "opacity-100"}`}>
+      <title>Exhibit 31: a cassette recorder found running in the kitchen of No. 14</title>
+      <image href="show/plates/exhibit-s.jpg" width={EX.w} height={EX.h} />
+      <g transform="rotate(-30 604 572)" fill="#2b2119" fillOpacity={0.86} style={{ fontFamily: '"Courier New", Courier, ui-monospace, monospace' }}>
+        <text x={604} y={522} textAnchor="middle" fontSize={15} fontWeight={700} letterSpacing={1.5}>EXHIBIT 31</text>
+        <rect x={562} y={528} width={84} height={0.8} />
+        {tag.map((l, i) => (
+          <text key={l} x={604} y={546 + i * 15} textAnchor="middle" fontSize={10.5}>{l}</text>
+        ))}
+      </g>
+      <rect
+        role="button"
+        tabIndex={0}
+        aria-label="Play the recording"
+        aria-disabled={!ready}
+        onClick={onStart}
+        onKeyDown={(e) => (e.key === "Enter" || e.key === " ") && (e.preventDefault(), onStart())}
+        x={RECORDER.x}
+        y={RECORDER.y}
+        width={RECORDER.w}
+        height={RECORDER.h}
+        rx={14}
+        className={`fill-white/0 outline-none transition-[fill] duration-300 hover:fill-white/[.035] focus-visible:fill-white/[.05] ${ready ? "cursor-pointer" : "cursor-wait"}`}
+      />
+    </svg>
+  );
+}
 
 function newContext(): AudioContext | null {
   try {
@@ -28,7 +78,6 @@ function newContext(): AudioContext | null {
 
 export function Show({ header }: { header: React.ReactNode }) {
   const section = useRef<HTMLElement>(null);
-  const still = useRef<HTMLCanvasElement>(null);
   const canvas = useRef<HTMLCanvasElement>(null);
   const show = useRef<ShowApi | null>(null);
   const context = useRef<AudioContext | null>(null);
@@ -37,12 +86,10 @@ export function Show({ header }: { header: React.ReactNode }) {
   const [ready, setReady] = useState(false);
   const [caption, setCaption] = useState<Caption>(null);
   const [hint, setHint] = useState(false);
-  const [muted, setMuted] = useState(false);
   const [cc, setCc] = useState<boolean | null>(null);
   const [touch, setTouch] = useState(false);
 
   useEffect(() => {
-    setMuted(localStorage.getItem(MUTE_KEY) === "1");
     setTouch(matchMedia("(hover: none) and (pointer: coarse)").matches);
     const params = new URLSearchParams(location.search);
     const capture = params.has("capture");
@@ -50,9 +97,8 @@ export function Show({ header }: { header: React.ReactNode }) {
     let cancelled = false;
     const load = () =>
       import("./show/main.js").then(({ createShow }) => {
-        if (cancelled || !still.current || !canvas.current) return;
+        if (cancelled || !canvas.current) return;
         show.current = createShow({
-          still: still.current,
           canvas: canvas.current,
           base: new URL("show/", document.baseURI).href,
           capture,
@@ -84,10 +130,9 @@ export function Show({ header }: { header: React.ReactNode }) {
   const start = useCallback(() => {
     const s = show.current;
     if (!s || (s.phase !== "still" && s.phase !== "ended")) return;
-    const isMuted = localStorage.getItem(MUTE_KEY) === "1";
-    if (!isMuted && !context.current) context.current = newContext();
+    if (!context.current) context.current = newContext();
     setCard(false);
-    void s.start({ context: context.current, muted: isMuted });
+    void s.start({ context: context.current, muted: false });
   }, []);
 
   useEffect(() => {
@@ -107,20 +152,12 @@ export function Show({ header }: { header: React.ReactNode }) {
     return () => window.removeEventListener("keydown", onKey);
   }, [start]);
 
-  const toggleSound = () => {
-    const next = !muted;
-    setMuted(next);
-    localStorage.setItem(MUTE_KEY, next ? "1" : "0");
-    if (!next && !context.current) context.current = newContext();
-    show.current?.setMuted(next, context.current);
-  };
-
   const onTap = (e: React.PointerEvent) => {
     const r = canvas.current?.getBoundingClientRect();
     if (r) show.current?.tap(e.clientX - r.left, e.clientY - r.top);
   };
 
-  const captions = cc ?? muted;
+  const captions = cc ?? false;
   const live = phase === "live" || phase === "loading";
 
   return (
@@ -130,54 +167,26 @@ export function Show({ header }: { header: React.ReactNode }) {
       aria-label="Spaceman, a short film"
       className="relative h-[100svh] min-h-[480px] w-full overflow-hidden bg-[#08080a] select-none"
     >
-      <canvas ref={still} aria-hidden="true" className={`absolute inset-0 size-full transition-opacity duration-300 ${phase === "live" || phase === "ended" ? "opacity-0" : "opacity-100"}`} />
+      {phase !== "ended" && <Exhibit onStart={start} ready={ready} live={phase === "live"} />}
       <canvas ref={canvas} aria-hidden="true" onPointerDown={onTap} className={`absolute inset-0 size-full ${phase === "live" ? "opacity-100" : "opacity-0"}`} />
 
       <div className={`pointer-events-none absolute inset-x-0 top-0 transition-opacity duration-500 ${live ? "opacity-0" : "opacity-100"}`}>
         <div className={live ? "" : "pointer-events-auto"}>{header}</div>
       </div>
 
-      {phase === "still" && (
-        <div className="absolute inset-0 grid place-items-center bg-[radial-gradient(ellipse_at_center,rgba(8,8,10,.5),rgba(8,8,10,.12)_60%,transparent)] px-4">
-          <div className="flex flex-col items-center gap-3 rounded-3xl border border-white/10 bg-[#101013]/85 px-8 pt-6 pb-5 shadow-[0_30px_80px_rgba(0,0,0,.55)] backdrop-blur-md">
-            <p className="text-[15px] text-[#d9d6cf]">A tiling window manager for macOS.</p>
-            <button
-              type="button"
-              onClick={start}
-              disabled={!ready}
-              aria-label={touch ? "Play the film" : "Press Option 1 to play the film"}
-              className="group flex flex-col items-center gap-3 rounded-2xl p-2 text-[#f2f1ee] focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-[#cfcac0] disabled:cursor-wait"
-            >
-              <span className="flex items-center gap-1.5">
-                {(touch ? ["Play"] : ["⌥", "1"]).map((k) => (
-                  <kbd key={k} className="grid h-16 min-w-16 place-items-center rounded-[14px] border border-white/15 bg-[#1b1b1e]/90 px-4 font-sans text-[26px] font-medium shadow-[0_2px_0_rgba(255,255,255,.08)_inset,0_10px_30px_rgba(0,0,0,.5)] transition-transform duration-100 group-active:translate-y-0.5">
-                    {k}
-                  </kbd>
-                ))}
-              </span>
-              <span className="text-[15px] text-[#ece9e3]">{touch ? "Tap to play" : "Press ⌥1 or click to play"}</span>
-            </button>
-            <p className="flex items-center gap-2 text-[13px] text-[#a19d96]">
-              A short film, 1:53
-              <span aria-hidden="true">·</span>
-              <button type="button" onClick={toggleSound} aria-pressed={!muted} className="rounded-full border border-white/12 bg-black/40 px-3 py-1 text-[13px] text-[#d8d5ce] hover:bg-black/60">
-                {muted ? "Sound off" : "Sound on"}
-              </button>
-            </p>
-          </div>
+      {(phase === "still" || phase === "loading") && (
+        <div className="pointer-events-none absolute inset-x-0 bottom-[7%] flex flex-col items-center gap-1.5 px-6 text-center">
+          <p className="text-[15px] text-[#e4e1da] [text-shadow:0_1px_12px_rgba(0,0,0,.9)]">
+            {phase === "loading" ? "…" : touch ? "Tap the recorder." : "Press ⌥1, or click the recorder."}
+          </p>
+          <p className="text-[13px] text-[#9d9991] [text-shadow:0_1px_10px_rgba(0,0,0,.9)]">A short film about Spaceman, a tiling window manager for macOS · 2:30 · sound on</p>
         </div>
       )}
 
       {live && (
         <div className="absolute top-3 left-3 flex gap-2 sm:top-auto sm:left-auto sm:right-6 sm:bottom-6">
-          <button type="button" onClick={() => show.current?.skip()} className="h-9 rounded-full border border-white/10 bg-black/45 px-4 text-[13px] text-[#d8d5ce] backdrop-blur hover:bg-black/60">
-            Skip
-          </button>
           <button type="button" onClick={() => setCc(!captions)} aria-pressed={captions} className={`h-9 rounded-full border border-white/10 px-3 text-[12px] font-semibold tracking-wide backdrop-blur ${captions ? "bg-[#ece9e3] text-[#151517]" : "bg-black/45 text-[#d8d5ce] hover:bg-black/60"}`}>
             CC
-          </button>
-          <button type="button" onClick={toggleSound} aria-pressed={!muted} className="h-9 rounded-full border border-white/10 bg-black/45 px-4 text-[13px] text-[#d8d5ce] backdrop-blur hover:bg-black/60">
-            {muted ? "Sound off" : "Sound on"}
           </button>
         </div>
       )}

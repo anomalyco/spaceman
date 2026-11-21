@@ -15,6 +15,7 @@ export const APPS = {
   doorbell: { name: "Doorbell", bg: ["#3a3f47", "#1f2328"] },
   call: { name: "Call", bg: ["#5cc27a", "#36a058"] },
   spaceman: { name: "Spaceman", bg: ["#2b2d33", "#17181c"] },
+  plans: { name: "Plans", bg: ["#6f8db0", "#4c6a8e"] },
 }
 
 export function roundRect(ctx, x, y, w, h, r) {
@@ -157,6 +158,20 @@ function glyph(ctx, app, s) {
       ctx.fill()
       roundRect(ctx, s * 0.53, s * 0.52, s * 0.23, s * 0.22, s * 0.04)
       ctx.fill()
+      break
+    case "plans":
+      ctx.strokeStyle = W
+      ctx.lineWidth = s * 0.06
+      ctx.lineCap = "square"
+      ctx.beginPath()
+      ctx.moveTo(s * 0.62, s * 0.74)
+      ctx.lineTo(s * 0.24, s * 0.74)
+      ctx.lineTo(s * 0.24, s * 0.26)
+      ctx.lineTo(s * 0.76, s * 0.26)
+      ctx.lineTo(s * 0.76, s * 0.6)
+      ctx.moveTo(s * 0.5, s * 0.26)
+      ctx.lineTo(s * 0.5, s * 0.48)
+      ctx.stroke()
       break
   }
 }

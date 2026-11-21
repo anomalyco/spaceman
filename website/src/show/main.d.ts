@@ -1,5 +1,5 @@
 export function createShow(opts: {
-  still: HTMLCanvasElement;
+  still?: HTMLCanvasElement | null;
   canvas: HTMLCanvasElement;
   base: string;
   capture?: boolean;

@@ -10,10 +10,10 @@ import { createGPU, POST_DEFAULT } from "./gpu.js"
 import { Audio } from "./audio.js"
 import { LINES, TAPE } from "./tape.js"
 import { plates, loadPlate, coverUV } from "./plates.js"
-import { glowCanvas, STUDY, KITCHEN, coverView, zoomT } from "./levels.js"
+import { glowCanvas, STUDY, KITCHEN, FLOOR, coverView, zoomT } from "./levels.js"
 import { clamp, mix } from "./springs.js"
 
-const PLATES = ["wall", "hedge", "door", "across", "study", "kitchen"]
+const PLATES = ["wall", "hedge", "door", "across", "study", "kitchen", "floor", "after"]
 
 export function createShow({ still, canvas, base, capture = false, reduced = false, on = {} }) {
   const emit = (k, v) => on[k]?.(v)
@@ -38,7 +38,7 @@ export function createShow({ still, canvas, base, capture = false, reduced = fal
   const cam = { D: 1, cx: 0, cy: 0 }
   const grade = [0, 0, 0]
   const fx = { ...POST_DEFAULT }
-  const scene = { pull: 0, win: 0, fade: 0, kpush: 0 }
+  const scene = { pull: 0, win: 0, fade: 0, kpush: 0, floor: 0, fpush: 0, black: 0, after: 0, apush: 0 }
   const look = { focus: null, dof: 0.6 }
   const audio = new Audio(base + "audio/", { log: capture })
   const stats = { intervals: [], cpu: [], frames: 0 }
@@ -183,10 +183,31 @@ export function createShow({ still, canvas, base, capture = false, reduced = fal
     if (a > 0.5) fx.focus = [lx - 260 * P.k, ly - 220 * P.k, lx + 260 * P.k, ly + 160 * P.k]
   }
 
+  // The kitchen floor from the door, and the same floor afterwards: one camera, a slow push each.
+  function drawFloor(list) {
+    const after = scene.after > 0 && plates.after
+    const img = after ? plates.after : plates.floor
+    const tall = cssW < cssH
+    const A = after ? FLOOR.after : FLOOR.floor
+    const K0 = coverView(img, cssW, cssH, tall ? A.tall0 : A.f0, A.z0)
+    const K1 = coverView(img, cssW, cssH, tall ? A.tall1 : A.f1, tall ? A.z1 * 1.1 : A.z1)
+    const P = zoomT(K0, K1, reduced ? 0 : clamp(after ? scene.apush : scene.fpush))
+    list.push({ x: P.ox, y: P.oy, w: img.width * P.k, h: img.height * P.k, tex: img, g: 0 })
+    const fc = A.focus
+    const fx0 = P.ox + fc.x * img.width * P.k
+    const fy0 = P.oy + fc.y * img.height * P.k
+    fx.focus = [fx0 - fc.w * img.width * P.k, fy0 - fc.h * img.height * P.k, fx0 + fc.w * img.width * P.k, fy0 + fc.h * img.height * P.k]
+  }
+
   function buildList() {
     const list = []
     const F = fit()
     fx.focus = null
+    if (scene.floor && plates.floor) {
+      drawFloor(list)
+      if (scene.black > 0) list.push({ x: 0, y: 0, w: cssW, h: cssH, col: [0, 0, 0, clamp(scene.black)], g: 0 })
+      return list
+    }
     const plateEnd = scene.pull > 0 && plates.study
     if (scene.fade < 1) {
       if (!plateEnd) {
@@ -293,7 +314,7 @@ export function createShow({ still, canvas, base, capture = false, reduced = fal
     li = 0
     grade.fill(0)
     Object.assign(fx, POST_DEFAULT)
-    Object.assign(scene, { pull: 0, win: 0, fade: 0, kpush: 0 })
+    Object.assign(scene, { pull: 0, win: 0, fade: 0, kpush: 0, floor: 0, fpush: 0, black: 0, after: 0, apush: 0 })
     look.focus = null
     pullFrom = null
     cam.D = 1
@@ -417,7 +438,7 @@ export function createShow({ still, canvas, base, capture = false, reduced = fal
   setup()
   drawStill()
   // the only fetch before the key press: a 17 KB wallpaper for the still
-  loadPlate(base, "wall-s").then(() => drawStill())
+  if (still) loadPlate(base, "wall-s").then(() => drawStill())
 
   const api = {
     get phase() {
