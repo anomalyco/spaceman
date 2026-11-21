@@ -130,7 +130,12 @@ def house(name, x0, x1, y0, y1, G, M, siding, hh=5.6, body=True):
     vs = [bm.verts.new(v) for v in [(-hw, -rw2, 0), (hw, -rw2, 0), (hw, rw2, 0), (-hw, rw2, 0), (0, -rw2, ridge), (0, rw2, ridge)]]
     for f in [(0, 4, 5, 3), (1, 2, 5, 4), (0, 1, 4), (3, 5, 2)]:
         bm.faces.new([vs[i] for i in f])
-    bmesh.ops.recalc_face_normals(bm, faces=bm.faces)
+    # an open shell, so face it outward by hand (the live renderer culls back faces)
+    bm.normal_update()
+    for f in bm.faces:
+        if f.normal.dot(f.calc_center_median() - Vector((0, 0, ridge * 0.3))) < 0:
+            f.normal_flip()
+    bm.normal_update()
     r = obj_from_bm(name + "Roof", bm, M["roof"])
     r.location = ((x0 + x1) / 2, (y0 + y1) / 2, G + hh)
     out.append(r)

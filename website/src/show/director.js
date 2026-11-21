@@ -327,6 +327,8 @@ export function build(S) {
   at(bar - 0.2, () => (w.bar.scale.t = BAR_BIG))
   // its sentences sit high on the screen while the camera is down at the bar
   S.capHigh = [word("There's a bar") - 0.1, word("You're never more") + 0.1]
+  at(bar - 0.1, () => (w.keysAbove = true))
+  at(HOLD[0] - 0.9, () => (w.keysAbove = false))
   push(bar - 0.1, bar + 1.2, () => {
     const D = 0.42
     return { cx: S.SW / 2, cy: S.SH - (S.SH * D) / 2, D }

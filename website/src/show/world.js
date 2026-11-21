@@ -61,6 +61,7 @@ export class World {
     this.bar = { shown: sp(0, 0.42), scale: sp(1, 0.4), cells: [], left: sp(0, 0.3), right: sp(0, 0.3), count: 0 }
     this.cursor = { x: SW * 0.62, y: SH * 0.55, vx: 0, vy: 0, path: null, a: sp(1, 0.3), press: sp(0, 0.09) }
     this.keys = { label: null, a: sp(0, 0.2), until: 0 }
+    this.keysAbove = false
     this.time = 0
     this.lastFocus = {}
     this.reduced = !!opts.reduced
@@ -637,8 +638,10 @@ export class World {
       const bg = this.barGeom()
       const k = this.keys.a.x
       const s = 0.94 + 0.06 * k
-      const kx = Math.max(EDGE_PAD, bg.x - c.lw - 14)
-      const ky = bg.y + bg.h / 2 - c.lh / 2
+      // in the close-up on the bar the keys would be cropped off its side, so they sit on top of it
+      const up = this.keysAbove
+      const kx = up ? bg.x + bg.w / 2 - c.lw / 2 : Math.max(EDGE_PAD, bg.x - c.lw - 14)
+      const ky = up ? bg.y - c.lh - 12 : bg.y + bg.h / 2 - c.lh / 2
       const kw = c.lw * s
       const kh = c.lh * s
       const ox = kx + (c.lw - kw) / 2
@@ -651,7 +654,7 @@ export class World {
     const cu = this.cursor
     if (cu.a.x > 0.01) {
       const s = 1 - cu.press.x * 0.14
-      P(cu.x - 3 * s, cu.y - 2 * s, 26 * s, 34 * s, { tex: cursorCanvas(), r: 0, a: cu.a.x })
+      P(cu.x - 3 * s, cu.y - 2 * s, 26 * s, 34 * s, { tex: cursorCanvas(), r: 0, a: cu.a.x, cut: 1 })
     }
   }
 

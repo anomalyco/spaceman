@@ -109,7 +109,7 @@ blockX, blockY = block("blockX", "X"), block("blockY", "Y")
 def wrap_material(bx, by):
     """Builder's plastic round him, taped at five places; blood through it at the head and chest, and
     pooled along the underside."""
-    m = mat("wrap", (0.46, 0.48, 0.5), 0.3)
+    m = mat("wrap", (0.38, 0.395, 0.41), 0.3)
     v = node(m, "ShaderNodeVectorMath")
     v.operation = "SUBTRACT"
     link(m, texcoord(m, "Object"), v.inputs[0])
@@ -161,11 +161,11 @@ def wrap_material(bx, by):
     link(m, low.outputs["Result"], a2.inputs[1])
     br = node(m, "ShaderNodeValToRGB")
     br.color_ramp.elements[0].position = 0.655
-    br.color_ramp.elements[0].color = (0.46, 0.48, 0.5, 1)
+    br.color_ramp.elements[0].color = (0.38, 0.395, 0.41, 1)
     br.color_ramp.elements[1].position = 0.92
     br.color_ramp.elements[1].color = (0.035, 0.004, 0.004, 1)
     e = br.color_ramp.elements.new(0.7)
-    e.color = (0.15, 0.04, 0.034, 1)
+    e.color = (0.11, 0.03, 0.027, 1)
     e = br.color_ramp.elements.new(0.77)
     e.color = (0.1, 0.018, 0.016, 1)
     link(m, a2.outputs[0], br.inputs["Fac"])
@@ -188,7 +188,7 @@ def wrap_material(bx, by):
     hr.color_ramp.elements[0].position = 0.5
     hr.color_ramp.elements[0].color = (0, 0, 0, 1)
     hr.color_ramp.elements[1].position = 0.72
-    hr.color_ramp.elements[1].color = (0.3, 0.3, 0.3, 1)
+    hr.color_ramp.elements[1].color = (0.2, 0.2, 0.2, 1)
     link(m, hn.outputs["Fac"], hr.inputs["Fac"])
     # only on what faces up toward the bulb
     up2 = node(m, "ShaderNodeMapRange")
@@ -204,7 +204,7 @@ def wrap_material(bx, by):
     sh.blend_type = "SCREEN"
     link(m, hm.outputs[0], sh.inputs[0])
     link(m, mx.outputs[2], sh.inputs[6])
-    sh.inputs[7].default_value = (0.85, 0.87, 0.9, 1)
+    sh.inputs[7].default_value = (0.75, 0.77, 0.8, 1)
     link(m, sh.outputs[2], bsdf(m).inputs["Base Color"])
     return m
 
@@ -474,7 +474,7 @@ rm.voxel_size = 0.014 if QUICK else 0.01
 print("remesh", rm.voxel_size, flush=True)
 ls = body.modifiers.new("smooth", "LAPLACIANSMOOTH")
 ls.lambda_factor = 1.0
-ls.iterations = 24
+ls.iterations = 40
 applied(body)
 # the plastic: pulled in at the tape, pleated where it's pulled, creased round him where it was wound
 BANDS = (0.71, 0.6, 0.3, -0.1, -0.5, -0.82)
@@ -484,10 +484,11 @@ for v in body.data.vertices:
     b = max(math.exp(-(((y - c) / 0.022) ** 2)) for c in BANDS)
     near = max(math.exp(-(((y - c) / 0.09) ** 2)) for c in BANDS)
     up = max(0.0, min(1.0, (z - 0.02) / 0.04))
-    wound = 1 - abs(mnoise.noise(Vector((x * 2.5, y * 16.0, z * 2.5))))
+    # wound round him on a slant, so the creases run across him at an angle, never as ribs
+    wound = 1 - abs(mnoise.noise(Vector((x * 3.0, (y + 0.7 * x) * 10.0, z * 3.0))))
     pleat = 1 - abs(mnoise.noise(Vector((x * 30.0, y * 3.0, z * 30.0))))
     soft = mnoise.noise(Vector((x * 9.0, y * 9.0, z * 9.0)))
-    d = -0.01 * b + up * (0.011 * wound ** 3 + 0.008 * near * pleat ** 3 + 0.003 * soft)
+    d = -0.01 * b + up * (0.006 * wound ** 4 + 0.008 * near * pleat ** 3 + 0.002 * soft)
     v.co = v.co + n * d
 for p in body.data.polygons:
     p.use_smooth = True

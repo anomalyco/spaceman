@@ -95,7 +95,8 @@ export function createCanvas2D(canvas) {
             ctx.fill()
           } else ctx.fillRect(p.x, p.y, p.w, p.h)
         }
-        if (p.g && grade[0] > 0.01 && !p.ring && !p.glow) {
+        // a cut-out texture (the cursor) would get the grade as a dark box around it
+        if (p.g && grade[0] > 0.01 && !p.ring && !p.glow && !p.cut) {
           ctx.globalAlpha = Math.min(1, grade[0] * p.g * (p.a ?? 1))
           ctx.fillStyle = grade[1] > 0.3 ? "#05070d" : "#000"
           if (r > 0.5) {

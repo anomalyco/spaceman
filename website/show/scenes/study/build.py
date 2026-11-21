@@ -222,7 +222,8 @@ lights_base = street_lights + [
     light("facade14", "SPOT", (18.4 - 1.15, -6.0, G + 6.35), 3500, (0.72, 0.82, 1.0), 0.1, target=(26.0, 1.8, G + 2.6), spot=50, blend=0.7),
 ]
 screen_light = light("screenLight", "AREA", (mx, my - 0.02, mz + 0.004), 22, (0.93, 0.91, 0.87), (PW, PH), target=(mx, my - 5, mz))
-screen_light.data.spread = rad(160)
+# the panel lights the desk the way a panel does: everywhere in front of it, falling off, with no edge to the pool
+screen_light.data.spread = rad(180)
 
 # ── bake ──
 res = {"Near": 1024 if QUICK else 2048, "Room": 2048 if QUICK else 4096, "Street": 1024 if QUICK else 2048, "Front14": 512 if QUICK else 2048, "Lit14": 256 if QUICK else 512}

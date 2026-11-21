@@ -234,3 +234,26 @@ r5 capture: no errors on any path (WebGPU, Canvas 2D, reduced motion, phone); bu
 
 Not taken: a play button, mute and skip (#7; Kit asked for none); cutting "I tasted the sweet flesh of
 efficiency" (#9; Kit wants it); shortening the six section by 8 s (the tape fixes its length).
+
+Then, from the probes (p6a, p6b) and the r5 frames at 100%:
+
+6. The reply photo (116) re-shot again: the first phone version was a CG window frame on even grey siding.
+   Now it's the whole upper storey from the pavement: night sky, the eave, one lit window, his chair and the
+   monitor's glow behind the blinds; the street light dim and broad, the monitor the brightest thing in it.
+7. The March screenshot (31) showed grey bars for text. It is now his March desktop painted by the same
+   window painters as tonight (bylaws, drills, notes, the camera note, the sticky), piled on the wallpaper.
+8. Browsy's 38 tabs drew as hatching. The open tab keeps its width and title; the rest crush beside it.
+9. Settings, typing the workspace (71): the empty field showed "—" with the caret after it, like a typed dash.
+   It now loses the dash and gets a focus ring.
+10. Canvas 2D: the grade drew a dark box around the cursor (138). Cut-out textures skip the grade box.
+11. Study: the window shot steps back from the blinds (the live depth of field can't melt a rail 25 cm from the
+    lens); No. 14's roof faces outward (it drew black live); the hedge is remeshed so its lumps have vertices
+    (it stayed a slab under the noise); the binders vary in width, depth and age, labels stuck on by hand.
+12. Basement: the bins vary (depths, a short pair, one lid off and leaning), labels at different heights.
+13. The bar close-up (59–61), frame by frame: the key cast sat beside the bar, so the close-up cropped it to
+    "⌥ 2" at the frame's edge. During the close-up it now sits on top of the bar; at home it stays beside it.
+    The switches themselves (47, 59) were checked frame by frame and kept: the old workspace is gone in two
+    frames and the new one slides 32 px in over 0.22 s, one blended frame between, no dissolve.
+14. The body (b8 → b9): the wrap still read as a white mannequin with ribs. The plastic is darker and greyer, the
+    sheen weaker, the creases run on a slant (wound round him, not ribs), the form smoothed further, and the
+    blood at the edge of the stain is darker so it stops reading pink.

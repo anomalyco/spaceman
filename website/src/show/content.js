@@ -593,20 +593,8 @@ const painters = {
       ctx.fillStyle = "#5b6a80"
       ctx.fillRect(x, y, pw, ph)
     }
-    for (let i = 0; i < 16; i++) {
-      const rx = x + hash(i * 3) * pw * 0.68
-      const ry = y + 6 + hash(i * 5 + 1) * ph * 0.55
-      const rw = pw * (0.2 + hash(i * 7) * 0.12)
-      const rh = ph * (0.26 + hash(i * 11) * 0.14)
-      ctx.fillStyle = "rgba(0,0,0,.25)"
-      ctx.fillRect(rx + 1, ry + 2, rw, rh)
-      ctx.fillStyle = i % 5 === 3 ? "#f3dc7a" : i % 4 === 1 ? "#f7f5f1" : "#efece6"
-      ctx.fillRect(rx, ry, rw, rh)
-      ctx.fillStyle = "#e3dfd8"
-      ctx.fillRect(rx, ry, rw, Math.max(3, rh * 0.09))
-      ctx.fillStyle = "rgba(60,58,54,.45)"
-      for (let k = 0; k < 4; k++) ctx.fillRect(rx + rw * 0.1, ry + rh * (0.25 + k * 0.15), rw * (0.4 + hash(i * 13 + k) * 0.4), Math.max(1, rh * 0.03))
-    }
+    // the same kinds of windows as tonight, painted by the same painters, piled where they were in March
+    ctx.drawImage(marchPile(), x, y, pw, ph)
     ctx.strokeStyle = "rgba(255,255,255,.12)"
     ctx.strokeRect(x + 0.5, y + 0.5, pw - 1, ph - 1)
   },
@@ -743,6 +731,53 @@ const painters = {
 const SERIF = 'Charter, "Iowan Old Style", Georgia, serif'
 const FAVICONS = ["#4f7fbf", "#c4553e", "#6a9a5b", "#d0a03a", "#7d6bb0", "#3f9a96", "#8a8580", "#c97a3a"]
 const TAB_TITLES = ["Gutter guards: which kind?", "Hedge height bylaws", "Laser measure reviews", "Pinecrest HOA", "How to take minutes", "Cordless drills compared"]
+
+// His desktop on March 2, at a 1440×810 screen: real windows, each on top of another. Painted once.
+let pile = null
+let pileWall = false
+function marchPile() {
+  // painted again once the wallpaper plate has arrived
+  if (pile && (pileWall || !(plates["wall-s"] || plates.wall))) return pile
+  const W = 1440
+  const H = 810
+  pile = document.createElement("canvas")
+  pile.width = W
+  pile.height = H
+  const ctx = pile.getContext("2d")
+  const wall = plates["wall-s"] || plates.wall
+  pileWall = !!wall
+  if (wall) {
+    const [u0, v0, u1, v1] = coverUV(wall, W, H)
+    ctx.drawImage(wall, u0 * wall.width, v0 * wall.height, (u1 - u0) * wall.width, (v1 - v0) * wall.height, 0, 0, W, H)
+  } else {
+    ctx.fillStyle = "#5b6a80"
+    ctx.fillRect(0, 0, W, H)
+  }
+  const jot = (title, heading, lines, edited) => ({ kind: "jot", app: "jot", title, data: { heading, lines, edited } })
+  const wins = [
+    [{ kind: "browser", app: "browsy", title: "Hedge height bylaws — Browsy", data: { tabs: 21, url: "pinecrest.example/bylaws/4-12", heading: "Hedge height bylaws" } }, 40, 60, 620, 470],
+    [{ kind: "daybook", app: "daybook", title: "Daybook — March", data: { date: "Monday, March 2", events: [{ at: 8, len: 1, t: "Bins out" }] } }, 520, 40, 420, 520],
+    [jot("Untitled 44", "Untitled 44", ["hedge — measure?", "ask Mark re: drill"], "Edited February 3"), 300, 230, 380, 330],
+    [{ kind: "browser", app: "browsy", title: "Cordless drills compared — Browsy", data: { tabs: 21, url: "homedesk.example/cordless-drills", heading: "Cordless drills compared" } }, 820, 120, 580, 440],
+    [jot("notes", "notes", ["call about the gutters", "drill → return", "passwords??"], "Edited March 2"), 120, 380, 360, 330],
+    [jot("cameras — No. 16", "About the cameras", ["We'd like the two cameras on No. 12", "that face our houses taken down."], "Signed Feb 26"), 640, 330, 420, 300],
+    [jot("Untitled 45", "Untitled 45", ["minutes — June?"], "Edited February 21"), 980, 420, 330, 280],
+    [{ kind: "sticky", app: "jot", title: "", data: { text: "organize notes" } }, 430, 500, 300, 260],
+  ]
+  for (const [win, wx, wy, ww, wh] of wins) {
+    const c = document.createElement("canvas")
+    c.width = ww
+    c.height = wh
+    paintWindow(c.getContext("2d"), ww, wh, win, false)
+    ctx.save()
+    ctx.shadowColor = "rgba(0,0,0,.35)"
+    ctx.shadowBlur = 24
+    ctx.shadowOffsetY = 8
+    ctx.drawImage(c, wx, wy)
+    ctx.restore()
+  }
+  return pile
+}
 
 export function paintWindow(ctx, w, h, win, focused) {
   ctx.clearRect(0, 0, w, h)
