@@ -70,7 +70,8 @@ function lines(ctx, list, x, y, w, { size = 15, gap = 25, check = false } = {}) 
       continue
     }
     let tx = x
-    if (check) {
+    if (check && s.nobox) tx += size + 9
+    else if (check) {
       ctx.strokeStyle = s.done ? "#5b9a5b" : "#b3aea5"
       ctx.lineWidth = 1.5
       roundRect(ctx, x, y - size + 2, size - 1, size - 1, 3)
@@ -514,6 +515,15 @@ const painters = {
     const widths = d.widths || cols.map(() => 1 / cols.length)
     const rowH = 30
     let y = BAR_H
+    // sharing history sits at the top, like a document's share banner
+    if (d.foot?.length) {
+      const fh = d.foot.length * 22 + 12
+      ctx.fillStyle = "#f3efe2"
+      ctx.fillRect(0, y, w, fh)
+      d.foot.forEach((f, i) => text(ctx, f, 12, y + 23 + i * 22, { size: 13.5, weight: i === d.foot.length - 1 ? 600 : 400, color: i === d.foot.length - 1 ? INK : SOFT, max: w - 24 }))
+      y += fh
+    }
+    const top = y
     ctx.fillStyle = "#eef0ec"
     ctx.fillRect(0, y, w, rowH)
     let x = 0
@@ -542,15 +552,7 @@ const painters = {
     for (let i = 0; i < cols.length - 1; i++) {
       x += widths[i] * w
       ctx.fillStyle = "rgba(0,0,0,.06)"
-      ctx.fillRect(x, BAR_H, 1, h)
-    }
-    if (d.foot?.length) {
-      const fh = d.foot.length * 22 + 14
-      ctx.fillStyle = "#f1f2ee"
-      ctx.fillRect(0, h - fh, w, fh)
-      ctx.fillStyle = "rgba(0,0,0,.08)"
-      ctx.fillRect(0, h - fh, w, 1)
-      d.foot.forEach((f, i) => text(ctx, f, 12, h - fh + 25 + i * 22, { size: 13.5, color: i === d.foot.length - 1 ? INK : SOFT, max: w - 24 }))
+      ctx.fillRect(x, top, 1, h)
     }
   },
   // The stranger's photo viewer: the photo area stays transparent (the live scene shows through);

@@ -31,7 +31,13 @@
   {
    "id": "mail",
    "stage": "plain",
-   "text": "Mail went to two. The internet went to three."
+   "text": "Mail went to two."
+  },
+  {
+   "id": "internet",
+   "stage": "plain",
+   "text": "The internet went to three.",
+   "pick": 1
   },
   {
    "id": "rule",
@@ -51,12 +57,14 @@
   {
    "id": "house",
    "stage": "plain",
-   "text": "The house has a workspace."
+   "text": "Household things went on four.",
+   "pick": 1
   },
   {
    "id": "minutes",
    "stage": "plain",
-   "text": "Nobody wanted to take the minutes. So I take the minutes."
+   "text": "Nobody else wanted to take the minutes.",
+   "pick": 1
   },
   {
    "id": "hedge",
@@ -66,18 +74,12 @@
   {
    "id": "second",
    "stage": "cold",
-   "text": "I started recording the height after the second conversation."
+   "text": "I started recording the height after our second conversation."
   },
   {
    "id": "circulated",
    "stage": "cold",
    "text": "Nobody corrected the minutes. I circulated them again."
-  },
-  {
-   "id": "space",
-   "stage": "cold",
-   "text": "Everyone gets the same amount of space.",
-   "pick": 1
   },
   {
    "id": "light",

@@ -5,7 +5,7 @@ import { easeInOut, smooth, clamp, mix } from "./springs.js"
 import { BAR_H } from "./content.js"
 
 export const HOLD = [24, 30] // the visitor's turn: Option+1/2/3 really switch
-export const END = 101.0
+export const END = 100.85
 
 const NOTE = ["call about the gutters", "drill → return", "passwords??", "organize notes", "hedge (ask)"]
 
@@ -85,7 +85,11 @@ export function build(S) {
     })
   const frameOf = (id, margin = 1.1) => {
     const x = R(id)
-    return { cx: x.x.t + x.w.t / 2, cy: x.y.t + x.h.t / 2, D: Math.max(x.w.t / S.SW, x.h.t / S.SH) * margin }
+    const D = Math.min(1, Math.max(x.w.t / S.SW, x.h.t / S.SH) * margin)
+    // keep the view inside the screen: never show what's past its edge
+    const hx = (S.SW * D) / 2
+    const hy = (S.SH * D) / 2
+    return { cx: clamp(x.x.t + x.w.t / 2, hx, S.SW - hx), cy: clamp(x.y.t + x.h.t / 2, hy, S.SH - hy), D }
   }
   // Camera move from wherever it is to a framing, over [t0, t1].
   const push = (t0, t1, target) => {
@@ -136,12 +140,13 @@ export function build(S) {
   clickAt(13.4, "postbox")
   at(13.4, () => w.setFocus("postbox"))
   key(13.9, ["⌥", "⇧", "2"], () => w.move("postbox", 2))
-  sw(15.2, 2)
-  sw(16.4, 1)
-  S.say(16.6, "mail")
+  S.say(14.3, "mail")
+  sw(15.9, 2)
+  sw(17.0, 1)
   clickAt(18.0, "browsy")
   at(18.0, () => w.setFocus("browsy"))
   key(18.6, ["⌥", "⇧", "3"], () => w.move("browsy", 3))
+  S.say(19.0, "internet")
   sw(20.4, 3)
   sw(21.8, 1)
 
@@ -187,7 +192,7 @@ export function build(S) {
     w.open({ id: "dana", app: "chatter", kind: "chat", title: "Dana", ws: 1, at: [x, y, ww, hh], data: { msgs: [{ t: "are we still on for friday?" }, { t: "you can say no", note: "Delivered" }] } })
     S.sfx("thunk", 0.4)
   })
-  at(36.1, () => w.move("dana", 2))
+  at(35.5, () => w.move("dana", 2))
   S.say(36.8, "not-closed")
   sw(37.6, 2)
   sw(40.1, 1, "Wed Jun 3  6:02 AM")
@@ -197,7 +202,7 @@ export function build(S) {
   push(40.15, 40.9, () => frameOf("drill", 1.5))
   S.say(40.8, "drill")
   clickAt(41.3, "drill", (id) => [R(id).x.t + 34, R(id).y.t + BAR_H + 64])
-  at(41.3, () => w.set("drill", { data: { check: 1, lines: [{ t: "to No. 10", done: 1 }, { t: "borrowed spring 2022", soft: 1 }] } }))
+  at(41.3, () => w.set("drill", { data: { check: 1, lines: [{ t: "to No. 10", done: 1 }, { t: "borrowed spring 2022", soft: 1, nobox: 1 }] } }))
   push(45.4, 46.3, home)
 
   // ── 4 · The house ──
@@ -212,7 +217,7 @@ export function build(S) {
   sw(50.8, 5, "Tue Jun 9  10:12 PM")
   open(51.1, 5, { id: "minutes", app: "paper", kind: "paper", title: "HOA — Minutes", data: { heading: "Pinecrest HOA — Minutes", sub: "Meeting of June 9", size: 14, gap: 23, lines: ["Present: 9 of 9", "1. Trash cans to be stored out of view", "    by 8 PM on collection days.", "2. Hedges and fences: six feet maximum.", "3. Minutes: No. 12."] } })
   open(51.5, 5, { id: "trash", app: "sheets", kind: "sheet", title: "Trash Cans — Collection", data: { cols: ["House", "Out", "In by 8"], widths: [0.4, 0.3, 0.3], rows: [["No. 8", "✓", "✓"], ["No. 10", "✓", "8:40 PM"], ["No. 12", "✓", "✓"], ["No. 14", "✓", "—"], ["No. 16", "✓", "✓"]].map((cells) => ({ cells })) } })
-  open(51.9, 5, { id: "door", app: "doorbell", kind: "cam", title: "Doorbell — Front", dark: 1, data: { time: "10:12:31 PM", lit: 1 } })
+  open(51.9, 5, { id: "door", app: "doorbell", kind: "cam", title: "Doorbell — Front", dark: 1, data: { time: "10:12:31 PM", lit: 0 } })
   S.say(51.4, "minutes")
 
   // ── The hedge: three mornings you can read, then all of them ──
@@ -221,7 +226,7 @@ export function build(S) {
   span(56.0, 65.4, (u, t) => {
     const n = t < 58.2 ? 1 : t < 59.6 ? 2 : t < 60.6 ? 3 : 3 + Math.floor(157 * Math.pow(clamp((t - 60.6) / 4.8), 2))
     if (n !== shots) {
-      if (n < 14 || n % 9 === 0) S.sfx("shutter", n < 14 ? 0.45 : 0.25)
+      if (n <= 3 || n === 24 || n === 70) S.sfx("shutter", n <= 3 ? 0.45 : 0.3)
       shots = n
       w.set("hedge", { data: { count: n } })
       w.clock = dayClock(Math.min(n, 140))
@@ -229,7 +234,7 @@ export function build(S) {
   })
   push(56.2, 57.4, () => frameOf("hedge", 1.04))
   S.say(56.6, "hedge")
-  S.say(63.2, "second")
+  S.say(62.6, "second")
   at(63.6, () => w.set("hedge", { data: { measured: 1, measuredFrom: shots } }))
   push(65.4, 66.2, home)
 
@@ -244,15 +249,17 @@ export function build(S) {
   })
   MINUTES_ROWS.forEach((r, i) => at(66.4 + i * 0.75, () => w.set("minutes", { data: { rows: MINUTES_ROWS.slice(0, i + 1).map((cells) => ({ cells })) } })))
   push(66.2, 68.0, () => frameOf("minutes", 1.25))
-  S.say(66.6, "circulated")
-  at(67.2, () => w.set("minutes", { data: { foot: ["Sent to 8 households, Jun 10"] } }))
-  at(69.9, () => w.set("minutes", { data: { foot: ["Sent to 8 households, Jun 10", "Sent again to 8 households, Nov 11"] } }))
+  S.say(67.0, "circulated")
+  at(67.6, () => w.set("minutes", { data: { foot: ["Sent to 8 households, Jun 10"] } }))
+  at(70.4, () => w.set("minutes", { data: { foot: ["Sent to 8 households, Jun 10", "Sent again to 8 households, Nov 11"] } }))
   push(71.6, 72.4, home)
 
   // ── 6 · The call ──
   sw(72.6, 6, "Tue Nov 17  7:00 PM")
-  const people = [{ name: "No. 12" }, { name: "No. 8", initial: "8", off: 1 }, { name: "No. 10", initial: "10", off: 1 }, { name: "No. 16", initial: "16", off: 1 }]
+  // the board meeting: him, and No. 16, who leaves
+  const people = [{ name: "No. 12" }, { name: "No. 16", initial: "16", off: 1 }]
   people.forEach((p, i) => open(72.9 + i * 0.22, 6, { id: "call" + i, app: "call", kind: "call", title: "HOA — Board", dark: 1, data: { people: [p] } }))
+  at(75.3, () => (w.close("call1"), S.sfx("close", 0.35)))
 
   // ── The months ──
   sw(77.6, 1, "Wed Nov 18  6:02 AM")
@@ -275,9 +282,9 @@ export function build(S) {
   sw(83.3, 6, "Fri Nov 20  7:41 PM")
   sw(84.3, 5, "Fri Nov 20  11:46 PM")
   span(76.8, 86, (u) => {
-    S.grade[0] = 0.42 * smooth(u)
-    S.grade[1] = smooth(u)
-    S.grade[2] = 0.3 * smooth(u)
+    S.grade[0] = 0.26 * smooth(u)
+    S.grade[1] = 0.65 * smooth(u)
+    S.grade[2] = 0.18 * smooth(u)
   })
   at(77.6, () => S.room(0.28, 3))
   at(84.3, () => w.setFocus("door"))
@@ -291,6 +298,8 @@ export function build(S) {
     const d = R("door")
     w.moveCursor(d.x.t + d.w.t * 0.62, d.y.t + BAR_H + (d.h.t - BAR_H) * 0.8, 4.6)
   })
+  // his light comes on across the street
+  at(87.3, () => w.set("door", { data: { lit: 1 } }))
   S.say(88.0, "light")
 
   // ── The pull-back, then a long look at the other desktop ──
@@ -299,7 +308,7 @@ export function build(S) {
   })
   at(91.8, () => S.room(0.12, 1.5))
   at(92.4, () => S.sfx("car", 0.55))
-  span(95.2, 97.2, (u) => {
+  span(95.2, 96.4, (u) => {
     S.pull.b = u
   })
   at(95.2, () => S.room(0, 0.4))

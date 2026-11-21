@@ -12,16 +12,16 @@ import { clamp, mix, smooth, easeInOut } from "./springs.js"
 const LINES = {
   march: "I'd had some of those windows open since March.",
   "same-note": "Three of them were the same note. I closed two.",
-  mail: "Mail went to two. The internet went to three.",
+  mail: "Mail went to two.",
+  internet: "The internet went to three.",
   rule: "Then I wrote a rule. Chatter opens on two.",
   "not-closed": "It isn't closed. It's on two.",
   drill: "I returned the drill. I'd had it four years. He said I didn't need to.",
-  house: "The house has a workspace.",
-  minutes: "Nobody wanted to take the minutes. So I take the minutes.",
+  house: "Household things went on four.",
+  minutes: "Nobody else wanted to take the minutes.",
   hedge: "Number fourteen's hedge is six foot two. The limit is six feet.",
-  second: "I started recording the height after the second conversation.",
+  second: "I started recording the height after our second conversation.",
   circulated: "Nobody corrected the minutes. I circulated them again.",
-  space: "Everyone gets the same amount of space.",
   light: "Number fourteen leaves a light on.",
 }
 
