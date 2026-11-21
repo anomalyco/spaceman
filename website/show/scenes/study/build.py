@@ -272,7 +272,7 @@ cams = [
     camera("CamRoom", (0.72, 0.25, 1.62), (2.35, 2.65, 1.0), 52, dof=4),
     # a step back from the sill and a little below the blinds: the bottom rail a thin soft line at the top edge
     # (the live depth of field can't melt a rail held a hand's width from the lens)
-    camera("CamWindow", (RW - 0.5, 2.25, 1.1), (26.0, 1.8, G + 3.85), 24, dof=4),
+    camera("CamWindow", (RW - 0.5, 2.25, 1.17), (26.0, 1.8, G + 3.92), 24, dof=4),
 ]
 export_glb(os.path.join(OUT, "study.glb"), list(groups.values()) + [screen, glass, skyplane] + cams)
 

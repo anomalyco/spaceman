@@ -357,10 +357,12 @@ export function createShow({ still, canvas, base, capture = false, reduced = fal
       const bw = clip[2] - clip[0]
       const bh = clip[3] - clip[1]
       if (bw > 2 && bw < cssW * 6) {
+        // a panel in a room is a little dimmer than the desktop seen flat; arriving on it, that goes, so the cut to flat is seamless
+        const panelDim = toScreen ? 1 - smooth(clamp((three.u - 0.55) / 0.45)) : 1
         const kk = Math.max(bw / SW, bh / SH)
         setRes(world, kk, dpr())
         world.draw(list, { k: kk, ox: (clip[0] + clip[2]) / 2 - (SW * kk) / 2, oy: (clip[1] + clip[3]) / 2 - (SH * kk) / 2 }, { clip, g: 1 })
-        list.push({ x: clip[0], y: clip[1], w: bw, h: bh, col: [0, 0, 0, 0.12 + 0.88 * (1 - clamp(three.glow))], g: 0, clip })
+        list.push({ x: clip[0], y: clip[1], w: bw, h: bh, col: [0, 0, 0, 0.12 * panelDim + 0.88 * (1 - clamp(three.glow))], g: 0, clip })
       }
     }
     if (three.glow < 1 && name === "CamChair") list.push({ x: 0, y: 0, w: cssW, h: cssH, col: [0, 0, 0, 0.5 * (1 - three.glow)], g: 0 })

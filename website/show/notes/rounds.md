@@ -263,3 +263,13 @@ Then, from the probes (p6a, p6b) and the r5 frames at 100%:
     him to the pool and FOURTEEN, and a set's `<name>-tall` camera is used whenever the screen is taller than wide.
 16. The study's screen light spread 160° → 180°, so the pool on the desk has no edge (r5 critic #5, the "hot
     stripe across the keyboard").
+17. Every camera transition, frame by frame at 1/30 s (probe p6g, 14:20): the push into the screen ending in the flat
+    desktop (7.3–7.5), the pull out (147.0–147.3), the cut to the window (152.1–152.2), to the basement (155.6),
+    from black to the body (170.7) and to the card (176.7–176.9). All are clean cuts or continuous moves, with one
+    exception: in Canvas 2D the push into the still's monitor ended 12% darker than the flat desktop it hands to
+    (whites 216 → 245 in one frame), because the panel's "a screen in a room" dimming stayed on to the end. It now
+    fades out over the last 45% of the push. WebGPU has a 3% step on whites only (240 → 247: bloom adds in
+    linear light in 3D and in display light flat); left as is, below what reads at full speed.
+18. b10 (14:17): the body is now grey plastic wound with tape, creases on a slant, no ribs; the blood is dark.
+    The phone's own camera for the last shot (After-tall) ends looking along him from past his feet to the pool
+    and the FOURTEEN tag, the head half covering the tag.

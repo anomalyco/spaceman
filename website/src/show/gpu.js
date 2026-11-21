@@ -166,9 +166,16 @@ fn agx(c: vec3f) -> vec3f {
   }
   // soft bloom from the wide levels
   let wide = tent(l3, i.uv) * 0.55 + tent(l4, i.uv) * 0.45;
-  let lw = max(dot(wide, vec3f(0.2126, 0.7152, 0.0722)), 1e-4);
-  c += wide * (max(lw - pu.a.z, 0.0) / lw) * pu.a.y;
-  if (three) { c = mix(pow(max(c, vec3f(0.0)), vec3f(1.0 / 2.2)), agx(c), pu.c.z * select(1.0, 0.0, s0.a < 0.0)); }
+  if (three && s0.a < 0.0) {
+    // the panel blooms in display light, as the flat desktop does, so the hand-off between them has no step
+    let wd = pow(max(wide, vec3f(0.0)), vec3f(1.0 / 2.2));
+    let ld = max(dot(wd, vec3f(0.2126, 0.7152, 0.0722)), 1e-4);
+    c = pow(max(c, vec3f(0.0)), vec3f(1.0 / 2.2)) + wd * (max(ld - pu.a.z, 0.0) / ld) * pu.a.y;
+  } else {
+    let lw = max(dot(wide, vec3f(0.2126, 0.7152, 0.0722)), 1e-4);
+    c += wide * (max(lw - pu.a.z, 0.0) / lw) * pu.a.y;
+    if (three) { c = mix(pow(max(c, vec3f(0.0)), vec3f(1.0 / 2.2)), agx(c), pu.c.z); }
+  }
   // grade: exposure, warmth, saturation, contrast around mid grey
   c *= pu.b.z;
   c *= vec3f(1.0 + pu.c.x * 0.06, 1.0, 1.0 - pu.c.x * 0.08);
