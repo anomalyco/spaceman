@@ -1,5 +1,5 @@
 # Offline renders of our own scenes, for pictures inside his apps and the desktop wallpaper:
-#   hedge-0..3  No. 14's hedge from his drive, the same spot every morning (clear, wet, autumn, mist)
+#   hedge-0..3  No. 14's hedge from his drive (not used by the film: its mornings are phone photos)
 #   across      the photograph No. 14 sent: his study window at night, from across the street
 #   door        his doorbell camera at 11:47 PM, wide, across to No. 14
 #   wall, wall-s  his wallpaper: dunes at dusk
@@ -17,7 +17,7 @@ A = args()
 QUICK = "quick" in A
 HERE = os.path.dirname(os.path.abspath(__file__))
 OUT = next((a[4:] for a in A if a.startswith("out=")), os.path.join(HERE, "out"))
-ONLY = next((a[5:].split(",") for a in A if a.startswith("only=")), ["hedge", "across", "door", "wall"])
+ONLY = next((a[5:].split(",") for a in A if a.startswith("only=")), ["across", "door", "wall"])
 os.makedirs(OUT, exist_ok=True)
 G = -3.0
 rad = math.radians
