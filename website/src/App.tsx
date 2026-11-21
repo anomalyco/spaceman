@@ -73,7 +73,6 @@ function Product() {
           Read the documentation
         </a>
       </footer>
-      {import.meta.env.VITE_BUILD_STAMP && <p className="-mt-8 text-[11px] text-[#55544f]">Build: {import.meta.env.VITE_BUILD_STAMP}</p>}
     </div>
   );
 }
