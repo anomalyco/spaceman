@@ -273,3 +273,8 @@ Then, from the probes (p6a, p6b) and the r5 frames at 100%:
 18. b10 (14:17): the body is now grey plastic wound with tape, creases on a slant, no ribs; the blood is dark.
     The phone's own camera for the last shot (After-tall) ends looking along him from past his feet to the pool
     and the FOURTEEN tag, the head half covering the tag.
+19. The study re-baked (s14 → s17, 14:41): the binders differ in height and wear and the lower row fades; the
+    hedge across the street has a broken top edge (voxel remesh, no subdivision blobs) and No. 14's roof faces
+    out, so it catches the streetlight instead of reading as a black cut-out; the screen's light spreads 180°,
+    so the pool on the desk has no edge. CamWindow went 7 cm too high in s16 (five slats over the roof); s17
+    sits at 1.15 m, two soft slats across the top, the ridge clear.
