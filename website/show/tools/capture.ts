@@ -72,8 +72,11 @@ const shot = (page: Page, path: string) => page.screenshot({ path, type: "jpeg",
 
 if (probeArg) {
   const times = probeArg.slice(8).split(",").map(Number)
-  for (const [name, q] of [["gpu", ""], ["c2d", "canvas2d"]] as const) {
-    const { page, errors, ctx } = await open({ w: 1440, h: 900, muted: true, query: q })
+  // --phone adds a pass at an iPhone's size
+  const passes: [string, string, any][] = [["gpu", "", { w: 1440, h: 900 }], ["c2d", "canvas2d", { w: 1440, h: 900 }]]
+  if (process.argv.includes("--phone")) passes.push(["phone", "", { w: 390, h: 844, dpr: 3, mobile: true }])
+  for (const [name, q, size] of passes) {
+    const { page, errors, ctx } = await open({ ...size, muted: true, query: q })
     if (name === "gpu") await shot(page, join(out, "still.jpg"))
     await press(page)
     for (const t of times) {

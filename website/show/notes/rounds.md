@@ -257,3 +257,9 @@ Then, from the probes (p6a, p6b) and the r5 frames at 100%:
 14. The body (b8 → b9): the wrap still read as a white mannequin with ribs. The plastic is darker and greyer, the
     sheen weaker, the creases run on a slant (wound round him, not ribs), the form smoothed further, and the
     blood at the edge of the stain is darker so it stops reading pink.
+15. Phones (probe p6d, 390×844): the bar close-up cropped both ends of the bar; its framing now opens until the
+    whole bar fits the width. The low last shot, widened for a tall screen, put the wall in the middle and cut
+    him off at the right; the basement now has a second camera for an upright phone, from past his feet along
+    him to the pool and FOURTEEN, and a set's `<name>-tall` camera is used whenever the screen is taller than wide.
+16. The study's screen light spread 160° → 180°, so the pool on the desk has no edge (r5 critic #5, the "hot
+    stripe across the keyboard").

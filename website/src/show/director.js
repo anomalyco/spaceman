@@ -330,7 +330,9 @@ export function build(S) {
   at(bar - 0.1, () => (w.keysAbove = true))
   at(HOLD[0] - 0.9, () => (w.keysAbove = false))
   push(bar - 0.1, bar + 1.2, () => {
-    const D = 0.42
+    // close enough to read the cells, never so close that a narrow (phone) screen crops the bar's ends
+    const g = w.barGeom()
+    const D = Math.min(1, Math.max(0.42, ((g.w / g.sc) * BAR_BIG * 1.1) / S.SW))
     return { cx: S.SW / 2, cy: S.SH - (S.SH * D) / 2, D }
   })
   // "You're never more than one key away": 2, then 3, a beat each, then home before the visitor's turn

@@ -705,6 +705,8 @@ for name, o in groups.items():
 cams = [
     camera("Before", (0.5, 1.45, 2.1), (3.75, 3.0, 0.1), 56, dof=4.0),
     camera("After", (2.75, 1.05, 0.82), (4.05, 3.05, 0.12), 40, dof=2.5),
+    # a phone held upright: from past his feet, along him to the pool and FOURTEEN
+    camera("After-tall", (4.2, 1.2, 1.05), (4.15, 3.3, 0.1), 60, dof=2.0),
 ]
 bulb.hide_render = False
 export_glb(os.path.join(OUT, "basement.glb"), list(groups.values()) + [bulb] + cams)
@@ -738,3 +740,6 @@ if "previews" in A:
         groups["StateAfter"].hide_render = state != "StateAfter"
         groups["StateBefore"].hide_render = state == "StateAfter"
         render_still(os.path.join(PREV, c.name + "-" + state + ".jpg"), c, 1600, 1000, 64)
+    groups["StateAfter"].hide_render = False
+    groups["StateBefore"].hide_render = True
+    render_still(os.path.join(PREV, "After-tall.jpg"), cams[2], 600, 1300, 64)

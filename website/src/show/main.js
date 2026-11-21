@@ -201,8 +201,11 @@ export function createShow({ still, canvas, base, capture = false, reduced = fal
   // a named camera, its field of view opened up on tall screens so the subject still fits across
   function namedShot(name) {
     // a camera from a set that isn't here yet falls back to the room
-    const c = room.meta[setOf(name)]?.cameras[name] || room.meta.study.cameras.CamRoom
     const A = cssW / cssH
+    // a set may frame a shot again for a phone held upright
+    const tall = A < 0.8 && room.meta[setOf(name)]?.cameras[name + "-tall"]
+    if (tall) return { pos: tall.pos, dir: tall.dir, vfov: tall.vfov, focus: tall.focus || 3, aperture: tall.focus ? 0.9 : 0, tm: 1 }
+    const c = room.meta[setOf(name)]?.cameras[name] || room.meta.study.cameras.CamRoom
     const k = A < 1.25 ? (1.25 / A) ** 0.42 : 1
     const vfov = (2 * Math.atan(Math.tan(((c.vfov * Math.PI) / 180) / 2) * k) * 180) / Math.PI
     return { pos: c.pos, dir: c.dir, vfov, focus: c.focus || 3, aperture: c.focus ? 0.9 : 0, tm: 1 }
