@@ -5,7 +5,7 @@ native window, including a selected Ghostty native tab, can change physical Acce
 without creating a new tile. Spaceman keeps the logical slot and replaces its physical binding when
 the evidence is unambiguous.
 
-[Website](https://spaceman.kitlangton.dev) · [Download for Apple silicon](https://pub-6f85d683ffe0419cad0a71508904053a.r2.dev/releases/Spaceman-v0.1.6-macos-arm64.zip)
+[Website](https://spaceman.kitlangton.dev) · [Download for Apple silicon](https://pub-6f85d683ffe0419cad0a71508904053a.r2.dev/releases/Spaceman-v0.2.0-macos-arm64.zip)
 
 > [!WARNING]
 > Disable AeroSpace, yabai, Amethyst, and every other window manager before first opening Spaceman
@@ -44,12 +44,21 @@ The current preview is a Developer ID-signed, notarized arm64 build for Apple si
 experimental; read [Known limitations](docs/limitations.md) before installing it.
 
 1. Disable every other window manager. For AeroSpace: `aerospace enable off`.
-2. Download [Spaceman 0.1.6 for Apple silicon](https://pub-6f85d683ffe0419cad0a71508904053a.r2.dev/releases/Spaceman-v0.1.6-macos-arm64.zip)
-   and its [SHA-256 checksum](https://pub-6f85d683ffe0419cad0a71508904053a.r2.dev/releases/Spaceman-v0.1.6-macos-arm64.zip.sha256).
-3. In the download directory, run `shasum -a 256 -c Spaceman-v0.1.6-macos-arm64.zip.sha256`.
-4. Unzip it, move `Spaceman.app` to `/Applications`, and open it.
-5. Link the bundled CLI: `mkdir -p "$HOME/.local/bin" && ln -sf "/Applications/Spaceman.app/Contents/MacOS/spaceman" "$HOME/.local/bin/spaceman"`.
-6. Complete the Accessibility setup shown by Spaceman.
+2. Download, install and open the latest build:
+
+   ```sh
+   curl -fL https://pub-6f85d683ffe0419cad0a71508904053a.r2.dev/releases/Spaceman-latest-macos-arm64.zip -o /tmp/Spaceman.zip \
+     && ditto -x -k /tmp/Spaceman.zip /Applications && open /Applications/Spaceman.app
+   ```
+
+3. Follow the setup tour, which walks through granting Accessibility access.
+4. Optionally link the bundled CLI: `mkdir -p "$HOME/.local/bin" && ln -sf "/Applications/Spaceman.app/Contents/MacOS/spaceman" "$HOME/.local/bin/spaceman"`.
+
+To check the download first, get
+[Spaceman 0.2.0 for Apple silicon](https://pub-6f85d683ffe0419cad0a71508904053a.r2.dev/releases/Spaceman-v0.2.0-macos-arm64.zip)
+and its [SHA-256 checksum](https://pub-6f85d683ffe0419cad0a71508904053a.r2.dev/releases/Spaceman-v0.2.0-macos-arm64.zip.sha256),
+run `shasum -a 256 -c Spaceman-v0.2.0-macos-arm64.zip.sha256`, then unzip it and move `Spaceman.app`
+to `/Applications`.
 
 Later preview updates are signed and delivered through Sparkle. Use Spaceman Settings for upgrades. If
 a manual replacement is necessary, pause and quit the running version and confirm that every parked
