@@ -268,8 +268,9 @@ Then, from the probes (p6a, p6b) and the r5 frames at 100%:
     from black to the body (170.7) and to the card (176.7–176.9). All are clean cuts or continuous moves, with one
     exception: in Canvas 2D the push into the still's monitor ended 12% darker than the flat desktop it hands to
     (whites 216 → 245 in one frame), because the panel's "a screen in a room" dimming stayed on to the end. It now
-    fades out over the last 45% of the push. WebGPU has a 3% step on whites only (240 → 247: bloom adds in
-    linear light in 3D and in display light flat); left as is, below what reads at full speed.
+    fades out over the last 45% of the push. WebGPU had a 3% step on whites only (240 → 247: bloom added in
+    linear light in 3D and in display light flat). The panel's bloom is now added in display light like the flat
+    path; probe p6h measures whites 248 / 248 / 247 across 7.3 / 7.37 / 7.4, and Canvas 2D 245 on both sides.
 18. b10 (14:17): the body is now grey plastic wound with tape, creases on a slant, no ribs; the blood is dark.
     The phone's own camera for the last shot (After-tall) ends looking along him from past his feet to the pool
     and the FOURTEEN tag, the head half covering the tag.
@@ -298,3 +299,8 @@ Then, from the probes (p6a, p6b) and the r5 frames at 100%:
 24. Its #8, the two-inch violation was harder to read than the caption. A bracket now joins the measured line and
     the dashed limit at their right end, labelled "+2″", pulled in on narrow crops so it fits a phone (p6m, p6n:
     WebGPU, Canvas 2D, phone at 98.5).
+25. b11 (15:27; mini's Blender aborts at launch with an NSException, so the render is sent to pro). Its #9 and
+    "other": the trail read as a row of brush dabs (its shade and width ran on sines). It is one continuous drag
+    now, width and density from noise, thinning toward the sheet. The third sheet's far corner is turned back
+    where the tape gave up, and one knelt-on crease runs across it toward the bulb (subtle at film size).
+    Probe p6z (157, 170.77, 176.6 and the before/after times): no errors on any path.

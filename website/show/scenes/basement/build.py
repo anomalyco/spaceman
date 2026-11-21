@@ -401,6 +401,12 @@ def sheet_z(x, y):
     wob = 1 + 0.5 * mnoise.noise(Vector((x * 2.0, y * 2.0, 4.0)))
     for d in (FX1 - x, FY1 - y):
         z += 0.022 * wob * max(0.0, 1 - d / 0.07) ** 2.2
+    # the far corner turned back on itself where the tape gave up
+    z += 0.05 * max(0.0, 1 - ((FX1 - x) + (FY1 - y)) / 0.3) ** 2
+    # one hard crease across it, where it was knelt on, that catches the bulb
+    dx, dy = x - (FX0 + 0.35), y - (FY1 - 0.55)
+    dist = abs(dx * 0.42 - dy * 0.91)
+    z += 0.007 * max(0.0, 1 - dist / 0.018) ** 1.5 * min(1.0, max(0.0, 1.6 - math.hypot(dx, dy)) / 0.4)
     return z
 
 
@@ -640,13 +646,14 @@ for i in range(NU + 1):
     t = i / NU
     p, tg, tot = along(t)
     nrm = Vector((-tg.y, tg.x))
-    w = 0.2 + 0.08 * math.sin(t * 19) + 0.04 * math.sin(t * 53)
+    w = 0.2 + 0.06 * mnoise.noise(Vector((t * 9.0, 0.3, 1.7))) + 0.03 * mnoise.noise(Vector((t * 31.0, 0.6, 2.9)))
     row = []
     for j in range(NV + 1):
         s = (j / NV - 0.5) * 2
         q = p + nrm * s * w / 2
         row.append(bm.verts.new((q.x, q.y, 0.0035)))
-        fade = min(1.0, t * 6) * (0.55 + 0.45 * math.sin(t * 31 + 1.3) ** 2) * (1 - 0.6 * t)
+        # one continuous drag, thinning as it goes, not a row of dabs
+        fade = min(1.0, t * 6) * (0.72 + 0.28 * mnoise.noise(Vector((t * 7.0, s * 1.5, 3.3)))) * (1 - 0.55 * t)
         shade.append(max(0.0, (1 - s * s * 1.1)) * fade)
     rows.append(row)
 for i in range(NU):
