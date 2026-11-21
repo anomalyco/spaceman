@@ -183,6 +183,9 @@ def street():
 walls()
 desk()
 lit14 = street()
+# No. 14's front (the house, its hedge, its door): what CamWindow looks at, baked on its own atlas
+FRONT = [o for o in STREET if 19.0 < o.location.x < 34.0 and -5.0 < o.location.y < 9.5]
+STREET[:] = [o for o in STREET if o not in FRONT]
 
 # not baked: the screen, the glass, No. 14's lit window
 mx, my, mz = 2.0, RD - 0.27, 1.07
@@ -202,15 +205,19 @@ bg, street_lights = street_mod.night(G)
 lights_base = street_lights + [
     light("hall", "AREA", (0.72, -0.7, 2.2), 30, (1.0, 0.72, 0.45), (0.5, 0.5), target=(0.72, -0.7, 0)),
     lit14,
+    # the streetlight by No. 14 catches its clapboard from the side
+    light("facade14", "SPOT", (18.4 - 1.15, -6.0, G + 6.35), 3500, (0.72, 0.82, 1.0), 0.1, target=(26.0, 1.8, G + 2.6), spot=50, blend=0.7),
 ]
 screen_light = light("screenLight", "AREA", (mx, my - 0.02, mz + 0.004), 22, (0.93, 0.91, 0.87), (PW, PH), target=(mx, my - 5, mz))
 screen_light.data.spread = rad(160)
 
 # ── bake ──
-res = {"Near": 1024 if QUICK else 2048, "Room": 2048 if QUICK else 4096, "Street": 1024 if QUICK else 2048, "Lit14": 256 if QUICK else 512}
+res = {"Near": 1024 if QUICK else 2048, "Room": 2048 if QUICK else 4096, "Street": 1024 if QUICK else 2048, "Front14": 512 if QUICK else 2048, "Lit14": 256 if QUICK else 512}
 eres = {k: v // 2 for k, v in res.items()}
 samples = 48 if QUICK else 400
-groups = {"Near": join("Near", NEAR), "Room": join("Room", ROOM), "Street": join("Street", STREET), "Lit14": join("Lit14", LIT)}
+groups = {"Near": join("Near", NEAR), "Room": join("Room", ROOM), "Street": join("Street", STREET), "Front14": join("Front14", FRONT), "Lit14": join("Lit14", LIT)}
+# the dim, far surfaces outside need more samples than the room to bake clean
+gsamples = {"Street": samples * 2, "Front14": samples * 3}
 for o in groups.values():
     uv_atlas(o)
 
@@ -220,7 +227,7 @@ baked = {}
 # 1: everything except the screen
 screen_light.hide_render = True
 for name, o in groups.items():
-    img = bake_into(o, name + "_base", res[name], samples)
+    img = bake_into(o, name + "_base", res[name], gsamples.get(name, samples))
     s = auto_scale(img)
     meta["scale"][name] = s
     baked[name] = [save_jpeg(img, os.path.join(PREV, "..", "bake", name + "-base.jpg"), s), None]
@@ -237,6 +244,10 @@ for name in ("Near", "Room"):
     baked[name][1] = save_jpeg(img, os.path.join(PREV, "..", "bake", name + "-emit.jpg"), s, k=2)
 
 # ── export ──
+# the night sky behind the houses: not baked, drawn as its own faint emission
+skym = mat("Sky", (0.0, 0.0, 0.0), 1.0, emit=(0.030, 0.040, 0.068), strength=1.0)
+skyplane = box("SkyPlane", (75.0, 0.0, G + 25.0), (0.1, 260.0, 70.0), skym, 0)
+meta["emitStrength"] = {"Sky": 1.0}
 for name, o in groups.items():
     only_uv(o)
     set_material(o, baked_material(name, *baked[name]))
@@ -245,9 +256,10 @@ cams = [
     camera("CamChair", (mx + 0.16, RD - 1.5, 1.24), (mx - 0.02, my, 0.98), 44, dof=2.8),
     camera("CamDesk", (mx + 0.62, RD - 0.98, 0.82), (mx, my, 0.96), 40, dof=2.0),
     camera("CamRoom", (0.72, 0.25, 1.62), (2.35, 2.65, 1.0), 52, dof=4),
-    camera("CamWindow", (RW - 0.42, 2.25, 1.06), (26.0, 1.8, G + 3.85), 24, dof=4),
+    # from just under the blinds: the bottom rail and the last slats soft across the top of the frame
+    camera("CamWindow", (RW - 0.3, 2.25, 1.21), (26.0, 1.8, G + 3.85), 24, dof=4),
 ]
-export_glb(os.path.join(OUT, "study.glb"), list(groups.values()) + [screen, glass] + cams)
+export_glb(os.path.join(OUT, "study.glb"), list(groups.values()) + [screen, glass, skyplane] + cams)
 
 
 def gl(v):  # Blender Z-up → glTF Y-up
