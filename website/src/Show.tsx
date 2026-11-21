@@ -4,7 +4,7 @@ export const RELEASE_VERSION = "0.2.0";
 export const DOWNLOAD_URL = `https://pub-6f85d683ffe0419cad0a71508904053a.r2.dev/releases/Spaceman-v${RELEASE_VERSION}-macos-arm64.zip`;
 
 type Phase = "still" | "loading" | "live" | "ended";
-type Caption = { id: string; text: string } | null;
+type Caption = { text: string; high?: boolean } | null;
 type ShowApi = {
   phase: Phase;
   start(o: { context: AudioContext | null; muted: boolean }): Promise<void>;
@@ -169,7 +169,7 @@ export function Show({ header }: { header: React.ReactNode }) {
       )}
 
       {live && (
-        <div className="absolute top-3 right-3 flex gap-2 sm:top-auto sm:right-6 sm:bottom-6">
+        <div className="absolute top-3 left-3 flex gap-2 sm:top-auto sm:left-auto sm:right-6 sm:bottom-6">
           <button type="button" onClick={() => show.current?.skip()} className="h-9 rounded-full border border-white/10 bg-black/45 px-4 text-[13px] text-[#d8d5ce] backdrop-blur hover:bg-black/60">
             Skip
           </button>
@@ -183,13 +183,13 @@ export function Show({ header }: { header: React.ReactNode }) {
       )}
 
       {captions && caption && phase === "live" && (
-        <p aria-live="polite" className="pointer-events-none absolute inset-x-0 bottom-[17%] mx-auto w-fit max-w-[min(90vw,46rem)] rounded-lg bg-black/70 px-4 py-2 text-center text-[clamp(15px,2.1vw,21px)] leading-snug text-[#f4f2ee]">
+        <p aria-live="polite" className={`pointer-events-none absolute inset-x-0 ${caption.high ? "bottom-[64%]" : "bottom-[17%]"} mx-auto w-fit max-w-[min(90vw,46rem)] rounded-lg bg-black/70 px-4 py-2 text-center text-[clamp(15px,2.1vw,21px)] leading-snug text-[#f4f2ee]`}>
           {caption.text}
         </p>
       )}
 
       {hint && phase === "live" && (
-        <p className="pointer-events-none absolute inset-x-0 bottom-[15%] mx-auto w-fit rounded-full bg-black/70 px-4 py-2 text-[15px] text-[#ece9e3] backdrop-blur">
+        <p className="pointer-events-none absolute inset-x-0 bottom-[26%] mx-auto w-fit rounded-full bg-black/70 px-4 py-2 text-[15px] text-[#ece9e3] backdrop-blur">
           {touch ? "Your turn. Tap a workspace in the bar." : "Your turn. Try ⌥2, then ⌥3."}
         </p>
       )}

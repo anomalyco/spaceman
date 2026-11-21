@@ -277,12 +277,13 @@ export function createShow({ still, canvas, base, capture = false, reduced = fal
     while (li < LINES.length && t > LINES[li][2] + 0.6) li++
     const L = LINES[li]
     const on = L && t >= L[1] - 0.05 && (li + 1 >= LINES.length || t < LINES[li + 1][1] - 0.05)
-    setCaption(on ? L[0] : null)
+    const high = !!(on && S.capHigh && L[1] >= S.capHigh[0] && L[1] <= S.capHigh[1])
+    setCaption(on ? L[0] : null, high)
   }
-  function setCaption(text) {
+  function setCaption(text, high = false) {
     if (text === caption) return
     caption = text
-    emit("caption", text ? { text } : null)
+    emit("caption", text ? { text, high } : null)
   }
 
   function setup() {

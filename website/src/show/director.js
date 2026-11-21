@@ -250,8 +250,10 @@ export function build(S) {
   // ── The bar ──
   const bar = word("bar along", 41)
   at(bar - 0.2, () => (w.bar.scale.t = BAR_BIG))
+  // its sentences sit high on the screen while the camera is down at the bar
+  S.capHigh = [word("There's a bar", 41) - 0.1, word("You're never more", 44) + 0.1]
   push(bar - 0.1, bar + 1.2, () => {
-    const D = 0.56
+    const D = 0.42
     return { cx: S.SW / 2, cy: S.SH - (S.SH * D) / 2, D }
   })
   const away = word("one key away", 45)
