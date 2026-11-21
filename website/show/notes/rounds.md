@@ -295,3 +295,6 @@ Then, from the probes (p6a, p6b) and the r5 frames at 100%:
     HiveMind's 30-minute browser cap (r6 was killed at frame 3,600 of 5,303). Main-thread time per frame at
     1440×900 @2x: busiest section p50 1.0 / p95 3.2 / max 11.2 ms (r5: 1.0 / 3.6 / 9.0); ending p50 0.9 / p95
     1.4 / max 3.4 ms. No errors on WebGPU, Canvas 2D, reduced motion or phone.
+24. Its #8, the two-inch violation was harder to read than the caption. A bracket now joins the measured line and
+    the dashed limit at their right end, labelled "+2″", pulled in on narrow crops so it fits a phone (p6m, p6n:
+    WebGPU, Canvas 2D, phone at 98.5).

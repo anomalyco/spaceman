@@ -173,7 +173,9 @@ function drawOpen(ctx, e, R, d, a) {
     const yl = Y(top + 0.03)
     const fs = Math.max(11, Math.min(17, R.w * 0.022))
     const x0 = X(e.plate === "h-tape" ? 0.2 : 0.3)
-    const x1 = X(e.plate === "h-tape" ? 0.62 : 0.76)
+    const fsz = Math.max(11, Math.min(17, R.w * 0.022))
+    // leave room for the "+2″" bracket on narrow (phone) crops
+    const x1 = Math.min(X(e.plate === "h-tape" ? 0.62 : 0.76), R.x + R.w - fsz * 2.4 - 14)
     ctx.fillStyle = "rgba(255,255,255,.94)"
     ctx.fillRect(x0, yt - 0.7, x1 - x0, 1.5)
     label(ctx, d.measure || "6′ 2″", x0 + 4, yt - 6, fs, 600, "rgba(255,255,255,.96)")
@@ -187,6 +189,13 @@ function drawOpen(ctx, e, R, d, a) {
       ctx.stroke()
       ctx.setLineDash([])
       label(ctx, "6′ 0″ limit", x0 + 4, yl + fs + 4, fs, 600, "rgba(255,150,130,.98)")
+      // the two inches over, bracketed at the end of the lines
+      const bx = x1 + 6
+      ctx.fillStyle = "rgba(255,150,130,.98)"
+      ctx.fillRect(bx, yt - 0.7, 1.5, yl - yt + 1.4)
+      ctx.fillRect(bx - 4, yt - 0.7, 5.5, 1.5)
+      ctx.fillRect(bx - 4, yl - 0.7, 5.5, 1.5)
+      label(ctx, "+2″", bx + 6, (yt + yl) / 2 + fs * 0.36, fs, 700, "rgba(255,150,130,.98)")
     }
   }
   ctx.restore()
