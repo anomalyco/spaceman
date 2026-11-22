@@ -348,3 +348,18 @@ and played as video, with the live desktop set on the panel's quad in every fram
    light falls on the room and nothing sharp can ghost through the live overlay as it fades up.
    `show/tools/plate.ts` encodes H.264 (faststart, BT.709, keyframe every 0.5 s) and VP9, and writes
    `opening.json` (per frame: corners, glow).
+
+## Round f-1 (critic: gpt-6.1-sol, `critique-f1-sol.md`, feed frames 89.2–176.5 s at 1x)
+
+7. Its #3, the clocks disagree at the end: the menu bar still said Fri 11:56 PM over a cellar camera stamped
+   Sat 12:04 AM. The menu bar now moves on to Sat Nov 21 12:04 AM when six opens.
+8. Its #2, generic web type: at 2x (`capture.ts --x2`) the desktop is SF Pro with clean edges; the softness was
+   the 1x JPEG capture. Not changed.
+9. Not taken: #1, grain, vignette and the grade over the UI (this is a film of a screen, not a screen recording;
+   the renderer brief asks for them); #4–#7 (window construction, app fidelity, the streetlight cone, the cellar
+   shrouds) wait for the tape Kit picks, since tape H changes the feeds.
+10. Plate encodes, measured on frames 0–109 of the 2400×1500 16-bit plate, decoded to 16-bit and levelled ×2–×5
+    in the dark wall and floor (`band-wall.png`, `band-floor.png` on the report page): no banding in any of the
+    three. HEVC Main 10 at CRF 18 keeps the plaster grain (SSIM 0.992); VP9 at CRF 24 smoothed it, so VP9 moved
+    to CRF 19 (0.993); dithered H.264 at CRF 16 is noisier (0.942) but unbanded.
+

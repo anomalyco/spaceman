@@ -33,7 +33,7 @@ const yuv = (fmt: string, dither = "none") => ["-vf", `scale=out_color_matrix=bt
 run("opening-hevc.mp4", [...yuv("yuv420p10le"), "-c:v", "libx265", "-preset", "slow", "-crf", String(+crf + 2), "-tag:v", "hvc1",
   "-x265-params", "log-level=error:keyint=15:min-keyint=15:bframes=2:aq-mode=3:no-sao=1:colorprim=bt709:transfer=bt709:colormatrix=bt709:range=limited",
   "-movflags", "+faststart"])
-run("opening.webm", [...yuv("yuv420p10le"), "-c:v", "libvpx-vp9", "-profile:v", "2", "-crf", String(+crf + 8), "-b:v", "0", "-row-mt", "1", "-g", "15",
+run("opening.webm", [...yuv("yuv420p10le"), "-c:v", "libvpx-vp9", "-profile:v", "2", "-crf", String(+crf + 3), "-b:v", "0", "-row-mt", "1", "-g", "15",
   "-deadline", "good", "-cpu-used", "2"])
 run("opening.mp4", [...yuv("yuv420p", "ed"), "-c:v", "libx264", "-preset", "slow", "-tune", "film", "-crf", crf, "-g", "15", "-bf", "2",
   "-x264-params", "aq-mode=3", "-movflags", "+faststart"])

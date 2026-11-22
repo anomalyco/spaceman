@@ -632,6 +632,8 @@ export function build(S) {
   at(now + 0.9, () => w.close("f14"))
   const others = word("With the others")
   at(others - 0.6, () => {
+    // time has passed downstairs: the menu bar agrees with the cellar camera
+    w.clock = "Sat Nov 21  12:04 AM"
     w.veiled.delete(6)
     w.add({ ws: 6, id: "cellar", app: "vigil", kind: "feed", title: "Cellar", dark: 1, data: { src: "cam-cellar", name: "CELLAR", us: 1, ir: 1, q: 0.3, seed: 37, date: "11-21-2026", clock: 4 * 60 + 12 - w.time } })
   })
