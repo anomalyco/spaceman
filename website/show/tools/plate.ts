@@ -3,7 +3,6 @@
 // corners and the screen's glow). Run where ffmpeg is: bun show/tools/plate.ts <frames dir> [crf]
 import { readdirSync, mkdirSync } from "node:fs"
 import { join } from "node:path"
-import { TAPE } from "../../src/show/tape.js"
 
 const dir = process.argv[2]
 const crf = process.argv[3] ?? "16"
@@ -45,7 +44,7 @@ await Bun.write(
     fps: 30,
     frames: n,
     size: [w, h],
-    end: TAPE.marks.head + 0.7, // director.js: the move's end, the hand-off to the flat desktop
+    end: 7.382, // director.js INTRO: the move's end, the hand-off to the flat desktop
     land: 4.5, // from here the frame eases onto where the flat desktop's panel will be
     glow: Array.from({ length: n }, (_, i) => meta[i].glow),
     corners: Array.from({ length: n }, (_, i) => meta[i].corners.map(([x, y]) => [r(x), r(y)])),
