@@ -14,12 +14,13 @@ import { Audio } from "./audio.js"
 import { LINES, TAPE } from "./tape.js"
 import { plates, loadPlate, coverUV } from "./plates.js"
 import { PHOTOS } from "./library.js"
+import { FEEDS } from "./feeds.js"
 import { loadGLB, mul, perspective, lookAt, norm, sub, add, scale, cross, dot, lerp3 } from "./glb.js"
 import { clamp, mix, smooth } from "./springs.js"
 
 // pictures inside his apps (renders of our own scenes), and the stills Canvas 2D uses for the room
-const PLATES = ["wall", "wall-s", "door", "across"]
-const STILLS = { CamChair: "chair", CamRoom: "room", CamWindow: "window", Before: "before", After: "after" }
+const PLATES = ["wall", "wall-s", "across"]
+const STILLS = { CamChair: "chair", CamRoom: "room" }
 const HANDOFF_FOV = 30
 
 export function createShow({ still, canvas, base, capture = false, reduced = false, on = {} }) {
@@ -128,9 +129,8 @@ export function createShow({ still, canvas, base, capture = false, reduced = fal
   // ── The room ───────────────────────────────────────────────────────────
   // three.a → three.b at three.u: named cameras (study.json), or "screen": the camera whose view of
   // the panel is exactly what the flat desktop shows right now.
-  const three = { on: false, a: "CamChair", b: "CamChair", u: 0, glow: 1, black: 0, drift: 0.1, after: false }
-  // the study, then the basement; each is a GLB and its study.json (cameras, the panel, bake scales)
-  const SETS = ["study", "basement"]
+  const three = { on: false, a: "CamChair", b: "CamChair", u: 0, glow: 1, drift: 0.1 }
+  // the study: a GLB and its study.json (cameras, the panel, bake scales)
   const room = { meta: {}, glb: {}, loading: {}, up: new Set() }
   function loadRoom(set = "study") {
     room.loading[set] ||= Promise.all([fetch(base + "3d/" + set + ".json").then((r) => r.json()), loadGLB(base + "3d/" + set + ".glb")])
@@ -156,12 +156,10 @@ export function createShow({ still, canvas, base, capture = false, reduced = fal
       await renderer.loadScene(set, room.glb[set], room.meta[set])
       room.glb[set] = null
       room.up.add(set)
-      if (set === "basement") renderer.setVisible("basement", "StateAfter", false)
     }
     return true
   }
-  const setOf = (name) => (room.meta.basement?.cameras[name] ? "basement" : "study")
-  const in3d = () => three.on && room.up.has("study") && (room.up.has(setOf(three.b)) || !room.meta.basement) && renderer?.render3d
+  const in3d = () => three.on && room.up.has("study") && renderer?.render3d
 
   // the panel's texture: the desktop fitted into it, the wallpaper past its edges
   function panel() {
@@ -200,12 +198,11 @@ export function createShow({ still, canvas, base, capture = false, reduced = fal
 
   // a named camera, its field of view opened up on tall screens so the subject still fits across
   function namedShot(name) {
-    // a camera from a set that isn't here yet falls back to the room
     const A = cssW / cssH
     // a set may frame a shot again for a phone held upright
-    const tall = A < 0.8 && room.meta[setOf(name)]?.cameras[name + "-tall"]
+    const tall = A < 0.8 && room.meta.study?.cameras[name + "-tall"]
     if (tall) return { pos: tall.pos, dir: tall.dir, vfov: tall.vfov, focus: tall.focus || 3, aperture: tall.focus ? 0.9 : 0, tm: 1 }
-    const c = room.meta[setOf(name)]?.cameras[name] || room.meta.study.cameras.CamRoom
+    const c = room.meta.study?.cameras[name] || room.meta.study.cameras.CamRoom
     const k = A < 1.25 ? (1.25 / A) ** 0.42 : 1
     const vfov = (2 * Math.atan(Math.tan(((c.vfov * Math.PI) / 180) / 2) * k) * 180) / Math.PI
     return { pos: c.pos, dir: c.dir, vfov, focus: c.focus || 3, aperture: c.focus ? 0.9 : 0, tm: 1 }
@@ -213,8 +210,7 @@ export function createShow({ still, canvas, base, capture = false, reduced = fal
   const shotOf = (n) => (n === "screen" ? screenShot() : namedShot(n))
 
   function camera3() {
-    // a move between the sets is a cut
-    const a = setOf(three.a) === setOf(three.b) ? three.a : three.b
+    const a = three.a
     const A = shotOf(a)
     const B = three.b === a ? A : shotOf(three.b)
     const u = three.u
@@ -261,15 +257,13 @@ export function createShow({ still, canvas, base, capture = false, reduced = fal
     world.draw(list, G, { g: 1 })
     const c = camera3()
     const fx3 = { ...fx, dof: c.aperture > 0 ? 1 : 0, focus: null }
-    const set = setOf(three.b)
-    if (set === "basement") renderer.setVisible("basement", "StateAfter", three.after), renderer.setVisible("basement", "StateBefore", !three.after)
     renderer.render3d(list, tw, th, cssW, cssH, grade, fx3, {
-      key: set,
+      key: "study",
       vp: c.vp,
       eye: c.eye,
       glow: three.glow,
       lit: 1,
-      exposure: 1 - clamp(three.black),
+      exposure: 1,
       screenCol: [1, 1, 1, 1],
       focus: c.focus,
       aperture: c.aperture,
@@ -282,7 +276,7 @@ export function createShow({ still, canvas, base, capture = false, reduced = fal
   let rendererIn = null
   let platesIn = null
   let prepping = null
-  const stillsIn = () => Promise.all([...Object.values(STILLS).map((p) => loadPlate(base, p)), loadMeta("study"), loadMeta("basement")])
+  const stillsIn = () => Promise.all([...Object.values(STILLS).map((p) => loadPlate(base, p)), loadMeta("study")])
   function prepare() {
     if (prepping) return prepping
     const wantGPU = !new URLSearchParams(location.search).has("canvas2d")
@@ -291,16 +285,13 @@ export function createShow({ still, canvas, base, capture = false, reduced = fal
       .then((x) => x.json())
       .then((m) => (manifest = m))
       .catch(() => null)
-    platesIn = Promise.all([...PLATES.map((p) => loadPlate(base, p)), ...PHOTOS.map((p) => loadPlate(base, p, "photos/"))])
+    platesIn = Promise.all([...PLATES.map((p) => loadPlate(base, p)), ...PHOTOS.map((p) => loadPlate(base, p, "photos/")), ...FEEDS.map((p) => loadPlate(base, p, "feeds/"))])
     prepping = Promise.all([
       manifestIn.then((m) => m && audio.load(m)),
       loadPlate(base, "wall"),
       rendererIn.then((r) =>
         r.render3d
-          ? uploadRoom().then((ok) => {
-              if (!ok) return stillsIn()
-              void uploadRoom("basement")
-            })
+          ? uploadRoom().then((ok) => (ok ? null : stillsIn()))
           : stillsIn(),
       ),
     ]).then(() => true)
@@ -324,7 +315,7 @@ export function createShow({ still, canvas, base, capture = false, reduced = fal
   function drawStillShot(list) {
     const toScreen = three.b === "screen"
     const name = toScreen ? three.a : three.b
-    const img = plates[STILLS[name === "Before" && three.after ? "After" : name]]
+    const img = plates[STILLS[name]]
     if (!img) {
       list.push({ x: 0, y: 0, w: cssW, h: cssH, col: [0.02, 0.02, 0.025, 1], g: 0 })
       return
@@ -366,7 +357,6 @@ export function createShow({ still, canvas, base, capture = false, reduced = fal
       }
     }
     if (three.glow < 1 && name === "CamChair") list.push({ x: 0, y: 0, w: cssW, h: cssH, col: [0, 0, 0, 0.5 * (1 - three.glow)], g: 0 })
-    if (three.black > 0) list.push({ x: 0, y: 0, w: cssW, h: cssH, col: [0, 0, 0, clamp(three.black)], g: 0 })
   }
 
   function buildList() {
@@ -491,7 +481,7 @@ export function createShow({ still, canvas, base, capture = false, reduced = fal
     li = 0
     grade.fill(0)
     Object.assign(fx, POST_DEFAULT)
-    Object.assign(three, { on: false, a: "CamChair", b: "CamChair", u: 0, glow: 1, black: 0, drift: 0.1, after: false })
+    Object.assign(three, { on: false, a: "CamChair", b: "CamChair", u: 0, glow: 1, drift: 0.1 })
     look.focus = null
     cam.D = 1
     cam.cx = SW / 2
@@ -643,7 +633,7 @@ export function createShow({ still, canvas, base, capture = false, reduced = fal
       await rendererIn
       await Promise.race([ready, new Promise((res) => setTimeout(res, capture ? 60000 : 1200))])
       if (!room.up.has("study")) void stillsIn()
-      if (capture) await Promise.all([ready, uploadRoom("basement"), platesIn])
+      if (capture) await Promise.all([ready, platesIn])
       for (const w of world.wins.values()) w.dirty = true
       phase = "live"
       emit("phase", "live")

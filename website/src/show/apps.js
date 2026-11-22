@@ -12,7 +12,7 @@ export const APPS = {
   paper: { name: "Paper", bg: ["#f0a35e", "#d9803a"] },
   sheets: { name: "Sheets", bg: ["#6cbf7d", "#43a05a"] },
   viewer: { name: "Viewer", bg: ["#9fb4c8", "#7290ad"] },
-  doorbell: { name: "Doorbell", bg: ["#3a3f47", "#1f2328"] },
+  vigil: { name: "Vigil", bg: ["#2f343b", "#15181c"] },
   call: { name: "Call", bg: ["#5cc27a", "#36a058"] },
   spaceman: { name: "Spaceman", bg: ["#2b2d33", "#17181c"] },
   plans: { name: "Plans", bg: ["#6f8db0", "#4c6a8e"] },
@@ -126,7 +126,7 @@ function glyph(ctx, app, s) {
       ctx.arc(s * 0.66, s * 0.32, s * 0.07, 0, Math.PI * 2)
       ctx.fill()
       break
-    case "doorbell":
+    case "vigil":
       ctx.fillStyle = "#0c0e11"
       ctx.beginPath()
       ctx.arc(s * 0.5, s * 0.5, s * 0.24, 0, Math.PI * 2)

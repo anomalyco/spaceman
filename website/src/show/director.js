@@ -50,8 +50,8 @@ export function wordEnd(phrase, after) {
   return WORDS[i + n - 1][2]
 }
 const LAST = WORDS[WORDS.length - 1]
-// the film ends on the last word, with a beat; the interview runs on under the card
-export const END = LAST[2] + 1.1
+// the film ends on six, a held beat after the last word; the interview runs on under the card
+export const END = LAST[2] + 2.6
 
 const NOTE = ["call about the gutters", "drill → return", "passwords??", "organize notes", "hedge (ask)"]
 
@@ -90,7 +90,7 @@ function mail() {
 }
 
 // The grade follows the story: a warm, tired night; clean light once things have places; mornings;
-// the months cooling; a cold November night; the dark study; the kitchen's lamp.
+// the months cooling; a cold November night; six.
 const LK = {
   night: { exposure: 0.93, warmth: 0.35, saturation: 0.92, contrast: 1.02, vignette: 0.3, bloom: 0.16, g: [0, 0, 0] },
   clean: { exposure: 1.0, warmth: 0.12, saturation: 1.0, contrast: 1.03, vignette: 0.22, bloom: 0.16, g: [0, 0, 0] },
@@ -101,18 +101,15 @@ const LK = {
   nov: { exposure: 0.9, warmth: -0.3, saturation: 0.82, contrast: 1.05, vignette: 0.3, bloom: 0.17, g: [0.05, 0.35, 0.08] },
   six: { exposure: 0.84, warmth: -0.5, saturation: 0.7, contrast: 1.08, vignette: 0.38, bloom: 0.18, g: [0.14, 0.5, 0.1] },
   room: { exposure: 1.0, warmth: 0.05, saturation: 0.95, contrast: 1.02, vignette: 0.32, bloom: 0.16, g: [0, 0, 0] },
-  study: { exposure: 1.0, warmth: -0.15, saturation: 0.9, contrast: 1.04, vignette: 0.4, bloom: 0.2, g: [0.12, 0.45, 0.1] },
-  street: { exposure: 1.0, warmth: 0.1, saturation: 0.9, contrast: 1.05, vignette: 0.42, bloom: 0.26, g: [0.12, 0.45, 0.1] },
-  down: { exposure: 1.0, warmth: 0.15, saturation: 0.85, contrast: 1.08, vignette: 0.5, bloom: 0.2, g: [0.14, 0.5, 0.1] },
 }
 // The grade follows the story: a warm, tired night; clean light once things have places; mornings;
-// the months cooling; a cold November night; six; the dark study; the kitchen's lamp.
+// the months cooling; a cold November night; six.
 let LOOKS = null
 function looks(T) {
   return [
     [0, LK.room], [T.intro - 1.5, LK.room], [T.intro, LK.night], [T.install, LK.night], [T.tiled, LK.clean], [T.hold0, LK.clean], [T.hold1, LK.morning], [T.house - 0.3, LK.morning], [T.house + 0.7, LK.house],
     [T.hedge - 0.4, LK.house], [T.hedge + 1, LK.hedge], [T.again - 2, LK.cool], [T.again + 1.5, LK.nov], [T.six - 0.2, LK.nov], [T.six + 0.8, LK.six],
-    [T.place, LK.six], [T.pull, LK.study], [T.light - 0.01, LK.study], [T.light, LK.street], [T.down - 0.01, LK.street], [T.down, LK.down], [1e4, LK.down],
+    [T.place, LK.six], [1e4, LK.six],
   ]
 }
 
@@ -235,6 +232,13 @@ export function build(S) {
       S.sfx("thunk", 0.3)
     })
 
+  // a camera window in Vigil; its stamp is set per scene by feedsAt
+  const CAM = (id, src, title, data) => ({ id, app: "vigil", kind: "feed", title, dark: 1, data: { src, name: title.toUpperCase(), us: 1, ...data } })
+  // every camera's burned-in clock, as of now in the story (date mm-dd-yyyy, seconds after midnight)
+  const feedsAt = (date, secs) => {
+    for (const x of w.wins.values()) if (x.kind === "feed") w.set(x.id, { data: { date, clock: secs - w.time } })
+  }
+
   span(0, END, (u, t) => applyLook(S, t))
   const BAR_BASE = 1.5
   const BAR_BIG = 2.2
@@ -246,12 +250,6 @@ export function build(S) {
       if (b === "screen" && u >= 1) return S.flat()
       S.shot(a, b, S.reduced ? (u < 0.5 ? 0 : 1) : e(u))
     })
-  const hold = (t0, t1, name, drift = 0.1) =>
-    span(t0, t1, (u) => {
-      S.three.drift = S.reduced ? 0 : drift
-      S.shot(name, name, u)
-    })
-
   // ── 0 · The study at night; the tone; the screen wakes; in through it ──
   cursor = 0
   const intro = TAPE.marks.head + 0.7
@@ -412,20 +410,29 @@ export function build(S) {
   // ── 4 · The house ──
   const house = word("Four is the house")
   sw(house, 4, "Tue Jun 9  9:30 PM")
+  // one camera window per room (not the cellar), in Vigil
   openMany(house + 0.25, 4, [
-    { id: "groceries", app: "sheets", kind: "sheet", title: "Groceries — Standing Order", data: { cols: ["Item", "Qty", "Day"], widths: [0.5, 0.25, 0.25], rows: [["Eggs", "12", "Sun"], ["Milk", "1 gal", "Sun"], ["Bread", "1", "Sun"], ["Coffee", "2 lb", "Sun"], ["Apples", "6", "Sun"], ["Paper towels", "2", "1st Sun"]].map((cells) => ({ cells })) } },
-    { id: "laundry", app: "jot", kind: "jot", title: "Laundry — Rotation", data: { heading: "Laundry — Rotation", lines: ["Mon  whites", "Wed  darks", "Fri  towels", "Sun  sheets"] } },
-    { id: "friday", app: "daybook", kind: "daybook", title: "Daybook — Friday", data: { date: "Friday, June 12", events: [{ t: "Dinner (4)", at: 18.5, len: 2.5, color: "#e9d5c4" }] } },
+    CAM("c-hall", "cam-hall", "Hall", { ir: 1, q: 0.35, seed: 3 }),
+    CAM("c-kitchen", "cam-kitchen", "Kitchen", { q: 0.45, seed: 5 }),
+    CAM("c-living", "cam-living", "Living Room", { ir: 1, q: 0.35, seed: 7 }),
+    CAM("c-landing", "cam-landing", "Landing", { ir: 1, q: 0.4, seed: 11 }),
+    CAM("c-back", "cam-back", "Back Garden", { ir: 1, q: 0.5, seed: 13, life: [{ moth: [0.5, 0.18] }, { leaves: 6 }] }),
   ])
+  at(house + 0.3, () => feedsAt("06-09-2026", 21 * 3600 + 30 * 60 + 4))
 
   // ── 5 · The street ──
   const street = word("Five is the street")
   sw(street + 0.05, 5)
+  // one camera per house, in house-number order (he is No. 12), and the minutes
   openMany(street + 0.3, 5, [
+    CAM("f08", "st-08", "No. 8", { q: 0.45, seed: 17, life: [{ sweep: [0, 0.78], every: 19 }] }),
+    CAM("f10", "st-10", "No. 10", { ir: 1, q: 0.4, seed: 19 }),
+    CAM("f14", "st-14", "No. 14", { q: 0.3, seed: 23 }),
+    CAM("f16", "st-16", "No. 16", { q: 0.45, seed: 29 }),
+    CAM("f18", "st-18", "No. 18", { ir: 1, q: 0.85, seed: 31, lost: [[street + 6.5, street + 8.1], [street + 41, street + 42.2]] }),
     { id: "minutes", app: "paper", kind: "paper", title: "HOA — Minutes", data: { heading: "Pinecrest HOA — Minutes", sub: "Meeting of June 9 · taken by No. 12", size: 14, gap: 23, lines: ["Present: 9 of 9", "1. Trash cans out of view by 8 PM", "    on collection days.", "2. Hedges and fences: six feet maximum.", "3. Minutes: No. 12."] } },
-    { id: "trash", app: "sheets", kind: "sheet", title: "Trash Cans — Collection", data: { cols: ["House", "Out", "In by 8"], widths: [0.4, 0.3, 0.3], rows: [["No. 8", "✓", "✓"], ["No. 10", "✓", "8:40 PM"], ["No. 12", "✓", "✓"], ["No. 14", "✓", "—"], ["No. 16", "✓", "✓"]].map((cells) => ({ cells })) } },
-    { id: "door", app: "doorbell", kind: "cam", title: "Doorbell — Front", dark: 1, data: { time: "9:31:02 PM", lit: 0 } },
   ])
+  at(street + 0.35, () => feedsAt("06-09-2026", 21 * 3600 + 31 * 60 + 2))
   const mins = word("Nobody else wanted")
   at(mins, () => w.setFocus("minutes"))
   push(mins + 0.1, mins + 1.1, () => frameOf("minutes", 1.2), "minutes")
@@ -563,88 +570,75 @@ export function build(S) {
   void closed2
 
   // ── Six ──
-  const sixteen = word("Sixteen was in March")
-  const six = sixteen - 0.35
-  const PLAN = (n) => ({ edited: "Edited Jun 11", places: [{ n: "16", when: "Mar 3", full: n > 0 }, { n: "Mark", when: "Jun 11", full: n > 1 }, { n: "14", when: "" }] })
-  at(six - 0.5, () => {
-    w.ensureCell(6)
-    w.clock = "Fri Nov 20  11:40 PM"
-  })
-  at(six - 0.6, () => {
-    w.add({ ws: 6, hidden: true, id: "plan", app: "plans", kind: "plan", title: "Downstairs — Plans", data: PLAN(2) })
-    w.add({ ws: 6, hidden: true, id: "six", app: "jot", kind: "jot", title: "six", data: { heading: "six", list: ["six", "cameras", "hedge", "minutes"], edited: "Edited Jun 11", check: 1, lines: [{ t: "No. 16 — Tue, Mar 3", done: 1 }, { t: "No. 10 (Mark) — Thu, Jun 11", done: 1 }, { t: "   drill returned", soft: 1, nobox: 1 }, { t: "No. 14" }] } })
-  })
-  sw(six - 0.05, 6)
-  push(six + 0.1, six + 1.0, () => frameOf("six", 1.25), "six")
-  // "Mark was in June." The plan: 16 and Mark, filled in, and the dashed third place. It sits there.
-  const june = word("Mark was in June")
-  push(june + 0.1, june + 1.0, () => frameOf("plan", 1.08), "plan")
-
-  // ── "Everything else had a place. He was the last thing." ──
-  // the empty place on the plan, in the plan's own coordinates (see the plan painter)
-  const placeRect = (i) => {
-    const p = R("plan")
-    const m = (p.w.t - 56) / 5.6
-    return { x: p.x.t + 28 + m * (1.55 + i * 1.15), y: p.y.t + BAR_H + 110 + m * 0.45, w: m * 0.8, h: m * 2 }
+  // Six is kept empty: its cell in the bar never shows what's moved there. A neighbour's camera goes
+  // quiet (the empty house), and its window is moved from five to six.
+  at(0, () => w.veiled.add(6))
+  const toSix = (t, id, clockAt, date, secs, src) => {
+    sw(t - 0.1, 5, clockAt)
+    at(t - 0.05, () => feedsAt(date, secs))
+    at(t + 0.25, () => w.set(id, { data: { src, lost: [[t + 0.25, t + 0.85]] } }))
+    clickAt(t + 0.95, id, titleOf, () => w.setFocus(id), 0.6)
+    key(t + 1.35, ["⌥", "⇧", "6"], () => w.move(id, 6))
+    // once it has landed, six holds nothing but what the film ends on
+    at(t + 1.9, () => w.close(id))
   }
-  // his hand on the plan while he talks: over Mark's place, then idling toward the empty one, then onto it
-  at(june + 0.3, () => {
-    const r = placeRect(1)
-    w.cursorTo(r.x + r.w * 0.72, r.y + r.h * 0.6, june + 1.5)
+  const sixteen = word("Sixteen was in March")
+  toSix(sixteen, "f16", "Tue Mar 3  11:52 PM", "03-03-2026", 23 * 3600 + 52 * 60 + 9, "st-16-empty")
+  const june = word("Mark was in June")
+  toSix(june, "f10", "Thu Jun 11  11:58 PM", "06-11-2026", 23 * 3600 + 58 * 60 + 31, "st-10-empty")
+  // "Six is downstairs. They're both on six." The bar, and six's cell, empty.
+  const both = word("Six is downstairs")
+  at(both - 0.2, () => {
+    w.clock = "Fri Nov 20  11:40 PM"
+    feedsAt("11-20-2026", 23 * 3600 + 40 * 60)
+    w.showBar()
   })
-  const missed = word("Nobody missed")
-  at(missed + 0.2, () => {
-    const r = placeRect(1)
-    w.cursorTo(r.x + r.w * 1.2, r.y + r.h * 0.52, missed + 2.4)
-  })
-  const place = word("Everything else had")
-  at(place, () => (w.clock = "Fri Nov 20  11:47 PM"))
-  // "You're the last thing." The dashed third place is selected, and held.
-  const lastThing = word("last thing")
-  at(lastThing - 1.1, () => {
-    const r = placeRect(2)
-    w.cursorTo(r.x + r.w * 0.55, r.y + r.h * 0.5, lastThing - 0.15)
-  })
-  at(lastThing - 0.1, () => {
-    w.set("plan", { data: { sel: [2, 2] } })
-    S.sfx("key", 0.25)
-  })
-  // the pause after it (the aligner runs the last word's end through the silence)
-  const lastEnd = TAPE.marks.gaps.find((g) => g[0] > lastThing && g[0] < lastThing + 2)[0]
-  push(word("He was the last") - 0.05, lastEnd + 0.25, () => {
-    const r = placeRect(2)
-    const D = Math.min(1, (r.h * 1.9) / S.SH)
-    const hx = (S.SW * D) / 2
-    const hy = (S.SH * D) / 2
-    return { cx: clamp(r.x + r.w / 2, hx, S.SW - hx), cy: clamp(r.y + r.h / 2, hy, S.SH - hy), D }
+  push(both - 0.1, both + 1.1, () => {
+    const g = w.barGeom()
+    const D = Math.min(1, Math.max(0.42, ((g.w / g.sc) * 1.15) / S.SW))
+    return { cx: S.SW / 2, cy: S.SH - (S.SH * D) / 2, D }
+  }, null)
+  at(both + 0.3, () => {
+    const c = w.cellRect(6)
+    w.cursorTo(c.x + c.w / 2, c.y + c.h / 2, word("both on six"))
   })
 
-  // ── The study, empty; his light; downstairs ──
-  // once it has sat a moment, out through the screen into the room he isn't in
+  // ── "Everything else had a place. He was the last thing." No. 14, live ──
+  const place = word("Everything else had")
+  push(place - 0.4, place + 0.6, home, null)
+  at(place - 0.3, () => w.cursorTo(S.SW * 0.62, S.SH * 0.42, place + 0.4))
+  const lastThing = word("last thing")
+  clickAt(lastThing - 0.4, "f14", titleOf, () => w.setFocus("f14"), 0.8)
+  const lastEnd = TAPE.marks.gaps.find((g) => g[0] > lastThing && g[0] < lastThing + 2)[0]
+  push(lastThing - 0.3, lastEnd + 0.4, () => frameOf("f14", 1.12), "f14")
+  // "I went over just before midnight. His light was on." In on his window.
   const went = word("I went over")
-  const pull = lastEnd + 0.6
-  move(pull, went + 1.5, "screen", "CamRoom", (u) => easeInOut(u) ** 0.85)
-  // "His light was on." Across the street, under the blind.
-  const light = word("His light") - 0.05
-  hold(light, word("I'd already put") - 0.05, "CamWindow", 0.5)
-  // "I'd already put the plastic down." Downstairs: the two of them, side by side, and the third place.
-  const down = word("I'd already put") - 0.05
-  hold(down, ACT[0] + 0.3, "Before", 0.35)
-  // what happens downstairs happens in the dark, on the tape
-  span(ACT[0] + 0.3, ACT[0] + 1.0, (u) => (S.three.black = smooth(u)))
-  // "It never does." Then the light comes back on the same floor from the same place, afterwards, and
-  // the camera creeps down toward him through "He's on six now. With the others." and the hold after.
-  const never = TAPE.marks.gaps.filter((g) => g[0] > ACT[0] + ACT[1]).at(0)
-  const back = never[0] + 0.5
-  at(back, () => {
-    S.three.black = 0
-    S.three.after = true
-    S.three.drift = 0
+  at(went, () => {
+    w.clock = "Fri Nov 20  11:56 PM"
+    feedsAt("11-20-2026", 23 * 3600 + 56 * 60 + 5)
   })
-  span(back, END, (u) => S.shot("Before", "After", S.reduced ? (u < 0.5 ? 0 : 1) : easeInOut(u) ** 1.2))
+  const light = word("His light")
+  // in on his window, but never past its edges: it stays a camera on a screen
+  push(light - 0.1, word("He took") + 0.2, () => frameOf("f14", 1.03))
+  // "He took a while to come down." The light goes off.
+  at(word("come down") + 0.1, () => w.set("f14", { data: { unlit: [[0.465, 0.415, 0.5, 0.472]] } }))
+  // what happens downstairs happens on the tape; his camera loses the house for a while
+  at(ACT[0] + 0.2, () => w.set("f14", { data: { lost: [[ACT[0] + 0.2, ACT[0] + ACT[1] - 0.3]] } }))
+  push(ACT[0], ACT[0] + 1.2, () => frameOf("f14", 1.12))
+  // "He's on six now. With the others." Moved; then six, for the first time: one window.
+  const now = word("on six now")
+  key(now + 0.3, ["⌥", "⇧", "6"], () => w.move("f14", 6))
+  push(now - 0.2, now + 0.4, home, null)
+  at(now + 0.9, () => w.close("f14"))
+  const others = word("With the others")
+  at(others - 0.6, () => {
+    w.veiled.delete(6)
+    w.add({ ws: 6, id: "cellar", app: "vigil", kind: "feed", title: "Cellar", dark: 1, data: { src: "cam-cellar", name: "CELLAR", us: 1, ir: 1, q: 0.3, seed: 37, date: "11-21-2026", clock: 4 * 60 + 12 - w.time } })
+  })
+  sw(others - 0.4, 6)
   at(END, () => S.end())
 
-  LOOKS = looks({ intro, install, tiled, hold0: HOLD[0], hold1: HOLD[1], house, hedge, again, six, place, pull, light, down })
+  LOOKS = looks({ intro, install, tiled, hold0: HOLD[0], hold1: HOLD[1], house, hedge, again, six: sixteen, place })
 
   cues.sort((a, b) => a.t - b.t)
   return { cues, spans }

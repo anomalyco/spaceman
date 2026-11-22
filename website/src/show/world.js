@@ -4,6 +4,7 @@ import { APPS, FONT, iconCanvas } from "./apps.js"
 import { paintWindow, BAR_H } from "./content.js"
 import { plates, blurOf, coverUV } from "./plates.js"
 import { sp, to, jump, step, clamp } from "./springs.js"
+import { feedClock, feedTick } from "./feeds.js"
 
 export const MENU_H = 26
 const GAP = 8
@@ -59,6 +60,8 @@ export class World {
     this.menuCanvas = null
     this.menuKey = ""
     this.bar = { shown: sp(0, 0.42), scale: sp(1, 0.4), cells: [], left: sp(0, 0.3), right: sp(0, 0.3), count: 0 }
+    // workspaces whose cell in the bar shows nothing of what's in it until you go there
+    this.veiled = new Set()
     this.cursor = { x: SW * 0.62, y: SH * 0.55, vx: 0, vy: 0, path: null, a: sp(1, 0.3), press: sp(0, 0.09) }
     this.keys = { label: null, a: sp(0, 0.2), until: 0 }
     this.keysAbove = false
@@ -333,7 +336,16 @@ export class World {
   // ─── Simulation ─────────────────────────────────────────────────────────
   update(dt) {
     this.time += dt
+    feedClock(this.time)
     for (const w of [...this.wins.values()]) {
+      // a camera window repaints at its camera's frame rate while it can be seen
+      if (w.kind === "feed" && (w.ws === this.active || w.flying) && w.a.x > 0.01) {
+        const k = feedTick(w.data || {})
+        if (k !== w.tick) {
+          w.tick = k
+          w.dirty = true
+        }
+      }
       if (w.target) {
         w.delay -= dt
         if (w.delay <= 0) {
@@ -452,7 +464,7 @@ export class World {
   ensureCanvas(w) {
     const tw = Math.max(40, w.w.t)
     const th = Math.max(40, w.h.t)
-    const cap = w.id === this.focus || w.float ? 7e6 : 2.6e6
+    const cap = w.kind === "feed" ? 1.4e6 : w.id === this.focus || w.float ? 7e6 : 2.6e6
     const want = Math.max(0.5, Math.min(this.res, Math.sqrt(cap / (tw * th))))
     const sizeChanged = Math.abs(w.cw - tw) > 0.5 || Math.abs(w.ch - th) > 0.5
     const resOff = !w.res || want > w.res * 1.2 || want < w.res / 1.6
@@ -695,7 +707,7 @@ export class World {
       const ca = a * c.o.x
       P(cx, cy, cw * sc, ch * sc, { col: [1, 1, 1, 0.05], r: 5 * s * sc, a: ca })
       P(cx, cy, cw * sc, ch * sc, { ring: 0.5 * sc, col: [1, 1, 1, 0.22], r: 5 * s * sc, a: ca })
-      const rs = this.rectsOf(c.n)
+      const rs = this.veiled.has(c.n) && c.n !== this.active ? new Map() : this.rectsOf(c.n)
       const inset = 3 * s
       const iw = cw - 1 - inset * 2
       const ih = ch - 1 - inset * 2

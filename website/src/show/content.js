@@ -3,6 +3,7 @@
 import { APPS, FONT, MONO, iconCanvas, roundRect } from "./apps.js"
 import { plates, coverUV } from "./plates.js"
 import { photos as libraryPhotos } from "./library.js"
+import { feed as paintFeed } from "./feeds.js"
 
 export const BAR_H = 30
 const INK = "#2b2a28"
@@ -161,34 +162,6 @@ function paperBody(ctx, w, h, d) {
     ctx.fillStyle = "#3d6fd0"
     ctx.fillRect(lx, ly - (d.size || 15) + 1, 1.5, (d.size || 15) + 3)
   }
-}
-
-// A doorbell camera across the street at night. The lit window is No. 14's.
-const DOOR_WIN = [0.4709, 0.4226, 0.495, 0.4658]
-export function street(ctx, x, y, w, h, t, lit = 1) {
-  const p = plates.door
-  if (p) {
-    const [u0, v0, u1, v1] = coverUV(p, w, h, 0.55, 0.4)
-    ctx.drawImage(p, u0 * p.width, v0 * p.height, (u1 - u0) * p.width, (v1 - v0) * p.height, x, y, w, h)
-    if (lit < 1) {
-      const X = (fx) => x + ((fx - u0) / (u1 - u0)) * w
-      const Y = (fy) => y + ((fy - v0) / (v1 - v0)) * h
-      ctx.fillStyle = `rgba(40,38,33,${1 - lit})`
-      ctx.fillRect(X(DOOR_WIN[0]), Y(DOOR_WIN[1]), X(DOOR_WIN[2]) - X(DOOR_WIN[0]), Y(DOOR_WIN[3]) - Y(DOOR_WIN[1]))
-    }
-  } else {
-    ctx.fillStyle = "#14181c"
-    ctx.fillRect(x, y, w, h)
-  }
-  const fs = Math.max(9, Math.min(13, w * 0.022))
-  ctx.fillStyle = "rgba(0,0,0,.35)"
-  ctx.fillRect(x, y, w, fs + 18)
-  text(ctx, "FRONT  ·  " + t, x + 12, y + 9 + fs, { size: fs, weight: 500, color: "rgba(235,238,240,.86)", font: MONO })
-  ctx.fillStyle = "#d2463b"
-  ctx.beginPath()
-  ctx.arc(x + w - 16, y + 9 + fs * 0.62, 3.6, 0, Math.PI * 2)
-  ctx.fill()
-  text(ctx, "LIVE", x + w - 24, y + 9 + fs, { size: fs * 0.92, weight: 600, color: "rgba(235,238,240,.86)", font: MONO, align: "right" })
 }
 
 // A translucent sidebar: the frosted desktop shows through (the window canvas stays clear here).
@@ -622,8 +595,8 @@ const painters = {
     }
   },
   photos: (...a) => libraryPhotos(...a),
-  cam(ctx, w, h, d) {
-    street(ctx, 0, BAR_H, w, h - BAR_H, d.time || "11:47:07 PM", d.lit ?? 1)
+  feed(ctx, w, h, d, win) {
+    paintFeed(ctx, 0, BAR_H, w, h - BAR_H, d, win)
   },
   // A photo, opened from a message.
   photo(ctx, w, h, d) {
