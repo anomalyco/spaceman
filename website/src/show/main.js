@@ -143,7 +143,7 @@ export function createShow({ still, canvas, base, capture = false, reduced = fal
   // as video, fetched on the click; the live desktop sits on the panel's quad in each frame, so the
   // hand-off to the flat desktop is exact. Until the video has a frame, the page's still stands in for
   // it (it is frame 0). If the video fails, the film pushes into the still instead.
-  const plate = { meta: null, video: null, still: null, frame: -1, ready: false, failed: false, loading: null, done: false }
+  const plate = { src: null, meta: null, video: null, still: null, frame: -1, ready: false, failed: false, loading: null, done: false }
   function loadOpening() {
     if (plate.loading) return plate.loading
     plate.loading = (async () => {
@@ -154,7 +154,10 @@ export function createShow({ still, canvas, base, capture = false, reduced = fal
         v.muted = true
         v.playsInline = true
         v.preload = "auto"
-        v.src = base + (v.canPlayType('video/mp4; codecs="avc1.640028"') ? "plate/opening.mp4" : "plate/opening.webm")
+        // 10-bit where the browser decodes it: the room is dark gradients, and 8 bits band there
+        const can = (t) => v.canPlayType(t) !== ""
+        plate.src = (can('video/mp4; codecs="hvc1.2.4.L150.90"') ? "opening-hevc.mp4" : can('video/webm; codecs="vp09.02.50.10"') ? "opening.webm" : "opening.mp4")
+        v.src = base + "plate/" + plate.src
         await new Promise((res, rej) => {
           v.addEventListener("loadeddata", res, { once: true })
           v.addEventListener("error", rej, { once: true })
@@ -438,8 +441,8 @@ export function createShow({ still, canvas, base, capture = false, reduced = fal
     end() {
       phase = "ended"
       setCaption(null)
-      // the interview runs on under the card: the detective suspends it, and the tone
-      audio.stopAll(audio.tape?.file)
+      // a hard cut: picture and sound stop on the same frame, nothing runs on under the card
+      audio.stopAll()
       tapeAt = null
       emit("phase", "ended")
     },
@@ -735,7 +738,7 @@ export function createShow({ still, canvas, base, capture = false, reduced = fal
           requestAnimationFrame(loop)
         })
       },
-      state: () => ({ t: +t.toFixed(3), phase, active: world.active, D: +cam.D.toFixed(3), three: { ...three }, renderer: renderer?.kind, dprScale, plates: Object.keys(plates) }),
+      state: () => ({ t: +t.toFixed(3), phase, active: world.active, D: +cam.D.toFixed(3), three: { ...three }, renderer: renderer?.kind, dprScale, plates: Object.keys(plates), plate: plate.failed ? "failed" : plate.src ?? null }),
       trace: (from = 0) => trace.slice(from),
       audioLog: () => audio.log,
       stats: summary,

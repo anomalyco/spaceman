@@ -71,6 +71,7 @@ export function Show({ header }: { header: React.ReactNode }) {
   const context = useRef<AudioContext | null>(null);
   const [phase, setPhase] = useState<Phase>("still");
   const [card, setCard] = useState(false);
+  const cardTimer = useRef(0);
   const [caption, setCaption] = useState<Caption>(null);
   const [hint, setHint] = useState(false);
   const [cc, setCc] = useState<boolean | null>(null);
@@ -97,8 +98,9 @@ export function Show({ header }: { header: React.ReactNode }) {
           on: {
             phase: (p: Phase) => {
               setPhase(p);
-              // a hard cut: the last image, then the card, nothing between
-              if (p === "ended") setCard(true);
+              // a hard cut: the last image, a moment of black and silence, then the card, with no fades
+              clearTimeout(cardTimer.current);
+              if (p === "ended") cardTimer.current = window.setTimeout(() => setCard(true), capture ? 0 : 900);
               if (p === "live") setCard(false);
             },
             caption: (c: Caption) => setCaption(c),
@@ -197,7 +199,7 @@ export function Show({ header }: { header: React.ReactNode }) {
 
       {live && (
         <div className={`absolute top-3 left-3 flex gap-2 transition-opacity duration-500 focus-within:opacity-100 sm:top-auto sm:left-auto sm:right-6 sm:bottom-6 ${awake ? "opacity-100" : "opacity-0"}`}>
-          <button type="button" onClick={() => setCc(!captions)} aria-pressed={captions} className={`h-9 rounded-full border border-white/10 px-3 text-[12px] font-semibold tracking-wide backdrop-blur ${captions ? "bg-[#ece9e3] text-[#151517]" : "bg-black/45 text-[#d8d5ce] hover:bg-black/60"}`}>
+          <button type="button" data-ui="cc" onClick={() => setCc(!captions)} aria-pressed={captions} className={`h-9 rounded-full border border-white/10 px-3 text-[12px] font-semibold tracking-wide backdrop-blur ${captions ? "bg-[#ece9e3] text-[#151517]" : "bg-black/45 text-[#d8d5ce] hover:bg-black/60"}`}>
             CC
           </button>
         </div>
@@ -210,23 +212,28 @@ export function Show({ header }: { header: React.ReactNode }) {
       )}
 
       {hint && phase === "live" && (
-        <p className="pointer-events-none absolute inset-x-0 bottom-[26%] mx-auto w-fit rounded-full bg-black/70 px-4 py-2 text-[15px] text-[#ece9e3] backdrop-blur">
+        <p data-ui="hint" className="pointer-events-none absolute inset-x-0 bottom-[26%] mx-auto w-fit rounded-full bg-black/70 px-4 py-2 text-[15px] text-[#ece9e3] backdrop-blur">
           {touch ? "Your turn. Tap a workspace in the bar." : "Your turn. Try ⌥2, then ⌥3."}
         </p>
       )}
 
       {phase === "ended" && (
-        <div className={`absolute inset-0 flex flex-col items-center justify-center gap-7 bg-[#08080a] px-6 text-center ${card ? "opacity-100" : "opacity-0"}`}>
-          <p className="text-[clamp(28px,4.4vw,46px)] font-medium tracking-tight text-[#f2f1ee]">For your windows.</p>
-          <div className="flex flex-col items-center gap-3">
-            <a href={DOWNLOAD_URL} className="rounded-full bg-[#f0efec] px-7 py-3 text-[15px] font-medium text-[#111214] transition-opacity hover:opacity-85 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#cfcac0]">
-              Download for macOS
-            </a>
-            <p className="text-[13px] text-[#7d7a74]">Spaceman {RELEASE_VERSION} · macOS 14 or later · Apple silicon</p>
+        <div className="absolute inset-0 bg-black">
+          <div data-ui="card" className={`flex size-full flex-col items-center justify-center gap-6 px-6 text-center ${card ? "" : "invisible"}`}>
+            <div className="flex flex-col items-center gap-1">
+              <p className="text-[clamp(24px,3.2vw,34px)] font-medium tracking-tight text-[#f2f1ee]">Spaceman</p>
+              <p className="text-[16px] text-[#a9a59e]">For your windows.</p>
+            </div>
+            <div className="flex flex-col items-center gap-3">
+              <a href={DOWNLOAD_URL} className="rounded-full bg-[#f0efec] px-7 py-3 text-[15px] font-medium text-[#111214] transition-opacity hover:opacity-85 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#cfcac0]">
+                Download for macOS
+              </a>
+              <p className="text-[13px] text-[#7d7a74]">Version {RELEASE_VERSION} · macOS 14 or later · Apple silicon</p>
+            </div>
+            <button type="button" data-ui="again" onClick={start} className="text-[13px] text-[#9a968f] underline-offset-4 hover:underline">
+              Watch again
+            </button>
           </div>
-          <button type="button" onClick={start} className="text-[13px] text-[#9a968f] underline-offset-4 hover:underline">
-            Watch again
-          </button>
         </div>
       )}
     </section>

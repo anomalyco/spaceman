@@ -152,7 +152,9 @@ def still(path, w, h, spp):
     sc.render.resolution_x, sc.render.resolution_y, sc.render.resolution_percentage = w, h, 100
     sc.cycles.samples = spp
     sc.render.image_settings.file_format = "PNG"
-    sc.render.image_settings.color_depth = "8"
+    # 16-bit for the plate: 8-bit bands in the dark gradients before the encoder ever sees them
+    sc.render.image_settings.color_depth = KV.get("depth", "8")
+    sc.render.image_settings.compression = 15
     sc.render.filepath = path
     bpy.ops.render.render(write_still=True)
 

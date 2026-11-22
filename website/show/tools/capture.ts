@@ -7,7 +7,7 @@ import { chromium, type Page } from "playwright"
 import { mkdirSync, rmSync, writeFileSync, existsSync } from "node:fs"
 import { join, resolve } from "node:path"
 import { $ } from "bun"
-import { encode, grid } from "./encode.ts"
+import { encode, grid, mixAudio } from "./encode.ts"
 import { END as END_, HOLD, word } from "../../src/show/director.js"
 import { LINES } from "../../src/show/tape.js"
 
@@ -91,6 +91,58 @@ if (probeArg) {
     await ctx.close()
   }
   console.log(JSON.stringify(report, null, 1))
+  await browser.close()
+  server.stop()
+  process.exit(0)
+}
+
+// --master: the whole film as a file to share, at 1440×900 @2x (2880×1800), straight into the encoder
+// (no frames on disk): film-master.mp4 (HEVC Main 10, CRF 17, AAC 256k) and film-share.mp4 (H.264,
+// 1440×900, CRF 21). No hint or CC button; the end is the live one: a hard cut, 0.9 s of black and silence, the card.
+// (--master=T starts at T s, to check the end quickly)
+const masterArg = process.argv.find((a) => a.startsWith("--master"))
+if (masterArg) {
+  const { page, errors, ctx } = await open({ w: 1440, h: 900, dpr: 2, muted: true })
+  await page.addStyleTag({ content: "[data-ui=hint],[data-ui=cc],[data-ui=again]{display:none!important}html[data-black] [data-ui=card]{visibility:hidden!important}" })
+  await press(page)
+  const cut = Math.round(END_ * FPS), card = Math.round((END_ + 0.9) * FPS), total = Math.round((END_ + 0.9 + 4) * FPS)
+  const raw = join(out, "master-v.mp4")
+  const color = ["-colorspace", "bt709", "-color_primaries", "bt709", "-color_trc", "bt709", "-color_range", "tv"]
+  const ff = Bun.spawn(["ffmpeg", "-y", "-loglevel", "error", "-f", "image2pipe", "-c:v", "mjpeg", "-framerate", String(FPS), "-i", "-",
+    "-vf", "scale=out_color_matrix=bt709:out_range=tv:flags=accurate_rnd+full_chroma_int,format=yuv420p10le",
+    "-c:v", "libx265", "-pix_fmt", "yuv420p10le", "-preset", "medium", "-crf", "17", "-tag:v", "hvc1",
+    "-x265-params", "log-level=error:aq-mode=3:no-sao=1:colorprim=bt709:transfer=bt709:colormatrix=bt709:range=limited", ...color, raw], { stdin: "pipe", stderr: "inherit" })
+  const t0 = Date.now()
+  const from = Math.round(Number(masterArg.split("=")[1] ?? 0) * FPS)
+  if (from) await page.evaluate((t) => (window as any).__show.seek(t), from / FPS)
+  for (let f = from; f < total; f++) {
+    if (f === Math.round((HOLD[0] + 1.6) * FPS)) await page.keyboard.press("Alt+Digit2")
+    if (f === Math.round((HOLD[0] + 3.1) * FPS)) await page.keyboard.press("Alt+Digit3")
+    if (f === Math.round((HOLD[0] + 4.6) * FPS)) await page.keyboard.press("Alt+Digit1")
+    if (f === cut) await page.evaluate(() => (document.documentElement.dataset.black = "1"))
+    if (f === card) await page.evaluate(() => delete document.documentElement.dataset.black)
+    ff.stdin.write(await page.screenshot({ type: "jpeg", quality: 95 }))
+    await ff.stdin.flush()
+    await step(page, 1 / FPS)
+    if (f % 300 === 0) console.log("frame", f, "of", total, Math.round((Date.now() - t0) / 1000) + "s")
+  }
+  ff.stdin.end()
+  if ((await ff.exited) !== 0) throw new Error("master encode failed")
+  const log = await S(page, "__show.audioLog()")
+  writeFileSync(join(out, "audio-log.json"), JSON.stringify(log))
+  report.master = { errors, frames: total - from, seconds: (Date.now() - t0) / 1000 }
+  await ctx.close()
+  // started before the first frame: joined part-way through
+  const shifted = (log as any[]).map((e) => (e.t >= from / FPS ? { ...e, t: e.t - from / FPS } : { ...e, t: 0, offset: (e.offset || 0) + (from / FPS - e.t) }))
+  const mix = await mixAudio(out, shifted, (total - from) / FPS, audioDir, { cut: END_ - from / FPS, kbps: 256 })
+  if (!mix) throw new Error("no mix")
+  const master = join(out, "film-master.mp4"), share = join(out, "film-share.mp4")
+  await $`ffmpeg -y -loglevel error -i ${raw} -i ${mix} -map 0:v -map 1:a -c copy -movflags +faststart ${master}`
+  await $`ffmpeg -y -loglevel error -i ${master} -vf scale=1440:900:flags=lanczos -c:v libx264 -preset slow -crf 21 -pix_fmt yuv420p ${color} -c:a aac -b:a 160k -movflags +faststart ${share}`
+  rmSync(raw)
+  for (const f of [master, share]) (report.master as any)[f.split("/").pop()!] = (Bun.file(f).size / 1e6).toFixed(1) + " MB"
+  writeFileSync(join(out, "report.json"), JSON.stringify(report, null, 1))
+  console.log(JSON.stringify(report.master, null, 1))
   await browser.close()
   server.stop()
   process.exit(0)

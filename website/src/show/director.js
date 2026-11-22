@@ -50,7 +50,7 @@ export function wordEnd(phrase, after) {
   return WORDS[i + n - 1][2]
 }
 const LAST = WORDS[WORDS.length - 1]
-// the film ends on six, a held beat after the last word; the interview runs on under the card
+// the film ends on six, a held beat after the last word, then a hard cut to black
 export const END = LAST[2] + 2.6
 
 const NOTE = ["call about the gutters", "drill → return", "passwords??", "organize notes", "hedge (ask)"]

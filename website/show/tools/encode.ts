@@ -33,8 +33,9 @@ if (import.meta.main) {
 }
 
 // Offline mix of the play log with ffmpeg: every clip delayed to its show time; the room loop
-// follows its logged levels as a stepped volume envelope.
-async function mixAudio(out: string, log: any[], secs: number, audioDir: string) {
+// follows its logged levels as a stepped volume envelope. cut: where everything stops dead (the
+// film's last cut), with the live player's few milliseconds of ramp.
+export async function mixAudio(out: string, log: any[], secs: number, audioDir: string, o: { cut?: number; kbps?: number } = {}) {
   const clips = log.filter((e) => e.kind === "voice" || e.kind === "sfx")
   if (!clips.length) return null
   const levels = log.filter((e) => e.kind === "level")
@@ -68,10 +69,10 @@ async function mixAudio(out: string, log: any[], secs: number, audioDir: string)
     parts.push(`[${k}:a]atrim=0:${secs},volume='${expr}':eval=frame,lowpass=f=12000[bed${b}]`)
     labels.push(`[bed${b++}]`)
   }
-  const graph = parts.join(";") + `;${labels.join("")}amix=inputs=${labels.length}:normalize=0,atrim=0:${secs},loudnorm=I=-16:TP=-1.5[out]`
+  const graph = parts.join(";") + `;${labels.join("")}amix=inputs=${labels.length}:normalize=0,atrim=0:${secs},loudnorm=I=-16:TP=-1.5${o.cut ? `,aresample=48000,volume='clip(1-(t-${o.cut})/0.01\\,0\\,1)':eval=frame` : ""}[out]`
   const file = join(out, "mix.m4a")
   writeFileSync(join(out, "mix-graph.txt"), graph)
-  const p = Bun.spawnSync(["ffmpeg", "-y", "-loglevel", "error", ...inputs, "-filter_complex", graph, "-map", "[out]", "-c:a", "aac", "-b:a", "160k", file])
+  const p = Bun.spawnSync(["ffmpeg", "-y", "-loglevel", "error", ...inputs, "-filter_complex", graph, "-map", "[out]", "-c:a", "aac", "-b:a", `${o.kbps ?? 160}k`, file])
   if (p.exitCode !== 0) {
     console.log("mix failed", p.stderr.toString().slice(0, 2000))
     return null
