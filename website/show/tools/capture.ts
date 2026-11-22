@@ -77,13 +77,18 @@ if (probeArg) {
   // --phone adds a pass at an iPhone's size
   const passes: [string, string, any][] = [["gpu", "", { w: 1440, h: 900 }], ["c2d", "canvas2d", { w: 1440, h: 900 }]]
   if (process.argv.includes("--phone")) passes.push(["phone", "", { w: 390, h: 844, dpr: 3, mobile: true }])
+  // --x2: the WebGPU pass at 2x, as PNG, to set beside full-size targets at 100%
+  const x2 = process.argv.includes("--x2")
+  if (x2) passes[0][2] = { w: 1440, h: 900, dpr: 2 }
   for (const [name, q, size] of passes) {
     const { page, errors, ctx } = await open({ ...size, muted: true, query: q })
     if (name === "gpu") await shot(page, join(out, "still.jpg"))
     await press(page)
     for (const t of times) {
       await page.evaluate((t) => (window as any).__show.seek(t), t)
-      await shot(page, join(out, name + "-" + String(t).replace(".", "_") + ".jpg"))
+      const file = join(out, name + "-" + String(t).replace(".", "_"))
+      if (x2 && name === "gpu") await page.screenshot({ path: file + ".png" })
+      else await shot(page, file + ".jpg")
     }
     report[name] = { errors, state: await state(page) }
     // written after each pass, so a crash in the next one still leaves this one's report
