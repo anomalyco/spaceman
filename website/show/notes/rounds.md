@@ -400,3 +400,42 @@ unmistakable. Their fixes overlapped almost entirely.
     the streetlight, and the critics saw one frame.
 19. Not taken: "Then Mark." for "I moved Mark in June." (Astra). The date is the only date he gives, and
     the calendar repeats it on purpose.
+
+## Draft 17 (Kit's notes on draft 16), Nov 22
+
+Tape K unchanged (take k7, 105.8 s). Commits `a3eb9eb` (controls, opening, clips, sound, framing) and
+`60d76d6` (the macOS look pass).
+
+1. Playback controls: a quiet bar at the bottom with play/pause, restart, scrub, captions and mute. It shows
+   on hover or when paused and hides after an idle mouse. Space plays and pauses, ← and → seek 5 s, M mutes.
+   A seek rebuilds the world from the start, replayed quietly to the new time, then restarts the tape and the
+   beds there. "Watch again" no longer skips the opening plate.
+2. Framing: the camera keeps at least 94% of the desktop in view (it went to 34% before). The focused tile
+   gets an accent edge and a soft blue glow, and the others dim by 17%. Key lines were enlarged to read at
+   full screen: the order is 22 pt in a card, the album reads "Hedge 4,812 Photos" at 17/15 pt, the lid
+   sticky is 26 pt, and "Joan → 7" and "Mark → 7" are 15.5 pt bold.
+3. Opening: a heap of ten windows. He hunts through four of them, then ⌘W closes six, 0.17 s apart. Spaceman
+   tiles the four that are left, then he opens two more (4 → 5 → 6).
+4. Motion: the cursor moves on a quintic Hermite arc (no dead stop on arrival) and presses for 85 ms. The bar
+   pops in from 0.84 scale with a slight overshoot. Album flicks get a short push before they coast.
+5. CCTV: real generated clips for the door camera, the cat and Alan (notes/feeds.md).
+6. Sound: no thunks, closes or shutters; closing a window is silent. Six dry scissor-key taps (75 ms, about
+   −20 dB under the voice) rotate with small gain and pitch jitter, plus one Force Touch click at −27 dB.
+   Room tone sits 52 dB under the voice. The last two switches (to 6 at "still", then 7) are silent. The
+   keys were cut from ElevenLabs sound-effect takes by `show/voice/keys.py` (high-passed at 350 Hz, low-passed
+   at 11 kHz, levelled by their loudest 30 ms), and the spectrograms were checked for tails.
+7. macOS look: Sequoia chrome (lights #ff5f57/#febc2e/#28c840, 12 pt with 8 pt gaps, grey when inactive;
+   neutral title bars; sidebars in their own material up under the lights).
+   - Safari: the address centred in the title bar, a tab bar, Favourites on a new tab, and order pages
+     with the shop's header and a tick.
+   - Messages: a conversation list when wide, bubbles with tails (blue for him), the iMessage timestamp, and
+     a compose field.
+   - Mail: SF-style mailbox symbols, accent selection, and a header block with initials, subject and To.
+   - Notes: a yellow selection, list rows with a date and preview, circular checklists, the date centred.
+   - Calendar: Day/Week/Month control, today in red, tinted events with a solid edge.
+8. Spaceman itself, matched to the agent's source:
+   - Settings is `view.rs`/`map.rs`: five panes under the lights, the version at the foot, a raised
+     panel, and Rules as "Where apps open", a tile per workspace, plus "Float, never tiled". The rule is
+     now made the way the app makes it: Add on workspace 2's tile, then Chatter from "Running apps".
+   - The bar wears the HUD capsule from `hud/pill.rs` (#161618, a #303036 hairline) and says what the HUD
+     says: "Workspace 3 · 2 windows", "Moved to Workspace 2 · 3 windows". Changes roll in the way of travel.
