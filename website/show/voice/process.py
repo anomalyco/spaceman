@@ -85,6 +85,7 @@ for fx in VER.get("retime", []):
         words[i + k]["t"] = round(fx["t"] + k * step, 3)
         words[i + k]["end"] = round(fx["t"] + (k + 1) * step, 3)
 src = os.path.join(raw, "mono", TAKE + ".mp3")
+meta_words = words
 # a phrase said twice that should sound the same both times: the second reading is replaced by the
 # first one from the same take, levelled to where it lands ("echo": {"src": [a, b], "dst": [a, b]},
 # seconds in the take, cut in silence)
@@ -106,6 +107,9 @@ if VER.get("echo"):
         w["t"] += d
         w["end"] += d
     src = echo
+# a version that stops early ("endAfter": "It was her idea."): the words after it are left out
+if VER.get("endAfter"):
+    words = words[:find(words, VER["endAfter"], True) + len(VER["endAfter"].split())]
 # the take's own audio, to put each cut in the quietest moment between its two words (the alignment
 # can run a few hundred ms late, most of all on the last words)
 _pcm = array.array("h", subprocess.run(["ffmpeg", "-v", "error", "-i", src, "-f", "s16le", "-ac", "1", "-ar", "8000", "-"], check=True, capture_output=True).stdout)
@@ -133,6 +137,8 @@ if VER.get("paraGap"):
         n = len([w for w in re.findall(r"[^\s—]+", re.sub(r"\[[^\]]*\]", " ", p)) if re.search(r"[A-Za-z0-9]", w)])
         k += n
         i = k - 1
+        if i + 1 >= len(words):
+            break
         if i not in have and words[i + 1]["t"] - words[i]["end"] < VER["paraGap"] + 0.3:
             GAPS.append({"after": None, "i": i, "len": VER["paraGap"]})
 
@@ -151,6 +157,9 @@ for g in sorted(GAPS, key=gap_index):
     i = gap_index(g)
     cuts.append({**g, "at": quietest(words[i]["end"] - 0.2, max(words[i]["end"], words[i + 1]["t"] - 0.35) + 0.05), "i": i})
 end_t = words[-1]["end"] + TAIL
+if VER.get("endAfter"):
+    nxt = meta_words[len(words)]["t"]
+    end_t = quietest(words[-1]["end"] - 0.1, max(words[-1]["end"], nxt - 0.05))
 
 # voice: segments with silence between, delayed by HEAD
 parts, labels, t0 = [], [], 0.0
@@ -261,6 +270,8 @@ for s in re.split(r"(?<=[.?!])\s+(?=[^a-z])", spoken):
     n = len([w for w in re.findall(r"[^\s—]+", s) if re.search(r"[A-Za-z0-9]", w)])
     if not n:
         continue
+    if k + n > len(tw):
+        break
     lines.append({"text": s.strip(), "t": tw[k]["t"], "end": tw[k + n - 1]["end"]})
     k += n
 assert k == len(tw), (k, len(tw))
