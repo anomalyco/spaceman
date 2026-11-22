@@ -107,6 +107,40 @@ if VER.get("echo"):
         w["t"] += d
         w["end"] += d
     src = echo
+# no dead air ("tighten": {"para": 0.75, "sentence": 0.6, "comma": 0.4}): the take's silences after a
+# paragraph, a sentence or a comma longer than that lose their middles, measured from the waveform, so
+# his speech itself is untouched
+tight = None
+if VER.get("tighten"):
+    cap = VER["tighten"]
+    det = subprocess.run(["ffmpeg", "-hide_banner", "-i", src, "-af", "silencedetect=n=-45dB:d=0.2", "-f", "null", "-"], capture_output=True, text=True).stderr
+    sil = [(float(a), float(b)) for a, b in zip(re.findall(r"silence_start: ([\d.]+)", det), re.findall(r"silence_end: ([\d.]+)", det))]
+    ends, n = set(), 0
+    for p in [p for p in re.split(r"\n\s*\n", mono[VER["textKey"]]) if p.strip()]:
+        n += len([w for w in re.findall(r"[^\s—]+", re.sub(r"\[[^\]]*\]", " ", p)) if re.search(r"[A-Za-z0-9]", w)])
+        ends.add(n - 1)
+    cut = []
+    for a, b in sil:
+        m = (a + b) / 2
+        k = min(range(len(words) - 1), key=lambda k: abs((words[k]["end"] + words[k + 1]["t"]) / 2 - m))
+        w = words[k]["text"]
+        c = cap["para"] if k in ends else cap["sentence"] if re.search(r"[.?!]$", w) else cap["comma"] if re.search(r"[,;:]$", w) else None
+        if c is not None and b - a > c + 0.05:
+            cut.append((a + c / 2, b - c / 2))
+    tight = os.path.join(raw, "mono", TAKE + "-tight.wav")
+    keep, t0 = [], 0.0
+    for a, b in cut:
+        keep.append((t0, a))
+        t0 = b
+    keep.append((t0, None))
+    fc_t = ";".join(f"[0:a]atrim={a:.3f}" + (f":{b:.3f}" if b else "") + f",asetpts=PTS-STARTPTS[k{i}]" for i, (a, b) in enumerate(keep))
+    subprocess.run(["ffmpeg", "-y", "-v", "error", "-i", src, "-filter_complex", fc_t + ";" + "".join(f"[k{i}]" for i in range(len(keep))) + f"concat=n={len(keep)}:v=0:a=1", "-ac", "1", "-ar", "44100", tight], check=True)
+    def moved(t):
+        return t - sum(min(b, max(a, t)) - a for a, b in cut)
+    for w in words:
+        w["t"], w["end"] = moved(w["t"]), moved(w["end"])
+    src = tight
+    print(f"tighten: {len(cut)} silences, -{sum(b - a for a, b in cut):.1f}s")
 # a version that stops early ("endAfter": "It was her idea."): the words after it are left out
 if VER.get("endAfter"):
     words = words[:find(words, VER["endAfter"], True) + len(VER["endAfter"].split())]
@@ -156,6 +190,16 @@ cuts = []
 for g in sorted(GAPS, key=gap_index):
     i = gap_index(g)
     cuts.append({**g, "at": quietest(words[i]["end"] - 0.2, max(words[i]["end"], words[i + 1]["t"] - 0.35) + 0.05), "i": i})
+# a passage left out (a shorter cut, "drop": [{"from": "Alan came over", "to": "the plastic down."}]):
+# the take jumps from the quietest moment before its first word to the quietest after its last, and
+# any pause opened inside it goes with it
+for d in VER.get("drop", []):
+    i = find(words, d["from"])
+    j = find(words, d["to"]) + len(d["to"].split()) - 1
+    a = quietest(words[i - 1]["end"] - 0.2, max(words[i - 1]["end"], words[i]["t"] - 0.35) + 0.05)
+    b = quietest(words[j]["end"] - 0.2, max(words[j]["end"], words[j + 1]["t"] - 0.35) + 0.05)
+    cuts = [c for c in cuts if not a < c["at"] < b] + [{"at": a, "len": 0, "skip": b - a, "i": i - 1, "drop": [i, j]}]
+cuts.sort(key=lambda c: (c["at"], 1 if c.get("skip") else 0))
 end_t = words[-1]["end"] + TAIL
 if VER.get("endAfter"):
     nxt = meta_words[len(words)]["t"]
@@ -165,16 +209,21 @@ if VER.get("endAfter"):
 parts, labels, t0 = [], [], 0.0
 fc = []
 for k, c in enumerate(cuts + [{"at": end_t, "len": 0}]):
-    fc.append(f"[0:a]atrim={t0:.3f}:{c['at']:.3f},asetpts=PTS-STARTPTS[s{k}]")
-    labels.append(f"[s{k}]")
+    if c["at"] - t0 > 0.001:
+        fc.append(f"[0:a]atrim={t0:.3f}:{c['at']:.3f},asetpts=PTS-STARTPTS[s{k}]")
+        labels.append(f"[s{k}]")
     if c["len"]:
         fc.append(f"anullsrc=r=44100:cl=mono,atrim=0:{c['len']:.3f}[z{k}]")
         labels.append(f"[z{k}]")
-    t0 = c["at"]
+    t0 = c["at"] + c.get("skip", 0)
 
 
 def shift(t):
-    return HEAD + t + sum(c["len"] for c in cuts if t > c["at"])
+    return HEAD + t + sum(c["len"] - c.get("skip", 0) for c in cuts if t > c["at"])
+
+
+dropped = {k for c in cuts if c.get("drop") for k in range(c["drop"][0], c["drop"][1] + 1)}
+words = [w for k, w in enumerate(words) if k not in dropped]
 
 
 # lift single soft words so no passage drops out of the mix (the old "Mail went to two." problem)
@@ -250,7 +299,7 @@ name = "voice-tape.mp3"
 if ALT:
     out = ALT
     name = f"tape-{VERSION}.mp3"
-if VER.get("echo"):
+if VER.get("echo") or tight:
     os.remove(src)
 run(["ffmpeg", "-y", "-i", tmp, "-af", ln, "-ac", "1", "-ar", "22050", "-b:a", "40k" if not ALT else "64k", os.path.join(out, name)])
 os.remove(tmp)
@@ -265,6 +314,8 @@ marks = {"gaps": [[round(shift(c["at"]), 3), c["len"]] for c in cuts], "chair": 
          "open": round(OPEN_AT, 3), "close": round(CLOSE_AT, 3), "beep2": round(BEEP2, 3), "said": round(said, 3)}
 # caption lines: the script's own sentences (with their dashes), timed by their words
 spoken = re.sub(r"\s+", " ", re.sub(r"\[[^\]]*\]", " ", mono[VER["textKey"]])).strip()
+for d in VER.get("drop", []):
+    spoken = re.sub(r"\s+", " ", re.sub(re.escape(d["from"]) + ".*?" + re.escape(d["to"]), " ", spoken)).strip()
 lines, k = [], 0
 for s in re.split(r"(?<=[.?!])\s+(?=[^a-z])", spoken):
     n = len([w for w in re.findall(r"[^\s—]+", s) if re.search(r"[A-Za-z0-9]", w)])
