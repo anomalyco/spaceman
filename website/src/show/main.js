@@ -280,7 +280,10 @@ export function createShow({ still, canvas, base, capture = false, reduced = fal
     // glass, the room's sheen on it) shows through a little; landing, both go
     const gain = glow * (0.9 + 0.1 * w)
     const alpha = clamp(glow * 2.5) * (0.92 + 0.08 * w)
-    return renderer.renderPlate(list, tw, th, cssW, cssH, grade, fx, { video: src, rect: [rx, ry, rw, rh], quad, alpha, gain })
+    // the room's own image keeps its shadows: a lighter vignette and no extra contrast while it's on
+    // screen, reaching the flat desktop's grade as the panel lands
+    const pfx = { ...fx, vignette: (fx.vignette ?? 0) * mix(0.55, 1, w), contrast: mix(1, fx.contrast ?? 1, w), saturation: mix(1, fx.saturation ?? 1, w) }
+    return renderer.renderPlate(list, tw, th, cssW, cssH, grade, pfx, { video: src, rect: [rx, ry, rw, rh], quad, alpha, gain, screen: 1 - smooth(clamp((w - 0.5) / 0.5)) })
   }
 
   // ── Getting ready ──────────────────────────────────────────────────────

@@ -80,6 +80,26 @@ fn sdBox(p: vec2f, b: vec2f, r: f32) -> f32 {
 }
 `
 
+const AGX = /* wgsl */ `
+// AgX (Troy Sobotka's, in Benjamin Wrensch's polynomial fit): scene-linear in, display out
+fn agxCurve(x: vec3f) -> vec3f {
+  let x2 = x * x;
+  let x4 = x2 * x2;
+  return 15.5 * x4 * x2 - 40.14 * x4 * x + 31.96 * x4 - 6.868 * x2 * x + 0.4298 * x2 + 0.1191 * x - 0.00232;
+}
+fn agx(c: vec3f) -> vec3f {
+  let m = mat3x3f(vec3f(0.842479062253094, 0.0423282422610123, 0.0423756549057051), vec3f(0.0784335999999992, 0.878468636469772, 0.0784336), vec3f(0.0792237451477643, 0.0791661274605434, 0.879142973793104));
+  let inv = mat3x3f(vec3f(1.19687900512017, -0.0528968517574562, -0.0529716355144438), vec3f(-0.0980208811401368, 1.15190312990417, -0.0980434501171241), vec3f(-0.0990297440797205, -0.0989611768448433, 1.15107367264116));
+  var v = clamp(log2(max(m * c, vec3f(1e-10))), vec3f(-12.47393), vec3f(4.026069));
+  v = agxCurve((v + 12.47393) / 16.499999);
+  // a little more contrast and saturation, like Blender's "Medium High Contrast"
+  v = pow(max(v, vec3f(0.0)), vec3f(1.12));
+  let l = dot(v, vec3f(0.2126, 0.7152, 0.0722));
+  v = mix(vec3f(l), v, 1.12);
+  return clamp(inv * v, vec3f(0.0), vec3f(1.0));
+}
+`
+
 const FULL = /* wgsl */ `
 struct VO { @builtin(position) pos: vec4f, @location(0) uv: vec2f }
 @vertex fn vs(@builtin(vertex_index) vi: u32) -> VO {
@@ -129,23 +149,7 @@ fn hash(p: vec2f) -> f32 {
   q += dot(q, q.yx + 33.33);
   return fract((q.x + q.y) * q.x);
 }
-// AgX (Troy Sobotka's, in Benjamin Wrensch's polynomial fit): scene-linear in, display out
-fn agxCurve(x: vec3f) -> vec3f {
-  let x2 = x * x;
-  let x4 = x2 * x2;
-  return 15.5 * x4 * x2 - 40.14 * x4 * x + 31.96 * x4 - 6.868 * x2 * x + 0.4298 * x2 + 0.1191 * x - 0.00232;
-}
-fn agx(c: vec3f) -> vec3f {
-  let m = mat3x3f(vec3f(0.842479062253094, 0.0423282422610123, 0.0423756549057051), vec3f(0.0784335999999992, 0.878468636469772, 0.0784336), vec3f(0.0792237451477643, 0.0791661274605434, 0.879142973793104));
-  let inv = mat3x3f(vec3f(1.19687900512017, -0.0528968517574562, -0.0529716355144438), vec3f(-0.0980208811401368, 1.15190312990417, -0.0980434501171241), vec3f(-0.0990297440797205, -0.0989611768448433, 1.15107367264116));
-  var v = clamp(log2(max(m * c, vec3f(1e-10))), vec3f(-12.47393), vec3f(4.026069));
-  v = agxCurve((v + 12.47393) / 16.499999);
-  // a little more contrast and saturation, like Blender's "Medium High Contrast"
-  v = pow(max(v, vec3f(0.0)), vec3f(1.12));
-  let l = dot(v, vec3f(0.2126, 0.7152, 0.0722));
-  v = mix(vec3f(l), v, 1.12);
-  return clamp(inv * v, vec3f(0.0), vec3f(1.0));
-}
+${AGX}
 @fragment fn fs(i: VO) -> @location(0) vec4f {
   let px = i.uv * pu.res.xy;
   let s0 = textureSampleLevel(scene, samp, i.uv, 0.0);
@@ -196,26 +200,57 @@ fn agx(c: vec3f) -> vec3f {
 // The opening plate: a pre-rendered frame of the room drawn as a quad, and the live desktop on the
 // panel's quad in it, mapped in perspective (each corner carries q, so uv/q interpolates projectively).
 const QUAD = /* wgsl */ `
-struct Q { c: array<vec4f, 4>, q: vec4f, k: vec4f }
+struct Q { c: array<vec4f, 4>, q: vec4f, k: vec4f, s: vec4f }
 @group(0) @binding(0) var<uniform> u: Q;
 @group(0) @binding(1) var tex: texture_2d<f32>;
 @group(0) @binding(2) var smp: sampler;
 struct VO { @builtin(position) pos: vec4f, @location(0) uvq: vec3f }
+${AGX}
 const ORDER = array<u32, 6>(0, 1, 2, 0, 2, 3);
 const UV = array<vec2f, 4>(vec2f(0, 0), vec2f(1, 0), vec2f(1, 1), vec2f(0, 1));
+// k: alpha, gain, and the margin (in uv) the quad was grown by so its edges can be antialiased
 @vertex fn vs(@builtin(vertex_index) vi: u32) -> VO {
   let i = ORDER[vi];
   let q = u.q[i];
   var o: VO;
   o.pos = vec4f(u.c[i].xy, 0.0, 1.0);
-  o.uvq = vec3f(UV[i] * q, q);
+  o.uvq = vec3f((UV[i] * (1.0 + 2.0 * u.k.zw) - u.k.zw) * q, q);
   return o;
 }
 @fragment fn fs(i: VO) -> @location(0) vec4f {
-  let c = textureSample(tex, smp, i.uvq.xy / i.uvq.z).rgb;
-  return vec4f(c * u.k.y * u.k.x, u.k.x);
+  let uv = i.uvq.xy / i.uvq.z;
+  let c = textureSample(tex, smp, clamp(uv, vec2f(0.0), vec2f(1.0))).rgb;
+  let d = min(uv, 1.0 - uv) / max(fwidth(uv), vec2f(1e-6));
+  // a pixel past the edge, to cover the plate's own half-lit edge pixels under it
+  let cov = select(1.0, clamp(d.x + 1.0, 0.0, 1.0) * clamp(d.y + 1.0, 0.0, 1.0), u.k.z > 0.0);
+  // s.x: how much the desktop still reads as a screen seen by the room's camera: its light at the
+  // room's exposure (s.y) through the same AgX look Cycles gives the room, which lifts and flattens it
+  // and takes the colour out of its brightest parts (fitted to the Cycles stills of the panel)
+  let sc = mix(c, agx(pow(max(c, vec3f(0.0)), vec3f(2.2)) * u.s.y), u.s.x);
+  let a = u.k.x * cov;
+  return vec4f(sc * u.k.y * a, a);
 }
 `
+
+// The quad (tl, tr, br, bl) grown outward by px pixels through its own perspective, so the fragment
+// shader can fade its edges over a pixel instead of stepping them; returns the corners and the margin in uv.
+function outset(p, px) {
+  const [[x0, y0], [x1, y1], [x2, y2], [x3, y3]] = p
+  const dx1 = x1 - x2, dx2 = x3 - x2, dy1 = y1 - y2, dy2 = y3 - y2
+  const sx = x0 - x1 + x2 - x3, sy = y0 - y1 + y2 - y3
+  const den = dx1 * dy2 - dx2 * dy1
+  const g = Math.abs(den) < 1e-9 ? 0 : (sx * dy2 - dx2 * sy) / den
+  const h = Math.abs(den) < 1e-9 ? 0 : (dx1 * sy - sx * dy1) / den
+  const a = x1 - x0 + g * x1, b = x3 - x0 + h * x3, d = y1 - y0 + g * y1, e = y3 - y0 + h * y3
+  const at = (u, v) => {
+    const w = g * u + h * v + 1
+    return [(a * u + b * v + x0) / w, (d * u + e * v + y0) / w]
+  }
+  const len = (i, j) => Math.hypot(p[i][0] - p[j][0], p[i][1] - p[j][1])
+  const mu = px / Math.max(1, Math.min(len(0, 1), len(3, 2)))
+  const mv = px / Math.max(1, Math.min(len(0, 3), len(1, 2)))
+  return { pts: [at(-mu, -mv), at(1 + mu, -mv), at(1 + mu, 1 + mv), at(-mu, 1 + mv)], mu, mv }
+}
 
 // q per corner of a quad (tl, tr, br, bl): from the diagonals' crossing
 function quadQ(p) {
@@ -331,7 +366,7 @@ export async function createGPU(canvas) {
 
   // ── the plate ──
   let quadPipe = null
-  const quadU = [0, 1].map(() => device.createBuffer({ size: 112, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST }))
+  const quadU = [0, 1].map(() => device.createBuffer({ size: 128, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST }))
   const quadBG = new Map()
   function quadBind(k, view, smp) {
     let e = quadBG.get(k)
@@ -341,10 +376,12 @@ export async function createGPU(canvas) {
     }
     return e.bg
   }
-  function writeQuad(k, pts, W, H, alpha, gain) {
+  function writeQuad(k, pts, W, H, alpha, gain, aa = false, screen = 0) {
+    let mu = 0, mv = 0
+    if (aa) ({ pts, mu, mv } = outset(pts, (1.5 * W) / canvas.width))
     const q = quadQ(pts)
     const c = pts.flatMap(([x, y]) => [(x / W) * 2 - 1, 1 - (y / H) * 2, 0, 0])
-    device.queue.writeBuffer(quadU[k], 0, new Float32Array([...c, ...q, alpha, gain, 0, 0]))
+    device.queue.writeBuffer(quadU[k], 0, new Float32Array([...c, ...q, alpha, gain, mu, mv, screen, 3.5, 0, 0]))
   }
 
   let frame = 0
@@ -388,7 +425,7 @@ export async function createGPU(canvas) {
       plate.view ||= plate.tex.createView()
       const [rx, ry, rw, rh] = p.rect
       writeQuad(0, [[rx, ry], [rx + rw, ry], [rx + rw, ry + rh], [rx, ry + rh]], W, H, 1, 1)
-      writeQuad(1, p.quad, W, H, p.alpha, p.gain ?? 1)
+      writeQuad(1, p.quad, W, H, p.alpha, p.gain ?? 1, true, p.screen ?? 0)
       const tex = ctx.getCurrentTexture()
       const R = targets(tex.width, tex.height)
       device.queue.writeBuffer(
