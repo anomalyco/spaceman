@@ -200,6 +200,9 @@ for d in VER.get("drop", []):
     b = quietest(words[j]["end"] - 0.2, max(words[j]["end"], words[j + 1]["t"] - 0.35) + 0.05)
     cuts = [c for c in cuts if not a < c["at"] < b] + [{"at": a, "len": 0, "skip": b - a, "i": i - 1, "drop": [i, j]}]
 cuts.sort(key=lambda c: (c["at"], 1 if c.get("skip") else 0))
+# the aligner's last-letter times run late; a word never ends after the cut that follows it
+for c in cuts:
+    words[c["i"]]["end"] = min(words[c["i"]]["end"], c["at"])
 end_t = words[-1]["end"] + TAIL
 if VER.get("endAfter"):
     nxt = meta_words[len(words)]["t"]

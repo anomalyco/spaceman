@@ -6,7 +6,7 @@
 import { plates, coverUV } from "./plates.js"
 import { MONO } from "./apps.js"
 
-export const FEEDS = ["cam-hall", "cam-kitchen", "cam-living", "cam-landing", "cam-back", "st-08", "st-10", "st-10-empty", "st-14", "st-16", "st-16-empty", "st-18", "cam-cellar"]
+export const FEEDS = ["cam-hall", "cam-kitchen", "cam-living", "cam-landing", "cam-back", "st-08", "st-10", "st-10-empty", "st-14", "st-16", "st-16-empty", "st-16-cat", "st-16-bins", "st-18", "cam-cellar", "sixteen"]
 let clock = 0
 // the film's own time, so a feed is the same frame at the same moment in every run
 export function feedClock(t) {
@@ -51,7 +51,7 @@ function stamp(d, t) {
   const hh = Math.floor(s / 3600) % 24
   const mm = Math.floor(s / 60) % 60
   const ss = s % 60
-  return d.us ? `${d.date || "11-20-2026"}  ${pad(((hh + 11) % 12) + 1)}:${pad(mm)}:${pad(ss)} ${hh < 12 ? "AM" : "PM"}` : `${d.date || "2026-11-20"} ${pad(hh)}:${pad(mm)}:${pad(ss)}`
+  return (d.wd ? d.wd + " " : "") + (d.us ? `${d.date || "11-20-2026"}  ${pad(((hh + 11) % 12) + 1)}:${pad(mm)}:${pad(ss)} ${hh < 12 ? "AM" : "PM"}` : `${d.date || "2026-11-20"} ${pad(hh)}:${pad(mm)}:${pad(ss)}`)
 }
 
 // d: { src, name, ir, q (0 new .. 1 old and cheap), res: [w, h], fps, seed, clock + date (the stamp),
@@ -75,7 +75,9 @@ export function feed(ctx, x, y, w, h, d, win) {
     const t = f / fps
     const s = canvasOf(st, "sensor", SW, SH)
     const g = s.getContext("2d")
-    const src = plates[d.src]
+    const src0 = plates[d.src]
+    // a camera can see part of a source (a second camera on the same house, zoomed on the door)
+    const src = src0 && d.crop ? cropOf(src0, d.crop) : src0
     g.globalCompositeOperation = "source-over"
     g.globalAlpha = 1
     g.fillStyle = "#000"
@@ -183,8 +185,20 @@ export function feed(ctx, x, y, w, h, d, win) {
   ctx.fillRect(x, y, w, h)
   const s = st.sensor
   if (s) {
-    const [u0, v0, u1, v1] = coverUV(s, w, h, 0.5, 0.5)
-    ctx.imageSmoothingEnabled = true
+    let [u0, v0, u1, v1] = coverUV(s, w, h, 0.5, 0.5)
+    // the viewer's digital zoom: a smaller part of the same low-resolution stream, blown up
+    const z = d.zoom?.z || 1
+    if (z > 1.001) {
+      const uw = (u1 - u0) / z
+      const vh = (v1 - v0) / z
+      const cu = Math.min(u1 - uw / 2, Math.max(u0 + uw / 2, u0 + (u1 - u0) * d.zoom.x))
+      const cv = Math.min(v1 - vh / 2, Math.max(v0 + vh / 2, v0 + (v1 - v0) * d.zoom.y))
+      u0 = cu - uw / 2
+      u1 = cu + uw / 2
+      v0 = cv - vh / 2
+      v1 = cv + vh / 2
+    }
+    ctx.imageSmoothingEnabled = z < 2.6
     ctx.imageSmoothingQuality = "low"
     ctx.globalAlpha = lost ? 0.55 : 1
     ctx.drawImage(s, u0 * s.width, v0 * s.height, (u1 - u0) * s.width, (v1 - v0) * s.height, x, y, w, h)
@@ -212,12 +226,138 @@ export function feed(ctx, x, y, w, h, d, win) {
     ctx.arc(x + w - fs * 3.4 - 10, by - fs * 0.36, fs * 0.3, 0, Math.PI * 2)
     ctx.fill()
   }
+  if (d.zoom?.z > 1.05 && !lost) {
+    ctx.textAlign = "left"
+    ctx.fillStyle = "rgba(0,0,0,.4)"
+    const zs = "ZOOM " + d.zoom.z.toFixed(1) + "×"
+    const zw = ctx.measureText(zs).width
+    ctx.fillRect(x + 6, by - fs - 3, zw + 8, fs + 8)
+    ctx.fillStyle = "rgba(235,235,230,.92)"
+    ctx.fillText(zs, x + 10, by)
+  }
+  // a snapshot, saved, its name being edited
+  if (d.snap) {
+    const sw = Math.min(w - 24, 330)
+    const sx = x + 12
+    const sy = y + h - 96
+    ctx.fillStyle = "rgba(28,29,32,.92)"
+    roundRectPath(ctx, sx, sy, sw, 64, 9)
+    ctx.fill()
+    ctx.font = `500 11.5px ${MONO}`
+    ctx.fillStyle = "rgba(200,198,192,.85)"
+    ctx.textAlign = "left"
+    ctx.fillText("Snapshot saved to Stills", sx + 12, sy + 20)
+    ctx.fillStyle = d.snap.edit ? "rgba(255,255,255,.08)" : "rgba(0,0,0,0)"
+    ctx.fillRect(sx + 9, sy + 29, sw - 18, 25)
+    ctx.font = `500 14px ${MONO}`
+    const nm = d.snap.name
+    const nw = ctx.measureText(nm).width
+    if (d.snap.sel) {
+      ctx.fillStyle = "rgba(70,120,220,.75)"
+      ctx.fillRect(sx + 13, sy + 33, nw + 2, 18)
+    }
+    ctx.fillStyle = "rgba(240,238,232,.96)"
+    ctx.fillText(nm, sx + 14, sy + 47)
+    if (d.snap.edit && !d.snap.sel && Math.floor(clock * 2) % 2 === 0) ctx.fillRect(sx + 15 + nw, sy + 34, 1.5, 16)
+  }
   ctx.textAlign = "left"
+}
+
+function roundRectPath(ctx, x, y, w, h, r) {
+  ctx.beginPath()
+  ctx.roundRect(x, y, w, h, r)
+}
+
+const crops = new Map()
+function cropOf(img, [x, y, w, h]) {
+  const k = img.version + ":" + [x, y, w, h].join(",")
+  let c = crops.get(img)?.[k]
+  if (c) return c
+  c = document.createElement("canvas")
+  c.width = Math.max(8, Math.round(img.width * w))
+  c.height = Math.max(8, Math.round(img.height * h))
+  c.getContext("2d").drawImage(img, img.width * x, img.height * y, c.width, c.height, 0, 0, c.width, c.height)
+  if (!crops.has(img)) crops.set(img, {})
+  crops.get(img)[k] = c
+  return c
+}
+
+// Someone walking past, as a cheap camera sees them at night: a dark figure against the lit fence, a
+// walk's bob and swing, and a small dog on a lead a step ahead. x, y: where their feet are (0..1).
+export function walkerAt(l, t) {
+  const u = (t - l.t0) / l.dur
+  return { u, x: l.x0 + (l.x1 - l.x0) * u, y: l.y }
+}
+function walker(g, W, H, l, t) {
+  const { u, x, y } = walkerAt(l, t)
+  if (u < 0 || u > 1) return
+  const ht = l.h * H
+  const fx = x * W
+  const fy = y * H
+  const ph = t * 1.9 * Math.PI * 2
+  const bob = Math.abs(Math.sin(ph)) * ht * 0.018
+  const dir = Math.sign(l.x1 - l.x0) || 1
+  g.save()
+  g.fillStyle = l.col || "rgba(16,16,18,.93)"
+  g.strokeStyle = g.fillStyle
+  g.lineCap = "round"
+  // legs, scissoring
+  const hip = fy - ht * 0.48 - bob
+  const stride = Math.sin(ph) * ht * 0.13
+  g.lineWidth = ht * 0.075
+  g.beginPath()
+  g.moveTo(fx, hip)
+  g.lineTo(fx + stride, fy)
+  g.moveTo(fx, hip)
+  g.lineTo(fx - stride, fy)
+  g.stroke()
+  // coat and body
+  g.beginPath()
+  g.ellipse(fx, hip - ht * 0.2, ht * 0.095, ht * 0.25, 0, 0, Math.PI * 2)
+  g.fill()
+  // head
+  g.beginPath()
+  g.arc(fx + dir * ht * 0.01, hip - ht * 0.47, ht * 0.065, 0, Math.PI * 2)
+  g.fill()
+  // the arm with the lead, forward
+  g.lineWidth = ht * 0.05
+  g.beginPath()
+  g.moveTo(fx, hip - ht * 0.36)
+  const hx = fx + dir * ht * 0.14
+  const hy = hip - ht * 0.12
+  g.lineTo(hx, hy)
+  g.stroke()
+  // the dog, a step ahead, trotting
+  const dx = fx + dir * ht * 0.42
+  const dph = t * 3.4 * Math.PI * 2
+  const dy = fy - ht * 0.09 - Math.abs(Math.sin(dph)) * ht * 0.01
+  g.beginPath()
+  g.ellipse(dx, dy, ht * 0.11, ht * 0.045, 0, 0, Math.PI * 2)
+  g.fill()
+  g.beginPath()
+  g.arc(dx + dir * ht * 0.12, dy - ht * 0.04, ht * 0.035, 0, Math.PI * 2)
+  g.fill()
+  g.lineWidth = ht * 0.025
+  g.beginPath()
+  for (const o of [-0.07, 0.07]) {
+    const sw = Math.sin(dph + o * 20) * ht * 0.03
+    g.moveTo(dx + o * ht, dy)
+    g.lineTo(dx + o * ht + sw, fy)
+  }
+  g.stroke()
+  // the lead
+  g.lineWidth = Math.max(0.6, ht * 0.008)
+  g.beginPath()
+  g.moveTo(hx, hy)
+  g.quadraticCurveTo((hx + dx) / 2, dy + ht * 0.02, dx + dir * ht * 0.1, dy - ht * 0.04)
+  g.stroke()
+  g.restore()
 }
 
 // small life in a fixed frame: a moth at the IR lamp, a car's lights crossing, a light on a timer
 function life(g, W, H, d, t, seed) {
   for (const l of d.life || []) {
+    if (l.walker) walker(g, W, H, l.walker, t)
     if (l.moth) {
       const k = t * 0.9 + seed
       const mx = W * (l.moth[0] + 0.07 * Math.sin(k * 2.3) + 0.04 * Math.sin(k * 7.1))

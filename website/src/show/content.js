@@ -2,7 +2,7 @@
 // (the context is already scaled). Contents are redrawn only when a window is marked dirty.
 import { APPS, FONT, MONO, iconCanvas, roundRect } from "./apps.js"
 import { plates, coverUV } from "./plates.js"
-import { photos as libraryPhotos } from "./library.js"
+import { photos as libraryPhotos, album as albumPainter } from "./library.js"
 import { feed as paintFeed } from "./feeds.js"
 
 export const BAR_H = 30
@@ -196,6 +196,62 @@ const ARTICLE = [
   "Brush guards sat in the gutter like a bottle brush. They were easy to lift out and clean, but pine needles wove into them by spring.",
   "Reverse-curve guards worked best on the long run over the porch, where water comes off the roof fastest. They are also the most visible from the street.",
 ]
+
+// A week, his neighbour's: seven columns, the hours that matter, what they do and when.
+function weekView(ctx, w, h, d) {
+  text(ctx, d.title || "", 18, BAR_H + 30, { size: 15, weight: 650, max: w - 36 })
+  const left = 40
+  const top = BAR_H + 62
+  const cw = (w - left - 8) / 7
+  const from = d.from ?? 6
+  const to = d.to ?? 24
+  const hour = (h - top - 8) / (to - from)
+  d.week.forEach((s, i) => text(ctx, s, left + i * cw + cw / 2, top - 10, { size: 11, weight: 600, color: SOFT, align: "center" }))
+  for (let hr = from; hr <= to; hr += 3) {
+    const y = top + (hr - from) * hour
+    ctx.fillStyle = RULE
+    ctx.fillRect(left, y, w - left - 8, 1)
+    text(ctx, String(hr % 24).padStart(2, "0"), left - 6, y + 4, { size: 10, color: SOFT, align: "right" })
+  }
+  for (let i = 1; i < 7; i++) {
+    ctx.fillStyle = RULE
+    ctx.fillRect(left + i * cw, top, 1, h - top)
+  }
+  for (const e of d.events || []) {
+    const y = top + (e.at - from) * hour
+    const hh = Math.max(14, e.len * hour - 2)
+    ctx.fillStyle = e.color || "#e9c9c4"
+    roundRect(ctx, left + e.day * cw + 2, y + 1, cw - 4, hh, 4)
+    ctx.fill()
+    if (hh > 13) text(ctx, e.t, left + e.day * cw + 6, y + 12, { size: 10.5, weight: 600, color: "#4a2a26", max: cw - 9 })
+  }
+}
+
+// A month, with one entry in it.
+function monthView(ctx, w, h, d) {
+  text(ctx, d.month, 22, BAR_H + 36, { size: 20, weight: 700 })
+  const top = BAR_H + 70
+  const cw = (w - 24) / 7
+  const rows = Math.ceil((d.first + d.days) / 7)
+  const rh = (h - top - 10) / rows
+  ;["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].forEach((s, i) => text(ctx, s, 12 + i * cw + cw - 8, top - 10, { size: 11, weight: 600, color: SOFT, align: "right" }))
+  for (let k = 0; k < rows * 7; k++) {
+    const day = k - d.first + 1
+    const x = 12 + (k % 7) * cw
+    const y = top + Math.floor(k / 7) * rh
+    ctx.fillStyle = RULE
+    ctx.fillRect(x, y, cw, 1)
+    if (day < 1 || day > d.days) continue
+    text(ctx, String(day), x + cw - 8, y + 17, { size: 12.5, weight: day === d.today ? 700 : 400, color: day === d.today ? "#c0392b" : INK, align: "right" })
+    for (const e of d.events || [])
+      if (e.day === day) {
+        ctx.fillStyle = e.color || "#d6dff0"
+        roundRect(ctx, x + 4, y + 24, cw - 8, Math.min(22, rh - 28), 4)
+        ctx.fill()
+        text(ctx, e.t, x + 9, y + 39, { size: 12.5, weight: 650, color: "#2b2f3a", max: cw - 16 })
+      }
+  }
+}
 
 const painters = {
   jot(ctx, w, h, d, win, focused) {
@@ -491,7 +547,7 @@ const painters = {
     ctx.fillStyle = PAGE
     roundRect(ctx, 10, BAR_H + 5, aw - 2, 29, 7)
     ctx.fill()
-    text(ctx, TAB_TITLES[0], 22, BAR_H + 24, { size: 12, color: INK, max: aw - 26 })
+    text(ctx, d.tab || TAB_TITLES[0], 22, BAR_H + 24, { size: 12, color: INK, max: aw - 26 })
     for (let i = 1; i < n; i++) {
       const x = 10 + aw + (i - 1) * rw
       if (x + rw > w - 6) break
@@ -518,6 +574,11 @@ const painters = {
     let y = BAR_H + 108
     text(ctx, d.heading || "", x0, y, { size: 24, weight: 700, max: cw, font: SERIF })
     y += 24
+    if (d.lines) {
+      y += 14
+      lines(ctx, d.lines, x0, y + 10, cw, { size: 15, gap: 26 })
+      return
+    }
     text(ctx, "By the Home Desk · 6 min read", x0, y, { size: 12.5, color: SOFT })
     y += 30
     ctx.font = `400 15px ${SERIF}`
@@ -538,16 +599,72 @@ const painters = {
     ctx.fillStyle = RULE
     ctx.fillRect(0, BAR_H + 44, w, 1)
     let y = BAR_H + 62
+    // drafts that don't fit push the conversation up, under the header
+    const DR = 26
+    let over = 0
+    if (d.drafts) {
+      let mh = d.day ? 24 : 0
+      for (const m of d.msgs || []) mh += (m.from ? 16 : 0) + (m.note ? 70 : 46)
+      over = Math.max(0, y + mh + (d.shownDrafts ?? d.drafts.length) * DR - (h - (d.compose != null ? 64 : 12)))
+    }
+    ctx.save()
+    ctx.beginPath()
+    ctx.rect(0, BAR_H + 45, w, h - BAR_H - 45 - (d.compose != null ? 60 : 0))
+    ctx.clip()
+    y -= over
+    if (d.day) {
+      text(ctx, d.day, w / 2, y + 6, { size: 11.5, weight: 600, color: SOFT, align: "center" })
+      y += 24
+    }
     for (const m of d.msgs || []) {
       ctx.font = `400 15px ${FONT}`
       const bw = Math.min(w * 0.76, ctx.measureText(m.t).width + 28)
       const x = m.me ? w - bw - 18 : 18
+      if (m.from) {
+        text(ctx, m.from, x + 12, y + 8, { size: 11.5, color: SOFT })
+        y += 16
+      }
       ctx.fillStyle = m.me ? "#7a64c4" : "#e8e4dd"
       roundRect(ctx, x, y, bw, 36, 18)
       ctx.fill()
       text(ctx, m.t, x + 14, y + 23, { size: 15, color: m.me ? "#fff" : INK, max: bw - 24 })
       if (m.note) text(ctx, m.note, m.me ? w - 22 : 22, y + 54, { size: 12, color: SOFT, align: m.me ? "right" : "left" })
       y += m.note ? 70 : 46
+    }
+    // drafts: written to her, one after another, and never sent
+    if (d.drafts) {
+      const n = d.shownDrafts ?? d.drafts.length
+      const rowH = DR
+      d.drafts.slice(0, n).forEach((s, i) => {
+        ctx.font = `400 13px ${FONT}`
+        const bw = Math.min(w * 0.8, ctx.measureText(s).width + 26)
+        const x = w - bw - 74
+        const yy = y + i * rowH
+        ctx.setLineDash([4, 3])
+        ctx.strokeStyle = "rgba(122,100,196,.6)"
+        ctx.lineWidth = 1.2
+        roundRect(ctx, x + 0.5, yy + 0.5, bw, rowH - 6, (rowH - 6) / 2)
+        ctx.stroke()
+        ctx.setLineDash([])
+        text(ctx, s, x + 13, yy + rowH / 2 + 2, { size: 13, color: "#6d5fa6", max: bw - 20 })
+        text(ctx, "Draft", w - 18, yy + rowH / 2 + 2, { size: 11.5, weight: 600, color: "#c0574a", align: "right" })
+      })
+    }
+    ctx.restore()
+    if (d.compose != null) {
+      const fy = h - 48
+      ctx.fillStyle = RULE
+      ctx.fillRect(0, fy - 10, w, 1)
+      ctx.strokeStyle = "rgba(0,0,0,.14)"
+      ctx.lineWidth = 1
+      roundRect(ctx, 16.5, fy + 0.5, w - 33, 32, 16)
+      ctx.stroke()
+      text(ctx, d.compose || "Message", 32, fy + 21, { size: 14, color: d.compose ? INK : "#aaa59c" })
+      if (d.caret) {
+        ctx.font = `400 14px ${FONT}`
+        ctx.fillStyle = "#3d6fd0"
+        ctx.fillRect(31 + (d.compose ? ctx.measureText(d.compose).width + 1 : 0), fy + 8, 1.5, 17)
+      }
     }
   },
   // A screenshot from March: his desktop as it was, every window on top of another.
@@ -574,18 +691,22 @@ const painters = {
   daybook(ctx, w, h, d) {
     ctx.fillStyle = PAGE
     ctx.fillRect(0, BAR_H, w, h - BAR_H)
+    if (d.week) return weekView(ctx, w, h, d)
+    if (d.month) return monthView(ctx, w, h, d)
     text(ctx, d.date || "", 22, BAR_H + 34, { size: 17, weight: 650 })
     const top = BAR_H + 52
-    const hour = 40
-    for (let i = 0; i < 14; i++) {
+    const hour = d.hour || 40
+    const from = d.from ?? 7
+    for (let i = 0; i < 24; i++) {
       const y = top + i * hour
       if (y > h) break
       ctx.fillStyle = RULE
       ctx.fillRect(64, y, w - 64, 1)
-      text(ctx, `${(i + 7) % 12 || 12} ${i + 7 < 12 ? "AM" : "PM"}`, 56, y + 5, { size: 11, color: SOFT, align: "right" })
+      const hh = (i + from) % 24
+      text(ctx, `${hh % 12 || 12} ${hh < 12 ? "AM" : "PM"}`, 56, y + 5, { size: 11, color: SOFT, align: "right" })
     }
     for (const e of d.events || []) {
-      const y = top + (e.at - 7) * hour
+      const y = top + (e.at - from) * hour
       ctx.fillStyle = e.color || "#e9c9c4"
       roundRect(ctx, 72, y + 2, w - 88, e.len * hour - 4, 6)
       ctx.fill()
@@ -595,6 +716,7 @@ const painters = {
     }
   },
   photos: (...a) => libraryPhotos(...a),
+  album: (...a) => albumPainter(...a),
   feed(ctx, w, h, d, win) {
     paintFeed(ctx, 0, BAR_H, w, h - BAR_H, d, win)
   },

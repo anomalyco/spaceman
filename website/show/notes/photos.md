@@ -18,6 +18,7 @@ screen. Everything else in the film is our own Blender scenes. Each file was dow
 | `drill.jpg` | none | a cordless drill on a garage bench, a label-maker label reading MARK |
 | `night.jpg` | a Blender render of our street at night as a reference | No. 14's lit upstairs window at night through his blinds, night mode |
 | `night-zoom.jpg` | night.jpg as reference | the same, 3x zoom: a man side-on in the lamplight, face turned away |
+| `night-look.jpg` | night.jpg as reference (minimax-h3-image) | the last photo in the album: No. 14 at night, Alan standing at his lit upstairs window, looking back at the camera |
 | `plastic.jpg` | none | rolls of builder's plastic and tape in a car boot, at night |
 | `label.jpg` | none | a label maker on a desk at night, a fresh label reading FOURTEEN |
 

@@ -19,6 +19,8 @@ shipped copies are 640 px wide, JPEG, metadata stripped (458 KB together).
 | `st-14.jpg` | No. 14 (ws 5) | No. 14 from across the street: the clipped hedge, a streetlight, one warm upstairs window |
 | `st-16.jpg` | No. 16 (ws 5) | No. 16's front at night, a bench and a front garden |
 | `st-16-empty.jpg` | No. 16, from March | the same frame, dark, post on the step |
+| `st-16-bins.jpg` | No. 16 on a Wednesday (draft 16, ws 5) | an image-model edit (minimax-h3-image) of our own `st-16.jpg`: the same frame with two wheelie bins out at the kerb |
+| `st-16-cat.jpg` | No. 16 from March (draft 16, ws 5) | an image-model edit of our own `st-16.jpg`: the house dark, post piled on the step, a cat waiting at the door |
 | `st-18.jpg` | No. 18 (ws 5) | the end of the street in IR from the oldest camera: a hedge, a fir, a lamp |
 | `cam-cellar.jpg` | Cellar (ws 6, the last shot) | a cellar from a ceiling corner: plastic sheeting taped to the floor, three wrapped forms side by side, shelving. Composed, not gory. |
 

@@ -5,7 +5,7 @@ import { FONT, roundRect } from "./apps.js"
 import { plates, coverUV } from "./plates.js"
 import { BAR_H } from "./content.js"
 
-export const PHOTOS = ["h-jun", "h-jul", "h-rain", "h-rain2", "h-fog", "h-oct", "h-nov", "h-tape", "drill", "sixteen", "night", "night-zoom", "plastic", "label"]
+export const PHOTOS = ["h-jun", "h-jul", "h-rain", "h-rain2", "h-fog", "h-oct", "h-nov", "h-tape", "drill", "sixteen", "night", "night-zoom", "plastic", "label", "night-look"]
 // the hedge's top in the two photos that get measured (fraction of the photo's height)
 const TOP = { "h-jun": 0.393, "h-tape": 0.41 }
 export const MORNINGS = 160
@@ -260,6 +260,103 @@ export function photos(ctx, w, h, d) {
       const i = e.morning ?? 0
       label(ctx, weekday(i) + ", " + e.date + " · " + e.time, 14, h - 12, 13.5, 600, "#d9d5ce")
       if (d.measured) label(ctx, d.measure || "6′ 2″", w - 14, h - 12, 13.5, 700, "#ff8f7a", "right")
+      ctx.globalAlpha = 1
+    }
+  }
+}
+
+// The album "Hedge": 4,812 pictures of No. 14. Every morning at first; then every hour, day and night;
+// then night after night, a burst every few minutes; and last, his window, with him in it, looking back.
+export const ALBUM = 4812
+const HOURLY = 92 // where every morning becomes every hour
+const NIGHTS = HOURLY + 24 * 38 // where every hour becomes every night
+const p2 = (n) => String(n).padStart(2, "0")
+const ampm = (h, m) => `${h % 12 || 12}:${p2(m)} ${h < 12 ? "AM" : "PM"}`
+export function albumAt(k) {
+  if (k >= ALBUM - 1) return { plate: "night-look", date: "Nov 19", time: "11:52 PM", night: 1, last: 1 }
+  if (k < HOURLY) return { plate: morningPlate(k), date: day(k), time: ampm(6, Math.round(1 + h01(k, 12) * 7)), morning: k }
+  if (k < NIGHTS) {
+    const j = k - HOURLY
+    const i = HOURLY + Math.floor(j / 24)
+    const hr = (j + 7) % 24
+    const night = hr >= 20 || hr < 6
+    return { plate: night ? (h01(k, 10) < 0.5 ? "night" : "night-zoom") : morningPlate(i), date: day(Math.min(i, 172)), time: ampm(hr, Math.floor(h01(k, 11) * 6)), night, morning: night ? null : i }
+  }
+  const j = k - NIGHTS
+  const per = (ALBUM - 1 - NIGHTS) / 31 // a month of nights, to the last one
+  const i = 130 + Math.floor(j / per)
+  const m = 23 * 60 + 2 + Math.floor((j % per) * 2.4)
+  return { plate: h01(k, 10) < 0.55 ? "night-zoom" : "night", date: day(Math.min(i, 172)), time: ampm(Math.floor(m / 60) % 24, m % 60), night: 1 }
+}
+export function albumGrid(w, h) {
+  const top = BAR_H + 40
+  const cols = Math.max(5, Math.round((w - 16) / 112))
+  const cw = (w - 16) / cols
+  const rowH = cw + 20
+  const rows = Math.ceil(ALBUM / cols)
+  const view = h - top
+  const maxScroll = Math.max(0, rows * rowH + 16 - view)
+  const tile = (k, scroll) => ({ x: 8 + (k % cols) * cw + 3, y: top + 8 + Math.floor(k / cols) * rowH - scroll + 3, w: cw - 6, h: cw - 6 })
+  const scrollTo = (k, f = 0.42) => Math.max(0, Math.min(maxScroll, 8 + Math.floor(k / cols) * rowH + rowH / 2 - view * f))
+  return { top, cols, cw, rowH, rows, view, maxScroll, tile, scrollTo }
+}
+const MONTH = { Jun: "June", Jul: "July", Aug: "August", Sep: "September", Oct: "October", Nov: "November" }
+export function album(ctx, w, h, d) {
+  const G = albumGrid(w, h)
+  const scroll = Math.max(0, Math.min(G.maxScroll, d.scroll || 0))
+  ctx.fillStyle = "#1f1f21"
+  ctx.fillRect(0, BAR_H, w, h - BAR_H)
+  const first = Math.max(0, Math.floor((scroll - 8) / G.rowH) * G.cols)
+  const last = Math.min(ALBUM, Math.ceil((scroll + G.view) / G.rowH + 1) * G.cols)
+  ctx.save()
+  ctx.beginPath()
+  ctx.rect(0, G.top, w, h - G.top)
+  ctx.clip()
+  for (let k = first; k < last; k++) {
+    const r = G.tile(k, scroll)
+    if (r.y > h || r.y + G.rowH < G.top) continue
+    const e = albumAt(k)
+    drawTile(ctx, e, k, r)
+    if (d.sel === k) {
+      ctx.strokeStyle = "#4f8cff"
+      ctx.lineWidth = 3
+      ctx.strokeRect(r.x - 1.5, r.y - 1.5, r.w + 3, r.h + 3)
+    }
+    const fs = Math.max(9.5, Math.min(11.5, G.cw / 10))
+    label(ctx, e.date, r.x + 1, r.y + r.w + fs + 4, fs, 600, e.night ? "#a7a29a" : "#d9d5ce")
+    label(ctx, e.time, r.x + r.w - 1, r.y + r.w + fs + 4, fs - 1, 400, e.night ? "#8b867e" : "#8f8b84", "right")
+  }
+  if (d.bar > 0 && G.maxScroll > 0) {
+    const vh = 34
+    const y = G.top + 6 + (scroll / G.maxScroll) * (G.view - 12 - vh)
+    ctx.fillStyle = "rgba(255,255,255," + (0.42 * d.bar).toFixed(3) + ")"
+    roundRect(ctx, w - 9, y, 5, vh, 2.5)
+    ctx.fill()
+  }
+  ctx.restore()
+  // the toolbar: the album, its count, and the month under the top row
+  ctx.fillStyle = "rgba(38,38,40,.96)"
+  ctx.fillRect(0, BAR_H, w, 40)
+  ctx.fillStyle = "rgba(255,255,255,.07)"
+  ctx.fillRect(0, BAR_H + 39, w, 1)
+  label(ctx, "Hedge", 16, BAR_H + 25, 14, 700, "#e9e6e0")
+  label(ctx, ALBUM.toLocaleString("en-US") + " items", 70, BAR_H + 25, 13, 400, "#9d988f")
+  const topK = Math.min(ALBUM - 1, Math.max(0, Math.floor((scroll + 8) / G.rowH) * G.cols))
+  const mo = albumAt(topK).date.split(" ")[0]
+  label(ctx, (MONTH[mo] || mo) + " 2026", w - 16, BAR_H + 25, 13, 600, "#d9d5ce", "right")
+  const a = d.openT || 0
+  if (d.open != null && a > 0) {
+    const e = albumAt(d.open)
+    const t = G.tile(d.open, scroll)
+    const F = { x: 0, y: G.top, w, h: h - G.top - 34 }
+    const R = { x: t.x + (F.x - t.x) * a, y: t.y + (F.y - t.y) * a, w: t.w + (F.w - t.w) * a, h: t.h + (F.h - t.h) * a }
+    ctx.fillStyle = "rgba(18,18,20," + Math.min(1, a * 1.4).toFixed(3) + ")"
+    ctx.fillRect(0, G.top, w, h - G.top)
+    drawOpen(ctx, e, R, d, a)
+    if (a > 0.6) {
+      ctx.globalAlpha = Math.min(1, (a - 0.6) / 0.3)
+      label(ctx, "Thu, " + e.date + " · " + e.time, 14, h - 12, 13.5, 600, "#d9d5ce")
+      label(ctx, "4,812 of 4,812", w - 14, h - 12, 13, 400, "#9d988f", "right")
       ctx.globalAlpha = 1
     }
   }
