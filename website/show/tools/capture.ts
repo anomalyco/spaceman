@@ -104,14 +104,14 @@ if (probeArg) {
 
 // --master: the whole film as a file to share, at 1440×900 @2x (2880×1800), straight into the encoder
 // (no frames on disk): film-master.mp4 (HEVC Main 10, CRF 17, AAC 256k) and film-share.mp4 (H.264,
-// 1440×900, CRF 21). No hint or CC button; the end is the live one: a hard cut, 0.9 s of black and silence, the card.
+// 1440×900, CRF 21). No hint or CC button; the end is the live one: a hard cut, 0.65 s of black and silence, the card.
 // (--master=T starts at T s, to check the end quickly)
 const masterArg = process.argv.find((a) => a.startsWith("--master"))
 if (masterArg) {
   const { page, errors, ctx } = await open({ w: 1440, h: 900, dpr: 2, muted: true })
   await page.addStyleTag({ content: "[data-ui=hint],[data-ui=cc],[data-ui=again],[data-ui=controls]{display:none!important}html[data-black] [data-ui=card]{visibility:hidden!important}" })
   await press(page)
-  const cut = Math.round(END_ * FPS), card = Math.round((END_ + 0.9) * FPS), total = Math.round((END_ + 0.9 + 4) * FPS)
+  const cut = Math.round(END_ * FPS), card = Math.round((END_ + 0.65) * FPS), total = Math.round((END_ + 0.65 + 4) * FPS)
   const raw = join(out, "master-v.mp4")
   const color = ["-colorspace", "bt709", "-color_primaries", "bt709", "-color_trc", "bt709", "-color_range", "tv"]
   const ff = Bun.spawn(["ffmpeg", "-y", "-loglevel", "error", "-f", "image2pipe", "-c:v", "mjpeg", "-framerate", String(FPS), "-i", "-",

@@ -48,8 +48,9 @@ export function wordEnd(phrase, after) {
   return WORDS[i + n - 1][2]
 }
 const LAST = WORDS[WORDS.length - 1]
-// the film ends on seven, a held beat after the last word, then a hard cut to black
-export const END = LAST[2] + 2.3
+// the film ends on seven, a held second after the last word (the strings at their crest), then a hard
+// cut to black
+export const END = TAPE.marks.end ?? LAST[2] + 1.0
 // the plate (the study, in through the screen) is a fixed length
 const INTRO = 7.382
 // the closest the camera gets: 94% of the screen in view
@@ -72,7 +73,8 @@ const BROWSE = [
   ["Weather — Pinecrest", "weather.example/pinecrest"],
   ["Spaceman — tiling for Mac", "spaceman.example"],
 ]
-const NOTE = ["call about the gutters", "drill → return", "passwords??", "organize notes", "hedge (ask)"]
+// an ordinary list; the drill comes back much later, on Mark's workspace
+const NOTE = [{ t: "Groceries" }, { t: "Fix porch light" }, { t: "Return Mark's drill" }]
 export function pile(SW, SH) {
   const W = (f) => f * SW
   const H = (f) => f * SH
@@ -82,16 +84,16 @@ export function pile(SW, SH) {
   // the four that stay come first (tile order), the clutter on top of them
   const defs = []
   defs.push({ id: "q3", app: "paper", kind: "paper", title: "Q3 report — draft", data: { heading: "Q3 report", sub: "Draft 4", lines: Q3 } })
-  defs.push({ id: "notes", app: "jot", kind: "jot", title: "notes", data: { heading: "notes", edited: "Edited March 2", lines: NOTE } })
+  defs.push({ id: "notes", app: "jot", kind: "jot", title: "To Do", data: { heading: "To Do", edited: "Edited March 2", lines: NOTE, check: true } })
   defs.push({ id: "postbox", app: "postbox", kind: "mail", title: "Inbox — 1,206 messages", data: mail() })
   defs.push({ id: "group", app: "chatter", kind: "chat", title: "Pinecrest Neighbours", data: { who: "Pinecrest Neighbours · 9", when: "Today 8:02 PM", msgs: [{ from: "Mark (10)", t: "Whose is the blue car?" }, { from: "Ruth (8)", t: "Mine, sorry! Moving it now" }] } })
-  defs.push({ id: "daybook", app: "daybook", kind: "daybook", title: "Daybook — November", data: { date: "Tuesday, November 25", events: [{ t: "Bins out", at: 19, len: 0.7, color: "#d9e3cf" }, { t: "Renewals review", at: 9, len: 1, color: "#d6dff0" }] } })
+  defs.push({ id: "daybook", app: "daybook", kind: "daybook", title: "Calendar", data: { date: "Tuesday, November 25", events: [{ t: "Bins out", at: 19, len: 0.7, color: "#d9e3cf" }, { t: "Renewals review", at: 9, len: 1, color: "#d6dff0" }] } })
   for (const i of [1, 3, 6]) {
     const [heading, url] = BROWSE[i]
-    defs.push({ id: "b" + i, app: "browsy", kind: "browser", title: heading + " — Browsy", data: { tabs: 6 + Math.floor(R01(i, 3) * 30), url, heading, tab: heading } })
+    defs.push({ id: "b" + i, app: "browsy", kind: "browser", title: heading, data: { tabs: 6 + Math.floor(R01(i, 3) * 30), url, heading, tab: heading } })
   }
-  defs.push({ id: "notes1", app: "jot", kind: "jot", title: "notes (1)", data: { heading: "notes", edited: "Edited March 14", lines: NOTE } })
-  defs.push({ id: "notes2", app: "jot", kind: "jot", title: "notes — real", data: { heading: "notes", edited: "Edited April 30", lines: NOTE } })
+  defs.push({ id: "notes1", app: "jot", kind: "jot", title: "To Do (1)", data: { heading: "To Do", edited: "Edited March 14", lines: NOTE, check: true } })
+  defs.push({ id: "notes2", app: "jot", kind: "jot", title: "To Do — real", data: { heading: "To Do", edited: "Edited April 30", lines: NOTE, check: true } })
   return defs.map((d, i) => ({ ...d, at: spot(i + 3, 0.34 + R01(i, 4) * 0.16, 0.42 + R01(i, 5) * 0.2) }))
 }
 const Q3 = ["Renewals rose 4% in Q2.", "Costs were flat."]
@@ -343,24 +345,27 @@ export function build(S) {
   // two more open, and the others move over
   const sideBy = word("side by side")
   at(sideBy - 0.35, () => {
-    w.open({ id: "b9", app: "browsy", kind: "browser", title: "New Tab — Browsy", data: { tabs: 1, url: "", heading: "New Tab", tab: "New Tab", lines: [] }, at: [S.SW * 0.3, S.SH * 0.3, S.SW * 0.3, S.SH * 0.3] })
+    w.open({ id: "b9", app: "browsy", kind: "browser", title: "Start Page", data: { tabs: 1, url: "", heading: "New Tab", tab: "New Tab", lines: [] }, at: [S.SW * 0.3, S.SH * 0.3, S.SW * 0.3, S.SH * 0.3] })
   })
-  at(word("nothing is hidden") - 0.1, () => {
+  at(word("nothing on top") - 0.1, () => {
     w.open({ id: "u48", app: "jot", kind: "jot", title: "Untitled 48", data: { heading: "Untitled 48", lines: [] }, at: [S.SW * 0.3, S.SH * 0.3, S.SW * 0.3, S.SH * 0.3] })
   })
 
-  // ── "It also gives you numbered workspaces. My work went on one and my messages on two." ──
+  // ── "It also gives you numbered workspaces. If something's in the wrong place, you don't close it —
+  // you just move it to another number. My work went on one, and my messages on two." ──
   const numbered = word("numbered workspaces")
   at(numbered - 0.1, () => {
     w.ensureCell(3)
     w.showBar()
   })
+  // the two that don't belong with his work go to two as he says it
+  const another = word("another number")
   ;["postbox", "group"].forEach((id, i) => {
-    const t = numbered + 0.5 + i * 0.3
+    const t = another + 0.15 + i * 0.35
     at(t - 0.02, () => w.setFocus(id))
     key(t, ["⌥", "⇧", "2"], () => w.move(id, 2))
   })
-  // the rule: Chatter opens on 2
+  // the rule: Messages opens on 2
   const settingsAt = () => {
     const ww = Math.min(S.SW * 0.9, 860)
     const hh = Math.min(S.SH * 0.66, 450)
@@ -370,7 +375,7 @@ export function build(S) {
     const [x, y, ww, hh] = settingsAt()
     return fit(x, y, ww, hh, 1.14)
   }
-  // Settings › Rules, the workspace map: Add on workspace 2's tile, then Chatter from the menu
+  // Settings › Rules, the workspace map: Add on workspace 2's tile, then Messages from the menu
   const inSettings = (f) => () => {
     const [x, y, ww, hh] = settingsAt()
     const [px, py] = f(settingsGeom(ww, hh))
@@ -384,11 +389,11 @@ export function build(S) {
   const msgs2 = word("messages on two")
   const pick = Math.max(word("two") + 0.02, msgs2 + 0.5)
   at(pick - 0.2, () => w.set("settings", { data: { menuHover: 0 } }))
-  clickAt(pick, "settings", inSettings((g) => g.menuItem(0)), () => w.set("settings", { data: { menu: 0, menuHover: null, hover: null, hl: 2, rules: [{ app: "Chatter", icon: "chatter", ws: 2 }] } }), 0.7)
+  clickAt(pick, "settings", inSettings((g) => g.menuItem(0)), () => w.set("settings", { data: { menu: 0, menuHover: null, hover: null, hl: 2, rules: [{ app: "Messages", icon: "chatter", ws: 2 }] } }), 0.7)
   const camera = word("I had a camera")
   push(camera - 0.35, camera + 0.25, home, null)
   clickAt(camera - 0.2, "settings", closeBtn, () => w.close("settings"), 0.45)
-  // a new Chatter window: Joan, a year ago, saying hello. It goes straight to two.
+  // a new Messages window: Joan, a year ago, saying hello. It goes straight to two.
   at(camera + 0.05, () => {
     w.openMany([{ ws: 2, id: "joan", app: "chatter", kind: "chat", title: "Joan (No. 16)", data: { who: "Joan (No. 16)", when: "Nov 26, 2025", msgs: [{ t: "Hi! Welcome to the street 🙂" }, { t: "Bins are Wednesdays btw" }] } }])
     w.pulse(2)
@@ -409,7 +414,9 @@ export function build(S) {
   clickAt(onThree - 0.15, "door", titleOf, () => w.setFocus("door"), 0.6)
   key(onThree + 0.45, ["⌥", "⇧", "3"], () => w.move("door", 3))
 
-  // ── "I found it pleasing." He tries to work. ──
+  // ── "You can float a window too, if you want to keep an eye on it. I found it pleasing." ──
+  // He tries to work, with the front door floating over the corner of his report (a float rule for
+  // the camera app: floats sit above the tiles on their workspace and are never tiled).
   const late = onThree + 0.75
   at(late, () => {
     w.clock = "Thu Dec 4  2:13 AM"
@@ -418,6 +425,20 @@ export function build(S) {
   })
   // (after door has flown to three, so the tiles have settled)
   push(late + 0.2, late + 0.8, () => frameOf("q3", 1.3), "q3")
+  const floatT = word("You can float") + 0.35
+  float(floatT, {
+    id: "peek", ...CAM("peek", "st-08", "Front Door", { q: 0.45, seed: 17, seq: walkClip }), pin: true,
+    at: () => {
+      const p = R("q3")
+      const fw = Math.min(p.w.t * 0.44, 340)
+      const fh = fw * 0.6 + BAR_H
+      return [p.x.t + p.w.t - fw - 20, p.y.t + p.h.t - fh - 20, fw, fh]
+    },
+  })
+  at(floatT + 0.02, () => {
+    feedsAt("12-04-2025", hms(2, 13, 41))
+    w.setFocus("q3")
+  })
   at(late + 0.1, () => w.set("q3", { data: { caret: 1 } }))
   type(late + 0.45, "In the third quar", (s) => w.set("q3", { data: { lines: [...Q3, s] } }), 3)
   const typed = late + 0.45 + rhythm(17, 3).at(-1)
@@ -474,7 +495,7 @@ export function build(S) {
   const orderAt = () => mid(760, 470)
   const orderT = Math.max(bought + 0.35, named2 + 0.25)
   float(orderT, {
-    id: "order", app: "browsy", kind: "browser", title: "Order confirmed — Browsy", at: orderAt,
+    id: "order", app: "browsy", kind: "browser", title: "Order confirmed", at: orderAt,
     data: { tabs: 3, url: "vigil.example/orders/80412", tab: "Order confirmed", heading: "Thank you. Your order is confirmed.", lines: ["Order 80412 · placed Dec 5, 9:02 AM", { gap: 1 }, { t: "Outdoor camera × 14", b: 1, size: 19 }, "Night vision · 2K · weatherproof", "Mounting kit × 14", { gap: 1 }, "Arriving Thursday"] },
   })
   at(orderT - 0.02, () => w.set("door", { data: { snap: null } }))
@@ -490,13 +511,13 @@ export function build(S) {
     CAM(p + "-door", src, who + " — Door", { q: 0.55, seed: 23 + who.length, crop: crops[0], seq }),
     CAM(p + "-up", src, who + " — Upstairs", { q: 0.6, seed: 29 + who.length, crop: crops[1], seq }),
     { id: p + "-note", app: "jot", kind: "jot", title: who, data: { heading: note[0], edited: "Edited 10:52 PM", list: ["Mark", "Joan", "Alan"], lines: note.slice(1) } },
-    { id: p + "-week", app: "daybook", kind: "daybook", title: "Daybook — " + who, data: { week: ["Mon 1", "Tue 2", "Wed 3", "Thu 4", "Fri 5", "Sat 6", "Sun 7"], title: who + ", this week", from: 6, to: 24, events: week } },
+    { id: p + "-week", app: "daybook", kind: "daybook", title: "Calendar", data: { week: ["Mon 1", "Tue 2", "Wed 3", "Thu 4", "Fri 5", "Sat 6", "Sun 7"], title: who + ", this week", from: 6, to: 24, events: week } },
   ]
   const GREY = "#dcdcd6"
   const DAYS = [0, 1, 2, 3, 4]
   const mark = word("Mark is four")
   sw(mark - 0.05, 4, "Sat Dec 6  10:52 PM")
-  openMany(mark + 0.12, 4, dossier("m", "Mark", "st-10", [[0.15, 0.15, 0.42, 0.42], [0.5, 0.14, 0.18, 0.24]], ["Mark (No. 10)", "Out 07:42. Back 18:15.", "Gym Tue/Thu, 19:00–20:30.", "Bins Thursday.", "Lives alone."], [
+  openMany(mark + 0.12, 4, dossier("m", "Mark", "st-10", [[0.15, 0.15, 0.42, 0.42], [0.5, 0.14, 0.18, 0.24]], ["Mark (No. 10)", "Out 07:42. Back 18:15.", "Gym Tue/Thu, 19:00–20:30.", "Bins Thursday.", "Lives alone.", { gap: 1 }, { t: "Return Mark's drill", box: 1, drill: 1 }], [
     ...DAYS.map((d) => ({ day: d, at: 7.7, len: 10.5, t: "Out", color: GREY })),
     { day: 1, at: 19, len: 1.5, t: "Gym", color: "#d6dff0" },
     { day: 3, at: 19, len: 1.5, t: "Gym", color: "#d6dff0" },
@@ -511,7 +532,7 @@ export function build(S) {
   const alan = word("Alan is six")
   sw(alan - 0.05, 6)
   openMany(alan + 0.12, 6, dossier("a", "Alan", "st-14", [[0.43, 0.44, 0.26, 0.3], [0.43, 0.22, 0.16, 0.22]], ["Alan (No. 14)", "Up 06:10. Curtains 06:12.", "Hedge 6′ 2″. Limit 6′.", "At his window most nights.", "Looks across."], [
-    ...[0, 1, 2, 3, 4, 5, 6].map((d) => ({ day: d, at: 23, len: 1, t: "Window", color: "#e9c9c4" })),
+    ...[0, 1, 2, 3, 4, 5, 6].map((d) => ({ day: d, at: 21.8, len: 2.1, t: "Window", color: "#e9c9c4" })),
     { day: 5, at: 9, len: 2, t: "Hedge", color: "#d9e3cf" },
   ], { name: "alan", n: 20, fps: 4, t0: alan + 0.12, loop: "pingpong", from: 6 }))
   at(mark + 0.2, () => feedsAt("12-06-2025", hms(22, 52, 30)))
@@ -565,6 +586,19 @@ export function build(S) {
   flick(f0 + 3.0, f0 + 4.7, 0.38, (g) => g.scrollTo(1500, 0.2))
   flick(f0 + 4.8, f0 + 6.5, 0.36, (g) => g.maxScroll)
   span(f0 + 6.5, f0 + 6.9, (u) => w.set("album", { data: { bar: 1 - smooth(u) } }))
+  // the thumbnails: blurry while the page moves fast, sharpening a few at a time once it slows
+  {
+    let last = null
+    let calm = hedge + 0.1
+    span(hedge + 0.1, word("And Joan") - 0.2, (u, t) => {
+      const p = R("album")
+      if (!p) return
+      const s = p.data.scroll || 0
+      if (last && t > last.t && Math.abs(s - last.s) / (t - last.t) > 1400) calm = t
+      last = { t, s }
+      if (t - calm < 0.7 || p.data.since < 0.7) w.set("album", { data: { since: S.reduced ? 9 : t - calm } })
+    })
+  }
   // the last one: him, at his window, looking back
   const lastAt = () => {
     const p = R("album")
@@ -626,16 +660,28 @@ export function build(S) {
   push(seven - 0.3, seven + 0.05, home, null)
   sw(seven + 0.08, 7, "Thu Feb 26  11:40 PM")
   const things = word("somewhere to put")
-  float(things - 0.85, {
-    id: "plastic", app: "browsy", kind: "browser", title: "Order placed — Browsy", at: () => mid(720, 420),
+  // a glimpse of his rules: Messages on two, the camera app floating, and a new one by window title
+  float(seven + 0.3, { id: "rules7", app: "spaceman", kind: "settings", title: "Spaceman Settings", at: settingsAt, data: { rules: [{ app: "Messages", icon: "chatter", ws: 2 }], floats: [{ app: "Vigil", icon: "vigil" }], active: [1, 2, 3, 4, 5, 6] } })
+  push(seven + 0.35, seven + 0.9, settingsFrame, "rules7")
+  at(seven + 0.95, () => {
+    w.set("rules7", { data: { hl: 7, rules: [...R("rules7").data.rules, { app: "Vigil", icon: "vigil", ws: 7, title: "Cellar", in: 0 }] } })
+    S.sfx("key", 0.8)
+  })
+  span(seven + 0.95, seven + 1.2, (u) => {
+    const d = R("rules7").data
+    w.set("rules7", { data: { rules: d.rules.map((r) => (r.title ? { ...r, in: smooth(u) } : r)) } })
+  })
+  shut(things - 0.45, "rules7")
+  float(things - 0.3, {
+    id: "plastic", app: "browsy", kind: "browser", title: "Order placed", at: () => mid(720, 420),
     data: { tabs: 2, url: "yardsupply.example/orders/5531", tab: "Order placed", heading: "Order placed. Thank you.", lines: ["Placed Feb 26, 11:41 PM", { gap: 1 }, { t: "Heavy-duty plastic sheeting, 10 × 100 ft", b: 1, size: 17 }, "Clear · 6 mil", { gap: 1 }, "Arriving Saturday, Feb 28"] },
   })
-  push(things - 0.7, things + 0.1, () => frameOf("plastic", 1.12), "plastic")
+  push(things - 0.3, things + 0.35, () => frameOf("plastic", 1.12), "plastic")
   // ── "I moved Joan there in March," ──
   const movedJ = word("I moved Joan")
   shut(movedJ - 0.15, "plastic", 0.4)
   const calAt = () => mid(760, 520)
-  float(movedJ + 0.0, { id: "march", app: "daybook", kind: "daybook", title: "Daybook — March", at: calAt, data: { month: "March 2026", first: 0, days: 31, today: 3, events: [] } })
+  float(movedJ + 0.0, { id: "march", app: "daybook", kind: "daybook", title: "Calendar", at: calAt, data: { month: "March 2026", first: 0, days: 31, today: 3, events: [] } })
   // in on the first two weeks, so the entry reads
   push(movedJ, movedJ + 0.6, () => {
     const p = R("march")
@@ -666,18 +712,27 @@ export function build(S) {
   push(grp + 0.05, grp + 0.65, () => frameOf("group", 1.04), "group")
   // ── "I moved Mark in June." ──
   const movedM = word("I moved Mark")
-  float(movedM + 0.5, { id: "june", app: "daybook", kind: "daybook", title: "Daybook — June", at: calAt, data: { month: "June 2026", first: 1, days: 30, today: 11, events: [] } })
-  push(movedM + 0.5, movedM + 1.0, () => {
+  // his list, on Mark's workspace: the drill, quietly ticked
+  sw(movedM - 0.15, 4, "Thu Jun 11  11:52 PM")
+  at(movedM - 0.14, () => feedsAt("06-11-2026", hms(23, 52, 14), "THU"))
+  push(movedM - 0.1, movedM + 0.4, () => frameOf("m-note", 1.12), "m-note")
+  at(movedM + 0.45, () => {
+    const d = R("m-note").data
+    w.set("m-note", { data: { lines: d.lines.map((l) => (l.drill ? { ...l, done: 1 } : l)) } })
+    S.sfx("tap", 0.8)
+  })
+  float(movedM + 0.85, { id: "june", app: "daybook", kind: "daybook", title: "Calendar", at: calAt, data: { month: "June 2026", first: 1, days: 30, today: 11, events: [] } })
+  push(movedM + 0.85, movedM + 1.35, () => {
     const p = R("june")
     return fit(p.x.t + p.w.t * 0.38, p.y.t, p.w.t * 0.62, p.h.t * 0.55, 1.04)
   }, "june")
-  at(movedM + 0.9, () => {
+  at(movedM + 1.25, () => {
     w.clock = "Thu Jun 11  11:58 PM"
     w.set("june", { data: { events: [{ day: 11, t: "Mark → 7", color: "#e9c9c4" }] } })
     S.sfx("key", 0.95)
   })
   // six, tonight: his light on, nobody in
-  const still = wordEnd("in June") + 0.6
+  const still = wordEnd("in June") + 0.95
   shut(still - 0.2, "june", 0.4)
   push(still - 0.2, still, home, null)
   // from here the switches make no sound at all

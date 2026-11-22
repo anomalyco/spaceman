@@ -11,6 +11,8 @@ import array, glob, json, math, os, re, subprocess, sys
 here = os.path.dirname(os.path.abspath(__file__))
 raw = os.path.join(here, "raw")
 out = os.path.abspath(os.path.join(here, "../../public/show/audio"))
+sys.path.insert(0, here)
+import score  # noqa: E402
 os.makedirs(out, exist_ok=True)
 script = json.load(open(os.path.join(here, "script.json")))
 mono = json.load(open(os.path.join(here, "mono.json")))
@@ -277,6 +279,10 @@ if VER.get("hm"):
     at = shift(words[i]["end"]) + h["delay"]
     extra_fc.append(f"[{6 + len(extra_lab)}:a]aformat=channel_layouts=mono,lowpass=f=2400,volume={10 ** (h['db'] / 20):.3f},adelay={int(at * 1000)}[x{len(extra_lab)}]")
     extra_lab.append(f"[x{len(extra_lab)}]")
+# the recorder's play key and its reels, under the room from the first frame
+extra_in.append(score.recorder(os.path.join(raw, "mono", "recorder.wav")))
+extra_fc.append(f"[{6 + len(extra_lab)}:a]aformat=channel_layouts=mono[x{len(extra_lab)}]")
+extra_lab.append(f"[x{len(extra_lab)}]")
 for c in cuts:
     if c.get("sfx"):
         extra_in.append(os.path.join(raw, f"sfx-{c['sfx']}.mp3"))
@@ -342,7 +348,9 @@ peak = max(rms) or 1
 env = [min(99, round(99 * math.sqrt(r / peak))) for r in rms]
 tw = [{"text": w["text"], "t": round(shift(w["t"]), 3), "end": round(shift(w["end"]), 3)} for w in words]
 marks = {"gaps": [[round(shift(c["at"]), 3), c["len"]] for c in cuts], "chair": round(chair_at, 3) if chair_at else None, "head": round(HEAD, 3),
-         "open": round(OPEN_AT, 3) if ENDS else None, "close": round(CLOSE_AT, 3) if ENDS else None, "beep2": round(BEEP2, 3) if ENDS else None, "said": round(said, 3)}
+         "open": round(OPEN_AT, 3) if ENDS else None, "close": round(CLOSE_AT, 3) if ENDS else None, "beep2": round(BEEP2, 3) if ENDS else None, "said": round(said, 3),
+         # the last cut: a held second on seven after his last word
+         "end": round(tw[-1]["end"] + VER.get("hold", 1.0), 3)}
 # caption lines: the script's own sentences (with their dashes), timed by their words
 spoken = re.sub(r"\s+", " ", re.sub(r"\[[^\]]*\]", " ", mono[VER["textKey"]])).strip()
 for d in VER.get("drop", []):
@@ -382,10 +390,12 @@ for s in script["sfx"]:
          "-ac", "1", "-ar", "44100", "-b:a", "64k", os.path.join(out, sname)])
     manifest["sfx"][s["id"]] = sname
 # the key presses and the trackpad click (keys.py)
-sys.path.insert(0, here)
 import keys  # noqa: E402
 
 keys.build(manifest)
+# the strings, ducked under everything said on the tape
+said_spans = [(w["t"], w["end"]) for w in tw] + [(c["said_at"], c["said_at"] + INTER[c["insert"]["line"]]["dur"]) for c in inserts]
+score.build(manifest, said_spans, marks["end"], out)
 
 json.dump(manifest, open(os.path.join(out, "manifest.json"), "w"))
 # the cut's clock: the engine times the picture and captions to these, with or without audio
@@ -394,7 +404,7 @@ with open(os.path.join(here, "../../src/show/tape.js"), "w") as f:
     f.write(f"export const TAPE = {json.dumps({'dur': round(total, 3), 'marks': marks})}\n")
     f.write("export const LINES = " + json.dumps([[l["text"], l["t"], l["end"]] for l in lines], ensure_ascii=False) + "\n")
     f.write("export const WORDS = " + json.dumps([[w["text"], w["t"], w["end"]] for w in tw], ensure_ascii=False) + "\n")
-used = {name} | {f for s in manifest["sfx"].values() for f in (s["variants"] if isinstance(s, dict) else [s])} | {"manifest.json"}
+used = {name} | {f for s in manifest["sfx"].values() for f in (s["variants"] if isinstance(s, dict) else [s])} | {"manifest.json", manifest["score"]["file"]}
 for f in os.listdir(out):
     if f not in used:
         os.remove(os.path.join(out, f))

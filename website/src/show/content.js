@@ -2,7 +2,7 @@
 // (the context is already scaled). Contents are redrawn only when a window is marked dirty.
 import { APPS, FONT, MONO, iconCanvas, roundRect } from "./apps.js"
 import { plates, coverUV } from "./plates.js"
-import { photos as libraryPhotos, album as albumPainter } from "./library.js"
+import { album as albumPainter } from "./library.js"
 import { feed as paintFeed } from "./feeds.js"
 
 export const BAR_H = 30
@@ -338,8 +338,9 @@ function lines(ctx, list, x, y, w, { size = 15, gap = 25, check = false } = {}) 
       continue
     }
     let tx = x
+    // a line can carry its own box (one to-do in an otherwise plain note)
     if (check && s.nobox) tx += size + 9
-    else if (check) {
+    else if (check || s.box) {
       // Notes' checklist: an open circle, or a filled yellow one with a white tick
       const r = size * 0.5
       const cx = x + r
@@ -779,9 +780,9 @@ const painters = {
     ctx.fillRect(side, BAR_H, w - side, h - BAR_H)
     if (side) {
       sidebar(ctx, w, h, side, false, focused)
-      const base = ["notes", "return drill", "groceries", "passwords??"]
+      const base = ["To Do", "Recipes", "Q3 ideas", "passwords??"]
       // the open note heads the list
-      const list = d.list || [d.heading || "notes", ...base.filter((n) => n !== (d.heading || "notes"))].slice(0, 5)
+      const list = d.list || [d.heading || "To Do", ...base.filter((n) => n !== (d.heading || "To Do"))].slice(0, 5)
       const when = ["11:48 PM", "Yesterday", "Sunday", "11/30/25", "11/12/25"]
       const first = d.lines?.find((l) => typeof l === "string" || (l && l.t))
       list.forEach((n, i) => {
@@ -1242,7 +1243,6 @@ const painters = {
       if (eh > 36) text(ctx, `${e.at % 12 || 12}:00 ${e.at < 12 ? "AM" : "PM"}`, 76, y + 34, { size: 11.5, color: shade(col, 0.42) })
     }
   },
-  photos: (...a) => libraryPhotos(...a),
   album: (...a) => albumPainter(...a),
   feed(ctx, w, h, d, win) {
     paintFeed(ctx, 0, BAR_H, w, h - BAR_H, d, win)
@@ -1357,9 +1357,29 @@ const painters = {
         ctx.fill()
         glyph(ctx, "plus", ax, ay, "#6e6e73", 0.62 * k + 0.1)
       }
-      ;(d.rules || []).filter((r) => r.ws === n).forEach((r, slot) => {
+      const here = (d.rules || []).filter((r) => r.ws === n)
+      here.filter((r) => !r.title).forEach((r, slot) => {
         const p = G.icon(n, slot)
         ctx.drawImage(iconCanvas(r.icon, 72), p.x, p.y, p.s, p.s)
+      })
+      // a rule by window title: the app's icon and the title, in a chip along the tile's foot
+      here.filter((r) => r.title).forEach((r, i) => {
+        const ch = 24 * k
+        const cx = t.x + 8 * k
+        const cy = t.y + t.h - 8 * k - ch - i * (ch + 4 * k)
+        const a = r.in ?? 1
+        ctx.save()
+        ctx.globalAlpha = a
+        ctx.fillStyle = "#fff"
+        roundRect(ctx, cx, cy, t.w - 16 * k, ch, 6 * k)
+        ctx.fill()
+        ctx.strokeStyle = "rgba(0,0,0,.14)"
+        ctx.lineWidth = 1
+        roundRect(ctx, cx + 0.5, cy + 0.5, t.w - 16 * k - 1, ch - 1, 6 * k)
+        ctx.stroke()
+        ctx.drawImage(iconCanvas(r.icon, 48), cx + 4 * k, cy + 4 * k, 16 * k, 16 * k)
+        text(ctx, r.title, cx + 24 * k, cy + ch / 2 + 4 * k, { size: 11.5 * k + 1, weight: 500, max: t.w - 46 * k })
+        ctx.restore()
       })
     }
     // Float, never tiled
@@ -1376,6 +1396,18 @@ const painters = {
     ctx.stroke()
     glyph(ctx, "plus", G.mx + 26 * k, by + 26 * k, "#8a8a90", 0.6)
     text(ctx, "Add app", G.mx + 38 * k, by + 26 * k + 4.5, { size: 13, color: SOFT })
+    // the apps that float: icon and name, after the Add button
+    ;(d.floats || []).forEach((f, i) => {
+      const fx = G.mx + 150 * k + i * 130 * k
+      ctx.fillStyle = "#fff"
+      roundRect(ctx, fx, by + 10 * k, 120 * k, 32 * k, 6)
+      ctx.fill()
+      ctx.strokeStyle = "rgba(0,0,0,.14)"
+      roundRect(ctx, fx + 0.5, by + 10 * k + 0.5, 120 * k - 1, 32 * k - 1, 6)
+      ctx.stroke()
+      ctx.drawImage(iconCanvas(f.icon, 48), fx + 8 * k, by + 18 * k, 16 * k, 16 * k)
+      text(ctx, f.app, fx + 30 * k, by + 26 * k + 4.5, { size: 13, max: 84 * k })
+    })
     // the Add menu: the running apps without a rule
     if (d.menu) {
       const m = G.menu(d.menu)
@@ -1519,10 +1551,10 @@ function marchPile() {
   }
   const jot = (title, heading, lines, edited) => ({ kind: "jot", app: "jot", title, data: { heading, lines, edited } })
   const wins = [
-    [{ kind: "browser", app: "browsy", title: "Hedge height bylaws — Browsy", data: { tabs: 21, url: "pinecrest.example/bylaws/4-12", heading: "Hedge height bylaws" } }, 40, 60, 620, 470],
-    [{ kind: "daybook", app: "daybook", title: "Daybook — March", data: { date: "Monday, March 2", events: [{ at: 8, len: 1, t: "Bins out" }] } }, 520, 40, 420, 520],
+    [{ kind: "browser", app: "browsy", title: "Hedge height bylaws", data: { tabs: 21, url: "pinecrest.example/bylaws/4-12", heading: "Hedge height bylaws" } }, 40, 60, 620, 470],
+    [{ kind: "daybook", app: "daybook", title: "Calendar", data: { date: "Monday, March 2", events: [{ at: 8, len: 1, t: "Bins out" }] } }, 520, 40, 420, 520],
     [jot("Untitled 44", "Untitled 44", ["hedge — measure?", "ask Mark re: drill"], "Edited February 3"), 300, 230, 380, 330],
-    [{ kind: "browser", app: "browsy", title: "Cordless drills compared — Browsy", data: { tabs: 21, url: "homedesk.example/cordless-drills", heading: "Cordless drills compared" } }, 820, 120, 580, 440],
+    [{ kind: "browser", app: "browsy", title: "Cordless drills compared", data: { tabs: 21, url: "homedesk.example/cordless-drills", heading: "Cordless drills compared" } }, 820, 120, 580, 440],
     [jot("notes", "notes", ["call about the gutters", "drill → return", "passwords??"], "Edited March 2"), 120, 380, 360, 330],
     [jot("cameras — No. 16", "About the cameras", ["We'd like the two cameras on No. 12", "that face our houses taken down."], "Signed Feb 26"), 640, 330, 420, 300],
     [jot("Untitled 45", "Untitled 45", ["minutes — June?"], "Edited February 21"), 980, 420, 330, 280],

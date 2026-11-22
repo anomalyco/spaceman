@@ -15,6 +15,7 @@ import { LINES, TAPE } from "./tape.js"
 import { plates, loadPlate, coverUV } from "./plates.js"
 import { PHOTOS } from "./library.js"
 import { FEEDS } from "./feeds.js"
+import { loadIcons } from "./apps.js"
 import { clamp, mix, smooth } from "./springs.js"
 
 // pictures inside his apps (renders of our own scenes), and the still Canvas 2D pushes into
@@ -322,6 +323,9 @@ export function createShow({ still, canvas, base, capture = false, reduced = fal
     prepping = Promise.all([
       manifestIn.then((m) => m && audio.load(m)),
       loadPlate(base, "wall"),
+      loadIcons(base).then(() => {
+        if (world) for (const w of world.wins.values()) w.dirty = true
+      }),
       // WebGPU fetches only the plate's corners and the still now, and the video on the click; Canvas 2D gets the still
       rendererIn.then((r) => (r.renderPlate ? loadOpeningMeta().then(loadOpeningStill) : stillsIn())),
     ]).then(() => true)
@@ -469,12 +473,22 @@ export function createShow({ still, canvas, base, capture = false, reduced = fal
     if (!tape || phase !== "live" || t >= tape.dur - 0.05) return
     const h = audio.play(tape.file, { t, offset: t, kind: "voice" })
     tapeAt = h ? { ctx: audio.ctx.currentTime, t } : null
+    startScore()
+  }
+  // The strings: one file from score.at in show time. Before then it waits on the context's clock, so
+  // a pause or a hidden tab holds it in step with the tape; it never runs past the last cut.
+  function startScore() {
+    const sc = audio.manifest?.score
+    if (!sc || t >= sc.end - 0.05 || (audio.on && !audio.has(sc.file))) return
+    for (const h of audio.live) if (h.file === sc.file) return
+    const wait = sc.at - t
+    audio.play(sc.file, { t: Math.max(t, sc.at), offset: Math.max(0, -wait), delay: Math.max(0, wait), kind: "score" })
   }
   audio.onReady = (file) => {
     if (file === audio.tape?.file && phase === "live" && !tapeAt) {
       startTape()
       audio.restoreBeds(t)
-    }
+    } else if (file === audio.manifest?.score?.file && phase === "live" && tapeAt) startScore()
   }
 
   // one sentence at a time, held a moment after it ends unless the next one starts
@@ -690,6 +704,11 @@ export function createShow({ still, canvas, base, capture = false, reduced = fal
       if (phase !== "live" || p === paused) return
       paused = p
       audio.setPaused(p)
+      // a seek while paused left the tape stopped: it joins again here
+      if (!p && !tapeAt) {
+        startTape()
+        audio.restoreBeds(t)
+      }
       if (p && plate.video && !plate.video.paused) plate.video.pause()
       last = 0
       emit("paused", p)

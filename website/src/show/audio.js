@@ -45,6 +45,7 @@ export class Audio {
     this.manifest = manifest
     const files = new Set(Object.values(manifest.sfx || {}).flatMap((s) => s.variants || [s.file || s]))
     if (this.tape) files.add(this.tape.file)
+    if (manifest.score) files.add(manifest.score.file)
     const all = Promise.all([...files].map((f) => this.fetchOne(f)))
     await Promise.race([all, new Promise((r) => setTimeout(r, 2500))])
   }
@@ -116,8 +117,9 @@ export class Audio {
     return this.play(s.variants[i], { t, gain: gain * (0.9 + 0.1 * Math.abs((h * 13) % 1)), rate: 0.97 + 0.06 * Math.abs((h * 31) % 1) })
   }
 
-  // t is show time, for the log. offset starts a clip part-way through.
-  play(file, { t = 0, gain = 1, offset = 0, rate = 1, loop = false, kind = "sfx", dest = null } = {}) {
+  // t is show time, for the log. offset starts a clip part-way through; delay starts it that many
+  // seconds of the context's clock from now (a pause freezes that clock too, so it stays in step).
+  play(file, { t = 0, gain = 1, offset = 0, rate = 1, loop = false, kind = "sfx", dest = null, delay = 0 } = {}) {
     this.log?.push({ t: +t.toFixed(3), file, gain, offset: +offset.toFixed(3), rate, loop, kind })
     if (!this.on) return null
     const buf = this.bufs.get(file)
@@ -129,7 +131,7 @@ export class Audio {
     const g = this.ctx.createGain()
     g.gain.value = gain
     src.connect(g).connect(dest || this.master)
-    src.start(0, loop ? offset % buf.duration : offset)
+    src.start(delay > 0 ? this.ctx.currentTime + delay : 0, loop ? offset % buf.duration : offset)
     const h = { src, g, file }
     this.live.add(h)
     src.onended = () => this.live.delete(h)

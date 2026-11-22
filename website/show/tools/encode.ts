@@ -36,7 +36,7 @@ if (import.meta.main) {
 // follows its logged levels as a stepped volume envelope. cut: where everything stops dead (the
 // film's last cut), with the live player's few milliseconds of ramp.
 export async function mixAudio(out: string, log: any[], secs: number, audioDir: string, o: { cut?: number; kbps?: number } = {}) {
-  const clips = log.filter((e) => e.kind === "voice" || e.kind === "sfx")
+  const clips = log.filter((e) => e.kind === "voice" || e.kind === "sfx" || e.kind === "score")
   if (!clips.length) return null
   const levels = log.filter((e) => e.kind === "level")
   const inputs: string[] = []

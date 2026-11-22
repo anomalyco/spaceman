@@ -206,7 +206,7 @@ export function Show({ header }: { header: React.ReactNode }) {
               setPhase(p);
               // a hard cut: the last image, a moment of black and silence, then the card, with no fades
               clearTimeout(cardTimer.current);
-              if (p === "ended") cardTimer.current = window.setTimeout(() => setCard(true), capture ? 0 : 900);
+              if (p === "ended") cardTimer.current = window.setTimeout(() => setCard(true), capture ? 0 : 650);
               if (p === "live") setCard(false);
             },
             caption: (c: Caption) => setCaption(c),
@@ -329,8 +329,8 @@ export function Show({ header }: { header: React.ReactNode }) {
       {phase !== "ended" && <Still onStart={start} live={phase === "live"} />}
       <canvas ref={canvas} aria-hidden="true" onPointerDown={onTap} className={`absolute inset-0 size-full ${phase === "live" ? "opacity-100" : "pointer-events-none opacity-0"}`} />
 
-      <div className={`pointer-events-none absolute inset-x-0 top-0 transition-opacity duration-500 ${live ? "opacity-0" : "opacity-100"}`}>
-        <div className={live ? "" : "pointer-events-auto"}>{header}</div>
+      <div className={`pointer-events-none absolute inset-x-0 top-0 transition-opacity duration-500 ${live || phase === "ended" ? "opacity-0" : "opacity-100"}`}>
+        <div className={live || phase === "ended" ? "" : "pointer-events-auto"}>{header}</div>
       </div>
 
       {live && (
@@ -350,19 +350,30 @@ export function Show({ header }: { header: React.ReactNode }) {
       )}
 
       {phase === "ended" && (
-        <div className="absolute inset-0 bg-black">
-          <div data-ui="card" className={`flex size-full flex-col items-center justify-center gap-6 px-6 text-center ${card ? "" : "invisible"}`}>
-            <div className="flex flex-col items-center gap-1">
-              <p className="text-[clamp(24px,3.2vw,34px)] font-medium tracking-tight text-[#f2f1ee]">Spaceman</p>
-              <p className="text-[16px] text-[#a9a59e]">For your windows.</p>
+        // black and silence for a breath, then daylight: the plain page, the way it looks on any other day
+        <div className={`absolute inset-0 ${card ? "bg-[#fbf9f4]" : "bg-black"}`}>
+          <div
+            data-ui="card"
+            className={`relative flex size-full flex-col items-center justify-center gap-8 px-6 text-center ${card ? "" : "invisible"}`}
+            style={{ background: "radial-gradient(120% 80% at 50% -10%, #fff6dc 0%, #fdf8ec 38%, #fbf9f4 70%), #fbf9f4" }}
+          >
+            <img src="icon-512.png" alt="" width={104} height={104} className="size-[clamp(80px,9vw,104px)] rounded-[23%] shadow-[0_1px_2px_rgba(60,45,10,.12),0_14px_34px_-10px_rgba(60,45,10,.32)]" />
+            <div className="flex flex-col items-center gap-1.5">
+              <p className="text-[clamp(30px,4vw,44px)] leading-none font-semibold tracking-[-0.02em] text-[#1d1d1f]">Spaceman</p>
+              <p className="text-[clamp(16px,1.7vw,19px)] text-[#6e6b64]">For your windows.</p>
             </div>
-            <div className="flex flex-col items-center gap-3">
-              <a href={DOWNLOAD_URL} className="rounded-full bg-[#f0efec] px-7 py-3 text-[15px] font-medium text-[#111214] transition-opacity hover:opacity-85 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#cfcac0]">
+            <div className="flex flex-col items-center gap-3.5">
+              <a
+                href={DOWNLOAD_URL}
+                className="rounded-full bg-[#1d1d1f] px-7 py-3 text-[15px] font-medium text-white shadow-[0_1px_1px_rgba(0,0,0,.08),0_6px_16px_-6px_rgba(0,0,0,.35)] transition-[background-color,transform] duration-150 hover:bg-[#2c2c2f] active:scale-[0.98] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#1d1d1f]"
+              >
                 Download for macOS
               </a>
-              <p className="text-[13px] text-[#7d7a74]">Version {RELEASE_VERSION} · macOS 14 or later · Apple silicon</p>
+              <p className="rounded-full bg-[#1d1d1f]/[0.05] px-3 py-1 text-[12.5px] text-[#6e6b64] tabular-nums">
+                Version {RELEASE_VERSION} · macOS 14 or later · Apple silicon
+              </p>
             </div>
-            <button type="button" data-ui="again" onClick={start} className="text-[13px] text-[#9a968f] underline-offset-4 hover:underline">
+            <button type="button" data-ui="again" onClick={start} className="text-[13px] text-[#8a867d] underline-offset-4 transition-colors hover:text-[#1d1d1f] hover:underline">
               Watch again
             </button>
           </div>

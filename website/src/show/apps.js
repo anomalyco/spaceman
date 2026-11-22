@@ -1,20 +1,23 @@
-// Invented apps and their icons, drawn here (no real app artwork). Each icon is a rounded square
-// with a simple glyph, cached as a canvas per size.
+// The apps on his Mac. Apple's own apps carry their real names and, once loadIcons() has run, their
+// real icons (public/show/icons, from /System/Applications); the camera app and anything without one
+// keeps a drawn icon, a rounded square with a simple glyph. Each icon is cached as a canvas per size.
 export const FONT = '-apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", "Segoe UI", Arial, sans-serif'
 export const MONO = 'ui-monospace, "SF Mono", Menlo, Consolas, monospace'
 
 export const APPS = {
-  jot: { name: "Jot", bg: ["#f6d36b", "#e9b93f"] },
-  postbox: { name: "Postbox", bg: ["#5d8fd6", "#3c6db8"] },
-  browsy: { name: "Browsy", bg: ["#4fb3a7", "#2f8d83"] },
-  chatter: { name: "Chatter", bg: ["#8a74d1", "#6a54b5"] },
-  daybook: { name: "Daybook", bg: ["#fbfaf7", "#e7e3db"] },
-  paper: { name: "Paper", bg: ["#f0a35e", "#d9803a"] },
+  jot: { name: "Notes", bg: ["#f6d36b", "#e9b93f"], icon: "notes" },
+  postbox: { name: "Mail", bg: ["#5d8fd6", "#3c6db8"], icon: "mail" },
+  browsy: { name: "Safari", bg: ["#4fb3a7", "#2f8d83"], icon: "safari" },
+  chatter: { name: "Messages", bg: ["#8a74d1", "#6a54b5"], icon: "messages" },
+  daybook: { name: "Calendar", bg: ["#fbfaf7", "#e7e3db"], icon: "calendar" },
+  paper: { name: "TextEdit", bg: ["#f0a35e", "#d9803a"], icon: "textedit" },
   sheets: { name: "Sheets", bg: ["#6cbf7d", "#43a05a"] },
-  viewer: { name: "Viewer", bg: ["#9fb4c8", "#7290ad"] },
+  viewer: { name: "Photos", bg: ["#9fb4c8", "#7290ad"], icon: "photos" },
   vigil: { name: "Vigil", bg: ["#2f343b", "#15181c"] },
-  call: { name: "Call", bg: ["#5cc27a", "#36a058"] },
-  spaceman: { name: "Spaceman", bg: ["#2b2d33", "#17181c"] },
+  call: { name: "FaceTime", bg: ["#5cc27a", "#36a058"], icon: "facetime" },
+  spaceman: { name: "Spaceman", bg: ["#2b2d33", "#17181c"], icon: "spaceman" },
+  settings: { name: "System Settings", bg: ["#9a9aa0", "#6e6e74"], icon: "settings" },
+  stickies: { name: "Stickies", bg: ["#f6e08a", "#e9c94f"], icon: "stickies" },
   plans: { name: "Plans", bg: ["#6f8db0", "#4c6a8e"] },
 }
 
@@ -177,6 +180,26 @@ function glyph(ctx, app, s) {
 }
 
 const iconCache = new Map()
+const real = new Map() // icon name -> loaded image
+// Fetch the real icons (about 150 KB together). Resolves once they're in; the drawn ones stand in until then.
+export function loadIcons(base) {
+  if (typeof Image === "undefined") return Promise.resolve()
+  const names = [...new Set(Object.values(APPS).map((a) => a.icon).filter(Boolean))]
+  return Promise.all(
+    names.map(
+      (n) =>
+        new Promise((res) => {
+          const im = new Image()
+          im.onload = () => {
+            real.set(n, im)
+            res()
+          }
+          im.onerror = () => res()
+          im.src = base + "icons/" + n + ".png"
+        }),
+    ),
+  ).then(() => iconCache.clear())
+}
 // A canvas holding the app's icon at px pixels.
 export function iconCanvas(app, px) {
   px = Math.max(8, Math.round(px))
@@ -187,6 +210,21 @@ export function iconCanvas(app, px) {
   c.width = c.height = px
   const ctx = c.getContext("2d")
   const a = APPS[app] || APPS.paper
+  const im = a.icon && real.get(a.icon)
+  if (im) {
+    // Apple's icons on their own grid, margin and shadow included, as macOS draws them in a menu
+    ctx.imageSmoothingQuality = "high"
+    ctx.drawImage(im, 0, 0, px, px)
+    // small, a white icon disappears into a white menu: a hairline round its body, as the shadow gives it on a Mac
+    if (px <= 64) {
+      ctx.strokeStyle = "rgba(0,0,0,.16)"
+      ctx.lineWidth = Math.max(0.6, px / 64)
+      roundRect(ctx, px * 0.1, px * 0.1, px * 0.8, px * 0.8, px * 0.18)
+      ctx.stroke()
+    }
+    iconCache.set(key, c)
+    return c
+  }
   roundRect(ctx, px * 0.04, px * 0.04, px * 0.92, px * 0.92, px * 0.22)
   const g = ctx.createLinearGradient(0, 0, 0, px)
   g.addColorStop(0, a.bg[0])

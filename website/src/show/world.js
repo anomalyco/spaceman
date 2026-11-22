@@ -42,6 +42,50 @@ export function tile(n, a) {
   return out
 }
 
+// The pin on a floating window's bar: a capsule with a pushpin and "Floating", drawn once at 2x.
+let pinC = null
+function pinCanvas() {
+  if (pinC || typeof document === "undefined") return pinC
+  const k = 2
+  const label = "Floating"
+  const c = document.createElement("canvas")
+  const ctx = c.getContext("2d")
+  ctx.font = `600 ${10.5 * k}px ${FONT}`
+  const tw = ctx.measureText(label).width
+  c.width = Math.ceil(tw + 34 * k)
+  c.height = 18 * k
+  ctx.font = `600 ${10.5 * k}px ${FONT}`
+  ctx.fillStyle = "rgba(255,255,255,.14)"
+  ctx.beginPath()
+  ctx.roundRect(0, 0, c.width, c.height, c.height / 2)
+  ctx.fill()
+  ctx.strokeStyle = "rgba(255,255,255,.22)"
+  ctx.lineWidth = k
+  ctx.beginPath()
+  ctx.roundRect(k / 2, k / 2, c.width - k, c.height - k, c.height / 2)
+  ctx.stroke()
+  // a pushpin, head up, tilted
+  ctx.save()
+  ctx.translate(12 * k, 9 * k)
+  ctx.rotate(0.6)
+  ctx.fillStyle = "#ffd36a"
+  ctx.beginPath()
+  ctx.roundRect(-3 * k, -6 * k, 6 * k, 5 * k, 1.5 * k)
+  ctx.fill()
+  ctx.fillRect(-4.2 * k, -1.6 * k, 8.4 * k, 1.6 * k)
+  ctx.strokeStyle = "rgba(255,255,255,.85)"
+  ctx.lineWidth = 1.2 * k
+  ctx.beginPath()
+  ctx.moveTo(0, 0)
+  ctx.lineTo(0, 5.5 * k)
+  ctx.stroke()
+  ctx.restore()
+  ctx.fillStyle = "rgba(255,255,255,.9)"
+  ctx.textBaseline = "middle"
+  ctx.fillText(label, 22 * k, c.height / 2 + 0.5 * k)
+  return (pinC = c)
+}
+
 export class World {
   constructor(SW, SH, opts = {}) {
     this.SW = SW
@@ -238,8 +282,10 @@ export class World {
     if (ws === this.active) return
     const dir = this.reduced ? 0 : Math.sign(ws - this.active)
     this.ensureCell(ws)
+    // (a pinned float, one a float rule keeps above the tiles, belongs to its workspace and leaves with
+    // it; the film's other floats are overlays and stay up)
     for (const w of this.wins.values()) {
-      if (w.float || w.leaving) continue
+      if ((w.float && !w.pin) || w.leaving) continue
       if (w.ws === this.active) {
         // the old workspace is gone before the new one has arrived, so the two never read as a dissolve
         to(w.off, -dir * 32 || -0.001, 0.12)
@@ -258,6 +304,13 @@ export class World {
       to(w.a, 1, 0.15)
       jump(w.s, 1)
       if (Math.abs(w.cw - r.w) > 0.5 || Math.abs(w.ch - r.h) > 0.5) w.dirty = true
+    }
+    for (const w of this.wins.values()) {
+      if (!w.pin || w.leaving || w.ws !== ws) continue
+      jump(w.off, dir * 32)
+      to(w.off, 0, 0.22)
+      jump(w.a, 0)
+      to(w.a, 1, 0.15)
     }
     const ids = [...this.rectsOf(ws).keys()]
     const keep = this.lastFocus?.[ws]
@@ -395,7 +448,7 @@ export class World {
         if (w.ws === this.active) this.setFocus(w.id)
       }
       // once a workspace's windows have faded out, they rest where they are
-      if (!w.float && w.ws !== this.active && w.a.t === 0 && w.a.x < 0.002 && w.off.x !== 0) jump(w.off, 0)
+      if ((!w.float || w.pin) && w.ws !== this.active && w.a.t === 0 && w.a.x < 0.002 && w.off.x !== 0) jump(w.off, 0)
     }
     const b = this.bar
     for (const c of b.cells)
@@ -660,7 +713,7 @@ export class World {
     const hair = this.hair
     for (const w of wins) {
       if (w.a.x < 0.003) continue
-      if (!w.float && w.ws !== this.active && !w.flying && w.off.x === 0) continue
+      if ((!w.float || w.pin) && w.ws !== this.active && !w.flying && w.off.x === 0) continue
       this.ensureCanvas(w)
       const s = w.s.x
       const ww = w.w.x * s
@@ -693,6 +746,18 @@ export class World {
       P(x - hair, y - hair, ww + 2 * hair, hh + 2 * hair, { ring: hair, col: [0, 0, 0, 0.3 + 0.08 * f], r: r + hair, a })
       P(x, y, ww, hh, { ring: hair, col: [1, 1, 1, w.dark ? 0.1 : 0.42], r, a })
       if (hi > 0.01) P(x - 0.5, y - 0.5, ww + 1, hh + 1, { ring: 1.5, col: [0.2, 0.55, 1, 0.7 * hi], r: r + 0.5, a })
+      // a window a float rule keeps above the tiles: held a little higher, and a small pin on its bar
+      if (w.pin) {
+        const b = pinCanvas()
+        if (b) {
+          const bw = (b.width / 2) * s
+          const bh = (b.height / 2) * s
+          // right of the traffic lights, however narrow the window
+          const bx = Math.max(x + 64 * s, x + ww - bw - 8 * s)
+          const by = y + (BAR_H * s - bh) / 2
+          P(bx, by, bw, bh, { tex: b, r: bh / 2, a })
+        }
+      }
     }
   }
 
@@ -800,7 +865,7 @@ export class World {
   sample() {
     const o = { cursor: [+this.cursor.x.toFixed(2), +this.cursor.y.toFixed(2)], bar: [+this.bar.left.x.toFixed(2), +this.bar.right.x.toFixed(2), +this.bar.scale.x.toFixed(4), +this.bar.shown.x.toFixed(3)], wins: {} }
     for (const w of this.wins.values()) {
-      const vis = w.float || w.ws === this.active || w.flying || w.off.x !== 0
+      const vis = (w.float && !w.pin) || w.ws === this.active || w.flying || w.off.x !== 0
       if (!vis) continue
       o.wins[w.id] = [+(w.x.x + w.off.x).toFixed(2), +w.y.x.toFixed(2), +(w.w.x * w.s.x).toFixed(2), +(w.h.x * w.s.x).toFixed(2), +w.a.x.toFixed(3)]
     }

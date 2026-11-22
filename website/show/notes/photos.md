@@ -1,26 +1,33 @@
-# The phone photos in his library (public/show/photos/)
+# The phone photos in his album (public/show/photos/)
 
-Made with an image model (opencode/minimax-h3-image), Nov 21. They appear only inside the Photos window on his
-screen. Everything else in the film is our own Blender scenes. Each file was downscaled and re-encoded
-(ImageMagick, 880 px or 1280 px, JPEG q70–74, metadata stripped).
+Made with an image model (opencode/minimax-h3-image), Nov 22 (draft 18), from two references: the
+earlier hedge photo (a Blender render of our street as its own reference) for the daylight ones, and
+No. 14's camera still (`feeds/st-14.jpg`) for dusk and night. They appear only inside the Photos window
+on his screen. Each was downscaled to 720 px (Pillow, JPEG q80); the dusk zoom and the night ones get
+added sensor grain. The grid crops every tile differently (zoomed and slid along the frame) and never
+puts the same photo next to itself, the row above or two rows up (`library.js assign`).
 
-| File | From | Prompt, in short |
-| --- | --- | --- |
-| `h-jun.jpg` | anchor-a | No. 14's clipped hedge across a white clapboard house, a grey lamp post at the right, early clear morning, unedited iPhone photo. Made with a Blender render of our street as a reference. |
-| `h-jul.jpg` | h-jun as reference | the same spot, a hand's width off; flat overcast July morning, the hedge a little shaggier |
-| `h-rain.jpg` | h-jun as reference | light August rain, wet pavement, drops on the lens |
-| `h-rain2.jpg` | h-jun as reference | light rain, darker and bluer, puddles |
-| `h-fog.jpg` | h-jun as reference | misty September morning, dew |
-| `h-oct.jpg` | h-jun as reference | cold October morning, fallen leaves, a bin at the kerb |
-| `h-nov.jpg` | h-jun as reference | November before sunrise, night mode, the streetlight on, frost |
-| `h-tape.jpg` | h-jun as reference | August 14: a yellow tape measure held against the hedge top, only a hand in frame |
-| `sixteen.jpg` | none | No. 16's house on a grey March afternoon, bins out |
-| `drill.jpg` | none | a cordless drill on a garage bench, a label-maker label reading MARK |
-| `night.jpg` | a Blender render of our street at night as a reference | No. 14's lit upstairs window at night through his blinds, night mode |
-| `night-zoom.jpg` | night.jpg as reference | the same, 3x zoom: a man side-on in the lamplight, face turned away |
-| `night-look.jpg` | night.jpg as reference (minimax-h3-image) | the last photo in the album: No. 14 at night, Alan standing at his lit upstairs window, looking back at the camera |
-| `plastic.jpg` | none | rolls of builder's plastic and tape in a car boot, at night |
-| `label.jpg` | none | a label maker on a desk at night, a fresh label reading FOURTEEN |
+| File | Prompt, in short |
+| --- | --- |
+| `d-sun.jpg` | bright cold winter morning, low sun from the left, long shadows, straight on, a degree crooked |
+| `d-angle.jpg` | steep angle down the length of the hedge, flat overcast December morning, damp pavement |
+| `d-frost.jpg` | close-up: frost on the clipped top of the hedge at dawn, the house soft behind |
+| `d-drizzle.jpg` | light drizzle, wet pavement, raindrops blurring a corner of the lens |
+| `d-tape.jpg` | a hand holding a yellow tape measure against the hedge, the top at 6 ft 2 in |
+| `d-road.jpg` | from across the road, wider, a parked hatchback cut off at the left, blue sky |
+| `d-shoots.jpg` | close-up: unruly shoots above the clipped top, white sky |
+| `d-corner.jpg` | low angle at the hedge's corner, warm afternoon sun raking along it |
+| `d-fog.jpg` | foggy morning, the far end softening into grey |
+| `d-leaves.jpg` | windy January afternoon, leaves blowing along the pavement, a bin at the kerb |
+| `d-snow.jpg` | a dusting of snow on the hedge's flat top, slushy pavement |
+| `d-car.jpg` | through a parked car's windscreen, dashboard edge in the corner |
+| `e-gold.jpg` | golden hour, sun low behind the house, lens flare |
+| `e-blue.jpg` | blue hour, the streetlight just on, every window dark |
+| `e-zoom.jpg` | blurry digital zoom on the front door at dusk |
+| `n-rain.jpg` | night mode from across the street in light rain, all windows dark |
+| `n-light.jpg` | grainy 3x night shot up at the house, one upstairs window lit, nobody in it |
+| `n-alan.jpg` | the last photo: a man at his lit window facing the lens, looking straight back; cropped to a telephoto frame, softened like a digital zoom, blacks crushed, heavy grain |
 
-Rejected: a second hedge anchor (different framing), two drills (twisted bodies), a rain shot that lost the
-hedge's level top, a late-August shot whose house changed shape, a label cut to FOURTEE.
+Rejected: a second take of the last photo (a19) that read as a doorway and looked posed. Retired
+with draft 18: the summer hedge mornings (`h-*`), the drill, the label, the plastic in the boot,
+No. 16, and the old night shots; the grid that alternated two of them is gone with them.
