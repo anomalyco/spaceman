@@ -1,9 +1,8 @@
 # 3D scenes: the contract between Blender and the film
 
 The film never leaves his computer. The only 3D set is his study and its monitor, modelled by our own Python
-scripts in this folder and either rendered live in the browser by the film's own WebGPU renderer
-(`src/show/gpu.js`, glTF with baked light, loaded by `src/show/glb.js`) or rendered offline by Cycles as an
-image. No downloaded models. Textures may be CC0 only (Poly Haven), listed with their licences in
+scripts in this folder (`study/scene.py`) and rendered offline by Cycles (`study/hero.py`): the page's still
+and the opening plate, a video the film plays with the live desktop set on the monitor's panel. No downloaded models. Textures may be CC0 only (Poly Haven), listed with their licences in
 `scenes/textures/LICENCES.md`; never image-model textures.
 
 **Everything outside the study is a picture inside a window on his screen**, never the film's world:
@@ -19,35 +18,31 @@ history and as reference renders for the image model.
 Blender 5.2 is on the workers, not on Studio. Build through HiveMind from the worktree root:
 
     hivemind run --kind render --dir . -- sh -c 'B=/Applications/Blender.app/Contents/MacOS/Blender; \
-      mkdir -p captures/X; $B -b --factory-startup -P website/show/scenes/<set>/build.py -- [quick] [previews] out=$PWD/captures/X'
+      mkdir -p captures/X; $B -b --factory-startup -noaudio -P website/show/scenes/study/hero.py -- <mode> cam=door ev=1.0 out=$PWD/captures/X'
 
-Then copy what you keep from `captures/X` into `public/show/3d/` and `public/show/renders/`. Units are metres;
-glTF is exported Y-up. Keep `.blend` files out of git.
+Modes: `at=0,4` (stills at film times, `w= h= spp=`), `frames=0-221` (plate frames, with `corners-a-b.json`),
+`test`, `rays`. Units are metres. Keep `.blend` files out of git.
 
 ## The story's world
 
 Pinecrest, an ordinary street of white clapboard houses. **No. 12** (his) and **No. 14** face each other across
-the street. His study is upstairs at the front of No. 12; from its window you see No. 14's clipped hedge
-(~1.9 m, over the 6 ft limit), a streetlight, and No. 14's upstairs window lit warm with a lamp. "Six" is the
-cellar of No. 12; it is only ever seen through its camera.
+the street. His study is upstairs at the front of No. 12, lit at night by a streetlight down the road through the
+blinds; nothing past the glass is modelled. "Six" is the cellar of No. 12; it is only ever seen through its camera.
 
-## study.glb + study.json (`study/build.py`, `street.py`)
+## The opening plate (`public/show/plate/`, `study/hero.py frames=`, `tools/plate.ts`)
 
-- `Screen`: the monitor's panel, one quad, UVs 0..1 over the visible panel, 16:10, material `Screen`: the film
-  draws the desktop there and lights the room with it.
-- `Glass` materials are skipped by the renderer. Emissive materials without a base texture are drawn as
-  emission × `emitStrength[name]`.
-- Everything else is baked: base colour = albedo × all light but the screen's; emissive = albedo × the
-  screen's light alone, so the film computes `base + glow × screen colour`. `study.json` carries the
-  per-object exposure scales and the screen's corners.
-- Cameras (by name in study.json): `CamScreen` (the panel fills a 16:10 frame), `CamChair`, `CamDesk`,
-  `CamRoom` (near the door: the empty chair, desk, monitor, blinds).
+- Film 0 → 7.38 s (frames 0–221 at 30 fps): the asleep room, the screen waking (glow from 0.42 s), the move in
+  from `door` onto the panel. `pose(t)` in `hero.py` is the film's move; its last frame frames the panel the way
+  the flat desktop does, and `main.js` eases the plate onto the flat panel's rect over 4.5 → 7.38 s.
+- The panel shows `desktop-soft.jpg` (a blur) at the frame's glow, so its light falls on the room; the live
+  desktop covers it, mapped through the four corners in `opening.json` at the glow in the same file.
+- `plate.ts` encodes `opening.mp4` (H.264, faststart, BT.709, keyframe every 0.5 s) and `opening.webm` (VP9).
+  Grain and vignette are the film's own post pass, not baked.
 
 ## Offline renders (`public/show/renders/`, `renders/build.py` and the sets' previews)
 
 | File | What |
 | --- | --- |
-| `intro.jpg` | `CamChair`, the screen asleep: the page's still. |
-| `chair.jpg`, `room.jpg` | The study cameras, for Canvas 2D and before the room loads. |
+| `intro.jpg` | `hero.py at=0 w=2400 h=1500`, the screen asleep: the page's still, the plate's frame 0, and what Canvas 2D pushes into. |
 | `across.jpg` | The photograph No. 14 sends: his study window at night, from across the street. |
 | `wall.jpg`, `wall-s.jpg` | His wallpaper: dunes at dusk. |

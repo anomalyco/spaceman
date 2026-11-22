@@ -236,6 +236,183 @@ def boards(name, base=(0.36, 0.23, 0.13), dark=(0.2, 0.12, 0.06), width=0.14, le
     return m
 
 
+# ── image textures, profiles, rounded slabs, cables ─────────────────────
+def pbr(name, maps, tile, tint=None, gain=1.0, rough=(0.0, 1.0), bump=0.3, coord="Object", blend=0.2, rot=0.0, offset=(0, 0, 0), coat=0.0, coat_rough=0.1, contrast=0.0):
+    """A CC0 photo-scanned material (textures.py), box-projected in metres: tile = the scan's real size.
+    tint multiplies the colour map (paint over a plaster scan), rough maps the roughness map into a range,
+    and the height map drives a bump (no UVs needed)."""
+    m = mat(name)
+    mp = node(m, "ShaderNodeMapping")
+    mp.inputs["Scale"].default_value = (1 / tile, 1 / tile, 1 / tile)
+    mp.inputs["Rotation"].default_value = (0, 0, rot)
+    mp.inputs["Location"].default_value = offset
+    link(m, texcoord(m, coord), mp.inputs["Vector"])
+
+    def img(path, colour):
+        t = node(m, "ShaderNodeTexImage")
+        t.image = D.images.load(path, check_existing=True)
+        t.image.colorspace_settings.name = "sRGB" if colour else "Non-Color"
+        t.projection = "BOX"
+        t.projection_blend = blend
+        link(m, mp.outputs["Vector"], t.inputs["Vector"])
+        return t
+
+    col = img(maps["diff"], True).outputs["Color"]
+    if contrast:
+        bc = node(m, "ShaderNodeBrightContrast")
+        bc.inputs["Contrast"].default_value = contrast
+        link(m, col, bc.inputs["Color"])
+        col = bc.outputs["Color"]
+    if tint is not None:
+        mx = node(m, "ShaderNodeMix")
+        mx.data_type = "RGBA"
+        mx.blend_type = "MULTIPLY"
+        mx.inputs[0].default_value = 1.0
+        mx.inputs[6].default_value = (*tint, 1)
+        link(m, col, mx.inputs[7])
+        col = mx.outputs[2]
+    if gain != 1.0:
+        g = node(m, "ShaderNodeVectorMath")
+        g.operation = "SCALE"
+        g.inputs["Scale"].default_value = gain
+        link(m, col, g.inputs[0])
+        col = g.outputs[0]
+    link(m, col, bsdf(m).inputs["Base Color"])
+    if "rough" in maps:
+        r = node(m, "ShaderNodeMapRange")
+        r.inputs["To Min"].default_value, r.inputs["To Max"].default_value = rough
+        link(m, img(maps["rough"], False).outputs["Color"], r.inputs["Value"])
+        link(m, r.outputs["Result"], bsdf(m).inputs["Roughness"])
+    if bump > 0 and "disp" in maps:
+        b = node(m, "ShaderNodeBump")
+        b.inputs["Strength"].default_value = bump
+        b.inputs["Distance"].default_value = 0.004
+        link(m, img(maps["disp"], False).outputs["Color"], b.inputs["Height"])
+        link(m, b.outputs["Normal"], bsdf(m).inputs["Normal"])
+    if coat > 0:
+        p = bsdf(m)
+        p.inputs["Coat Weight"].default_value = coat
+        p.inputs["Coat Roughness"].default_value = coat_rough
+    return m
+
+
+def prism(name, profile, a, b, n, mat=None):
+    """A moulding: the 2D profile [(out, up), ...] (out along n, the wall's normal into the room) run
+    straight from a to b."""
+    a, b, n, up = Vector(a), Vector(b), Vector(n), Vector((0, 0, 1))
+    bm = bmesh.new()
+    ra = [bm.verts.new(a + n * u + up * v) for u, v in profile]
+    rb = [bm.verts.new(b + n * u + up * v) for u, v in profile]
+    k = len(profile)
+    for i in range(k):
+        j = (i + 1) % k
+        bm.faces.new((ra[i], ra[j], rb[j], rb[i]))
+    bm.faces.new(list(reversed(ra)))
+    bm.faces.new(rb)
+    bmesh.ops.recalc_face_normals(bm, faces=bm.faces)
+    o = obj_from_bm(name, bm, mat)
+    for f in o.data.polygons:
+        f.use_smooth = False
+    return o
+
+
+def arc(c, r, a0, a1, n=8):
+    return [(c[0] + r * math.cos(math.radians(a0 + (a1 - a0) * i / n)), c[1] + r * math.sin(math.radians(a0 + (a1 - a0) * i / n))) for i in range(n + 1)]
+
+
+def rrect(w, h, r, n=6):
+    """A rounded rectangle's outline, centred, counter-clockwise."""
+    r = min(r, w / 2 - 1e-4, h / 2 - 1e-4)
+    pts = []
+    for cx, cy, a0 in ((w / 2 - r, -h / 2 + r, -90), (w / 2 - r, h / 2 - r, 0), (-w / 2 + r, h / 2 - r, 90), (-w / 2 + r, -h / 2 + r, 180)):
+        pts += arc((cx, cy), r, a0, a0 + 90, n)
+    return pts
+
+
+def slab(name, center, w, h, depth, r, mat=None, axis="Y", bevel=0.0, rot=(0, 0, 0), n=6):
+    """A rounded-rectangle slab: w x h in the plane across axis, depth along it."""
+    bm = bmesh.new()
+    pts = rrect(w, h, r, n)
+    if axis == "Y":
+        P = lambda x, y, d: Vector((x, d, y))
+    elif axis == "Z":
+        P = lambda x, y, d: Vector((x, y, d))
+    else:
+        P = lambda x, y, d: Vector((d, x, y))
+    f0 = [bm.verts.new(P(x, y, -depth / 2)) for x, y in pts]
+    f1 = [bm.verts.new(P(x, y, depth / 2)) for x, y in pts]
+    k = len(pts)
+    for i in range(k):
+        j = (i + 1) % k
+        bm.faces.new((f0[i], f0[j], f1[j], f1[i]))
+    bm.faces.new(list(reversed(f0)))
+    bm.faces.new(f1)
+    bmesh.ops.recalc_face_normals(bm, faces=bm.faces)
+    o = obj_from_bm(name, bm, mat)
+    o.location = center
+    o.rotation_euler = rot
+    for f in o.data.polygons:
+        f.use_smooth = len(f.vertices) == 4
+    if bevel > 0:
+        m = o.modifiers.new("bevel", "BEVEL")
+        m.width = bevel
+        m.segments = 3
+        m.limit_method = "ANGLE"
+        m.harden_normals = False
+    return o
+
+
+def sbox(name, center, size, mat=None, bevel=0.01, cuts=6, rot=(0, 0, 0), sub=0):
+    """A box cut into a grid (so a deform can bend it), bevelled, optionally subdivided soft."""
+    bm = bmesh.new()
+    bmesh.ops.create_cube(bm, size=1.0)
+    bmesh.ops.subdivide_edges(bm, edges=bm.edges[:], cuts=cuts, use_grid_fill=True)
+    for v in bm.verts:
+        v.co = Vector((v.co.x * size[0], v.co.y * size[1], v.co.z * size[2]))
+    o = obj_from_bm(name, bm, mat)
+    o.location = center
+    o.rotation_euler = rot
+    if bevel > 0:
+        m = o.modifiers.new("bevel", "BEVEL")
+        m.width = min(bevel, min(size) * 0.45)
+        m.segments = 4
+        m.limit_method = "ANGLE"
+    if sub:
+        s = o.modifiers.new("sub", "SUBSURF")
+        s.levels = s.render_levels = sub
+    for f in o.data.polygons:
+        f.use_smooth = True
+    return o
+
+
+def cast(o, factor):
+    """Pushes a box toward a sphere a little, so a cushion's faces bulge."""
+    c = o.modifiers.new("cast", "CAST")
+    c.factor = factor
+    c.use_x = c.use_y = c.use_z = True
+    o.modifiers.move(len(o.modifiers) - 1, 0)
+    return o
+
+
+def cable(name, pts, r, mat=None):
+    cu = D.curves.new(name, "CURVE")
+    cu.dimensions = "3D"
+    cu.bevel_depth = r
+    cu.bevel_resolution = 3
+    cu.resolution_u = 16
+    cu.use_fill_caps = True
+    sp = cu.splines.new("BEZIER")
+    sp.bezier_points.add(len(pts) - 1)
+    for p, co in zip(sp.bezier_points, pts):
+        p.co = co
+        p.handle_left_type = p.handle_right_type = "AUTO"
+    o = D.objects.new(name, cu)
+    bpy.context.scene.collection.objects.link(o)
+    if mat:
+        cu.materials.append(mat)
+    return o
+
+
 # ── cameras and lights ──────────────────────────────────────────────────
 def camera(name, loc, target, vfov_deg, dof=None):
     cd = D.cameras.new(name)

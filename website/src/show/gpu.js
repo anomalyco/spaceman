@@ -193,48 +193,40 @@ fn agx(c: vec3f) -> vec3f {
 }
 `
 
-// The room: world-space meshes with baked light. Baked materials add the screen's own light
-// (baked separately) scaled by how bright the screen is; the screen samples the desktop.
-const MESH = /* wgsl */ `
-struct U3 { vp: mat4x4f, eye: vec4f, p: vec4f, sc: vec4f, d: vec4f }
-struct M3 { k: vec4f, col: vec4f }
-@group(0) @binding(0) var<uniform> u: U3;
-@group(1) @binding(0) var<uniform> m: M3;
-@group(1) @binding(1) var tb: texture_2d<f32>;
-@group(1) @binding(2) var te: texture_2d<f32>;
-@group(1) @binding(3) var smp: sampler;
-struct VO { @builtin(position) pos: vec4f, @location(0) uv: vec2f, @location(1) w: vec3f }
-@vertex fn vs(@location(0) p: vec3f, @location(1) uv: vec2f) -> VO {
+// The opening plate: a pre-rendered frame of the room drawn as a quad, and the live desktop on the
+// panel's quad in it, mapped in perspective (each corner carries q, so uv/q interpolates projectively).
+const QUAD = /* wgsl */ `
+struct Q { c: array<vec4f, 4>, q: vec4f, k: vec4f }
+@group(0) @binding(0) var<uniform> u: Q;
+@group(0) @binding(1) var tex: texture_2d<f32>;
+@group(0) @binding(2) var smp: sampler;
+struct VO { @builtin(position) pos: vec4f, @location(0) uvq: vec3f }
+const ORDER = array<u32, 6>(0, 1, 2, 0, 2, 3);
+const UV = array<vec2f, 4>(vec2f(0, 0), vec2f(1, 0), vec2f(1, 1), vec2f(0, 1));
+@vertex fn vs(@builtin(vertex_index) vi: u32) -> VO {
+  let i = ORDER[vi];
+  let q = u.q[i];
   var o: VO;
-  o.pos = u.vp * vec4f(p, 1.0);
-  o.uv = uv;
-  o.w = p;
+  o.pos = vec4f(u.c[i].xy, 0.0, 1.0);
+  o.uvq = vec3f(UV[i] * q, q);
   return o;
 }
 @fragment fn fs(i: VO) -> @location(0) vec4f {
-  let b = textureSample(tb, smp, i.uv).rgb;
-  let e = textureSample(te, smp, i.uv).rgb;
-  var c = vec3f(0.0);
-  let kind = m.k.x;
-  if (kind < 0.5) {
-    c = b * m.k.y + e * m.k.z * u.p.x * u.sc.rgb;
-  } else if (kind < 1.5) {
-    // the panel: the desktop it shows, or black glass when it sleeps; a faint sheen at grazing angles
-    let lin = pow(max(b, vec3f(0.0)), vec3f(2.2));
-    let v = normalize(u.eye.xyz - i.w);
-    let f = pow(1.0 - abs(dot(v, m.col.xyz)), 5.0);
-    c = lin * u.p.x * u.sc.w + vec3f(0.0018, 0.002, 0.0026) + vec3f(0.02, 0.022, 0.026) * f;
-  } else {
-    c = m.col.rgb * u.p.y;
-  }
-  c *= u.p.z;
-  let z = distance(u.eye.xyz, i.w);
-  let coc = clamp(abs(1.0 / u.d.x - 1.0 / max(z, 0.01)) * u.d.y, 0.0, 1.0);
-  // the panel is a display, not a lit surface: its alpha goes negative so the tone curve leaves it alone
-  if (kind > 0.5 && kind < 1.5) { return vec4f(c, -max(coc, 0.002)); }
-  return vec4f(c, coc);
+  let c = textureSample(tex, smp, i.uvq.xy / i.uvq.z).rgb;
+  return vec4f(c * u.k.y * u.k.x, u.k.x);
 }
 `
+
+// q per corner of a quad (tl, tr, br, bl): from the diagonals' crossing
+function quadQ(p) {
+  const [a, b, c, d] = p
+  const den = (c[0] - a[0]) * (d[1] - b[1]) - (c[1] - a[1]) * (d[0] - b[0])
+  if (Math.abs(den) < 1e-9) return [1, 1, 1, 1]
+  const s = ((b[0] - a[0]) * (d[1] - b[1]) - (b[1] - a[1]) * (d[0] - b[0])) / den
+  const x = [a[0] + s * (c[0] - a[0]), a[1] + s * (c[1] - a[1])]
+  const dist = p.map((v) => Math.hypot(v[0] - x[0], v[1] - x[1]))
+  return dist.map((di, i) => (di + dist[(i + 2) % 4]) / Math.max(1e-9, dist[(i + 2) % 4]))
+}
 
 export const POST_DEFAULT = { focus: null, dof: 0, bloom: 0.18, threshold: 0.62, vignette: 0.22, grain: 0.018, exposure: 1, saturation: 1, warmth: 0, contrast: 1 }
 
@@ -321,144 +313,65 @@ export async function createGPU(canvas) {
     return e
   }
 
-  // ── the room ──
-  const MSAA = 4
-  const meshMod = device.createShaderModule({ code: MESH })
-  let mesh3 = null // pipeline, created on first scene load
-  const u3 = device.createBuffer({ size: 128, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST })
+  // ── the desktop's texture for the panel, with its mips ──
   const ubufS = device.createBuffer({ size: 32, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST })
   const aniso = device.createSampler({ magFilter: "linear", minFilter: "linear", mipmapFilter: "linear", maxAnisotropy: 8, addressModeU: "clamp-to-edge", addressModeV: "clamp-to-edge" })
-  const black = device.createTexture({ size: [1, 1], format: "rgba8unorm", usage: GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.COPY_DST })
-  device.queue.writeTexture({ texture: black }, new Uint8Array([0, 0, 0, 255]), {}, [1, 1])
-  const scenes = new Map()
-  let scr = null // the desktop's texture on the panel, with its mips
-  let ms = null // multisampled colour and depth
-
-  async function imageTexture(bmp) {
-    const levels = Math.floor(Math.log2(Math.max(bmp.width, bmp.height))) + 1
-    const tex = device.createTexture({ size: [bmp.width, bmp.height], format: "rgba8unorm-srgb", mipLevelCount: levels, usage: GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.COPY_DST | GPUTextureUsage.RENDER_ATTACHMENT })
-    device.queue.copyExternalImageToTexture({ source: bmp }, { texture: tex }, [bmp.width, bmp.height])
-    for (let l = 1; l < levels; l++) {
-      const w = Math.max(1, bmp.width >> l)
-      const h = Math.max(1, bmp.height >> l)
-      const small = await createImageBitmap(bmp, { resizeWidth: w, resizeHeight: h, resizeQuality: "high", colorSpaceConversion: "none" })
-      device.queue.copyExternalImageToTexture({ source: small }, { texture: tex, mipLevel: l }, [w, h])
-      small.close?.()
-    }
-    return tex
-  }
-
-  // corners are [bl, br, tr, tl]; u runs tl → tr, v runs tl → bl
-  function panelUV(pos, [bl, , tr, tl]) {
-    const ex = [tr[0] - tl[0], tr[1] - tl[1], tr[2] - tl[2]]
-    const ey = [bl[0] - tl[0], bl[1] - tl[1], bl[2] - tl[2]]
-    const lx = ex[0] ** 2 + ex[1] ** 2 + ex[2] ** 2
-    const ly = ey[0] ** 2 + ey[1] ** 2 + ey[2] ** 2
-    const uv = new Float32Array((pos.length / 3) * 2)
-    for (let i = 0; i < pos.length / 3; i++) {
-      const d = [pos[i * 3] - tl[0], pos[i * 3 + 1] - tl[1], pos[i * 3 + 2] - tl[2]]
-      uv[i * 2] = (d[0] * ex[0] + d[1] * ex[1] + d[2] * ex[2]) / lx
-      uv[i * 2 + 1] = (d[0] * ey[0] + d[1] * ey[1] + d[2] * ey[2]) / ly
-    }
-    return uv
-  }
-
+  let scr = null
   function screenTarget(tw, th) {
     if (scr && scr.w === tw && scr.h === th) return scr
     scr?.tex.destroy()
     const levels = Math.min(8, Math.floor(Math.log2(Math.max(tw, th))) + 1)
     const tex = device.createTexture({ size: [tw, th], format: HDR, mipLevelCount: levels, usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.TEXTURE_BINDING })
     const lv = (l) => tex.createView({ baseMipLevel: l, mipLevelCount: 1 })
-    const down = []
-    for (let l = 1; l < levels; l++) down.push({ view: lv(l), bg: device.createBindGroup({ layout: downPipe.getBindGroupLayout(0), entries: [{ binding: 0, resource: lv(l - 1) }, { binding: 1, resource: clampS }] }) })
-    scr = { w: tw, h: th, tex, view0: lv(0), all: tex.createView(), down, bgs: new Map() }
+    const levelsDown = []
+    for (let l = 1; l < levels; l++) levelsDown.push({ view: lv(l), bg: device.createBindGroup({ layout: down.getBindGroupLayout(0), entries: [{ binding: 0, resource: lv(l - 1) }, { binding: 1, resource: clampS }] }) })
+    scr = { w: tw, h: th, tex, view0: lv(0), all: tex.createView(), down: levelsDown, bgs: new Map() }
     return scr
   }
-  const downPipe = down
 
-  function msTargets(w, h) {
-    if (ms && ms.w === w && ms.h === h) return ms
-    ms?.color.destroy()
-    ms?.depth.destroy()
-    ms = {
-      w,
-      h,
-      color: device.createTexture({ size: [w, h], format: HDR, sampleCount: MSAA, usage: GPUTextureUsage.RENDER_ATTACHMENT }),
-      depth: device.createTexture({ size: [w, h], format: "depth24plus", sampleCount: MSAA, usage: GPUTextureUsage.RENDER_ATTACHMENT }),
+  // ── the plate ──
+  let quadPipe = null
+  const quadU = [0, 1].map(() => device.createBuffer({ size: 112, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST }))
+  const quadBG = new Map()
+  function quadBind(k, view, smp) {
+    let e = quadBG.get(k)
+    if (!e || e.view !== view) {
+      e = { view, bg: device.createBindGroup({ layout: quadPipe.getBindGroupLayout(0), entries: [{ binding: 0, resource: { buffer: quadU[k] } }, { binding: 1, resource: view }, { binding: 2, resource: smp }] }) }
+      quadBG.set(k, e)
     }
-    return ms
+    return e.bg
+  }
+  function writeQuad(k, pts, W, H, alpha, gain) {
+    const q = quadQ(pts)
+    const c = pts.flatMap(([x, y]) => [(x / W) * 2 - 1, 1 - (y / H) * 2, 0, 0])
+    device.queue.writeBuffer(quadU[k], 0, new Float32Array([...c, ...q, alpha, gain, 0, 0]))
   }
 
   let frame = 0
   return {
-    // Uploads a loaded GLB (see glb.js). scale/emitScale undo the bake's JPEG normalisation per material.
-    async loadScene(key, glb, meta) {
-      if (scenes.has(key)) return
-      if (!mesh3)
-        mesh3 = await device.createRenderPipelineAsync({
-          layout: "auto",
-          vertex: { module: meshMod, entryPoint: "vs", buffers: [{ arrayStride: 12, attributes: [{ shaderLocation: 0, offset: 0, format: "float32x3" }] }, { arrayStride: 8, attributes: [{ shaderLocation: 1, offset: 0, format: "float32x2" }] }] },
-          fragment: { module: meshMod, entryPoint: "fs", targets: [{ format: HDR }] },
-          primitive: { topology: "triangle-list", cullMode: "none" },
-          depthStencil: { format: "depth24plus", depthWriteEnabled: true, depthCompare: "less" },
-          multisample: { count: MSAA },
-        })
-      const draws = []
-      for (const m of glb.meshes) {
-        if (m.material === "Glass") continue
-        const kind = m.material === "Screen" ? 1 : m.emit && !m.base ? 2 : m.base ? 0 : 2
-        const vb = device.createBuffer({ size: m.pos.byteLength, usage: GPUBufferUsage.VERTEX | GPUBufferUsage.COPY_DST })
-        device.queue.writeBuffer(vb, 0, m.pos)
-        // the panel's UVs come from its corners (study.json), so the desktop lands on it exactly
-        const uv = kind === 1 && meta.screen ? panelUV(m.pos, meta.screen) : m.uv
-        const ub = device.createBuffer({ size: uv.byteLength, usage: GPUBufferUsage.VERTEX | GPUBufferUsage.COPY_DST })
-        device.queue.writeBuffer(ub, 0, uv)
-        const idx = m.index instanceof Uint16Array && m.index.length % 2 ? new Uint16Array([...m.index, 0]) : m.index
-        const ib = device.createBuffer({ size: idx.byteLength, usage: GPUBufferUsage.INDEX | GPUBufferUsage.COPY_DST })
-        device.queue.writeBuffer(ib, 0, idx)
-        const mb = device.createBuffer({ size: 32, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST })
-        let normal = [0, 0, 1]
-        if (kind === 1) {
-          const p = m.pos
-          const a = [p[3] - p[0], p[4] - p[1], p[5] - p[2]]
-          const b = [p[6] - p[0], p[7] - p[1], p[8] - p[2]]
-          const n = [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]]
-          const l = Math.hypot(...n) || 1
-          normal = n.map((v) => v / l)
-        }
-        const col = kind === 2 ? m.emitFactor.map((v) => v * (meta.emitStrength?.[m.material] ?? 3)) : normal
-        device.queue.writeBuffer(mb, 0, new Float32Array([kind, 1 / (meta.scale?.[m.material] || 1), 1 / (meta.emitScale?.[m.material] || 1), 0, ...col, 0]))
-        const tb = kind === 0 && m.base ? await imageTexture(m.base) : null
-        const te = kind === 0 && m.emit ? await imageTexture(m.emit) : null
-        draws.push({ name: m.name, kind, vb, ub, ib, fmt: idx instanceof Uint16Array ? "uint16" : "uint32", n: m.index.length, mb, tb, te, bg: null })
-      }
-      for (const d of draws)
-        if (d.kind !== 1)
-          d.bg = device.createBindGroup({ layout: mesh3.getBindGroupLayout(1), entries: [{ binding: 0, resource: { buffer: d.mb } }, { binding: 1, resource: (d.tb || black).createView() }, { binding: 2, resource: (d.te || black).createView() }, { binding: 3, resource: aniso }] })
-      const bg0 = device.createBindGroup({ layout: mesh3.getBindGroupLayout(0), entries: [{ binding: 0, resource: { buffer: u3 } }] })
-      scenes.set(key, { draws, bg0, hidden: new Set() })
+    // The opening: the plate (a video frame, drawn over rect), the desktop's list drawn into the
+    // panel's texture (tw × th) and set on quad (screen corners tl, tr, br, bl) at alpha, then the
+    // flat post pass. p: { video, rect: [x, y, w, h], quad, alpha, gain } in CSS pixels of W × H.
+    async preparePlate() {
+      quadPipe ||= await device.createRenderPipelineAsync({
+        layout: "auto",
+        vertex: { module: device.createShaderModule({ code: QUAD }), entryPoint: "vs" },
+        fragment: { module: device.createShaderModule({ code: QUAD }), entryPoint: "fs", targets: [{ format: HDR, blend }] },
+        primitive: { topology: "triangle-list" },
+      })
     },
-    hasScene: (key) => scenes.has(key),
-    // Show or hide one of a scene's meshes by its node name (the basement's two states).
-    setVisible(key, name, on) {
-      const sc = scenes.get(key)
-      if (sc) on ? sc.hidden.delete(name) : sc.hidden.add(name)
-    },
-    // A 3D frame: the desktop's list is drawn into the panel's texture (tw × th), then the room.
-    // three: { key, vp, eye, glow, lit, exposure, screenCol, focus, aperture, tm }
-    render3d(list, tw, th, W, H, grade, fx, three) {
-      const sc = scenes.get(three.key)
-      if (!sc) return
+    renderPlate(list, tw, th, W, H, grade, fx, p) {
+      if (!quadPipe) return false
       grow(Math.max(1, list.length))
       const groups = []
       let cur = null
       for (let i = 0; i < list.length; i++) {
-        const p = list[i]
-        const col = p.col || [1, 1, 1, 1]
-        const cl = p.clip || [-1e9, -1e9, 1e9, 1e9]
-        const uv = p.uv || [0, 0, 1, 1]
-        data.set([p.x, p.y, p.w, p.h, col[0], col[1], col[2], col[3] ?? 1, p.r ?? 0, p.a ?? 1, p.shadow || 0, p.ring || 0, cl[0], cl[1], cl[2], cl[3], p.g || 0, p.tex ? 1 : 0, 0, 0, uv[0], uv[1], uv[2], uv[3]], i * FLOATS)
-        const t = p.tex || white
+        const e = list[i]
+        const col = e.col || [1, 1, 1, 1]
+        const cl = e.clip || [-1e9, -1e9, 1e9, 1e9]
+        const uv = e.uv || [0, 0, 1, 1]
+        data.set([e.x, e.y, e.w, e.h, col[0], col[1], col[2], col[3] ?? 1, e.r ?? 0, e.a ?? 1, e.shadow || 0, e.ring || 0, cl[0], cl[1], cl[2], cl[3], e.g || 0, e.tex ? 1 : 0, 0, 0, uv[0], uv[1], uv[2], uv[3]], i * FLOATS)
+        const t = e.tex || white
         if (!cur || cur.t !== t) groups.push((cur = { t, first: i, n: 0 }))
         cur.n++
       }
@@ -471,24 +384,19 @@ export async function createGPU(canvas) {
         S.bgs.clear()
         S.bgs.set(sbuf, bgS)
       }
-      for (const d of sc.draws)
-        if (d.kind === 1 && d.scr !== S) {
-          d.scr = S
-          d.bg = device.createBindGroup({ layout: mesh3.getBindGroupLayout(1), entries: [{ binding: 0, resource: { buffer: d.mb } }, { binding: 1, resource: S.all }, { binding: 2, resource: black.createView() }, { binding: 3, resource: aniso }] })
-        }
+      const plate = texFor(p.video)
+      plate.view ||= plate.tex.createView()
+      const [rx, ry, rw, rh] = p.rect
+      writeQuad(0, [[rx, ry], [rx + rw, ry], [rx + rw, ry + rh], [rx, ry + rh]], W, H, 1, 1)
+      writeQuad(1, p.quad, W, H, p.alpha, p.gain ?? 1)
       const tex = ctx.getCurrentTexture()
       const R = targets(tex.width, tex.height)
-      const M = msTargets(tex.width, tex.height)
-      const t = three
-      device.queue.writeBuffer(u3, 0, new Float32Array([...t.vp, ...t.eye, 0, t.glow, t.lit, t.exposure, 0, ...t.screenCol, t.focus, t.aperture, 0, 0]))
-      const f = [0, 0, tex.width, tex.height]
       device.queue.writeBuffer(
         pbuf,
         0,
-        new Float32Array([tex.width, tex.height, 1 / tex.width, 1 / tex.height, ...f, fx.dof ?? 0, fx.bloom ?? 0, fx.threshold ?? 0.6, fx.vignette ?? 0, fx.grain ?? 0, frame++ % 997, fx.exposure ?? 1, fx.saturation ?? 1, fx.warmth ?? 0, fx.contrast ?? 1, t.tm, 1]),
+        new Float32Array([tex.width, tex.height, 1 / tex.width, 1 / tex.height, 0, 0, tex.width, tex.height, 0, fx.bloom ?? 0, fx.threshold ?? 0.6, fx.vignette ?? 0, fx.grain ?? 0, frame++ % 997, fx.exposure ?? 1, fx.saturation ?? 1, fx.warmth ?? 0, fx.contrast ?? 1, 0, 0]),
       )
       const enc = device.createCommandEncoder()
-      // the desktop, then its mips (so it stays calm when it is small in frame)
       const sp = enc.beginRenderPass({ colorAttachments: [{ view: S.view0, clearValue: { r: 0.03, g: 0.03, b: 0.035, a: 1 }, loadOp: "clear", storeOp: "store" }] })
       sp.setPipeline(pipeline)
       sp.setBindGroup(0, bgS)
@@ -504,20 +412,13 @@ export async function createGPU(canvas) {
         dp.draw(3)
         dp.end()
       }
-      // the room
-      const rp = enc.beginRenderPass({
-        colorAttachments: [{ view: M.color.createView(), resolveTarget: R.scene.createView(), clearValue: { r: 0, g: 0, b: 0, a: 0 }, loadOp: "clear", storeOp: "discard" }],
-        depthStencilAttachment: { view: M.depth.createView(), depthClearValue: 1, depthLoadOp: "clear", depthStoreOp: "discard" },
-      })
-      rp.setPipeline(mesh3)
-      rp.setBindGroup(0, sc.bg0)
-      for (const d of sc.draws) {
-        if (sc.hidden.has(d.name)) continue
-        rp.setBindGroup(1, d.bg)
-        rp.setVertexBuffer(0, d.vb)
-        rp.setVertexBuffer(1, d.ub)
-        rp.setIndexBuffer(d.ib, d.fmt)
-        rp.drawIndexed(d.n)
+      const rp = enc.beginRenderPass({ colorAttachments: [{ view: R.scene.createView(), clearValue: { r: 0, g: 0, b: 0, a: 1 }, loadOp: "clear", storeOp: "store" }] })
+      rp.setPipeline(quadPipe)
+      rp.setBindGroup(0, quadBind(0, plate.view, clampS))
+      rp.draw(6)
+      if (p.alpha > 0.001) {
+        rp.setBindGroup(0, quadBind(1, S.all, aniso))
+        rp.draw(6)
       }
       rp.end()
       for (let l = 0; l < LEVELS; l++) {
@@ -533,6 +434,7 @@ export async function createGPU(canvas) {
       pp.draw(3)
       pp.end()
       device.queue.submit([enc.finish()])
+      return true
     },
     kind: "webgpu",
     get lost() {

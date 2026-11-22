@@ -1,9 +1,9 @@
-// The show engine. The page's first image is a still of the study (a Blender render); the study
-// itself (study.glb, baked in Blender) is fetched once the page is idle. start() runs inside the key
-// press: it brings up WebGPU (or Canvas 2D), fetches the tape and the effects, and plays the film.
-// In WebGPU the desktop is drawn into the monitor's panel and the room around it is real 3D; tight on
-// the screen the desktop is drawn flat, framed exactly as the panel was, so the two cut together.
-// Canvas 2D gets the same film with stills rendered from the same cameras. The picture is cut to the tape's word times
+// The show engine. The page's first image is a still of the study (a Cycles render). start() runs
+// inside the click: it brings up WebGPU (or Canvas 2D), fetches the tape, the effects and the opening
+// plate, and plays the film. In WebGPU the opening is the plate (the room rendered in Cycles, as video)
+// with the live desktop set on the monitor's panel; tight on the screen the desktop is drawn flat,
+// framed exactly as the panel was, so the two cut together. Canvas 2D and reduced motion push into
+// the still instead. The picture is cut to the tape's word times
 // (tape.js), so it runs the same with or without sound. ?capture exposes window.__show for
 // deterministic frame stepping and a motion trace.
 import { World } from "./world.js"
@@ -15,13 +15,11 @@ import { LINES, TAPE } from "./tape.js"
 import { plates, loadPlate, coverUV } from "./plates.js"
 import { PHOTOS } from "./library.js"
 import { FEEDS } from "./feeds.js"
-import { loadGLB, mul, perspective, lookAt, norm, sub, add, scale, cross, dot, lerp3 } from "./glb.js"
 import { clamp, mix, smooth } from "./springs.js"
 
-// pictures inside his apps (renders of our own scenes), and the stills Canvas 2D uses for the room
+// pictures inside his apps (renders of our own scenes), and the still Canvas 2D pushes into
 const PLATES = ["wall", "wall-s", "across"]
-const STILLS = { CamChair: "chair", CamRoom: "room" }
-const HANDOFF_FOV = 30
+const STILLS = { CamChair: "intro" }
 
 export function createShow({ still, canvas, base, capture = false, reduced = false, on = {} }) {
   const emit = (k, v) => on[k]?.(v)
@@ -127,39 +125,10 @@ export function createShow({ still, canvas, base, capture = false, reduced = fal
   }
 
   // ── The room ───────────────────────────────────────────────────────────
-  // three.a → three.b at three.u: named cameras (study.json), or "screen": the camera whose view of
-  // the panel is exactly what the flat desktop shows right now.
+  // three.a → three.b at three.u: the opening's shot, from the chair's camera onto "screen" (the panel
+  // seen exactly as the flat desktop shows it). WebGPU plays it as the Cycles plate; Canvas 2D and
+  // reduced motion push into the still.
   const three = { on: false, a: "CamChair", b: "CamChair", u: 0, glow: 1, drift: 0.1 }
-  // the study: a GLB and its study.json (cameras, the panel, bake scales)
-  const room = { meta: {}, glb: {}, loading: {}, up: new Set() }
-  function loadRoom(set = "study") {
-    room.loading[set] ||= Promise.all([fetch(base + "3d/" + set + ".json").then((r) => r.json()), loadGLB(base + "3d/" + set + ".glb")])
-      .then(([meta, glb]) => {
-        room.meta[set] = meta
-        room.glb[set] = glb
-        return true
-      })
-      .catch(() => false)
-    return room.loading[set]
-  }
-  // metadata alone (cameras, the panel), for Canvas 2D's stills
-  function loadMeta(set) {
-    if (room.meta[set]) return Promise.resolve(true)
-    return fetch(base + "3d/" + set + ".json")
-      .then((r) => r.json())
-      .then((m) => (room.meta[set] = m))
-      .catch(() => null)
-  }
-  async function uploadRoom(set = "study") {
-    if (!renderer?.loadScene || !(await loadRoom(set))) return false
-    if (!room.up.has(set)) {
-      await renderer.loadScene(set, room.glb[set], room.meta[set])
-      room.glb[set] = null
-      room.up.add(set)
-    }
-    return true
-  }
-  const in3d = () => three.on && room.up.has("study") && renderer?.render3d
 
   // the panel's texture: the desktop fitted into it, the wallpaper past its edges
   function panel() {
@@ -169,114 +138,160 @@ export function createShow({ still, canvas, base, capture = false, reduced = fal
     return { tw, th, G: { k: g, ox: (tw - SW * g) / 2, oy: (th - SH * g) / 2 } }
   }
 
-  // panel geometry (glTF, Y up): top-left corner, right and down edges, the normal toward the room
-  function panelFrame() {
-    const [bl, br, tr, tl] = room.meta.study.screen
-    const ex = sub(tr, tl)
-    const ey = sub(bl, tl)
-    let n = norm(cross(ey, ex))
-    const c0 = room.meta.study.cameras.CamScreen.pos
-    if (dot(n, sub(c0, tl)) < 0) n = scale(n, -1)
-    return { tl, ex, ey, n, br }
+  // ── The opening plate ──────────────────────────────────────────────────
+  // In WebGPU the opening (the asleep room, the screen waking, the move in) is a Cycles render played
+  // as video, fetched on the click; the live desktop sits on the panel's quad in each frame, so the
+  // hand-off to the flat desktop is exact. Until the video has a frame, the page's still stands in for
+  // it (it is frame 0). If the video fails, the film pushes into the still instead.
+  const plate = { meta: null, video: null, still: null, frame: -1, ready: false, failed: false, loading: null, done: false }
+  function loadOpening() {
+    if (plate.loading) return plate.loading
+    plate.loading = (async () => {
+      try {
+        await renderer.preparePlate()
+        if (!(await loadOpeningMeta())) throw new Error("no plate")
+        const v = document.createElement("video")
+        v.muted = true
+        v.playsInline = true
+        v.preload = "auto"
+        v.src = base + (v.canPlayType('video/mp4; codecs="avc1.640028"') ? "plate/opening.mp4" : "plate/opening.webm")
+        await new Promise((res, rej) => {
+          v.addEventListener("loadeddata", res, { once: true })
+          v.addEventListener("error", rej, { once: true })
+        })
+        v.width = v.videoWidth
+        v.height = v.videoHeight
+        v.version = 0
+        if (v.requestVideoFrameCallback && !capture) {
+          const onFrame = (_, md) => {
+            plate.frame = Math.round(md.mediaTime * plate.meta.fps)
+            v.version++
+            if (!plate.done) v.requestVideoFrameCallback(onFrame)
+          }
+          v.requestVideoFrameCallback(onFrame)
+        }
+        plate.video = v
+        plate.ready = true
+      } catch {
+        plate.failed = true
+        plate.video = null
+        void stillsIn()
+      }
+      return plate.ready
+    })()
+    return plate.loading
   }
-
-  // The camera that sees the panel exactly as the flat view shows the desktop now.
-  function screenShot() {
+  function loadOpeningStill() {
+    if (plate.still || !renderer?.renderPlate) return
+    const img = new Image()
+    img.decoding = "async"
+    img.src = base + "renders/intro.jpg"
+    img.decode().then(() => {
+      img.version = 1
+      plate.still = img
+    }, () => {})
+  }
+  const plateOn = () => three.on && !reduced && !plate.failed && !plate.done && renderer?.renderPlate && plate.meta && (plate.ready || plate.still) && t < plate.meta.end
+  // after the hand-off the video is let go
+  function plateEnd() {
+    if (plate.done || !plate.meta || t < plate.meta.end) return
+    plate.done = true
+    if (plate.video) {
+      plate.video.pause()
+      plate.video.removeAttribute("src")
+      plate.video.load()
+      plate.video = null
+    }
+  }
+  // the video follows the film's clock; a frame callback says which frame is up
+  function syncPlate() {
+    const v = plate.video
+    if (!v || capture) return
+    if (!plateOn() || phase !== "live" || !visible) {
+      if (!v.paused) v.pause()
+      return
+    }
+    if (Math.abs(v.currentTime - t) > 0.1) v.currentTime = Math.min(t, v.duration || t)
+    if (v.paused) v.play().catch(() => {})
+    if (!v.requestVideoFrameCallback) {
+      const f = Math.round(v.currentTime * plate.meta.fps)
+      if (f !== plate.frame) {
+        plate.frame = f
+        v.version++
+      }
+    }
+  }
+  // capture: the frame for t, decoded, before the picture is drawn
+  async function seekPlate() {
+    const v = plate.video
+    if (!v || !plateOn()) return
+    const f = Math.min(plate.meta.frames - 1, Math.round(t * plate.meta.fps))
+    if (f === plate.frame) return
+    await new Promise((res) => {
+      v.addEventListener("seeked", res, { once: true })
+      v.currentTime = (f + 0.5) / plate.meta.fps
+    })
+    plate.frame = f
+    v.version++
+  }
+  function renderPlate() {
+    const m = plate.meta
+    const live = plate.ready && plate.frame >= 0
+    const src = live ? plate.video : plate.still
+    if (!src) return false
+    const f = live ? clamp(plate.frame, 0, m.frames - 1) : 0
+    const c = m.corners[f] // [bl, br, tr, tl], 0..1 from the frame's top-left
+    const glow = m.glow[f]
+    const iw = m.size[0]
+    const ih = m.size[1]
+    // covering the screen, centred on the panel as far as the frame allows (as the page's still is)
+    const ka = Math.max(cssW / iw, cssH / ih)
+    const pcx = ((c[0][0] + c[1][0] + c[2][0] + c[3][0]) / 4) * iw
+    const pcy = ((c[0][1] + c[1][1] + c[2][1] + c[3][1]) / 4) * ih
+    const ax = clamp(cssW / 2 - pcx * ka, cssW - iw * ka, 0)
+    const ay = clamp(cssH / 2 - pcy * ka, cssH - ih * ka, 0)
+    // landing: the panel exactly where the flat desktop's panel lies at the hand-off
     const { tw, th, G } = panel()
     const T = camT(fit())
-    const pf = panelFrame()
-    const px = (cssW / 2 - T.ox) / T.k
-    const py = (cssH / 2 - T.oy) / T.k
-    const u = (G.ox + px * G.k) / tw
-    const v = (G.oy + py * G.k) / th
-    const C = add(pf.tl, add(scale(pf.ex, u), scale(pf.ey, v)))
-    const mPerCss = (G.k / T.k) * (Math.hypot(...pf.ex) / tw)
-    const fov = (HANDOFF_FOV * Math.PI) / 180
-    const d = (cssH * mPerCss) / 2 / Math.tan(fov / 2)
-    return { pos: add(C, scale(pf.n, d)), dir: scale(pf.n, -1), vfov: HANDOFF_FOV, focus: d, aperture: 0, tm: 0 }
-  }
-
-  // a named camera, its field of view opened up on tall screens so the subject still fits across
-  function namedShot(name) {
-    const A = cssW / cssH
-    // a set may frame a shot again for a phone held upright
-    const tall = A < 0.8 && room.meta.study?.cameras[name + "-tall"]
-    if (tall) return { pos: tall.pos, dir: tall.dir, vfov: tall.vfov, focus: tall.focus || 3, aperture: tall.focus ? 0.9 : 0, tm: 1 }
-    const c = room.meta.study?.cameras[name] || room.meta.study.cameras.CamRoom
-    const k = A < 1.25 ? (1.25 / A) ** 0.42 : 1
-    const vfov = (2 * Math.atan(Math.tan(((c.vfov * Math.PI) / 180) / 2) * k) * 180) / Math.PI
-    return { pos: c.pos, dir: c.dir, vfov, focus: c.focus || 3, aperture: c.focus ? 0.9 : 0, tm: 1 }
-  }
-  const shotOf = (n) => (n === "screen" ? screenShot() : namedShot(n))
-
-  function camera3() {
-    const a = three.a
-    const A = shotOf(a)
-    const B = three.b === a ? A : shotOf(three.b)
-    const u = three.u
-    // on one camera, u is a slow drift in along its axis
-    const pos = three.b === a ? add(A.pos, scale(A.dir, three.drift * u)) : lerp3(A.pos, B.pos, u)
-    let dir = norm(lerp3(A.dir, B.dir, u))
-    // off the screen, the camera keeps looking at what it was looking at on the screen, and only turns
-    // to the room's own point of interest in the second half, so the screen never slides out of frame
-    if (a === "screen" && B !== A) {
-      const w = smooth(clamp((u - 0.25) / 0.75))
-      const look = lerp3(add(A.pos, scale(A.dir, A.focus)), add(B.pos, scale(B.dir, B.focus)), w)
-      dir = norm(sub(look, pos))
-    } else if (three.b === "screen" && B !== A) {
-      // and onto it, the mirror: it turns to the screen first, then comes in
-      const w = smooth(clamp(u / 0.75))
-      const look = lerp3(add(A.pos, scale(A.dir, A.focus)), add(B.pos, scale(B.dir, B.focus)), w)
-      dir = norm(sub(look, pos))
-    }
-    const vfov = mix(A.vfov, B.vfov, u)
-    // focus moves in dioptres, so it racks the way a lens does; off the screen it stays on the screen
-    // until the last part of the move, then racks to the room
-    let focus = 1 / mix(1 / A.focus, 1 / B.focus, u)
-    if ((a === "screen" || three.b === "screen") && B !== A) {
-      const pf = panelFrame()
-      const mid = add(pf.tl, add(scale(pf.ex, 0.5), scale(pf.ey, 0.5)))
-      const onScreen = 1 / Math.max(0.05, dot(sub(mid, pos), dir))
-      focus = a === "screen" ? 1 / mix(onScreen, 1 / B.focus, smooth(clamp((u - 0.6) / 0.4))) : 1 / mix(1 / A.focus, onScreen, smooth(clamp(u / 0.4)))
-    }
-    // the tone curve and the depth of field arrive in the first part of a move off the screen
-    const off = A.tm < B.tm ? clamp(u * 2.5) : B.tm < A.tm ? clamp((1 - u) * 2.5) : A.tm
-    const aperture = Math.max(A.aperture, B.aperture) * off
-    const P = perspective((vfov * Math.PI) / 180, cssW / cssH, 0.02, 150)
-    const V = lookAt(pos, add(pos, dir), [0, 1, 0])
-    return { vp: mul(P, V), eye: pos, focus, aperture, tm: off }
-  }
-
-  function render3d(d) {
-    const { tw, th, G } = panel()
+    const P = [T.ox - (G.ox / G.k) * T.k, T.oy - (G.oy / G.k) * T.k, (tw / G.k) * T.k, (th / G.k) * T.k]
+    const e = m.corners[m.frames - 1]
+    const ex0 = (e[0][0] + e[3][0]) / 2
+    const ex1 = (e[1][0] + e[2][0]) / 2
+    const ey0 = (e[2][1] + e[3][1]) / 2
+    const ey1 = (e[0][1] + e[1][1]) / 2
+    const bw = P[2] / (ex1 - ex0)
+    const bh = P[3] / (ey1 - ey0)
+    const w = smooth(clamp((t - m.land) / (m.end - m.land)))
+    const rw = iw * ka * Math.pow(bw / (iw * ka), w)
+    const rh = ih * ka * Math.pow(bh / (ih * ka), w)
+    const rx = mix(ax, P[0] - ex0 * bw, w)
+    const ry = mix(ay, P[1] - ey0 * bh, w)
+    const quad = [c[3], c[2], c[1], c[0]].map(([u, v]) => [rx + u * rw, ry + v * rh])
     const list = []
     const wall = world.wall
     list.push({ x: 0, y: 0, w: tw, h: th, tex: wall, uv: coverUV(wall, tw, th), g: 1 })
     list.push({ x: 0, y: 0, w: tw, h: th, col: [0, 0, 0, 0.4], g: 0 })
     setRes(world, G.k, 1)
     world.draw(list, G, { g: 1 })
-    const c = camera3()
-    const fx3 = { ...fx, dof: c.aperture > 0 ? 1 : 0, focus: null }
-    renderer.render3d(list, tw, th, cssW, cssH, grade, fx3, {
-      key: "study",
-      vp: c.vp,
-      eye: c.eye,
-      glow: three.glow,
-      lit: 1,
-      exposure: 1,
-      screenCol: [1, 1, 1, 1],
-      focus: c.focus,
-      aperture: c.aperture,
-      tm: c.tm,
-    })
-    void d
+    // a panel in a room reads a little dimmer than the desktop seen flat, and the plate's own panel (its
+    // glass, the room's sheen on it) shows through a little; landing, both go
+    const gain = glow * (0.9 + 0.1 * w)
+    const alpha = clamp(glow * 2.5) * (0.92 + 0.08 * w)
+    return renderer.renderPlate(list, tw, th, cssW, cssH, grade, fx, { video: src, rect: [rx, ry, rw, rh], quad, alpha, gain })
   }
 
   // ── Getting ready ──────────────────────────────────────────────────────
   let rendererIn = null
   let platesIn = null
   let prepping = null
-  const stillsIn = () => Promise.all([...Object.values(STILLS).map((p) => loadPlate(base, p)), loadMeta("study")])
+  const stillsIn = () => Promise.all([...Object.values(STILLS).map((p) => loadPlate(base, p)), loadOpeningMeta()])
+  function loadOpeningMeta() {
+    plate.metaIn ||= fetch(base + "plate/opening.json")
+      .then((r) => r.json())
+      .then((m) => (plate.meta = m))
+      .catch(() => null)
+    return plate.metaIn
+  }
   function prepare() {
     if (prepping) return prepping
     const wantGPU = !new URLSearchParams(location.search).has("canvas2d")
@@ -289,29 +304,15 @@ export function createShow({ still, canvas, base, capture = false, reduced = fal
     prepping = Promise.all([
       manifestIn.then((m) => m && audio.load(m)),
       loadPlate(base, "wall"),
-      rendererIn.then((r) =>
-        r.render3d
-          ? uploadRoom().then((ok) => (ok ? null : stillsIn()))
-          : stillsIn(),
-      ),
+      // WebGPU fetches only the plate's corners and the still now, and the video on the click; Canvas 2D gets the still
+      rendererIn.then((r) => (r.renderPlate ? loadOpeningMeta().then(loadOpeningStill) : stillsIn())),
     ]).then(() => true)
     return prepping
   }
 
-  // ── Canvas 2D (or the room not loaded): stills from the same cameras ──
+  // ── Canvas 2D, reduced motion, or no plate: the still ──
   // A move onto the screen pushes into the still's monitor; a move off it cuts to the still and
   // drifts in; a move between two cameras cuts to the second.
-  function project(name, p, iw, ih) {
-    const c = room.meta.study?.cameras[name]
-    if (!c) return null
-    const V = lookAt(c.pos, add(c.pos, c.dir), [0, 1, 0])
-    const M = mul(perspective((c.vfov * Math.PI) / 180, iw / ih, 0.02, 150), V)
-    const x = M[0] * p[0] + M[4] * p[1] + M[8] * p[2] + M[12]
-    const y = M[1] * p[0] + M[5] * p[1] + M[9] * p[2] + M[13]
-    const w = M[3] * p[0] + M[7] * p[1] + M[11] * p[2] + M[15]
-    if (w <= 0.01) return null
-    return [((x / w + 1) / 2) * iw, ((1 - y / w) / 2) * ih]
-  }
   function drawStillShot(list) {
     const toScreen = three.b === "screen"
     const name = toScreen ? three.a : three.b
@@ -324,7 +325,9 @@ export function createShow({ still, canvas, base, capture = false, reduced = fal
     let k = cover
     let cx = img.width / 2
     let cy = img.height / 2
-    const near = toScreen && room.meta.study ? room.meta.study.screen.map((p) => project(name, p, img.width, img.height)) : null
+    // the panel in the still: the plate's frame 0 is the still
+    const corners = plate.meta?.corners[0].map(([u, v]) => [u * img.width, v * img.height])
+    const near = toScreen ? corners : null
     if (near && near.every(Boolean)) {
       // push in until the monitor fills the frame
       const pts = near
@@ -340,7 +343,7 @@ export function createShow({ still, canvas, base, capture = false, reduced = fal
     } else k = cover * (1 + 0.05 * three.u)
     list.push({ x: cssW / 2 - cx * k, y: cssH / 2 - cy * k, w: img.width * k, h: img.height * k, tex: img, g: 0 })
     // the stills were rendered with a blank panel: the desktop goes on it, as it is now
-    const pts = room.meta.study?.cameras[name] && room.meta.study.screen.map((p) => project(name, p, img.width, img.height))
+    const pts = corners
     if (pts && pts.every((p) => p && isFinite(p[0]) && isFinite(p[1]))) {
       const X = pts.map((p) => cssW / 2 + (p[0] - cx) * k)
       const Y = pts.map((p) => cssH / 2 + (p[1] - cy) * k)
@@ -356,7 +359,6 @@ export function createShow({ still, canvas, base, capture = false, reduced = fal
         list.push({ x: clip[0], y: clip[1], w: bw, h: bh, col: [0, 0, 0, 0.12 * panelDim + 0.88 * (1 - clamp(three.glow))], g: 0, clip })
       }
     }
-    if (three.glow < 1 && name === "CamChair") list.push({ x: 0, y: 0, w: cssW, h: cssH, col: [0, 0, 0, 0.5 * (1 - three.glow)], g: 0 })
   }
 
   function buildList() {
@@ -513,8 +515,8 @@ export function createShow({ still, canvas, base, capture = false, reduced = fal
     if (!renderer) return
     const c0 = performance.now()
     const d = sizeCanvas(canvas)
-    if (phase !== "ended" && in3d()) render3d(d)
-    else renderer.render(phase === "ended" ? [] : buildList(), cssW, cssH, d, grade, postFx())
+    syncPlate()
+    if (phase === "ended" || !plateOn() || !renderPlate()) renderer.render(phase === "ended" ? [] : buildList(), cssW, cssH, d, grade, postFx())
     renderer.sweep()
     stats.cpu.push(performance.now() - c0)
     if (stats.cpu.length > 600) stats.cpu.shift()
@@ -537,6 +539,7 @@ export function createShow({ still, canvas, base, capture = false, reduced = fal
     const tt = tapeTime()
     if (tt != null) dt = clamp(tt - t, 0, 0.12)
     advance(dt)
+    plateEnd()
     render()
     adapt()
     schedule()
@@ -564,6 +567,7 @@ export function createShow({ still, canvas, base, capture = false, reduced = fal
     if (v === visible) return
     visible = v
     audio.setHidden(!v)
+    if (!v && plate.video && !plate.video.paused) plate.video.pause()
     last = 0
     if (v) schedule()
     else if (raf) {
@@ -632,8 +636,9 @@ export function createShow({ still, canvas, base, capture = false, reduced = fal
       const ready = prepare()
       await rendererIn
       await Promise.race([ready, new Promise((res) => setTimeout(res, capture ? 60000 : 1200))])
-      if (!room.up.has("study")) void stillsIn()
-      if (capture) await Promise.all([ready, platesIn])
+      const opening = renderer.renderPlate && !reduced ? loadOpening() : null
+      if (!opening) void stillsIn()
+      if (capture) await Promise.all([ready, platesIn, opening])
       for (const w of world.wins.values()) w.dirty = true
       phase = "live"
       emit("phase", "live")
@@ -698,12 +703,16 @@ export function createShow({ still, canvas, base, capture = false, reduced = fal
           advance(dt)
           trace.push(sample())
         }
+        plateEnd()
+        await seekPlate()
         render()
         await renderer?.done()
       },
       // Jump forward without rendering (cues and springs still run).
       async seek(to) {
         while (t < to - 1e-6 && phase === "live") advance(Math.min(1 / 30, to - t))
+        plateEnd()
+        await seekPlate()
         render()
         await renderer?.done()
       },
@@ -726,7 +735,7 @@ export function createShow({ still, canvas, base, capture = false, reduced = fal
           requestAnimationFrame(loop)
         })
       },
-      state: () => ({ t: +t.toFixed(3), phase, active: world.active, D: +cam.D.toFixed(3), three: { ...three }, room: [...room.up], renderer: renderer?.kind, dprScale, plates: Object.keys(plates) }),
+      state: () => ({ t: +t.toFixed(3), phase, active: world.active, D: +cam.D.toFixed(3), three: { ...three }, renderer: renderer?.kind, dprScale, plates: Object.keys(plates) }),
       trace: (from = 0) => trace.slice(from),
       audioLog: () => audio.log,
       stats: summary,

@@ -311,3 +311,40 @@ Then, from the probes (p6a, p6b) and the r5 frames at 100%:
     p95 3.5 / max 8.6 ms, ending p50 0.9 / p95 1.3 / max 2.7 ms. Before the press the page loads the HTML, the JS
     and CSS, `mark.svg` and the still (`intro.jpg`); everything else (tape, effects, photos, stills, both GLBs)
     loads after it, the basement in the background behind the study.
+
+
+# Fourth pass: the study in Cycles (Nov 21–22)
+
+Kit: "none of it looks high quality enough". The opening becomes a path-traced plate: the asleep still, the
+wake-up and the move in are rendered in Cycles (`show/scenes/study/scene.py`, `hero.py`, Blender 5.2 on pro)
+and played as video, with the live desktop set on the panel's quad in every frame.
+
+## Round h · lighting (h1–h9)
+
+1. The room was rebuilt for Cycles: CC0 Poly Haven textures (oak floor, plaster, oak veneer, wool, fleece;
+   `textures/LICENCES.md`), modelled blinds with ladders and a pull, a radiator, a sash window, a socket.
+2. One streetlight down the road to the south-east is the key, through blinds tipped 18°, so its bands land on the
+   desk wall and across the print; the landing light through the open door behind the camera is the warm fill; the
+   Mac mini's LED is the only light on the desk. No. 14 is gone from the window: past the glass is night.
+3. Camera `door` (from the doorway, 42° vfov, f/2.8) picked over four others; the move in replicates
+   `camera3()` onto the screen, and its end frame puts the panel's corners where the flat desktop's will be.
+
+## Round h-1 (critic: gpt-6.1-sol, `critique-h1-sol.md`, frame `h-round1/still-t0.jpg`)
+
+4. Its #1, a daylight-crisp window: the streetlight got a 11 cm source (soft penumbra), the landing fill came up.
+   #2, a slab chair: the cushions are subdivided and bowed, the back thicker. #3, striped desk edge: the edge
+   banding uses the veneer turned along it. #4–#7: pens at angles, the trackpad off square, a folded letter, the
+   print larger with heavier contours, binders in three colours with hand-written labels.
+
+## Round h-2 (critic: gpt-6.2-astra, `critique-h2-astra.md`, h10 at t=0 and t=4)
+
+5. Its #3, cast-metal aluminium: a finer, quieter grain at roughness 0.33–0.37. #4, pens as black rods: a tapered
+   tip with a nib, an end cap, a clip on one. #5, the leaning book a solid block: boards, a cloth spine, a page
+   block inset between them. #2, the window bright top to sill: the spot narrowed to 11° and feathered, the slats a
+   shade greyer. #1, a black cut-out monitor: the panel is dark glass under a full, slightly rough coat (0.17–0.30
+   by noise), so the window's light lies on it as a faint sheen.
+6. The plate: frames 0–221 (film 0 → 7.38 s) render from `hero.py frames=`; a held frame (camera still, glow
+   unchanged either side) is copied rather than rendered. The panel shows a blurred desktop in the plate, so its
+   light falls on the room and nothing sharp can ghost through the live overlay as it fades up.
+   `show/tools/plate.ts` encodes H.264 (faststart, BT.709, keyframe every 0.5 s) and VP9, and writes
+   `opening.json` (per frame: corners, glow).

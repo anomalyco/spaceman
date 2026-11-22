@@ -13,10 +13,11 @@ type ShowApi = {
   destroy(): void;
 };
 
-// The still is the study at night with the screen asleep, rendered in Blender from the same camera
-// the film opens on (show/scenes/study). A click anywhere on it starts the film. The plate is
-// 1600 x 1000; the view covers the section and keeps the monitor in frame on narrow screens.
-const EX = { w: 1600, h: 1000, focus: [0.52, 0.42] };
+// The still is the study at night with the screen asleep, a Cycles render (show/scenes/study/hero.py)
+// that is also the opening plate's first frame. A click anywhere on it starts the film. It is
+// 2400 x 1500; the view covers the section, centred on the monitor as far as the frame allows (as the
+// plate is, so the cut to the film doesn't move).
+const EX = { w: 2400, h: 1500, focus: [0.401, 0.431] };
 
 function Still({ onStart, live }: { onStart: () => void; live: boolean }) {
   const ref = useRef<SVGSVGElement>(null);
