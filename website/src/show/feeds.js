@@ -69,7 +69,9 @@ export function feed(ctx, x, y, w, h, d, win) {
   // dropped frames: an older camera sometimes holds a frame for one more tick
   if (rnd(f * 3.1 + seed) < 0.05 + q * 0.12 && st.frame) f = st.f
   const lost = (d.lost || []).some(([a, b]) => clock >= a && clock < b)
-  if ((st.f !== f || st.sh !== SH) && !lost) {
+  // a new date on the stamp (the story moves on a day) shows at once, not on the next frame
+  if ((st.f !== f || st.sh !== SH || st.date !== d.date) && !lost) {
+    st.date = d.date
     st.sh = SH
     st.f = f
     const t = f / fps

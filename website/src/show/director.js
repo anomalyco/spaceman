@@ -48,9 +48,8 @@ export function wordEnd(phrase, after) {
   return WORDS[i + n - 1][2]
 }
 const LAST = WORDS[WORDS.length - 1]
-// the film ends on seven, a held beat after the last word, then a hard cut to black (before the
-// detective suspends the interview)
-export const END = Math.min(LAST[2] + 2.3, TAPE.marks.close - 0.08)
+// the film ends on seven, a held beat after the last word, then a hard cut to black
+export const END = LAST[2] + 2.3
 // the plate (the study, in through the screen) is a fixed length
 const INTRO = 7.382
 
