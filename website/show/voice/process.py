@@ -25,11 +25,13 @@ def dur(f):
     return float(subprocess.run(["ffprobe", "-v", "error", "-show_entries", "format=duration", "-of", "csv=p=0", f], capture_output=True, text=True).stdout)
 
 
-# the detective's two lines, trimmed of their own silence at both ends
+# the detective's lines (his two at either end, and any he puts in between), trimmed of their own
+# silence at both ends
 INTER = {}
-for k in ("open", "close"):
+for k in ("open", "close", *[x["line"] for x in VER.get("inserts", [])]):
     f = os.path.join(raw, "inter", k + "-trim.wav")
-    subprocess.run(["ffmpeg", "-y", "-v", "error", "-i", os.path.join(raw, "inter", mono["interviewer"].get("pick", {}).get(k, k + "-1") + ".mp3"),
+    pick = mono["interviewer"].get("pick", {}).get(k, k + "-1")
+    subprocess.run(["ffmpeg", "-y", "-v", "error", "-i", os.path.join(raw, "inter", pick if "." in pick else pick + ".mp3"),
                     "-af", "silenceremove=start_periods=1:start_threshold=-42dB,areverse,silenceremove=start_periods=1:start_threshold=-42dB,areverse",
                     "-ac", "1", "-ar", "44100", f], check=True)
     INTER[k] = {"file": f, "dur": dur(f)}
@@ -83,6 +85,27 @@ for fx in VER.get("retime", []):
         words[i + k]["t"] = round(fx["t"] + k * step, 3)
         words[i + k]["end"] = round(fx["t"] + (k + 1) * step, 3)
 src = os.path.join(raw, "mono", TAKE + ".mp3")
+# a phrase said twice that should sound the same both times: the second reading is replaced by the
+# first one from the same take, levelled to where it lands ("echo": {"src": [a, b], "dst": [a, b]},
+# seconds in the take, cut in silence)
+if VER.get("echo"):
+    (a1, b1), (a2, b2) = VER["echo"]["src"], VER["echo"]["dst"]
+    def level(a, b):
+        m = subprocess.run(["ffmpeg", "-hide_banner", "-i", src, "-af", f"atrim={a}:{b},volumedetect", "-f", "null", "-"], capture_output=True, text=True).stderr
+        return float(re.search(r"mean_volume: (-?[\d.]+)", m).group(1))
+    gain = level(a2, b2) - level(a1, b1)
+    echo = os.path.join(raw, "mono", TAKE + "-echo.wav")
+    run_fc = f"[0:a]atrim=0:{a2},asetpts=PTS-STARTPTS[p];[0:a]atrim={a1}:{b1},asetpts=PTS-STARTPTS,volume={gain}dB,afade=t=in:d=0.01,afade=t=out:st={b1 - a1 - 0.01}:d=0.01[e];[0:a]atrim={b2},asetpts=PTS-STARTPTS[q];[p][e][q]concat=n=3:v=0:a=1"
+    subprocess.run(["ffmpeg", "-y", "-v", "error", "-i", src, "-filter_complex", run_fc, "-ac", "1", "-ar", "44100", echo], check=True)
+    d = (b1 - a1) - (b2 - a2)
+    first = [w for w in words if a1 <= w["t"] < b1]
+    i2 = next(k for k, w in enumerate(words) if w["t"] >= a2)
+    for k, w in enumerate(first):
+        words[i2 + k] = {**words[i2 + k], "t": a2 + w["t"] - a1, "end": min(a2 + b1 - a1, a2 + w["end"] - a1)}
+    for w in words[i2 + len(first):]:
+        w["t"] += d
+        w["end"] += d
+    src = echo
 # the take's own audio, to put each cut in the quietest moment between its two words (the alignment
 # can run a few hundred ms late, most of all on the last words)
 _pcm = array.array("h", subprocess.run(["ffmpeg", "-v", "error", "-i", src, "-f", "s16le", "-ac", "1", "-ar", "8000", "-"], check=True, capture_output=True).stdout)
@@ -104,13 +127,19 @@ def quietest(a, b, win=0.03):
 if VER.get("paraGap"):
     k = 0
     paras = [p for p in re.split(r"\n\s*\n", mono[VER["textKey"]]) if p.strip()]
-    have = {find(words, g["after"], g.get("last", False)) + len(g["after"].split()) - 1 for g in GAPS}
+    have = {find(words, g["after"], g.get("last", False)) + len(g["after"].split()) - 1 for g in GAPS + VER.get("inserts", [])}
+    have |= {find(words, p) + len(p.split()) - 1 for p in VER.get("noBreath", [])}
     for p in paras[:-1]:
         n = len([w for w in re.findall(r"[^\s—]+", re.sub(r"\[[^\]]*\]", " ", p)) if re.search(r"[A-Za-z0-9]", w)])
         k += n
         i = k - 1
         if i not in have and words[i + 1]["t"] - words[i]["end"] < VER["paraGap"] + 0.3:
             GAPS.append({"after": None, "i": i, "len": VER["paraGap"]})
+
+
+# the detective speaking into a silence opened for him
+for x in VER.get("inserts", []):
+    GAPS.append({"after": x["after"], "last": x.get("last", False), "len": x.get("pre", 0.8) + INTER[x["line"]]["dur"] + x.get("post", 0.7), "insert": x})
 
 
 def gap_index(g):
@@ -181,6 +210,10 @@ fc.append(tone.format(d=BEEP, o=BEEP - 0.02, ms=int(BEEP2 * 1000)) + "[beep2]")
 far = "aformat=channel_layouts=mono,highpass=f=200,lowpass=f=4000,aecho=0.8:0.6:19|37|61:0.36|0.26|0.14,volume=0.25"
 fc.append(f"[1:a]{far},adelay={int(OPEN_AT * 1000)}[iopen]")
 fc.append(f"[2:a]{far},adelay={int(CLOSE_AT * 1000)}[iclose]")
+inserts = [c for c in cuts if c.get("insert")]
+for k, c in enumerate(inserts):
+    c["said_at"] = shift(c["at"]) + c["insert"].get("pre", 0.8)
+    fc.append(f"[{6 + len(extra_in) + k}:a]{far},adelay={int(c['said_at'] * 1000)}[imid{k}]")
 fc.append("[voice]aecho=0.9:0.4:13|29:0.16|0.08[near]")
 mixins = ["[near]", "[vent]", "[hiss]", "[hum1]", "[hum3]", "[beep1]", "[beep2]"]
 if chair_at is not None:
@@ -196,10 +229,10 @@ chain = ",".join([
 ])
 # the detective goes in after the compressor, so he stays as far off as he was placed
 fc.append(f"[mix]{chain}[near_tape]")
-fc.append("[near_tape][iopen][iclose]amix=inputs=3:normalize=0:duration=first[tape]")
+fc.append(f"[near_tape][iopen][iclose]{''.join(f'[imid{k}]' for k in range(len(inserts)))}amix=inputs={3 + len(inserts)}:normalize=0:duration=first[tape]")
 tmp = os.path.join(raw, "mono", "tape.wav")
 run(["ffmpeg", "-y", "-i", src, "-i", INTER["open"]["file"], "-i", INTER["close"]["file"], "-i", os.path.join(raw, "sfx-chair.mp3"), "-i", os.path.join(raw, "sfx-room.mp3"), "-i", os.path.join(raw, "sfx-tapeclick.mp3"),
-     *[x for f in extra_in for x in ("-i", f)], "-filter_complex", ";".join(fc), "-map", "[tape]", "-ac", "1", "-ar", "44100", tmp])
+     *[x for f in extra_in for x in ("-i", f)], *[x for c in inserts for x in ("-i", INTER[c["insert"]["line"]]["file"])], "-filter_complex", ";".join(fc), "-map", "[tape]", "-ac", "1", "-ar", "44100", tmp])
 # two-pass loudness to the same level as the other clips
 m = subprocess.run(["ffmpeg", "-hide_banner", "-i", tmp, "-af", "loudnorm=I=-17.5:TP=-1.5:LRA=11:print_format=json", "-f", "null", "-"], capture_output=True, text=True).stderr
 mj = json.loads(m[m.rindex("{"):m.rindex("}") + 1])
@@ -208,6 +241,8 @@ name = "voice-tape.mp3"
 if ALT:
     out = ALT
     name = f"tape-{VERSION}.mp3"
+if VER.get("echo"):
+    os.remove(src)
 run(["ffmpeg", "-y", "-i", tmp, "-af", ln, "-ac", "1", "-ar", "22050", "-b:a", "40k" if not ALT else "64k", os.path.join(out, name)])
 os.remove(tmp)
 pcm = subprocess.run(["ffmpeg", "-v", "error", "-i", os.path.join(out, name), "-f", "s16le", "-ac", "1", "-ar", "22050", "-"], check=True, capture_output=True).stdout
@@ -231,6 +266,9 @@ for s in re.split(r"(?<=[.?!])\s+(?=[^a-z])", spoken):
 assert k == len(tw), (k, len(tw))
 for k2, at in (("open", OPEN_AT), ("close", CLOSE_AT)):
     lines.append({"text": mono["interviewer"]["captions"][k2], "t": round(at, 3), "end": round(at + INTER[k2]["dur"], 3), "who": "detective"})
+for c in inserts:
+    k2 = c["insert"]["line"]
+    lines.append({"text": mono["interviewer"]["captions"][k2], "t": round(c["said_at"], 3), "end": round(c["said_at"] + INTER[k2]["dur"], 3), "who": "detective"})
 lines.sort(key=lambda l: l["t"])
 if ALT:
     json.dump({"version": VERSION, "take": TAKE, "dur": round(total, 3), "lines": lines, "note": VER.get("note", "")}, open(os.path.join(ALT, f"tape-{VERSION}.json"), "w"), ensure_ascii=False)

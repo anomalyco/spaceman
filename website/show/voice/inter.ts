@@ -11,7 +11,7 @@ const key = process.env.ELEVENLABS_API_KEY
 if (!key) throw new Error("ELEVENLABS_API_KEY missing")
 
 for (const [id, text] of Object.entries(spec.lines) as [string, string][])
-  for (const n of [1, 2]) {
+  for (const n of id === "open" || id === "close" ? [1, 2] : [1, 2, 3]) {
     const file = join(out, `${id}-${n}.mp3`)
     if (existsSync(file)) continue
     const res = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${spec.voice}?output_format=mp3_44100_192`, {

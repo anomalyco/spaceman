@@ -120,6 +120,56 @@
    "id": "ic3",
    "stability": 0.35,
    "text": "$textC2"
+  },
+  {
+   "id": "d1",
+   "stability": 0.5,
+   "text": "$textD"
+  },
+  {
+   "id": "d2",
+   "stability": 0.5,
+   "text": "$textD"
+  },
+  {
+   "id": "d3",
+   "stability": 0.5,
+   "text": "$textD"
+  },
+  {
+   "id": "d4",
+   "stability": 0.5,
+   "text": "$textD2"
+  },
+  {
+   "id": "d5",
+   "stability": 0.5,
+   "text": "$textD2"
+  },
+  {
+   "id": "d6",
+   "stability": 0.5,
+   "text": "$textD2"
+  },
+  {
+   "id": "d7",
+   "stability": 0.5,
+   "text": "$textD"
+  },
+  {
+   "id": "d8",
+   "stability": 0.5,
+   "text": "$textD"
+  },
+  {
+   "id": "d9",
+   "stability": 0.5,
+   "text": "$textD2"
+  },
+  {
+   "id": "d10",
+   "stability": 0.5,
+   "text": "$textD2"
   }
  ],
  "text2": "[quiet, close to the microphone, calm and unhurried, a man talking across a kitchen table late at night] — your light was on. I hope that's all— I hope that's all right. I won't stay long.\n\n[precise, patient, slightly pleased with his own clarity] I want to explain how I keep things. Then it'll make sense.\n\nI'd had some of those windows open since March. February, some of them. Three of them were, uh... the same note. I closed two.\n\nEverything goes side by side now. Nothing on top of anything. Mail went to two. The browser went to three. I went back to make sure. They were still there. There's a bar along the bottom, so you always know where everything is.\n\nI made a rule. Chatter opens on two. [a small pause] I did read both messages.\n\nI gave Mark his drill back. Four years. It's a better drill than mine, actually. He said I didn't need to.\n\nFour is the house. Five is the street. Nobody else wanted to take the minutes.\n\n[cooler, very even] Your hedge is six foot two. The limit is six feet. We've talked about it... twice. I've photographed it every morning since. A hundred and sixty mornings.\n\nI sent the minutes round again. You're the only one who replied.\n\n[colder, quieter, never louder] There was a photograph attached. It took me a minute to recognise the study. [pause] From this side.\n\n[exhales] Can I sit? ...I'll sit.\n\n[a long silence, then flat and soft] Leave it on.",
@@ -199,7 +249,18 @@
   "C": {
    "textKey": "textC2",
    "pick": "ic2",
-   "retime": [{"phrase": "From the start?", "t": 0.1, "end": 0.75}, {"phrase": "All right.", "t": 1.7, "end": 2.1}],
+   "retime": [
+    {
+     "phrase": "From the start?",
+     "t": 0.1,
+     "end": 0.75
+    },
+    {
+     "phrase": "All right.",
+     "t": 1.7,
+     "end": 2.1
+    }
+   ],
    "gaps": [
     {
      "after": "away from anything.",
@@ -227,6 +288,47 @@
    "paraGap": 0.5,
    "closeGap": 3,
    "note": "The full account: the night he went over, the plastic already down, and “He's on six now. With the others.”"
+  },
+  "D": {
+   "textKey": "textD",
+   "pick": "d2",
+   "gaps": [
+    {
+     "after": "behind anything.",
+     "last": true,
+     "len": 1.3
+    }
+   ],
+   "inserts": [
+    {
+     "after": "He isn't gone.",
+     "line": "where",
+     "pre": 0.8,
+     "post": 0.75
+    },
+    {
+     "after": "He's on six.",
+     "line": "six",
+     "pre": 0.9,
+     "post": 0.7
+    }
+   ],
+   "noBreath": [
+    "sweet flesh of efficiency."
+   ],
+   "echo": {
+    "src": [
+     13.04,
+     14.93
+    ],
+    "dst": [
+     148.42,
+     151.27
+    ]
+   },
+   "paraGap": 0.5,
+   "closeGap": 3,
+   "note": "Draft 5, audio only. One long take (d2 of ten), the detective's two questions put into the silences. The second “I closed two, and nothing happened.” is the first one's reading from the same take."
   }
  },
  "textA2": "[a man in a police interview room, close to the table microphone, calm, unhurried, quietly pleased, gently entranced by how well everything works] From the start? All right.\n\n[precise, patient, a little pleased with his own clarity] I want to explain how I keep things. Then it'll make sense.\n\nI'd had some of those windows open since March. February, some of them. Three of them were, uh... the same note. I closed two.\n\nThen I installed a small program. It's called Spaceman.\n\n[softer, admiring] And the windows tiled themselves. Side by side. Nothing on top of anything. Nothing behind anything. You could see all of it at once... I tasted the sweet flesh of efficiency. [a quiet breath of a laugh, to himself]\n\n[even] Mail went to workspace two. The browser went to three. I went back to make sure, and they were just... there. Exactly where I'd put them. Nothing was ever lost again. There's a bar along the bottom, so you always know where everything is. You're never more than one key away from anything.\n\n[unhurried] Then I made a rule. Chatter opens on two. You don't have to decide anymore. It just goes. [a small pause] I did read both messages.\n\nI gave Mark his drill back. Four years. It's a better drill than mine, actually. But it had a place, and the place was his.\n\nFour is the house. Five is the street. Nobody else wanted to take the minutes.\n\n[cooler, very even, still admiring] Number fourteen's hedge was six foot two. The limit is six feet. We'd talked about it... twice. I photographed it every morning after that. A hundred and sixty mornings, and I could find any one of them in a second. Any morning you like.\n\nI sent the minutes round again. He was the only one who replied.\n\n[exactly as even as before, never louder] There was a photograph attached. It took me a minute to recognise the study. [pause] From his side.\n\nThree of them signed the same note. About the cameras. I closed two.\n\n[level, procedural, pleased with how well it worked] Sixteen was in March. Mark was in June, the day I gave him his drill back. It was quick, and it was very clean. Nobody missed either of them for a week. Six is downstairs. They're both on six.",
@@ -236,15 +338,21 @@
   "voice": "EXAVITQu4vr4xnSDxMaL",
   "lines": {
    "open": "[a detective at a table, tired, flat, procedural, reading for the recording] Interview resumed, twenty-two forty. In your own time.",
-   "close": "[a detective, very quiet, flat, after a long silence, for the recording] Interview suspended... twenty-three oh four."
+   "close": "[a detective, very quiet, flat, after a long silence, for the recording] Interview suspended... twenty-three oh four.",
+   "where": "[a detective at a table, tired, flat, not curious, late at night] Then where is he?",
+   "six": "[a detective at a table, tired, flat, late at night] What's on six?"
   },
   "captions": {
    "open": "Interview resumed, 22:40. In your own time.",
-   "close": "Interview suspended, 23:04."
+   "close": "Interview suspended, 23:04.",
+   "where": "Then where is he?",
+   "six": "What's on six?"
   },
   "pick": {
    "open": "open-1",
-   "close": "close-1"
+   "close": "close-pick.wav",
+   "where": "where-pick.wav",
+   "six": "six-pick.wav"
   }
  },
  "versionsCassette": {
@@ -389,5 +497,7 @@
    "note": "As far as it goes (the film is cut to this one). A breath of a private laugh after the odd phrase. Everything in B, then the tape keeps running through it, and he reads the minutes: “Present... one.”",
    "paraGap": 0.5
   }
- }
+ },
+ "textD": "[a man in a police interview room, close to the table microphone, calm, unhurried, plain and procedural, speaking in complete sentences, quietly pleased with how well it all works] From the start? All right. It started with the windows. On my computer, I mean.\n\nI had about forty of them open, and some had been open for a year. Three of them turned out to be the same note. I closed two, and nothing happened. I didn't even notice they were gone.\n\nThen I installed a small program. It's called Spaceman.\n\nThe windows tiled themselves. They sat side by side, with nothing on top of anything and nothing behind anything, and I could see all of it at once. I tasted the sweet flesh of efficiency.\n\nIt gives you numbered workspaces. I put Messages on workspace two and the browser on three. You press a number, and a bar comes up along the bottom to show you where you are. People think that when a window isn't in front of them, it's gone. It isn't gone. It's on two. You press two, and there it is, exactly where you left it.\n\nThen I made a rule, so that Messages always opens on two without asking me. A rule decides once, and then you never have to decide again. I liked that more than I expected to.\n\nAfter that I couldn't stop noticing things that weren't where they belonged. I'd had my neighbour Mark's drill for four years. It's a better drill than mine, actually, but it had a place, and the place was his garage. So I walked it back.\n\nThen I put cameras in the house and gave them workspace four: one window for each room. All but the cellar. That wasn't ready yet.\n\nWorkspace five was the street. I put up a camera for each house, in the order of the house numbers, so everyone on the street was on five. Two of those houses are empty now. I've left their windows where they were, so the order still holds.\n\n[cooler, very even, never louder] Alan Pike, at number fourteen, had a hedge two inches over the HOA limit. I started keeping the HOA's minutes so that it would be written down properly, and I photographed it every morning for a hundred and sixty mornings. I can find any morning you like.\n\nI left workspace six empty. It's good to have somewhere to put things.\n\n[colder, quieter, level, never louder] Then three of the neighbours signed a note asking me to take the cameras down: Mark, Joan from number sixteen, and Alan. It was the same note, with three names on it. I closed two, and nothing happened. Nobody noticed either of them was gone for a week.\n\nI moved Joan from five to six in March. I moved Mark in June, the afternoon I walked his drill back.\n\n[level, reasonable, procedural] Alan was the last thing that didn't have a place. He came over late on Friday to talk about the hedge. He said he'd cut it at the weekend, and I believed him, actually. But I'd already put the plastic down, and I don't decide things twice.\n\nYou keep saying he's gone. He isn't gone.\n\n[patiently, as if explaining something obvious] He's on six.\n\n[level, cold, quietly pleased] One window. It's the camera in the cellar. All three of them are in it, side by side. Nothing on top of anything. Nothing behind anything.\n\n[a beat; then sincerely, helpfully] Do you use a Mac?",
+ "textD2": "[a man in a police interview room, close to the table microphone, calm, unhurried, plain and procedural, speaking in complete sentences, quietly pleased with how well it all works] From the start? All right. It started with the windows. On my computer, I mean.\n\nI had about forty of them open, and some had been open for a year. Three of them turned out to be the same note. I closed two, and nothing happened. I didn't even notice they were gone.\n\nThen I installed a small program. It's called Spaceman.\n\nThe windows tiled themselves. They sat side by side, with nothing on top of anything and nothing behind anything, and I could see all of it at once. I tasted the sweet flesh of efficiency.\n\nIt gives you numbered workspaces. I put Messages on workspace two and the browser on three. You press a number, and a bar comes up along the bottom to show you where you are. People think that when a window isn't in front of them, it's gone. It isn't gone. It's on two. You press two, and there it is, exactly where you left it.\n\nThen I made a rule, so that Messages always opens on two without asking me. A rule decides once, and then you never have to decide again. I liked that more than I expected to.\n\nAfter that I couldn't stop noticing things that weren't where they belonged. I'd had my neighbour Mark's drill for four years. It's a better drill than mine, actually, but it had a place, and the place was his garage. So I walked it back.\n\nThen I put cameras in the house and gave them workspace four: one window for each room. [offhand, a plain fact] All but the cellar. That wasn't ready yet.\n\nWorkspace five was the street. I put up a camera for each house, in the order of the house numbers, so everyone on the street was on five. [offhand, a plain fact] Two of those houses are empty now. I've left their windows where they were, so the order still holds.\n\n[cooler, very even, never louder] Alan Pike, at number fourteen, had a hedge two inches over the HOA limit. I started keeping the HOA's minutes so that it would be written down properly, and I photographed it every morning for a hundred and sixty mornings. I can find any morning you like.\n\nI left workspace six empty. It's good to have somewhere to put things.\n\n[colder, quieter, level, never louder] Then three of the neighbours signed a note asking me to take the cameras down: Mark, Joan from number sixteen, and Alan. It was the same note, with three names on it. I closed two, and nothing happened. Nobody noticed either of them was gone for a week.\n\nI moved Joan from five to six in March. I moved Mark in June, the afternoon I walked his drill back.\n\n[level, reasonable, procedural] Alan was the last thing that didn't have a place. He came over late on Friday to talk about the hedge. He said he'd cut it at the weekend, and I believed him, actually. But I'd already put the plastic down, and I don't decide things twice.\n\nYou keep saying he's gone. He isn't gone.\n\n[patiently, as if explaining something obvious] He's on six.\n\n[level, cold, quietly pleased] One window. It's the camera in the cellar. All three of them are in it, side by side. Nothing on top of anything. Nothing behind anything.\n\n[a beat; then sincerely, helpfully] Do you use a Mac?"
 }
