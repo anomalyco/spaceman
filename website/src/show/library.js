@@ -242,8 +242,8 @@ export function photos(ctx, w, h, d) {
   ctx.fillRect(0, BAR_H, w, 40)
   ctx.fillStyle = "rgba(255,255,255,.07)"
   ctx.fillRect(0, BAR_H + 39, w, 1)
-  label(ctx, "Library", 16, BAR_H + 25, 14, 700, "#e9e6e0")
-  label(ctx, G.count + " photos", 80, BAR_H + 25, 13, 400, "#9d988f")
+  label(ctx, "Library", 16, BAR_H + 27, 17, 700, "#f2f2f4")
+  label(ctx, G.count.toLocaleString("en-US") + (G.count === 1 ? " Photo" : " Photos"), 92, BAR_H + 27, 13, 400, "#98989d")
   // one photo, opening out of its tile (a = 0: its tile; 1: the whole window)
   const a = d.openT || 0
   if (d.open != null && a > 0) {
@@ -348,8 +348,9 @@ export function album(ctx, w, h, d) {
   ctx.fillRect(0, BAR_H, w, 40)
   ctx.fillStyle = "rgba(255,255,255,.07)"
   ctx.fillRect(0, BAR_H + 39, w, 1)
-  label(ctx, "Hedge", 16, BAR_H + 25, 14, 700, "#e9e6e0")
-  label(ctx, ALBUM.toLocaleString("en-US") + " items", 70, BAR_H + 25, 13, 400, "#9d988f")
+  label(ctx, "Hedge", 16, BAR_H + 27, 17, 700, "#f2f2f4")
+  ctx.font = "700 17px " + FONT
+  label(ctx, ALBUM.toLocaleString("en-US") + " Photos", 16 + ctx.measureText("Hedge").width + 10, BAR_H + 27, 15, 500, "#b8b8bd")
   const topK = Math.min(ALBUM - 1, Math.max(0, Math.floor((scroll + 8) / G.rowH) * G.cols))
   const te = albumAt(topK)
   const mo = te.date.split(" ")[0]

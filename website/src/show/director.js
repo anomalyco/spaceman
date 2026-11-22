@@ -4,7 +4,7 @@
 // only calls the world's verbs, so the same timeline drives WebGPU, Canvas 2D, capture and reduced
 // motion.
 import { easeInOut, smooth, clamp, mix } from "./springs.js"
-import { BAR_H } from "./content.js"
+import { BAR_H, settingsGeom } from "./content.js"
 import { WORDS, TAPE } from "./tape.js"
 import { ALBUM, albumGrid } from "./library.js"
 import { walkerAt } from "./feeds.js"
@@ -176,7 +176,7 @@ export function build(S) {
   const closeBtn = (id) => {
     const x = R(id)
     if (!x) throw new Error("no window " + id)
-    return [x.x.t + 16, x.y.t + BAR_H / 2]
+    return [x.x.t + 14, x.y.t + BAR_H / 2]
   }
   const titleOf = (id) => {
     const x = R(id)
@@ -362,33 +362,29 @@ export function build(S) {
   })
   // the rule: Chatter opens on 2
   const settingsAt = () => {
-    const ww = Math.min(S.SW * 0.86, 860)
-    const hh = Math.min(S.SH * 0.6, 380)
+    const ww = Math.min(S.SW * 0.9, 860)
+    const hh = Math.min(S.SH * 0.66, 450)
     return [S.SW / 2 - ww / 2, S.SH * 0.44 - hh / 2, ww, hh]
   }
   const settingsFrame = () => {
     const [x, y, ww, hh] = settingsAt()
     return fit(x, y, ww, hh, 1.14)
   }
-  const cell = (col) => {
-    const [x, y, ww] = settingsAt()
-    const f = [0, 0.27, 0.6, 0.8][col]
-    return [x + 184 + f * (ww - 206) + 30, y + BAR_H + 117]
+  // Settings › Rules, the workspace map: Add on workspace 2's tile, then Chatter from the menu
+  const inSettings = (f) => () => {
+    const [x, y, ww, hh] = settingsAt()
+    const [px, py] = f(settingsGeom(ww, hh))
+    return [x + px, y + py]
   }
   const myWork = word("My work")
-  float(myWork + 0.05, { id: "settings", app: "spaceman", kind: "settings", title: "Spaceman Settings", at: settingsAt, data: { rules: [], add: 1 } })
+  float(myWork + 0.05, { id: "settings", app: "spaceman", kind: "settings", title: "Spaceman Settings", at: settingsAt, data: { rules: [], active: [1, 2] } })
   push(myWork + 0.1, myWork + 0.75, settingsFrame, "settings")
-  clickAt(myWork + 0.6, "settings", () => {
-    const [x, y] = settingsAt()
-    return [x + 230, y + BAR_H + 122]
-  }, () => w.set("settings", { data: { add: 0, rules: [{ app: "", action: "", ws: null, cursor: 0 }] } }), 0.5)
-  type(myWork + 0.75, "Chatter", (s, done) => w.set("settings", { data: { rules: [{ app: s, icon: done ? "chatter" : null, action: "", ws: null, cursor: 0 }] } }))
+  at(myWork + 0.42, () => w.set("settings", { data: { hover: 2 } }))
+  clickAt(myWork + 0.6, "settings", inSettings((g) => g.add(2)), () => w.set("settings", { data: { menu: 2 } }), 0.5)
   const msgs2 = word("messages on two")
-  clickAt(msgs2 + 0.15, "settings", () => cell(3), () => w.set("settings", { data: { rules: [{ app: "Chatter", icon: "chatter", action: "Open on", ws: null, cursor: 3 }] } }), 0.5)
-  at(word("two") + 0.1, () => {
-    w.set("settings", { data: { rules: [{ app: "Chatter", icon: "chatter", action: "Open on", ws: 2, hl: 1 }] } })
-    S.sfx("key", 0.95)
-  })
+  const pick = Math.max(word("two") + 0.02, msgs2 + 0.5)
+  at(pick - 0.2, () => w.set("settings", { data: { menuHover: 0 } }))
+  clickAt(pick, "settings", inSettings((g) => g.menuItem(0)), () => w.set("settings", { data: { menu: 0, menuHover: null, hover: null, hl: 2, rules: [{ app: "Chatter", icon: "chatter", ws: 2 }] } }), 0.7)
   const camera = word("I had a camera")
   push(camera - 0.35, camera + 0.25, home, null)
   clickAt(camera - 0.2, "settings", closeBtn, () => w.close("settings"), 0.45)

@@ -59,7 +59,7 @@ export class World {
     this.frontApp = "Jot"
     this.menuCanvas = null
     this.menuKey = ""
-    this.bar = { shown: sp(0, 0.42), scale: sp(1, 0.4), cells: [], left: sp(0, 0.3), right: sp(0, 0.3), count: 0 }
+    this.bar = { shown: sp(0, 0.42), scale: sp(1, 0.4), cells: [], left: sp(0, 0.3), right: sp(0, 0.3), count: 0, lw: sp(0, 0.35), msg: null, prev: null }
     // workspaces whose cell in the bar shows nothing of what's in it until you go there
     this.veiled = new Set()
     this.cursor = { x: SW * 0.62, y: SH * 0.55, vx: 0, vy: 0, path: null, a: sp(1, 0.3), press: sp(0, 0.09) }
@@ -216,6 +216,7 @@ export class World {
     this.ensureCell(ws)
     w.ws = ws
     this.listOf(ws).push(id)
+    this.say("moved", ws, Math.sign(ws - this.active))
     const c = this.cellRect(ws)
     w.target = null
     if (this.reduced) {
@@ -296,8 +297,23 @@ export class World {
   }
 
   // The marker: its leading edge 0.26 s, its trailing edge 0.42 s.
+  // What the capsule says, as hud/pill.rs words it: "Workspace 3 · 2 windows", "Moved to Workspace 2 · …"
+  say(kind, ws, dir = 1) {
+    const m = this.bar.msg
+    if (m && m.kind === kind && m.ws === ws) return
+    this.bar.prev = m
+    this.bar.msg = { kind, ws, at: this.time, dir: dir || 1 }
+  }
+
+  labelOf(m) {
+    const n = this.listOf(m.ws).filter((id) => !this.wins.get(id)?.leaving).length
+    const count = n === 0 ? "Empty" : n === 1 ? "1 window" : n + " windows"
+    return [(m.kind === "moved" ? "Moved to Workspace " : "Workspace ") + m.ws, count]
+  }
+
   barGo(from, ws) {
     const dir = Math.sign(ws - from)
+    this.say("ws", ws, dir)
     this.bar.cells.forEach((c, j) => {
       to(c.s, j + 1 === ws ? 1 : BAR.small)
       to(c.o, j + 1 === ws ? 1 : 0.5)
@@ -316,6 +332,7 @@ export class World {
       to(this.bar.scale, s, 0.42, 0.28)
     }
     to(this.bar.shown, 1, 0.34)
+    if (!this.bar.msg) this.say("ws", this.active)
     const r = this.barLayout(this.active)[this.active - 1]
     jump(this.bar.left, r.x - BAR.pad)
     jump(this.bar.right, r.x + r.width + BAR.pad)
@@ -325,11 +342,14 @@ export class World {
     const sc = this.bar.scale.x
     let width = BAR.edge * 2 + 2
     this.bar.cells.forEach((c, i) => (width += BAR.w * c.s.x + (i ? BAR.gap * Math.min(1, c.s.x / BAR.small) : 0)))
+    // the words after the layouts: 12 between, 16 at the end where the cells had 12
+    const cellsW = width - BAR.edge * 2 - 2
+    if (this.bar.lw.x > 1) width += 12 + this.bar.lw.x + 4
     const h = (BAR.inner + 2) * sc
     const w = width * sc
     const x = this.SW / 2 - w / 2
     const y = this.SH - 12 - h + (1 - this.bar.shown.x) * 70
-    return { x, y, w, h, sc }
+    return { x, y, w, h, sc, cellsW }
   }
 
   cellRect(ws) {
@@ -384,7 +404,16 @@ export class World {
         to(c.s, c.n === this.active ? 1 : BAR.small, 0.4)
         to(c.o, c.n === this.active ? 1 : 0.5, 0.6)
       }
-    for (const k of ["shown", "scale", "left", "right"]) step(b[k], dt)
+    if (b.msg) {
+      const parts = this.labelOf(b.msg)
+      // no DOM in the headless sim: an estimate keeps the capsule's width honest there
+      const lw = typeof document === "undefined" ? (parts[0].length + parts[1].length) * 7.3 + 18 : labelCanvas(parts, this.res).lw
+      if (Math.abs(b.lw.t - lw) > 0.5) {
+        if (b.lw.t === 0) jump(b.lw, lw)
+        else to(b.lw, lw, 0.35)
+      }
+    }
+    for (const k of ["shown", "scale", "left", "right", "lw"]) step(b[k], dt)
     for (const c of b.cells) {
       step(c.s, dt)
       step(c.o, dt)
@@ -705,12 +734,27 @@ export class World {
     const sc = g.sc
     const a = clamp(b.shown.x * 1.4)
     const R = g.h / 2
-    P(g.x, g.y, g.w, g.h, { shadow: 26, col: [0, 0, 0, 0.3], r: R, a })
-    P(g.x, g.y, g.w, g.h, { shadow: 5, col: [0, 0, 0, 0.3], r: R, a })
-    this.frost(P, g.x, g.y, g.w, g.h, { r: R, a })
-    P(g.x, g.y, g.w, g.h, { col: [0.075, 0.075, 0.085, 0.74], r: R, a })
-    P(g.x, g.y, g.w, g.h, { ring: this.hair * 1.2, col: [1, 1, 1, 0.16], r: R, a })
-    P(g.x - this.hair, g.y - this.hair, g.w + 2 * this.hair, g.h + 2 * this.hair, { ring: this.hair, col: [0, 0, 0, 0.45], r: R + this.hair, a })
+    // the HUD's capsule (agent/src/hud/pill.rs): #161618, a hairline #303036 edge, overlay shadows
+    P(g.x, g.y, g.w, g.h, { shadow: 30, col: [0, 0, 0, 0.32], r: R, a })
+    P(g.x, g.y, g.w, g.h, { shadow: 6, col: [0, 0, 0, 0.3], r: R, a })
+    P(g.x, g.y, g.w, g.h, { col: [0.086, 0.086, 0.094, 0.97], r: R, a })
+    P(g.x, g.y, g.w, g.h, { ring: this.hair * 1.2, col: [0.188, 0.188, 0.212, 1], r: R, a })
+    // its words, the new ones rolling in the way of travel as the old ones leave
+    if (b.msg && b.lw.x > 1) {
+      const lx = g.x + (BAR.edge + g.cellsW + 12) * sc
+      const u = clamp((this.time - b.msg.at) / 0.2)
+      const e = 1 - (1 - u) ** 3
+      const dir = b.msg.dir
+      const put = (m, al, dy) => {
+        if (al < 0.01) return
+        const c = labelCanvas(this.labelOf(m), this.res)
+        // cropped to the width the capsule has grown to so far
+        const dw = Math.min(c.lw, b.lw.x)
+        P(lx, g.y + dy * sc, dw * sc, g.h, { tex: c, uv: [0, 0, dw / c.lw, 1], r: 0, a: a * al })
+      }
+      if (b.prev && u < 1) put(b.prev, 1 - e, -dir * 7 * e)
+      put(b.msg, b.prev ? e : 1, b.prev ? dir * 7 * (1 - e) : 0)
+    }
     const mh = (BAR.ht + BAR.pad * 2) * sc
     const my = g.y + sc + (BAR.inner * sc - mh) / 2
     const mw = Math.max(0, b.right.x - b.left.x) * sc
@@ -795,6 +839,49 @@ function battery(ctx, x, y, ink) {
   ctx.beginPath()
   ctx.roundRect(x + 2.5, y - 3.5, 15, 7, 1.5)
   ctx.fill()
+}
+
+// The capsule's label, in its type: the headline 620, a dot, the count 460, 13 pt, tabular figures.
+const labels = new Map()
+function labelCanvas([head, detail], res) {
+  const r = Math.min(4, Math.max(1, res))
+  const key = head + "|" + detail + "|" + r
+  let c = labels.get(key)
+  if (c) return c
+  if (labels.size > 40) labels.clear()
+  c = document.createElement("canvas")
+  const m = c.getContext("2d")
+  const f1 = `620 13px ${FONT}`
+  const f2 = `500 13px ${FONT}`
+  const f3 = `460 13px ${FONT}`
+  m.font = f1
+  const w1 = m.measureText(head).width
+  m.font = f2
+  const w2 = m.measureText("·").width
+  m.font = f3
+  const w3 = m.measureText(detail).width
+  const W = Math.ceil(w1 + 8 + w2 + 8 + w3 + 2)
+  const H = BAR.inner + 2
+  c.width = Math.ceil(W * r)
+  c.height = Math.ceil(H * r)
+  const ctx = c.getContext("2d")
+  ctx.setTransform(r, 0, 0, r, 0, 0)
+  ctx.textBaseline = "middle"
+  ctx.fontVariantNumeric = "tabular-nums"
+  const y = H / 2 + 0.5
+  ctx.font = f1
+  ctx.fillStyle = "#f4f4f6"
+  ctx.fillText(head, 0, y)
+  ctx.font = f2
+  ctx.fillStyle = "#6c6c76"
+  ctx.fillText("·", w1 + 8, y)
+  ctx.font = f3
+  ctx.fillStyle = "#a4a4ae"
+  ctx.fillText(detail, w1 + 8 + w2 + 8, y)
+  c.lw = W
+  c.version = 1
+  labels.set(key, c)
+  return c
 }
 
 let cursorTex = null

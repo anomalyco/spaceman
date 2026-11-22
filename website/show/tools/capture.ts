@@ -84,6 +84,7 @@ if (probeArg) {
     const { page, errors, ctx } = await open({ ...size, muted: true, query: q })
     if (name === "gpu") await shot(page, join(out, "still.jpg"))
     await press(page)
+    await page.addStyleTag({ content: "[data-ui=hint],[data-ui=controls]{display:none!important}" })
     for (const t of times) {
       await page.evaluate((t) => (window as any).__show.seek(t), t)
       const file = join(out, name + "-" + String(t).replace(".", "_"))
