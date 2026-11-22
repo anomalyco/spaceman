@@ -462,7 +462,7 @@ const painters = {
     if (side) {
       sidebar(ctx, w, h, side)
       text(ctx, "Mailboxes", 18, BAR_H + 26, { size: 11, weight: 600, color: SOFT })
-      sideItem(ctx, "Inbox", BAR_H + 52, side, { sel: 1, count: d.count || "4,812", icon: 1, focused })
+      sideItem(ctx, "Inbox", BAR_H + 52, side, { sel: 1, count: d.count || "1,206", icon: 1, focused })
       sideItem(ctx, "Flagged", BAR_H + 82, side, { icon: 1 })
       sideItem(ctx, "Sent", BAR_H + 112, side, { icon: 1 })
       text(ctx, "Folders", 18, BAR_H + 150, { size: 11, weight: 600, color: SOFT })

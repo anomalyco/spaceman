@@ -79,7 +79,7 @@ export function pile(SW, SH) {
   const spot = (i, w, h) => F(0.02 + R01(i, 1) * (0.96 - w), 0.05 + R01(i, 2) * (0.55 - h * 0.6), w, h)
   const defs = []
   BROWSE.forEach(([heading, url], i) => defs.push({ id: "b" + i, app: "browsy", kind: "browser", title: heading + " — Browsy", data: { tabs: 6 + Math.floor(R01(i, 3) * 30), url, heading, tab: heading } }))
-  defs.push({ id: "postbox", app: "postbox", kind: "mail", title: "Inbox — 4,812 messages", data: mail() })
+  defs.push({ id: "postbox", app: "postbox", kind: "mail", title: "Inbox — 1,206 messages", data: mail() })
   defs.push({ id: "mum", app: "chatter", kind: "chat", title: "Mum", data: { who: "Mum", when: "Today 9:14 PM", msgs: [{ t: "are you eating properly" }, { t: "call me back x" }] } })
   defs.push({ id: "group", app: "chatter", kind: "chat", title: "Pinecrest Neighbours", data: { who: "Pinecrest Neighbours · 9", when: "Today 8:02 PM", msgs: [{ from: "Mark (10)", t: "Whose is the blue car?" }, { from: "Ruth (8)", t: "Mine, sorry! Moving it now" }] } })
   defs.push({ id: "recipes", app: "paper", kind: "paper", title: "Recipes", data: { heading: "Recipes", sub: "6 recipes", lines: ["Chili (Mom's)", "Banana bread", "Lasagna — the good one", "Pancakes, Sunday", "Lemon chicken", "Soda bread"] } })
@@ -105,7 +105,7 @@ function mail() {
     { from: "Weekly", subject: "Your week in photos", when: "Jan 31" },
     { from: "Mark (No. 10)", subject: "re: drill", when: "Jan 24" },
   ]
-  return { list, sel: -1, count: "4,812" }
+  return { list, sel: -1, count: "1,206" }
 }
 
 // The grade follows the story: a warm, tired night; clean light once things have places; mornings;
@@ -409,6 +409,7 @@ export function build(S) {
   const late = onThree + 0.75
   at(late, () => {
     w.clock = "Thu Dec 4  2:13 AM"
+    feedsAt("12-04-2025", hms(2, 13, 40))
     w.setFocus("q3")
   })
   // (after door has flown to three, so the tiles have settled)
@@ -532,7 +533,7 @@ export function build(S) {
   const hedge = word("Alan's hedge")
   const albumAt = () => mid(1040, 760, 0)
   float(hedge + 0.1, { id: "album", app: "viewer", kind: "album", title: "Photos", at: albumAt, data: { scroll: 0, bar: 0 } })
-  at(hedge + 0.1, () => (w.clock = "Thu Nov 19  11:58 PM"))
+  at(hedge + 0.1, () => (w.clock = "Mon Feb 16  11:58 PM"))
   push(hedge + 0.2, hedge + 0.9, () => frameOf("album", 1.04), "album")
   const ag = () => albumGrid(R("album").w.t, R("album").h.t)
   // each throw slows on its own (velocity decaying exponentially)
@@ -553,7 +554,7 @@ export function build(S) {
     w.cursorTo(p.x.t + p.w.t * 0.6, p.y.t + p.h.t * 0.62, hedge + 1.0)
   })
   const f0 = hedge + 0.9
-  flick(f0, f0 + 1.2, 0.45, (g) => g.scrollTo(70, 0.2))
+  flick(f0, f0 + 1.2, 0.45, (g) => g.scrollTo(26, 0.2))
   flick(f0 + 1.3, f0 + 2.9, 0.4, (g) => g.scrollTo(150, 0.2))
   flick(f0 + 3.0, f0 + 4.7, 0.38, (g) => g.scrollTo(1500, 0.2))
   flick(f0 + 4.8, f0 + 6.5, 0.36, (g) => g.maxScroll)
@@ -597,7 +598,7 @@ export function build(S) {
   shut(dr - 0.2, "lid", 0.35)
   push(dr - 0.2, dr, home, null)
   sw(dr, 2, "Mon Feb 23  1:40 AM")
-  at(dr + 0.02, () => w.set("joan", { data: { when: "Nov 26, 2025", drafts: DRAFTS, shownDrafts: 0, compose: "", caret: 1 } }))
+  at(dr + 0.02, () => w.set("joan", { data: { when: "Mon 1:40 AM", day: "Wed, Nov 26, 2025", drafts: DRAFTS, shownDrafts: 0, compose: "", caret: 1 } }))
   push(dr + 0.1, dr + 0.75, () => frameOf("joan", 1.06), "joan")
   DRAFTS.forEach((_, i) => at(dr + 0.35 + i * 0.13, () => w.set("joan", { data: { shownDrafts: i + 1 } })))
   // the letter
@@ -605,6 +606,7 @@ export function build(S) {
   push(letter - 0.15, letter + 0.6, () => frameOf("postbox", 1.08), "postbox")
   at(letter - 0.2, () => {
     w.clock = "Thu Feb 26  7:05 PM"
+    w.setFocus("postbox")
     const d = R("postbox").data
     w.set("postbox", { data: { list: [{ from: "Mark, Joan and Alan", subject: "About the cameras", when: "7:02 PM", unread: 1 }, ...d.list], sel: -1, slide: 0 } })
     S.sfx("thunk", 0.25)
@@ -621,7 +623,7 @@ export function build(S) {
   const things = word("somewhere to put")
   float(things - 0.85, {
     id: "plastic", app: "browsy", kind: "browser", title: "Order placed — Browsy", at: () => mid(720, 420),
-    data: { tabs: 2, url: "yardsupply.example/orders/5531", tab: "Order placed", heading: "Order placed. Thank you.", lines: ["Placed Feb 26, 11:41 PM", { gap: 1 }, { t: "Heavy-duty plastic sheeting, 10 × 100 ft", b: 1, size: 17 }, "Qty 3", "Duct tape, 2 in × 60 yd · Qty 2", { gap: 1 }, "Arriving Saturday, Feb 28"] },
+    data: { tabs: 2, url: "yardsupply.example/orders/5531", tab: "Order placed", heading: "Order placed. Thank you.", lines: ["Placed Feb 26, 11:41 PM", { gap: 1 }, { t: "Heavy-duty plastic sheeting, 10 × 100 ft", b: 1, size: 17 }, "Clear · 6 mil", { gap: 1 }, "Arriving Saturday, Feb 28"] },
   })
   push(things - 0.7, things + 0.1, () => frameOf("plastic", 1.12), "plastic")
   // ── "I moved Joan there in March," ──
@@ -629,8 +631,12 @@ export function build(S) {
   shut(movedJ - 0.15, "plastic", 0.4)
   const calAt = () => mid(760, 520)
   float(movedJ + 0.0, { id: "march", app: "daybook", kind: "daybook", title: "Daybook — March", at: calAt, data: { month: "March 2026", first: 0, days: 31, today: 3, events: [] } })
-  push(movedJ, movedJ + 0.6, () => frameOf("march", 1.1), "march")
-  at(word("March") - 0.05, () => {
+  // in on the first two weeks, so the entry reads
+  push(movedJ, movedJ + 0.6, () => {
+    const p = R("march")
+    return fit(p.x.t, p.y.t, p.w.t * 0.62, p.h.t * 0.5, 1.04)
+  }, "march")
+  at(movedJ + 0.5, () => {
     w.clock = "Tue Mar 3  2:20 AM"
     w.set("march", { data: { events: [{ day: 3, t: "Joan → 7", color: "#e9c9c4" }] } })
     S.sfx("key", 0.3)
@@ -656,14 +662,17 @@ export function build(S) {
   // ── "I moved Mark in June." ──
   const movedM = word("I moved Mark")
   float(movedM + 0.5, { id: "june", app: "daybook", kind: "daybook", title: "Daybook — June", at: calAt, data: { month: "June 2026", first: 1, days: 30, today: 11, events: [] } })
-  push(movedM + 0.5, movedM + 1.0, () => frameOf("june", 1.1), "june")
-  at(word("June") - 0.05, () => {
+  push(movedM + 0.5, movedM + 1.0, () => {
+    const p = R("june")
+    return fit(p.x.t + p.w.t * 0.38, p.y.t, p.w.t * 0.62, p.h.t * 0.55, 1.04)
+  }, "june")
+  at(movedM + 0.9, () => {
     w.clock = "Thu Jun 11  11:58 PM"
     w.set("june", { data: { events: [{ day: 11, t: "Mark → 7", color: "#e9c9c4" }] } })
     S.sfx("key", 0.3)
   })
   // six, tonight: his light on, nobody in
-  const still = wordEnd("in June") + 0.12
+  const still = wordEnd("in June") + 0.6
   shut(still - 0.2, "june", 0.4)
   push(still - 0.2, still, home, null)
   sw(still, 6, "Fri Nov 20  11:58 PM")

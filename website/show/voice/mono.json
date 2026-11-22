@@ -724,7 +724,7 @@
    "gaps": [
     {
      "after": "I found it pleasing.",
-     "len": 4.5
+     "len": 6
     },
     {
      "after": "to know my neighbours.",
@@ -737,6 +737,10 @@
     {
      "after": "the bins go out.",
      "len": 4
+    },
+    {
+     "after": "her cat ever since.",
+     "len": 1.8
     },
     {
      "after": "where I put it.",

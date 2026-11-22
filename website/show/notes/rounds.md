@@ -363,3 +363,40 @@ and played as video, with the live desktop set on the panel's quad in every fram
     three. HEVC Main 10 at CRF 18 keeps the plaster grain (SSIM 0.992); VP9 at CRF 24 smoothed it, so VP9 moved
     to CRF 19 (0.993); dithered H.264 at CRF 16 is noisier (0.942) but unbanded.
 
+## Round k-1 (critics: gpt-6.1-sol and gpt-6.2-astra, `critique-k1-sol.md`, `critique-k1-astra.md`; 36 stills from probe k3 against tape K's lines, prompt `critic-k1.md`)
+
+Both asked the same question beat by beat: what does the viewer understand that he didn't say?
+Both read the spine (camera on three, dossiers, the album, the bins, seven, the cellar) and the ending as
+unmistakable. Their fixes overlapped almost entirely.
+
+11. Both, the order for fourteen cameras unsampled under "one or two more": it was there (39.1–41.3) but
+    came straight off the saved still. The silence after "I found it pleasing." went from 4.5 to 6 s, so the
+    walk, the zoom, the save and the order each get their time and the order sits under "one or two more".
+    Tape K is now 105.8 s (1:46).
+12. Both, the woman with the dog lost in the zoom: she was a dark figure against a dark car and fence. She
+    now wears a mid-grey long coat (lighter than the car, darker than the lit wall) with dark hair to the
+    collar, and reads as a woman with a dog at 1×, 2.2× and 3.6× (probes k4, k5).
+13. Both, the album out of order (Jun–Nov 2026, before the February bins): "Hedge" now runs from the day
+    after the cameras went up, Fri Dec 12 2025, to Mon Feb 16 2026, two days before the bins. Mornings to
+    Jan 11, then every hour to Jan 24, then every night until dawn. Each picture's weekday comes from its
+    date, and the date moves on after midnight. The menu bar reads Mon Feb 16 11:58 PM; the month label
+    shows the year. The first flick of the scroll lands on December.
+14. Both, "Joan → 7" not readable before the cat: the entry lands as he says "there" and the frame pushes in
+    on the first two weeks of March. "Mark → 7" lands with June's calendar, the frame pushes in on it, and it
+    holds into the silence before "Where is Alan now?". A 1.8 s silence after "her cat ever since." keeps the
+    group chat off Mark's line.
+15. Both, the plastic order forecasts three bodies: the duct tape and "Qty 3" are gone. It is clear 6 mil
+    sheeting, ordered alone.
+16. Both, clocks that disagree: at 2:13 AM the feeds now move with the menu bar (they had said Nov 26,
+    11:52 PM). The drafts to Joan show tonight in the header ("Mon 1:40 AM") with her old messages dated
+    "Wed, Nov 26, 2025" above them. The dossier flicks were checked in sync (probe k6: every feed on each
+    workspace reads the menu bar's date).
+17. Sol, the letter under Chatter's menu: Postbox comes forward as the letter opens. Astra, the inbox's
+    4,812 messages matched the album: the inbox now holds 1,206.
+18. Not taken: cutting "It also gives you numbered workspaces." and shortening the tiling line. Those are
+    Kit's calls; they're flagged to him with what the picture already shows. Not taken: "Only the one
+    window." (Sol: expendable). The cut to the cellar lands on it, and the line is the mild version of what
+    we see. Not taken: Sol's note that daylight shows through the blinds at the start. In the plate it's
+    the streetlight, and the critics saw one frame.
+19. Not taken: "Then Mark." for "I moved Mark in June." (Astra). The date is the only date he gives, and
+    the calendar repeats it on purpose.

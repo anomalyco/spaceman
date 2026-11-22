@@ -284,8 +284,9 @@ function cropOf(img, [x, y, w, h]) {
   return c
 }
 
-// Someone walking past, as a cheap camera sees them at night: a dark figure against the lit fence, a
-// walk's bob and swing, and a small dog on a lead a step ahead. x, y: where their feet are (0..1).
+// Someone walking past, as a cheap camera sees them at night: a woman in a grey coat (lighter than the
+// dark car and fence, darker than the lit wall, so she reads against both at any zoom), a walk's bob and swing, and a
+// small dark dog on a lead a step ahead. x, y: where her feet are (0..1).
 export function walkerAt(l, t) {
   const u = (t - l.t0) / l.dur
   return { u, x: l.x0 + (l.x1 - l.x0) * u, y: l.y }
@@ -299,9 +300,11 @@ function walker(g, W, H, l, t) {
   const ph = t * 1.9 * Math.PI * 2
   const bob = Math.abs(Math.sin(ph)) * ht * 0.018
   const dir = Math.sign(l.x1 - l.x0) || 1
+  const dark = l.col || "rgba(16,16,18,.93)"
+  const coat = l.coat || "rgba(132,130,124,.96)"
   g.save()
-  g.fillStyle = l.col || "rgba(16,16,18,.93)"
-  g.strokeStyle = g.fillStyle
+  g.fillStyle = dark
+  g.strokeStyle = dark
   g.lineCap = "round"
   // legs, scissoring
   const hip = fy - ht * 0.48 - bob
@@ -313,15 +316,31 @@ function walker(g, W, H, l, t) {
   g.moveTo(fx, hip)
   g.lineTo(fx - stride, fy)
   g.stroke()
-  // coat and body
+  // a long coat, flared to the knee
+  g.fillStyle = coat
   g.beginPath()
-  g.ellipse(fx, hip - ht * 0.2, ht * 0.095, ht * 0.25, 0, 0, Math.PI * 2)
+  g.moveTo(fx - ht * 0.07, hip - ht * 0.4)
+  g.quadraticCurveTo(fx, hip - ht * 0.44, fx + ht * 0.07, hip - ht * 0.4)
+  g.lineTo(fx + ht * 0.115, hip + ht * 0.2)
+  g.quadraticCurveTo(fx, hip + ht * 0.23, fx - ht * 0.115, hip + ht * 0.2)
+  g.closePath()
   g.fill()
-  // head
+  // head, and dark hair to the collar
+  const hdx = fx + dir * ht * 0.012
+  const hdy = hip - ht * 0.49
+  g.fillStyle = "rgba(176,170,160,.95)"
   g.beginPath()
-  g.arc(fx + dir * ht * 0.01, hip - ht * 0.47, ht * 0.065, 0, Math.PI * 2)
+  g.arc(hdx, hdy, ht * 0.06, 0, Math.PI * 2)
   g.fill()
-  // the arm with the lead, forward
+  g.fillStyle = dark
+  g.beginPath()
+  g.arc(hdx - dir * ht * 0.012, hdy - ht * 0.008, ht * 0.064, Math.PI * (dir > 0 ? 0.62 : 1.38), Math.PI * (dir > 0 ? 2.15 : -0.15), dir < 0)
+  g.lineTo(hdx - dir * ht * 0.06, hdy + ht * 0.09)
+  g.lineTo(hdx - dir * ht * 0.01, hdy + ht * 0.07)
+  g.closePath()
+  g.fill()
+  // the arm with the lead, forward, in the coat's sleeve
+  g.strokeStyle = coat
   g.lineWidth = ht * 0.05
   g.beginPath()
   g.moveTo(fx, hip - ht * 0.36)
@@ -329,6 +348,8 @@ function walker(g, W, H, l, t) {
   const hy = hip - ht * 0.12
   g.lineTo(hx, hy)
   g.stroke()
+  g.fillStyle = dark
+  g.strokeStyle = dark
   // the dog, a step ahead, trotting
   const dx = fx + dir * ht * 0.42
   const dph = t * 3.4 * Math.PI * 2

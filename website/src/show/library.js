@@ -265,28 +265,37 @@ export function photos(ctx, w, h, d) {
   }
 }
 
-// The album "Hedge": 4,812 pictures of No. 14. Every morning at first; then every hour, day and night;
-// then night after night, a burst every few minutes; and last, his window, with him in it, looking back.
+// The album "Hedge": 4,812 pictures of No. 14, from the day after the cameras went up (Fri Dec 12, 2025)
+// to the Monday before the bins (Feb 16, 2026). Every morning at first; then every hour, day and night;
+// then night after night, a burst every couple of minutes until dawn; and last, his window, with him in
+// it, looking back.
 export const ALBUM = 4812
-const HOURLY = 92 // where every morning becomes every hour
-const NIGHTS = HOURLY + 24 * 38 // where every hour becomes every night
+const HOURLY = 31 // mornings, Dec 12 to Jan 11; then every hour, Jan 12 to Jan 24
+const NIGHTS = HOURLY + 24 * 13 // then every night, Jan 25 to Feb 15, until dawn
 const p2 = (n) => String(n).padStart(2, "0")
 const ampm = (h, m) => `${h % 12 || 12}:${p2(m)} ${h < 12 ? "AM" : "PM"}`
+const AWD = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"]
+const AMO = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
+// day n of the album, from Fri Dec 12, 2025
+const hd = (n) => {
+  const t = new Date(Date.UTC(2025, 11, 12 + n))
+  return { date: AMO[t.getUTCMonth()] + " " + t.getUTCDate(), wd: AWD[t.getUTCDay()], year: t.getUTCFullYear() }
+}
 export function albumAt(k) {
-  if (k >= ALBUM - 1) return { plate: "night-look", date: "Nov 19", time: "11:52 PM", night: 1, last: 1 }
-  if (k < HOURLY) return { plate: morningPlate(k), date: day(k), time: ampm(6, Math.round(1 + h01(k, 12) * 7)), morning: k }
+  if (k >= ALBUM - 1) return { plate: "night-look", ...hd(66), time: "11:52 PM", night: 1, last: 1 }
+  if (k < HOURLY) return { plate: morningPlate(k), ...hd(k), time: ampm(6, Math.round(1 + h01(k, 12) * 7)), morning: k }
   if (k < NIGHTS) {
     const j = k - HOURLY
     const i = HOURLY + Math.floor(j / 24)
     const hr = (j + 7) % 24
     const night = hr >= 20 || hr < 6
-    return { plate: night ? (h01(k, 10) < 0.5 ? "night" : "night-zoom") : morningPlate(i), date: day(Math.min(i, 172)), time: ampm(hr, Math.floor(h01(k, 11) * 6)), night, morning: night ? null : i }
+    return { plate: night ? (h01(k, 10) < 0.5 ? "night" : "night-zoom") : morningPlate(i), ...hd(i + (hr < 7 ? 1 : 0)), time: ampm(hr, Math.floor(h01(k, 11) * 6)), night, morning: night ? null : i }
   }
   const j = k - NIGHTS
-  const per = (ALBUM - 1 - NIGHTS) / 31 // a month of nights, to the last one
-  const i = 130 + Math.floor(j / per)
-  const m = 23 * 60 + 2 + Math.floor((j % per) * 2.4)
-  return { plate: h01(k, 10) < 0.55 ? "night-zoom" : "night", date: day(Math.min(i, 172)), time: ampm(Math.floor(m / 60) % 24, m % 60), night: 1 }
+  const per = (ALBUM - 1 - NIGHTS) / 22 // twenty-two nights, to the last one
+  const i = HOURLY + 13 + Math.floor(j / per)
+  const m = 23 * 60 + 2 + Math.floor((j % per) * 2.2)
+  return { plate: h01(k, 10) < 0.55 ? "night-zoom" : "night", ...hd(i + (m >= 1440 ? 1 : 0)), time: ampm(Math.floor(m / 60) % 24, m % 60), night: 1 }
 }
 export function albumGrid(w, h) {
   const top = BAR_H + 40
@@ -300,7 +309,7 @@ export function albumGrid(w, h) {
   const scrollTo = (k, f = 0.42) => Math.max(0, Math.min(maxScroll, 8 + Math.floor(k / cols) * rowH + rowH / 2 - view * f))
   return { top, cols, cw, rowH, rows, view, maxScroll, tile, scrollTo }
 }
-const MONTH = { Jun: "June", Jul: "July", Aug: "August", Sep: "September", Oct: "October", Nov: "November" }
+const MONTH = { Jan: "January", Feb: "February", Dec: "December" }
 export function album(ctx, w, h, d) {
   const G = albumGrid(w, h)
   const scroll = Math.max(0, Math.min(G.maxScroll, d.scroll || 0))
@@ -342,8 +351,9 @@ export function album(ctx, w, h, d) {
   label(ctx, "Hedge", 16, BAR_H + 25, 14, 700, "#e9e6e0")
   label(ctx, ALBUM.toLocaleString("en-US") + " items", 70, BAR_H + 25, 13, 400, "#9d988f")
   const topK = Math.min(ALBUM - 1, Math.max(0, Math.floor((scroll + 8) / G.rowH) * G.cols))
-  const mo = albumAt(topK).date.split(" ")[0]
-  label(ctx, (MONTH[mo] || mo) + " 2026", w - 16, BAR_H + 25, 13, 600, "#d9d5ce", "right")
+  const te = albumAt(topK)
+  const mo = te.date.split(" ")[0]
+  label(ctx, (MONTH[mo] || mo) + " " + te.year, w - 16, BAR_H + 25, 13, 600, "#d9d5ce", "right")
   const a = d.openT || 0
   if (d.open != null && a > 0) {
     const e = albumAt(d.open)
@@ -355,7 +365,7 @@ export function album(ctx, w, h, d) {
     drawOpen(ctx, e, R, d, a)
     if (a > 0.6) {
       ctx.globalAlpha = Math.min(1, (a - 0.6) / 0.3)
-      label(ctx, "Thu, " + e.date + " · " + e.time, 14, h - 12, 13.5, 600, "#d9d5ce")
+      label(ctx, e.wd + ", " + e.date + " · " + e.time, 14, h - 12, 13.5, 600, "#d9d5ce")
       label(ctx, "4,812 of 4,812", w - 14, h - 12, 13, 400, "#9d988f", "right")
       ctx.globalAlpha = 1
     }
