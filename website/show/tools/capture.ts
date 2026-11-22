@@ -108,7 +108,7 @@ if (probeArg) {
 const masterArg = process.argv.find((a) => a.startsWith("--master"))
 if (masterArg) {
   const { page, errors, ctx } = await open({ w: 1440, h: 900, dpr: 2, muted: true })
-  await page.addStyleTag({ content: "[data-ui=hint],[data-ui=cc],[data-ui=again]{display:none!important}html[data-black] [data-ui=card]{visibility:hidden!important}" })
+  await page.addStyleTag({ content: "[data-ui=hint],[data-ui=cc],[data-ui=again],[data-ui=controls]{display:none!important}html[data-black] [data-ui=card]{visibility:hidden!important}" })
   await press(page)
   const cut = Math.round(END_ * FPS), card = Math.round((END_ + 0.9) * FPS), total = Math.round((END_ + 0.9 + 4) * FPS)
   const raw = join(out, "master-v.mp4")

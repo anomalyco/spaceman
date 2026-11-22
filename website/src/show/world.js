@@ -309,7 +309,13 @@ export class World {
 
   showBar() {
     this.ensureCell(Math.max(1, this.active))
-    to(this.bar.shown, 1)
+    // it pops in: up from below, a little small, landing with a slight overshoot
+    if (this.bar.shown.t < 1 && !this.reduced) {
+      const s = this.bar.scale.t
+      this.bar.scale.x = s * 0.84
+      to(this.bar.scale, s, 0.42, 0.28)
+    }
+    to(this.bar.shown, 1, 0.34)
     const r = this.barLayout(this.active)[this.active - 1]
     jump(this.bar.left, r.x - BAR.pad)
     jump(this.bar.right, r.x + r.width + BAR.pad)
@@ -403,7 +409,7 @@ export class World {
       nx = -nx
       ny = -ny
     }
-    c.path = { x0: c.x, y0: c.y, x1: x, y1: y, mx: c.vx * dur, my: c.vy * dur, t0: this.time, dur, bx: nx * dist * 0.06, by: ny * dist * 0.06 }
+    c.path = { x0: c.x, y0: c.y, x1: x, y1: y, mx: c.vx * dur, my: c.vy * dur, t0: this.time, dur, bx: nx * dist * 0.085, by: ny * dist * 0.085 }
   }
 
   // Set off in time to arrive at arriveAt (show time), or now if the trip needs longer.
@@ -427,18 +433,23 @@ export class World {
   stepCursor(dt) {
     const c = this.cursor
     step(c.a, dt)
+    if (c.release && this.time >= c.release) {
+      c.release = 0
+      to(c.press, 0, 0.16)
+    }
     step(c.press, dt)
     const p = c.path
     if (!p) {
       c.vx = c.vy = 0
       return
     }
+    // quintic Hermite: carried velocity at the start, and both speed and acceleration fall to zero
+    // at the end, so the hand eases into its spot instead of stopping on it
     const s = clamp((this.time - p.t0) / p.dur)
-    const s2 = s * s
-    const s3 = s2 * s
-    const h00 = 2 * s3 - 3 * s2 + 1
-    const h10 = s3 - 2 * s2 + s
-    const h01 = -2 * s3 + 3 * s2
+    const s3 = s * s * s
+    const h01 = s3 * (10 - 15 * s + 6 * s * s)
+    const h00 = 1 - h01
+    const h10 = s - 6 * s3 + 8 * s3 * s - 3 * s3 * s * s
     const bulge = Math.sin(Math.PI * s) ** 2
     const x = h00 * p.x0 + h10 * p.mx + h01 * p.x1 + p.bx * bulge
     const y = h00 * p.y0 + h10 * p.my + h01 * p.y1 + p.by * bulge
@@ -452,9 +463,10 @@ export class World {
     }
   }
 
+  // pressed for a moment, then let go
   click() {
-    jump(this.cursor.press, 1)
-    to(this.cursor.press, 0)
+    to(this.cursor.press, 1, 0.06)
+    this.cursor.release = this.time + 0.085
   }
 
   // ─── Drawing ────────────────────────────────────────────────────────────
@@ -630,9 +642,14 @@ export class World {
       const a = w.a.x
       const f = w.fo.x
       const lift = w.float ? 1 : 0
+      // once tiled, the window you're in lifts and the rest step back: an accent edge and a soft glow
+      // on it, the others dimmed a sixth
+      const tiled = this.tiling && !w.float
+      const hi = tiled ? f : 0
       // two shadows: a wide soft one that grows with focus and height, and a tight contact one
       P(x, y, ww, hh, { shadow: 22 + 16 * f + 26 * lift, col: [0, 0, 0, 0.16 + 0.12 * f + 0.12 * lift], r, a })
       P(x, y, ww, hh, { shadow: 4 + 2 * f, col: [0, 0, 0, 0.26 + 0.06 * f], r, a })
+      if (hi > 0.01) P(x, y, ww, hh, { shadow: 16, col: [0.16, 0.5, 1, 0.22 * hi], r, a })
       this.frost(P, x, y, ww, hh, { r, a })
       // the content is laid out at the size the window is going to, and a resize reveals or crops it
       // from the top left the way an app re-lays itself, instead of stretching the old pixels
@@ -642,9 +659,11 @@ export class World {
       const dh = Math.min(hh, chS)
       if (dw < ww - 0.5 || dh < hh - 0.5) P(x, y, ww, hh, { tex: w.canvas, uv: [0.96, 0.96, 0.965, 0.965], r, a })
       P(x, y, dw, dh, { tex: w.canvas, uv: [0, 0, dw / cwS, dh / chS], r, a })
+      if (tiled && f < 0.99) P(x, y, ww, hh, { col: [0.02, 0.02, 0.03, 0.17 * (1 - f)], r, a })
       // device-pixel hairlines: a dark edge outside, a faint light edge inside
       P(x - hair, y - hair, ww + 2 * hair, hh + 2 * hair, { ring: hair, col: [0, 0, 0, 0.3 + 0.08 * f], r: r + hair, a })
       P(x, y, ww, hh, { ring: hair, col: [1, 1, 1, w.dark ? 0.1 : 0.42], r, a })
+      if (hi > 0.01) P(x - 0.5, y - 0.5, ww + 1, hh + 1, { ring: 1.5, col: [0.2, 0.55, 1, 0.7 * hi], r: r + 0.5, a })
     }
   }
 
@@ -674,7 +693,7 @@ export class World {
     }
     const cu = this.cursor
     if (cu.a.x > 0.01) {
-      const s = 1 - cu.press.x * 0.14
+      const s = 1 - cu.press.x * 0.1
       P(cu.x - 3 * s, cu.y - 2 * s, 26 * s, 34 * s, { tex: cursorCanvas(), r: 0, a: cu.a.x, cut: 1 })
     }
   }

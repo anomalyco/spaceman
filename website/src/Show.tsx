@@ -7,11 +7,115 @@ type Phase = "still" | "loading" | "live" | "ended";
 type Caption = { text: string; high?: boolean } | null;
 type ShowApi = {
   phase: Phase;
+  time: number;
+  duration: number;
+  paused: boolean;
   start(o: { context: AudioContext | null; muted: boolean }): Promise<void>;
+  setPaused(p: boolean): void;
+  seek(t: number): void;
+  setMuted(muted: boolean, context: AudioContext | null): void;
   key(n: number): boolean;
   tap(x: number, y: number): boolean;
   destroy(): void;
 };
+
+const clock = (s: number) => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, "0")}`;
+
+// The player's controls: a quiet strip along the bottom that shows while the pointer moves or the film
+// is paused, and is gone otherwise. The fill and the time are written straight to the DOM each frame.
+function Controls({ show, shown, paused, muted, captions, onCaptions, onMuted, onToggle }: {
+  show: React.RefObject<ShowApi | null>;
+  shown: boolean;
+  paused: boolean;
+  muted: boolean;
+  captions: boolean;
+  onCaptions: () => void;
+  onMuted: () => void;
+  onToggle: () => void;
+}) {
+  const track = useRef<HTMLDivElement>(null);
+  const fill = useRef<HTMLDivElement>(null);
+  const time = useRef<HTMLSpanElement>(null);
+  const drag = useRef<number | null>(null);
+  const [over, setOver] = useState(false);
+  useEffect(() => {
+    let raf = 0;
+    const tick = () => {
+      const s = show.current;
+      if (s && fill.current && time.current) {
+        const t = drag.current ?? s.time;
+        fill.current.style.transform = `scaleX(${Math.min(1, t / s.duration)})`;
+        time.current.textContent = `${clock(t)} / ${clock(s.duration)}`;
+      }
+      raf = requestAnimationFrame(tick);
+    };
+    tick();
+    return () => cancelAnimationFrame(raf);
+  }, [show]);
+  const at = (e: React.PointerEvent) => {
+    const r = track.current!.getBoundingClientRect();
+    return Math.min(1, Math.max(0, (e.clientX - r.left) / r.width)) * (show.current?.duration ?? 0);
+  };
+  const btn = "grid size-8 place-items-center rounded-full text-white/75 transition-colors hover:bg-white/10 hover:text-white focus-visible:outline-1 focus-visible:outline-white/50";
+  return (
+    <div
+      data-ui="controls"
+      onPointerDown={(e) => e.stopPropagation()}
+      onPointerEnter={() => setOver(true)}
+      onPointerLeave={() => setOver(false)}
+      className={`absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/45 to-transparent px-4 pt-10 pb-3 transition-opacity duration-500 focus-within:opacity-100 sm:px-6 ${shown || over ? "opacity-100" : "pointer-events-none opacity-0"}`}
+    >
+      <div className="flex items-center gap-2 text-[12px] text-white/70">
+        <button type="button" data-ui="play" aria-label={paused ? "Play" : "Pause"} onClick={onToggle} className={btn}>
+          {paused ? (
+            <svg width="14" height="14" viewBox="0 0 14 14" fill="currentColor"><path d="M3.5 1.8v10.4c0 .5.5.8.9.5l8-5.2a.6.6 0 0 0 0-1L4.4 1.3c-.4-.3-.9 0-.9.5Z" /></svg>
+          ) : (
+            <svg width="14" height="14" viewBox="0 0 14 14" fill="currentColor"><rect x="3" y="2" width="2.8" height="10" rx=".8" /><rect x="8.2" y="2" width="2.8" height="10" rx=".8" /></svg>
+          )}
+        </button>
+        <button type="button" data-ui="restart" aria-label="Restart" onClick={() => show.current?.seek(0)} className={btn}>
+          <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="M2.5 7a4.5 4.5 0 1 0 1.4-3.3" /><path d="M2.3 1.8v2.6h2.6" /></svg>
+        </button>
+        <span ref={time} className="w-[84px] text-center tabular-nums" />
+        <div
+          ref={track}
+          data-ui="scrub"
+          role="slider"
+          aria-label="Seek"
+          aria-valuemin={0}
+          aria-valuemax={100}
+          tabIndex={-1}
+          onPointerDown={(e) => {
+            e.currentTarget.setPointerCapture(e.pointerId);
+            drag.current = at(e);
+          }}
+          onPointerMove={(e) => {
+            if (drag.current !== null) drag.current = at(e);
+          }}
+          onPointerUp={(e) => {
+            if (drag.current === null) return;
+            show.current?.seek(at(e));
+            drag.current = null;
+          }}
+          className="group relative flex h-6 flex-1 cursor-pointer items-center"
+        >
+          <div className="relative h-[3px] w-full overflow-hidden rounded-full bg-white/20 transition-[height] group-hover:h-[5px]">
+            <div ref={fill} className="absolute inset-0 origin-left bg-white/80" style={{ transform: "scaleX(0)" }} />
+          </div>
+        </div>
+        <button type="button" data-ui="cc" aria-label="Captions" aria-pressed={captions} onClick={onCaptions} className={`${btn} w-auto px-2 text-[11px] font-semibold tracking-wide ${captions ? "text-white" : ""}`}>
+          <span className={captions ? "border-b border-white/80" : ""}>CC</span>
+        </button>
+        <button type="button" data-ui="mute" aria-label={muted ? "Unmute" : "Mute"} onClick={onMuted} className={btn}>
+          <svg width="16" height="14" viewBox="0 0 16 14" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M2 5h2.4L8 2v10L4.4 9H2z" fill="currentColor" stroke="none" />
+            {muted ? <path d="M10.5 5l3.5 4M14 5l-3.5 4" /> : <path d="M10.6 4.6a3.4 3.4 0 0 1 0 4.8M12.4 2.8a6 6 0 0 1 0 8.4" />}
+          </svg>
+        </button>
+      </div>
+    </div>
+  );
+}
 
 // The still is the study at night with the screen asleep, a Cycles render (show/scenes/study/hero.py)
 // that is also the opening plate's first frame. A click anywhere on it starts the film. It is
@@ -78,6 +182,8 @@ export function Show({ header }: { header: React.ReactNode }) {
   const [touch, setTouch] = useState(false);
   // the CC button shows while the pointer moves (or a key is pressed), then gets out of the picture
   const [awake, setAwake] = useState(true);
+  const [paused, setPaused] = useState(false);
+  const [muted, setMuted] = useState(false);
   // a click before the engine has loaded starts the film as soon as it has
   const pending = useRef(false);
 
@@ -104,6 +210,7 @@ export function Show({ header }: { header: React.ReactNode }) {
               if (p === "live") setCard(false);
             },
             caption: (c: Caption) => setCaption(c),
+            paused: (p: boolean) => setPaused(p),
             hint: (h: boolean) => setHint(h),
           },
         }) as ShowApi;
@@ -135,12 +242,41 @@ export function Show({ header }: { header: React.ReactNode }) {
     }
     if (s.phase !== "still" && s.phase !== "ended") return;
     setCard(false);
-    void s.start({ context: context.current, muted: false });
+    setPaused(false);
+    void s.start({ context: context.current, muted });
+  }, [muted]);
+
+  const toggle = useCallback(() => {
+    const s = show.current;
+    if (s?.phase === "live") s.setPaused(!s.paused);
   }, []);
+  const toggleMute = useCallback(() => {
+    const m = !muted;
+    setMuted(m);
+    show.current?.setMuted(m, context.current);
+  }, [muted]);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.metaKey || e.ctrlKey) return;
+      const s0 = show.current;
+      if (s0?.phase === "live" && !e.altKey) {
+        const onButton = e.target instanceof HTMLElement && e.target.closest("button, a, input");
+        if (e.code === "Space" && !onButton) {
+          e.preventDefault();
+          s0.setPaused(!s0.paused);
+          return;
+        }
+        if (e.code === "ArrowLeft" || e.code === "ArrowRight") {
+          e.preventDefault();
+          s0.seek(s0.time + (e.code === "ArrowLeft" ? -5 : 5));
+          return;
+        }
+        if (e.code === "KeyM") {
+          toggleMute();
+          return;
+        }
+      }
       const m = /^Digit(\d)$/.exec(e.code);
       if (!m) return;
       const n = Number(m[1]);
@@ -156,7 +292,7 @@ export function Show({ header }: { header: React.ReactNode }) {
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [start]);
+  }, [start, toggleMute]);
 
   useEffect(() => {
     if (phase !== "live") return;
@@ -198,11 +334,7 @@ export function Show({ header }: { header: React.ReactNode }) {
       </div>
 
       {live && (
-        <div className={`absolute top-3 left-3 flex gap-2 transition-opacity duration-500 focus-within:opacity-100 sm:top-auto sm:left-auto sm:right-6 sm:bottom-6 ${awake ? "opacity-100" : "opacity-0"}`}>
-          <button type="button" data-ui="cc" onClick={() => setCc(!captions)} aria-pressed={captions} className={`h-9 rounded-full border border-white/10 px-3 text-[12px] font-semibold tracking-wide backdrop-blur ${captions ? "bg-[#ece9e3] text-[#151517]" : "bg-black/45 text-[#d8d5ce] hover:bg-black/60"}`}>
-            CC
-          </button>
-        </div>
+        <Controls show={show} shown={awake || paused} paused={paused} muted={muted} captions={captions} onCaptions={() => setCc(!captions)} onMuted={toggleMute} onToggle={toggle} />
       )}
 
       {captions && caption && phase === "live" && (

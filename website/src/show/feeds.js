@@ -6,7 +6,7 @@
 import { plates, coverUV } from "./plates.js"
 import { MONO } from "./apps.js"
 
-export const FEEDS = ["cam-hall", "cam-kitchen", "cam-living", "cam-landing", "cam-back", "st-08", "st-10", "st-10-empty", "st-14", "st-16", "st-16-empty", "st-16-cat", "st-16-bins", "st-18", "cam-cellar", "sixteen"]
+export const FEEDS = ["seq-walker", "seq-cat", "seq-alan", "cam-hall", "cam-kitchen", "cam-living", "cam-landing", "cam-back", "st-08", "st-10", "st-10-empty", "st-14", "st-16", "st-16-empty", "st-16-cat", "st-16-bins", "st-18", "cam-cellar", "sixteen"]
 let clock = 0
 // the film's own time, so a feed is the same frame at the same moment in every run
 export function feedClock(t) {
@@ -77,7 +77,7 @@ export function feed(ctx, x, y, w, h, d, win) {
     const t = f / fps
     const s = canvasOf(st, "sensor", SW, SH)
     const g = s.getContext("2d")
-    const src0 = plates[d.src]
+    const src0 = (d.seq && seqFrame(d.seq)) || plates[d.src]
     // a camera can see part of a source (a second camera on the same house, zoomed on the door)
     const src = src0 && d.crop ? cropOf(src0, d.crop) : src0
     g.globalCompositeOperation = "source-over"
@@ -284,103 +284,47 @@ function cropOf(img, [x, y, w, h]) {
   return c
 }
 
-// Someone walking past, as a cheap camera sees them at night: a woman in a grey coat (lighter than the
-// dark car and fence, darker than the lit wall, so she reads against both at any zoom), a walk's bob and swing, and a
-// small dark dog on a lead a step ahead. x, y: where her feet are (0..1).
+// A clip: generated footage (show/feeds/clips, notes/feeds.md) as a sheet of low-res frames,
+// 6 to a row. seq: { name, n, fps, t0, loop: "hold" | "pingpong", from, end }. Before t0 it shows
+// its first frame; "hold" keeps the last frame for a moment, then the first (she has walked on).
+const cells = new Map()
+function seqFrame(q) {
+  const sheet = plates["seq-" + q.name]
+  if (!sheet) return null
+  const n = q.n
+  const from = q.from || 0
+  let i = Math.floor((clock - (q.t0 ?? 0)) * q.fps)
+  if (i < 0) i = 0
+  else if (i >= n && q.loop === "pingpong") {
+    // once through, then back and forth over from..n-1
+    const half = n - 1 - from
+    const p = (i - (n - 1)) % (2 * half)
+    i = p <= half ? n - 1 - p : from + (p - half)
+  } else if (i >= n) i = q.end != null && clock > q.t0 + n / q.fps + q.end ? 0 : n - 1
+  const key = q.name + i
+  let c = cells.get(key)
+  if (c) return c
+  const cw = sheet.width / 6
+  const ch = cw * (9 / 16)
+  c = document.createElement("canvas")
+  c.width = Math.round(cw)
+  c.height = Math.round(ch)
+  c.getContext("2d").drawImage(sheet, (i % 6) * cw, Math.floor(i / 6) * ch, cw, ch, 0, 0, c.width, c.height)
+  c.version = 1
+  cells.set(key, c)
+  return c
+}
+
+// The dog walker's track through the door camera's frame (measured from the clip): where she and
+// the dog are at time t, x and y in 0..1 of the frame.
 export function walkerAt(l, t) {
   const u = (t - l.t0) / l.dur
   return { u, x: l.x0 + (l.x1 - l.x0) * u, y: l.y }
-}
-function walker(g, W, H, l, t) {
-  const { u, x, y } = walkerAt(l, t)
-  if (u < 0 || u > 1) return
-  const ht = l.h * H
-  const fx = x * W
-  const fy = y * H
-  const ph = t * 1.9 * Math.PI * 2
-  const bob = Math.abs(Math.sin(ph)) * ht * 0.018
-  const dir = Math.sign(l.x1 - l.x0) || 1
-  const dark = l.col || "rgba(16,16,18,.93)"
-  const coat = l.coat || "rgba(132,130,124,.96)"
-  g.save()
-  g.fillStyle = dark
-  g.strokeStyle = dark
-  g.lineCap = "round"
-  // legs, scissoring
-  const hip = fy - ht * 0.48 - bob
-  const stride = Math.sin(ph) * ht * 0.13
-  g.lineWidth = ht * 0.075
-  g.beginPath()
-  g.moveTo(fx, hip)
-  g.lineTo(fx + stride, fy)
-  g.moveTo(fx, hip)
-  g.lineTo(fx - stride, fy)
-  g.stroke()
-  // a long coat, flared to the knee
-  g.fillStyle = coat
-  g.beginPath()
-  g.moveTo(fx - ht * 0.07, hip - ht * 0.4)
-  g.quadraticCurveTo(fx, hip - ht * 0.44, fx + ht * 0.07, hip - ht * 0.4)
-  g.lineTo(fx + ht * 0.115, hip + ht * 0.2)
-  g.quadraticCurveTo(fx, hip + ht * 0.23, fx - ht * 0.115, hip + ht * 0.2)
-  g.closePath()
-  g.fill()
-  // head, and dark hair to the collar
-  const hdx = fx + dir * ht * 0.012
-  const hdy = hip - ht * 0.49
-  g.fillStyle = "rgba(176,170,160,.95)"
-  g.beginPath()
-  g.arc(hdx, hdy, ht * 0.06, 0, Math.PI * 2)
-  g.fill()
-  g.fillStyle = dark
-  g.beginPath()
-  g.arc(hdx - dir * ht * 0.012, hdy - ht * 0.008, ht * 0.064, Math.PI * (dir > 0 ? 0.62 : 1.38), Math.PI * (dir > 0 ? 2.15 : -0.15), dir < 0)
-  g.lineTo(hdx - dir * ht * 0.06, hdy + ht * 0.09)
-  g.lineTo(hdx - dir * ht * 0.01, hdy + ht * 0.07)
-  g.closePath()
-  g.fill()
-  // the arm with the lead, forward, in the coat's sleeve
-  g.strokeStyle = coat
-  g.lineWidth = ht * 0.05
-  g.beginPath()
-  g.moveTo(fx, hip - ht * 0.36)
-  const hx = fx + dir * ht * 0.14
-  const hy = hip - ht * 0.12
-  g.lineTo(hx, hy)
-  g.stroke()
-  g.fillStyle = dark
-  g.strokeStyle = dark
-  // the dog, a step ahead, trotting
-  const dx = fx + dir * ht * 0.42
-  const dph = t * 3.4 * Math.PI * 2
-  const dy = fy - ht * 0.09 - Math.abs(Math.sin(dph)) * ht * 0.01
-  g.beginPath()
-  g.ellipse(dx, dy, ht * 0.11, ht * 0.045, 0, 0, Math.PI * 2)
-  g.fill()
-  g.beginPath()
-  g.arc(dx + dir * ht * 0.12, dy - ht * 0.04, ht * 0.035, 0, Math.PI * 2)
-  g.fill()
-  g.lineWidth = ht * 0.025
-  g.beginPath()
-  for (const o of [-0.07, 0.07]) {
-    const sw = Math.sin(dph + o * 20) * ht * 0.03
-    g.moveTo(dx + o * ht, dy)
-    g.lineTo(dx + o * ht + sw, fy)
-  }
-  g.stroke()
-  // the lead
-  g.lineWidth = Math.max(0.6, ht * 0.008)
-  g.beginPath()
-  g.moveTo(hx, hy)
-  g.quadraticCurveTo((hx + dx) / 2, dy + ht * 0.02, dx + dir * ht * 0.1, dy - ht * 0.04)
-  g.stroke()
-  g.restore()
 }
 
 // small life in a fixed frame: a moth at the IR lamp, a car's lights crossing, a light on a timer
 function life(g, W, H, d, t, seed) {
   for (const l of d.life || []) {
-    if (l.walker) walker(g, W, H, l.walker, t)
     if (l.moth) {
       const k = t * 0.9 + seed
       const mx = W * (l.moth[0] + 0.07 * Math.sin(k * 2.3) + 0.04 * Math.sin(k * 7.1))

@@ -26,31 +26,6 @@
    "loop": true
   },
   {
-   "id": "thunk",
-   "text": "a single very soft muted wooden thunk, small, close, dry",
-   "dur": 0.6
-  },
-  {
-   "id": "close",
-   "text": "a single soft short paper swish, very quiet, dry",
-   "dur": 0.6
-  },
-  {
-   "id": "key",
-   "text": "a single laptop keyboard key press, soft scissor switch click, close mic, dry",
-   "dur": 0.5
-  },
-  {
-   "id": "key2",
-   "text": "a single key press on a heavier older mechanical keyboard in a different quiet room, dry",
-   "dur": 0.5
-  },
-  {
-   "id": "shutter",
-   "text": "a single quiet digital camera shutter click, dry, close",
-   "dur": 0.5
-  },
-  {
    "id": "car",
    "text": "one car passing slowly far away on a wet street at night, quiet, no horn",
    "dur": 4

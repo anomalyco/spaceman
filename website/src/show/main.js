@@ -41,6 +41,7 @@ export function createShow({ still, canvas, base, capture = false, reduced = fal
   let caption = null
   let manifest = null
   let tapeAt = null // { ctx, t } when the tape started: the film follows the tape's clock
+  let paused = false
   const cam = { D: 1, cx: 0, cy: 0 }
   const grade = [0, 0, 0]
   const fx = { ...POST_DEFAULT }
@@ -184,6 +185,12 @@ export function createShow({ still, canvas, base, capture = false, reduced = fal
     })()
     return plate.loading
   }
+  // a replay or a seek back into the opening brings the video back
+  function resetPlate() {
+    if (!plate.done) return
+    Object.assign(plate, { done: false, ready: false, video: null, loading: null, frame: -1, failed: false })
+    if (renderer?.renderPlate && !reduced) void loadOpening()
+  }
   function loadOpeningStill() {
     if (plate.still || !renderer?.renderPlate) return
     const img = new Image()
@@ -210,8 +217,13 @@ export function createShow({ still, canvas, base, capture = false, reduced = fal
   function syncPlate() {
     const v = plate.video
     if (!v || capture) return
-    if (!plateOn() || phase !== "live" || !visible) {
+    if (!plateOn() || phase !== "live" || !visible || paused) {
       if (!v.paused) v.pause()
+      // paused on the opening (or a seek into it while paused): show the frame for t
+      if (paused && plateOn() && Math.abs(v.currentTime - t) > 0.05 && !v.seeking) {
+        v.addEventListener("seeked", () => (plate.frame = Math.round(v.currentTime * plate.meta.fps), v.version++, render()), { once: true })
+        v.currentTime = Math.min(t, v.duration || t)
+      }
       return
     }
     if (Math.abs(v.currentTime - t) > 0.1) v.currentTime = Math.min(t, v.duration || t)
@@ -433,7 +445,7 @@ export function createShow({ still, canvas, base, capture = false, reduced = fal
       three.on = false
     },
     sfx(name, gain = 1) {
-      audio.play("sfx-" + name + ".mp3", { t, gain })
+      audio.sfx(name, { t, gain })
     },
     bed(name, v, tc) {
       audio.bed("sfx-" + name + ".mp3", v, t, tc)
@@ -565,7 +577,7 @@ export function createShow({ still, canvas, base, capture = false, reduced = fal
   }
 
   function schedule() {
-    if (raf || capture || !visible || phase !== "live") return
+    if (raf || capture || !visible || phase !== "live" || paused) return
     raf = requestAnimationFrame(frame)
   }
 
@@ -633,7 +645,10 @@ export function createShow({ still, canvas, base, capture = false, reduced = fal
       if (phase === "ended") {
         audio.stopAll()
         setup()
+        resetPlate()
       }
+      paused = false
+      audio.setPaused(false)
       phase = "loading"
       emit("phase", "loading")
       audio.attach(context, muted)
@@ -665,11 +680,55 @@ export function createShow({ still, canvas, base, capture = false, reduced = fal
     skip() {
       if (phase === "live" || phase === "loading") S.end()
     },
+    get duration() {
+      return END
+    },
+    get paused() {
+      return paused
+    },
+    setPaused(p) {
+      if (phase !== "live" || p === paused) return
+      paused = p
+      audio.setPaused(p)
+      if (p && plate.video && !plate.video.paused) plate.video.pause()
+      last = 0
+      emit("paused", p)
+      schedule()
+    },
+    // The world is deterministic in show time: a seek back rebuilds it and replays the cues up to the
+    // new time without sound or pictures, then the tape and the beds join at that point.
+    seek(to) {
+      if (!world || phase === "still" || phase === "loading") return
+      to = clamp(to, 0, END - 0.1)
+      audio.stopAll()
+      tapeAt = null
+      if (phase === "ended") {
+        phase = "live"
+        emit("phase", "live")
+      }
+      if (to < t) {
+        setup()
+        setCaption(null)
+        if (plate.meta && to < plate.meta.end) resetPlate()
+      }
+      audio.quiet = true
+      while (t < to - 1e-6 && phase === "live") advance(Math.min(0.25, to - t))
+      audio.quiet = false
+      for (const w of world.wins.values()) w.dirty = true
+      plateEnd()
+      last = 0
+      if (!paused) {
+        startTape()
+        audio.restoreBeds(t)
+      }
+      render()
+      schedule()
+    },
     // Option+n during the visitor's turn.
     key(n) {
       if (phase !== "live" || t < HOLD[0] || t > HOLD[1] - 0.5 || n < 1 || n > 3) return false
       world.switchTo(n)
-      S.sfx("key", 0.6)
+      S.sfx("key", 0.9)
       return true
     },
     // A tap on the bar during the visitor's turn: which workspace was it?

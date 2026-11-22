@@ -3,7 +3,8 @@
 # detective resuming the interview, his one long v4 take with pauses opened in the silences between
 # sentences, the room, the detective suspending it, the tone again), and the SFX. Writes
 # public/show/audio, manifest.json and src/show/tape.js for the film's version (mono.json "film").
-# usage: process.py                  the film's version
+# usage: process.py                  the film's version (needs numpy for keys.py:
+#                                    uv run -q --with numpy python process.py)
 #        process.py B --alt <dir>    one alternate version's tape only, to <dir>/tape-B.mp3 (+ .json)
 import array, glob, json, math, os, re, subprocess, sys
 
@@ -369,7 +370,7 @@ if ALT:
 manifest = {"lines": lines, "voice": {"tape": {"stage": "tape", "text": " ".join(w["text"] for w in words), "takes": [{"file": name, "dur": round(total, 3), "env": env, "words": tw, "marks": marks}]}}, "sfx": {}}
 
 # ── sound effects ──
-trims = {"thunk": 0.35, "close": 0.4, "key": 0.18, "key2": 0.25, "shutter": 0.3}
+trims = {}
 for s in script["sfx"]:
     if s.get("tape"):
         continue
@@ -380,6 +381,11 @@ for s in script["sfx"]:
          "-af", af or f"silenceremove=start_periods=1:start_threshold=-45dB,atrim=0:{dur},afade=t=out:st={max(0, dur - 0.06):.3f}:d=0.06,loudnorm=I=-16:TP=-1.5",
          "-ac", "1", "-ar", "44100", "-b:a", "64k", os.path.join(out, sname)])
     manifest["sfx"][s["id"]] = sname
+# the key presses and the trackpad click (keys.py)
+sys.path.insert(0, here)
+import keys  # noqa: E402
+
+keys.build(manifest)
 
 json.dump(manifest, open(os.path.join(out, "manifest.json"), "w"))
 # the cut's clock: the engine times the picture and captions to these, with or without audio
@@ -388,7 +394,7 @@ with open(os.path.join(here, "../../src/show/tape.js"), "w") as f:
     f.write(f"export const TAPE = {json.dumps({'dur': round(total, 3), 'marks': marks})}\n")
     f.write("export const LINES = " + json.dumps([[l["text"], l["t"], l["end"]] for l in lines], ensure_ascii=False) + "\n")
     f.write("export const WORDS = " + json.dumps([[w["text"], w["t"], w["end"]] for w in tw], ensure_ascii=False) + "\n")
-used = {name} | set(manifest["sfx"].values()) | {"manifest.json"}
+used = {name} | {f for s in manifest["sfx"].values() for f in (s["variants"] if isinstance(s, dict) else [s])} | {"manifest.json"}
 for f in os.listdir(out):
     if f not in used:
         os.remove(os.path.join(out, f))

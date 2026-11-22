@@ -52,6 +52,8 @@ const LAST = WORDS[WORDS.length - 1]
 export const END = LAST[2] + 2.3
 // the plate (the study, in through the screen) is a fixed length
 const INTRO = 7.382
+// the closest the camera gets: 94% of the screen in view
+const PUSH_MIN = 0.94
 
 
 // A year ago: forty windows, give or take, in a heap. Work stays on one; three of them are messages.
@@ -77,23 +79,20 @@ export function pile(SW, SH) {
   const tall = SH > SW
   const F = (x, y, w, h) => (tall ? [W(y * 0.9), H(0.06 + x * 0.8), W(Math.min(0.92, h * 1.5)), H(w * 0.62)] : [W(x), H(y), W(w), H(h)])
   const spot = (i, w, h) => F(0.02 + R01(i, 1) * (0.96 - w), 0.05 + R01(i, 2) * (0.55 - h * 0.6), w, h)
+  // the four that stay come first (tile order), the clutter on top of them
   const defs = []
-  BROWSE.forEach(([heading, url], i) => defs.push({ id: "b" + i, app: "browsy", kind: "browser", title: heading + " — Browsy", data: { tabs: 6 + Math.floor(R01(i, 3) * 30), url, heading, tab: heading } }))
-  defs.push({ id: "postbox", app: "postbox", kind: "mail", title: "Inbox — 1,206 messages", data: mail() })
-  defs.push({ id: "mum", app: "chatter", kind: "chat", title: "Mum", data: { who: "Mum", when: "Today 9:14 PM", msgs: [{ t: "are you eating properly" }, { t: "call me back x" }] } })
-  defs.push({ id: "group", app: "chatter", kind: "chat", title: "Pinecrest Neighbours", data: { who: "Pinecrest Neighbours · 9", when: "Today 8:02 PM", msgs: [{ from: "Mark (10)", t: "Whose is the blue car?" }, { from: "Ruth (8)", t: "Mine, sorry! Moving it now" }] } })
-  defs.push({ id: "recipes", app: "paper", kind: "paper", title: "Recipes", data: { heading: "Recipes", sub: "6 recipes", lines: ["Chili (Mom's)", "Banana bread", "Lasagna — the good one", "Pancakes, Sunday", "Lemon chicken", "Soda bread"] } })
-  defs.push({ id: "expenses", app: "paper", kind: "paper", title: "Expenses — October", data: { heading: "Expenses — October", lines: ["Train, Oct 3 — 14.20", "Lunch (client) — 38.00", "Train, Oct 9 — 14.20", "Hotel — ???"] } })
-  defs.push({ id: "daybook", app: "daybook", kind: "daybook", title: "Daybook — November", data: { date: "Tuesday, November 25", events: [{ t: "Bins out", at: 19, len: 0.7, color: "#d9e3cf" }, { t: "Renewals review", at: 9, len: 1, color: "#d6dff0" }] } })
-  defs.push({ id: "shot", app: "viewer", kind: "shot", title: "Screenshot 2025-03-02 at 11.48.07 PM" })
-  defs.push({ id: "untitled", app: "jot", kind: "jot", title: "Untitled 47", data: { heading: "Untitled 47", edited: "Edited February 9", lines: ["call about the gutters?", "ask Mark re: drill", "hedge — measure?"] } })
-  defs.push({ id: "drill", app: "jot", kind: "jot", title: "return drill", data: { heading: "return drill", check: 1, lines: ["to No. 10 (Mark)", { t: "borrowed spring 2022", soft: 1, nobox: 1 }] } })
-  defs.push({ id: "notes1", app: "jot", kind: "jot", title: "notes (1)", data: { heading: "notes", edited: "Edited March 14", lines: NOTE } })
-  defs.push({ id: "notes2", app: "jot", kind: "jot", title: "notes — real", data: { heading: "notes", edited: "Edited April 30", lines: NOTE } })
   defs.push({ id: "q3", app: "paper", kind: "paper", title: "Q3 report — draft", data: { heading: "Q3 report", sub: "Draft 4", lines: Q3 } })
   defs.push({ id: "notes", app: "jot", kind: "jot", title: "notes", data: { heading: "notes", edited: "Edited March 2", lines: NOTE } })
-  defs.push({ id: "sticky", app: "jot", kind: "sticky", title: "", data: { text: "organize notes" } })
-  return defs.map((d, i) => ({ ...d, at: d.id === "sticky" ? F(0.8, 0.07, 0.15, 0.18) : spot(i + 3, 0.3 + R01(i, 4) * 0.16, 0.36 + R01(i, 5) * 0.2) }))
+  defs.push({ id: "postbox", app: "postbox", kind: "mail", title: "Inbox — 1,206 messages", data: mail() })
+  defs.push({ id: "group", app: "chatter", kind: "chat", title: "Pinecrest Neighbours", data: { who: "Pinecrest Neighbours · 9", when: "Today 8:02 PM", msgs: [{ from: "Mark (10)", t: "Whose is the blue car?" }, { from: "Ruth (8)", t: "Mine, sorry! Moving it now" }] } })
+  defs.push({ id: "daybook", app: "daybook", kind: "daybook", title: "Daybook — November", data: { date: "Tuesday, November 25", events: [{ t: "Bins out", at: 19, len: 0.7, color: "#d9e3cf" }, { t: "Renewals review", at: 9, len: 1, color: "#d6dff0" }] } })
+  for (const i of [1, 3, 6]) {
+    const [heading, url] = BROWSE[i]
+    defs.push({ id: "b" + i, app: "browsy", kind: "browser", title: heading + " — Browsy", data: { tabs: 6 + Math.floor(R01(i, 3) * 30), url, heading, tab: heading } })
+  }
+  defs.push({ id: "notes1", app: "jot", kind: "jot", title: "notes (1)", data: { heading: "notes", edited: "Edited March 14", lines: NOTE } })
+  defs.push({ id: "notes2", app: "jot", kind: "jot", title: "notes — real", data: { heading: "notes", edited: "Edited April 30", lines: NOTE } })
+  return defs.map((d, i) => ({ ...d, at: spot(i + 3, 0.34 + R01(i, 4) * 0.16, 0.42 + R01(i, 5) * 0.2) }))
 }
 const Q3 = ["Renewals rose 4% in Q2.", "Costs were flat."]
 
@@ -194,31 +193,32 @@ export function build(S) {
     })
     at(t, () => {
       w.click()
-      S.sfx("key2", 0.28)
+      S.sfx("tap")
       fn?.()
     })
   }
   const key = (t, label, fn) =>
     at(t, () => {
       w.keyCast(label)
-      S.sfx("key", 0.7)
+      S.sfx("key")
       fn?.()
     })
-  const sw = (t, n, clock) =>
+  const sw = (t, n, clock, silent) =>
     at(t, () => {
       if (clock) w.clock = clock
       w.switchTo(n)
-      S.sfx("key", 0.6)
+      if (!silent) S.sfx("key", 0.9)
     })
   const type = (t0, s, fn, seed = 1) =>
     rhythm(s.length, seed).forEach((dt, i) =>
       at(t0 + dt, () => {
         fn(s.slice(0, i + 1), i === s.length - 1)
-        S.sfx(i % 2 ? "key" : "key2", 0.22)
+        S.sfx("key", 0.85)
       }),
     )
+  // The camera stays on the whole desktop: a framing is at most a gentle push toward its subject.
   const fit = (x, y, ww, hh, margin) => {
-    const D = Math.min(1, Math.max(ww / S.SW, hh / S.SH) * margin)
+    const D = Math.min(1, Math.max(PUSH_MIN, ww / S.SW, (hh / S.SH) * margin, (ww / S.SW) * margin))
     // keep the view inside the screen: never show what's past its edge
     const hx = (S.SW * D) / 2
     const hy = (S.SH * D) / 2
@@ -256,7 +256,6 @@ export function build(S) {
   const openMany = (t, ws, defs) =>
     at(t, () => {
       w.openMany(defs.map((d) => ({ ws, ...d })))
-      S.sfx("thunk", 0.3)
     })
   // a float in the middle of the screen (a page, a calendar), and its frame
   const mid = (fw, fh, dy = 0) => {
@@ -267,9 +266,9 @@ export function build(S) {
   const float = (t, def) =>
     at(t, () => {
       w.open({ float: true, ...def, at: typeof def.at === "function" ? def.at() : def.at })
-      S.sfx("thunk", 0.3)
     })
-  const shut = (t, id, v = 0.5) => at(t, () => (w.close(id), S.sfx("close", v)))
+  // a window closing makes no sound of its own
+  const shut = (t, id) => at(t, () => w.close(id))
 
   // a camera window in Vigil; its stamp is set per scene by feedsAt
   const CAM = (id, src, title, data) => ({ id, app: "vigil", kind: "feed", title, dark: 1, data: { src, name: title.toUpperCase(), us: 1, ...data } })
@@ -299,9 +298,11 @@ export function build(S) {
     w.clock = "Tue Nov 25  11:48 PM"
   })
   span(0.42, 0.95, (u) => (S.three.glow = smooth(u) * (1 + 0.06 * Math.sin(u * 9) * (1 - u))))
-  at(0.42, () => S.sfx("key2", 0.2))
+  at(0.42, () => S.sfx("key", 0.9))
   move(1.2, intro, "CamChair", "screen", (u) => easeInOut(u) ** 1.15)
   at(intro, () => S.flat())
+  // his study: a fridge two rooms away, the night outside; under everything, heard only in the gaps
+  at(intro, () => S.bed("room", 3.5, 2))
   cursor = TAPE.marks.head
 
   // ── "A year ago I had forty windows open and couldn't find anything." ──
@@ -314,31 +315,38 @@ export function build(S) {
   clickAt(find + 0.2, "b3", titleOf, () => w.setFocus("b3"), 0.5)
   clickAt(find + 0.75, "notes2", titleOf, () => w.setFocus("notes2"), 0.5)
   clickAt(find + 1.3, "b6", titleOf, () => w.setFocus("b6"), 0.5)
-
   // ── Spaceman: installed; its item in the menu bar on its name; then everything side by side ──
   const install = word("Then I installed")
   const named = word("Spaceman")
   const tiled = word("It tiles")
-  push(install + 0.15, named - 0.1, () => ({ cx: S.SW * 0.83, cy: S.SH * 0.17, D: 0.34 }), null)
+  push(install + 0.15, named - 0.1, () => fit(S.SW * 0.75, 0, S.SW * 0.25, S.SH * 0.2, 1), null)
   at(named - 0.02, () => {
     w.status = true
     w.statusIn = w.time
-    S.sfx("key2", 0.45)
   })
   push(named + 0.7, tiled, home)
+  // and as it starts: ⌘W, ⌘W, ⌘W, the duplicates go, front to back, until four are left to tile
+  const clutter = ["b6", "notes2", "b3", "notes1", "b1", "daybook"]
+  const sweep = named + 0.3
+  at(sweep - 0.05, () => w.keyCast(["⌘", "W"], clutter.length * 0.17 + 0.2))
+  clutter.forEach((id, i) =>
+    at(sweep + i * 0.17, () => {
+      w.close(id)
+      S.sfx("key", 0.85)
+      const next = [...w.wins.values()].filter((x) => x.ws === 1 && !x.leaving && !x.float).sort((p, q) => q.z - p.z)[0]
+      if (next) w.setFocus(next.id)
+    }),
+  )
   at(tiled + 0.05, () => {
     w.tileNow()
-    S.sfx("thunk", 0.8)
   })
   // two more open, and the others move over
   const sideBy = word("side by side")
   at(sideBy - 0.35, () => {
     w.open({ id: "b9", app: "browsy", kind: "browser", title: "New Tab — Browsy", data: { tabs: 1, url: "", heading: "New Tab", tab: "New Tab", lines: [] }, at: [S.SW * 0.3, S.SH * 0.3, S.SW * 0.3, S.SH * 0.3] })
-    S.sfx("thunk", 0.35)
   })
   at(word("nothing is hidden") - 0.1, () => {
     w.open({ id: "u48", app: "jot", kind: "jot", title: "Untitled 48", data: { heading: "Untitled 48", lines: [] }, at: [S.SW * 0.3, S.SH * 0.3, S.SW * 0.3, S.SH * 0.3] })
-    S.sfx("thunk", 0.35)
   })
 
   // ── "It also gives you numbered workspaces. My work went on one and my messages on two." ──
@@ -347,7 +355,7 @@ export function build(S) {
     w.ensureCell(3)
     w.showBar()
   })
-  ;["postbox", "mum", "group"].forEach((id, i) => {
+  ;["postbox", "group"].forEach((id, i) => {
     const t = numbered + 0.5 + i * 0.3
     at(t - 0.02, () => w.setFocus(id))
     key(t, ["⌥", "⇧", "2"], () => w.move(id, 2))
@@ -379,25 +387,25 @@ export function build(S) {
   clickAt(msgs2 + 0.15, "settings", () => cell(3), () => w.set("settings", { data: { rules: [{ app: "Chatter", icon: "chatter", action: "Open on", ws: null, cursor: 3 }] } }), 0.5)
   at(word("two") + 0.1, () => {
     w.set("settings", { data: { rules: [{ app: "Chatter", icon: "chatter", action: "Open on", ws: 2, hl: 1 }] } })
-    S.sfx("key", 0.3)
+    S.sfx("key", 0.95)
   })
   const camera = word("I had a camera")
   push(camera - 0.35, camera + 0.25, home, null)
-  clickAt(camera - 0.2, "settings", closeBtn, () => (w.close("settings"), S.sfx("close", 0.5)), 0.45)
+  clickAt(camera - 0.2, "settings", closeBtn, () => w.close("settings"), 0.45)
   // a new Chatter window: Joan, a year ago, saying hello. It goes straight to two.
   at(camera + 0.05, () => {
     w.openMany([{ ws: 2, id: "joan", app: "chatter", kind: "chat", title: "Joan (No. 16)", data: { who: "Joan (No. 16)", when: "Nov 26, 2025", msgs: [{ t: "Hi! Welcome to the street 🙂" }, { t: "Bins are Wednesdays btw" }] } }])
     w.pulse(2)
-    S.sfx("thunk", 0.3)
   })
 
   // ── "I had a camera on my front door, and that's only another window, so I put it on three." ──
   const door = word("front door")
-  const walker = { t0: 0, dur: 5.2, x0: -0.06, x1: 1.06, y: 0.745, h: 0.17 }
+  // the clip's own clock: she steps into the frame half a second in, and walks across in about six
+  const walker = { t0: 0, dur: 6, x0: -0.07, x1: 0.855, y: 0.86, h: 0.33 }
+  const walkClip = { name: "walker", n: 24, fps: 4, t0: 0, end: 2 }
   at(door - 0.25, () => {
-    w.open({ id: "door", ...CAM("door", "st-08", "Front Door", { q: 0.45, seed: 17, life: [{ walker }] }), at: [S.SW * 0.3, S.SH * 0.3, S.SW * 0.3, S.SH * 0.3] })
+    w.open({ id: "door", ...CAM("door", "st-08", "Front Door", { q: 0.45, seed: 17, seq: walkClip }), at: [S.SW * 0.3, S.SH * 0.3, S.SW * 0.3, S.SH * 0.3] })
     feedsAt("11-26-2025", hms(23, 52, 10))
-    S.sfx("thunk", 0.3)
   })
   push(door + 0.0, door + 0.8, () => frameOf("door", 1.35), "door")
   const onThree = word("put it on three")
@@ -425,7 +433,7 @@ export function build(S) {
   sw(s3 + 1.15, 3)
   // she comes into the picture; he finds her, zooms, follows, zooms further, keeps the frame
   const her = s3 + 1.45
-  walker.t0 = her
+  walker.t0 = walkClip.t0 = her - 0.45
   const zf = () => R("door")
   const z1 = her + 0.85
   const z2 = z1 + 1.3
@@ -460,7 +468,6 @@ export function build(S) {
   at(z1 + 0.1, () => w.cursorTo(...onHer(z1 + 0.6), z1 + 0.6))
   at(z1 + 0.7, () => w.cursorTo(...onHer(z2 + 0.4), z2 + 0.4))
   key(save, ["⌘", "S"], () => {
-    S.sfx("shutter", 0.4)
     w.set("door", { data: { snap: { name: "Front Door 2025-12-04 02.14.11", sel: 1, edit: 1 } } })
   })
   type(save + 0.4, nm, (s) => w.set("door", { data: { snap: { name: s, edit: 1 } } }), 5)
@@ -482,10 +489,10 @@ export function build(S) {
   shut(word("Mark is four") - 0.2, "order", 0.45)
 
   // ── "Mark is four. Joan is five. Alan is six." ──
-  const dossier = (p, who, src, crops, note, week) => [
-    CAM(p + "-front", src, who + " — Front", { q: 0.42, seed: 19 + who.length, ir: who === "Mark" ? 1 : 0 }),
-    CAM(p + "-door", src, who + " — Door", { q: 0.55, seed: 23 + who.length, crop: crops[0] }),
-    CAM(p + "-up", src, who + " — Upstairs", { q: 0.6, seed: 29 + who.length, crop: crops[1] }),
+  const dossier = (p, who, src, crops, note, week, seq) => [
+    CAM(p + "-front", src, who + " — Front", { q: 0.42, seed: 19 + who.length, ir: who === "Mark" ? 1 : 0, seq }),
+    CAM(p + "-door", src, who + " — Door", { q: 0.55, seed: 23 + who.length, crop: crops[0], seq }),
+    CAM(p + "-up", src, who + " — Upstairs", { q: 0.6, seed: 29 + who.length, crop: crops[1], seq }),
     { id: p + "-note", app: "jot", kind: "jot", title: who, data: { heading: note[0], edited: "Edited 10:52 PM", list: ["Mark", "Joan", "Alan"], lines: note.slice(1) } },
     { id: p + "-week", app: "daybook", kind: "daybook", title: "Daybook — " + who, data: { week: ["Mon 1", "Tue 2", "Wed 3", "Thu 4", "Fri 5", "Sat 6", "Sun 7"], title: who + ", this week", from: 6, to: 24, events: week } },
   ]
@@ -507,10 +514,10 @@ export function build(S) {
   ]))
   const alan = word("Alan is six")
   sw(alan - 0.05, 6)
-  openMany(alan + 0.12, 6, dossier("a", "Alan", "st-14", [[0.42, 0.5, 0.36, 0.2], [0.42, 0.36, 0.16, 0.16]], ["Alan (No. 14)", "Up 06:10. Curtains 06:12.", "Hedge 6′ 2″. Limit 6′.", "At his window most nights.", "Looks across."], [
+  openMany(alan + 0.12, 6, dossier("a", "Alan", "st-14", [[0.43, 0.44, 0.26, 0.3], [0.43, 0.22, 0.16, 0.22]], ["Alan (No. 14)", "Up 06:10. Curtains 06:12.", "Hedge 6′ 2″. Limit 6′.", "At his window most nights.", "Looks across."], [
     ...[0, 1, 2, 3, 4, 5, 6].map((d) => ({ day: d, at: 23, len: 1, t: "Window", color: "#e9c9c4" })),
     { day: 5, at: 9, len: 2, t: "Hedge", color: "#d9e3cf" },
-  ]))
+  ], { name: "alan", n: 20, fps: 4, t0: alan + 0.12, loop: "pingpong", from: 6 }))
   at(mark + 0.2, () => feedsAt("12-06-2025", hms(22, 52, 30)))
   at(joan + 0.2, () => feedsAt("12-06-2025", hms(22, 52, 31)))
   at(alan + 0.2, () => feedsAt("12-06-2025", hms(22, 52, 33)))
@@ -545,7 +552,10 @@ export function build(S) {
         from = R("album").data.scroll || 0
         goal = to(ag())
       }
-      const k = (1 - Math.exp(-(Math.min(t, t1) - t0) / tau)) / (1 - Math.exp(-(t1 - t0) / tau))
+      // the finger's push takes a few frames to get the page going (c), then it coasts
+      const c = 0.07
+      const e = (x) => x - c * (1 - Math.exp(-x / c))
+      const k = (1 - Math.exp(-e(Math.min(t, t1) - t0) / tau)) / (1 - Math.exp(-e(t1 - t0) / tau))
       w.set("album", { data: { scroll: S.reduced ? (u < 0.5 ? from : goal) : from + (goal - from) * k, bar: 1 } })
     })
   }
@@ -609,7 +619,6 @@ export function build(S) {
     w.setFocus("postbox")
     const d = R("postbox").data
     w.set("postbox", { data: { list: [{ from: "Mark, Joan and Alan", subject: "About the cameras", when: "7:02 PM", unread: 1 }, ...d.list], sel: -1, slide: 0 } })
-    S.sfx("thunk", 0.25)
   })
   span(letter - 0.2, letter + 0.15, (u) => w.set("postbox", { data: { slide: smooth(u) } }))
   clickAt(letter + 0.45, "postbox", (id) => [R(id).x.t + 120, R(id).y.t + BAR_H + 34], () =>
@@ -639,7 +648,7 @@ export function build(S) {
   at(movedJ + 0.5, () => {
     w.clock = "Tue Mar 3  2:20 AM"
     w.set("march", { data: { events: [{ day: 3, t: "Joan → 7", color: "#e9c9c4" }] } })
-    S.sfx("key", 0.3)
+    S.sfx("key", 0.95)
   })
   // "...and I've looked after her cat ever since." Her house, dark; the post; the cat at the door.
   const cat = word("and I've looked")
@@ -647,7 +656,7 @@ export function build(S) {
   push(cat - 0.2, cat + 0.02, home, null)
   sw(cat, 5, "Sat Mar 7  9:30 PM")
   at(cat + 0.01, () => {
-    for (const id of ["j-front", "j-door", "j-up"]) w.set(id, { data: { src: "st-16-cat" } })
+    for (const id of ["j-front", "j-door", "j-up"]) w.set(id, { data: { src: "st-16-cat", seq: { name: "cat", n: 20, fps: 4, t0: cat, loop: "pingpong", from: 6 } } })
     feedsAt("03-07-2026", hms(21, 30, 2), "SAT")
   })
   push(cat + 0.1, cat + 0.8, () => frameOf("j-door", 1.1), "j-door")
@@ -669,14 +678,19 @@ export function build(S) {
   at(movedM + 0.9, () => {
     w.clock = "Thu Jun 11  11:58 PM"
     w.set("june", { data: { events: [{ day: 11, t: "Mark → 7", color: "#e9c9c4" }] } })
-    S.sfx("key", 0.3)
+    S.sfx("key", 0.95)
   })
   // six, tonight: his light on, nobody in
   const still = wordEnd("in June") + 0.6
   shut(still - 0.2, "june", 0.4)
   push(still - 0.2, still, home, null)
-  sw(still, 6, "Fri Nov 20  11:58 PM")
-  at(still + 0.01, () => feedsAt("11-20-2026", hms(23, 58, 4), "FRI"))
+  // from here the switches make no sound at all
+  sw(still, 6, "Fri Nov 20  11:58 PM", true)
+  at(still + 0.01, () => {
+    // his lamp on, and nobody at the window now
+    for (const id of ["a-front", "a-door", "a-up"]) w.set(id, { data: { seq: null } })
+    feedsAt("11-20-2026", hms(23, 58, 4), "FRI")
+  })
   push(still + 0.15, still + 1.0, () => frameOf("a-up", 1.15), "a-up")
   // "Where is Alan now?" "He's on seven, with the other two." Nothing moves.
   at(still + 0.3, () => w.cursorTo(S.SW * 0.9, S.SH * 0.86, still + 0.9))
@@ -688,7 +702,7 @@ export function build(S) {
     w.add({ ws: 7, id: "cellar", app: "vigil", kind: "feed", title: "Cellar", dark: 1, data: { src: "cam-cellar", name: "CELLAR", us: 1, ir: 1, q: 0.3, seed: 37, date: "11-20-2026", clock: hms(23, 58, 9) - w.time, wd: "FRI" } })
   })
   push(one - 0.12, one - 0.06, home, null)
-  sw(one - 0.1, 7)
+  sw(one - 0.1, 7, null, true)
   at(one - 0.08, () => w.showBar())
   at(END, () => S.end())
 

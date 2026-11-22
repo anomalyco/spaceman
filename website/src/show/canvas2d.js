@@ -52,6 +52,8 @@ export function createCanvas2D(canvas) {
         }
         const col = p.col || [1, 1, 1, 1]
         const r = p.r ?? 0
+        // a coloured glow is a GPU-only nicety
+        if (p.shadow && p.col && p.col[2] > 0.3) continue
         if (p.shadow) {
           ctx.globalAlpha = a * 0.35
           ctx.fillStyle = "#000"

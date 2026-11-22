@@ -10,6 +10,9 @@ export class Audio {
     this.bytes = new Map()
     this.muted = false
     this.hidden = false
+    this.paused = false
+    // while a seek replays the film up to the new time, nothing sounds (beds still note their levels)
+    this.quiet = false
     this.manifest = null
     this.beds = new Map() // file -> { gain, h, level }
     this.live = new Set()
@@ -40,7 +43,7 @@ export class Audio {
 
   async load(manifest) {
     this.manifest = manifest
-    const files = new Set(Object.values(manifest.sfx || {}).map((s) => s.file || s))
+    const files = new Set(Object.values(manifest.sfx || {}).flatMap((s) => s.variants || [s.file || s]))
     if (this.tape) files.add(this.tape.file)
     const all = Promise.all([...files].map((f) => this.fetchOne(f)))
     await Promise.race([all, new Promise((r) => setTimeout(r, 2500))])
@@ -69,7 +72,7 @@ export class Audio {
   }
 
   get on() {
-    return !!this.ctx && !this.muted && !this.hidden
+    return !!this.ctx && !this.muted && !this.hidden && !this.quiet
   }
 
   has(file) {
@@ -87,10 +90,30 @@ export class Audio {
     this.sync()
   }
 
+  // a pause freezes the context's clock, so the tape and the picture pick up together
+  setPaused(paused) {
+    this.paused = paused
+    this.sync()
+  }
+
   sync() {
     if (!this.ctx) return
-    if (this.muted || this.hidden) this.ctx.suspend().catch(() => {})
+    if (this.muted || this.hidden || this.paused) this.ctx.suspend().catch(() => {})
     else this.ctx.resume().catch(() => {})
+  }
+
+  // A named effect. One with variants (the key presses) never repeats the last one it played, and
+  // its pick and pitch follow show time, so a replay sounds the same.
+  sfx(name, { t = 0, gain = 1 } = {}) {
+    const s = this.manifest?.sfx?.[name]
+    if (!s?.variants) return this.play(s?.file || s || "sfx-" + name + ".mp3", { t, gain })
+    const n = s.variants.length
+    const h = (Math.sin(t * 12.9898 + 78.233) * 43758.5453) % 1
+    const last = this.lastVariant?.[name] ?? -1
+    let i = Math.floor(Math.abs(h) * n)
+    if (i === last) i = (i + 1 + Math.floor(Math.abs(h * 7) % 1 * (n - 1))) % n
+    ;(this.lastVariant ??= {})[name] = i
+    return this.play(s.variants[i], { t, gain: gain * (0.9 + 0.1 * Math.abs((h * 13) % 1)), rate: 0.97 + 0.06 * Math.abs((h * 31) % 1) })
   }
 
   // t is show time, for the log. offset starts a clip part-way through.
