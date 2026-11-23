@@ -7,7 +7,7 @@
 //! | -------------------------------- | ----------------------------------------------------- | -------------------------- |
 //! | The HUD appears                  | fades in, scales from .96 and rises 6 pt              | .14 / 0                    |
 //! | The HUD leaves                   | the same path back                                    | .11 / 0                    |
-//! | Another workspace                | the marker's leading edge, then its trailing edge     | .13 / 0, .18 / 0           |
+//! | Another workspace                | the marker's leading edge, then its trailing edge     | .16 / 0, .21 / 0           |
 //! |                                  | Layouts: the cells grow and shrink, neighbours slide  | .15 / 0                    |
 //! |                                  | Icons: the groups brighten and dim                    | .14 / 0                    |
 //! | Shown again after hiding         | the marker starts on the workspace you left and       | as above                   |
@@ -53,9 +53,9 @@ const REST_SCALE: f32 = 0.96;
 const DROP: f32 = 6.0;
 /// The marker's leading edge, quicker so it stretches toward where it is going, and its
 /// trailing edge catching up; with nowhere to go, one spring for both.
-const MARKER_LEAD: Spring = Spring::new(0.13, 0.0);
-const MARKER_TRAIL: Spring = Spring::new(0.18, 0.0);
-const MARKER: Spring = Spring::new(0.15, 0.0);
+const MARKER_LEAD: Spring = Spring::new(0.16, 0.0);
+const MARKER_TRAIL: Spring = Spring::new(0.21, 0.0);
+const MARKER: Spring = Spring::new(0.17, 0.0);
 /// The row's own layout: scrolling, and the capsule's width.
 pub const ROW: Spring = Spring::new(0.15, 0.0);
 /// The fade at an edge the row is cut at, and at an edge it fits inside.
