@@ -1,7 +1,7 @@
 # Spaceman
 
 > Spaceman is a macOS tiling window manager for Apple silicon built around stable logical windows.
-> Version 0.3.2, bundle ID `anomaly.spaceman`, signed with Anomaly's Developer ID and notarized.
+> Version 0.3.3, bundle ID `anomaly.spaceman`, signed with Anomaly's Developer ID and notarized.
 > Source, issues and releases: <https://github.com/anomalyco/spaceman>.
 
 Spaceman treats a logical tile slot as product identity rather than tying layout state to a single physical `AXWindow`. When a native tabbed window (such as Ghostty) replaces its physical Accessibility window identity on tab switch, Spaceman keeps the logical slot, split tree weight, workspace, and focus intent intact.

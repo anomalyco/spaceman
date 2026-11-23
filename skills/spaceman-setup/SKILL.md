@@ -5,7 +5,7 @@ description: Install, configure, verify, troubleshoot, or uninstall the Spaceman
 
 # Spaceman Setup
 
-Spaceman is an experimental native macOS tiling window manager for Apple silicon. Version 0.3.2 is
+Spaceman is an experimental native macOS tiling window manager for Apple silicon. Version 0.3.3 is
 signed by Anomaly (`anomaly.spaceman`), notarized, and distributed outside the Mac App Store. The
 preview declares macOS 14.0 as its minimum; compatibility is not yet broadly qualified.
 
