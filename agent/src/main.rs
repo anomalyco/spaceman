@@ -57,6 +57,10 @@ pub struct Ui {
     pub drag: Option<map::Drag>,
     pub menu: Option<Menu>,
     pub running: Vec<apps::Running>,
+    /// Every connected display, as Settings › Workspaces offers them.
+    pub(crate) displays: Vec<panes::workspaces::ConnectedDisplay>,
+    /// When the display list was last read, on Rune's clock.
+    pub(crate) displays_at: Option<f64>,
     /// The last save that failed.
     pub error: Option<String>,
     /// Scenes render fixed data and ignore the live agent and file.
@@ -87,6 +91,8 @@ impl Ui {
             drag: None,
             menu: None,
             running: Vec::new(),
+            displays: Vec::new(),
+            displays_at: None,
             error: None,
             fixture: false,
         };
@@ -113,6 +119,10 @@ impl Ui {
         self.navigated = true;
         self.menu = None;
         self.drag = None;
+        if pane == Pane::Workspaces {
+            // Read the displays before the next frame paints them.
+            self.displays_at = None;
+        }
     }
 
     /// Releases the first-run setup tour's hold on automatic tiling.
@@ -243,11 +253,12 @@ fn setup(ui: &mut Ui, waker: Waker) {
     }
 }
 
-fn poll(ui: &mut Ui, _clock: f64, tx: &mut Tx) -> bool {
+fn poll(ui: &mut Ui, clock: f64, tx: &mut Tx) -> bool {
     if !ui.fixture && !ui.frame_remembered {
         ui.frame_remembered = rune_mac::remember_frame("Spaceman");
     }
     let mut changed = onboarding::poll(ui, tx);
+    changed |= panes::workspaces::poll_displays(ui, clock);
     changed |= ui.activity.poll(
         ui.pane == Pane::Activity && ui.tour.is_none() && ui.hud_preview.is_none(),
         ui.fixture,

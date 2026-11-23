@@ -26,6 +26,7 @@ secondary-display workspaces ships in the notarized preview at
 | Single-process Rune Settings (`Activity`), three-step setup tour, non-activating Workspace HUD (`[settings] hud`) | Preview artifact and source builds |
 | Named workspaces A-Z | Opt-in: enabled by a `route` rule or `[[workspaces]]` entry |
 | Secondary-display workspaces 6-10 | Require a second display; with one display they fall back to `main` |
+| Three or more displays | Assign workspaces in Settings › Workspaces (each display past `secondary` by UUID) or with `[[workspaces]] monitor = "<uuid>"` |
 
 ## Common Prerequisites
 

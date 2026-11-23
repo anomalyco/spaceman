@@ -2,7 +2,7 @@
 
 mod general;
 mod shortcuts;
-mod workspaces;
+pub(crate) mod workspaces;
 
 use rune::{El, Icon};
 use spaceman::app::{UiLaunchAtLogin, UiUpdateStatus};
@@ -119,5 +119,18 @@ pub(crate) const SCENES: &[Scene] = &[
         }
     }),
     ("workspaces", |ui| reset_fixture(ui, Pane::Workspaces)),
+    // A third monitor: workspace 9 assigned to it, its segment in every row's picker.
+    ("workspaces-three-displays", |ui| {
+        reset_fixture(ui, Pane::Workspaces);
+        ui.displays = workspaces::fixture_three();
+        let nine = spaceman::WorkspaceId::new(9).unwrap_or(spaceman::WorkspaceId::SIX);
+        ui.edit(|doc| doc.set_monitor(nine, Some(workspaces::THIRD_FIXTURE_ID)));
+    }),
+    // The third monitor unplugged: its saved assignment keeps its own card.
+    ("workspaces-unplugged", |ui| {
+        reset_fixture(ui, Pane::Workspaces);
+        let nine = spaceman::WorkspaceId::new(9).unwrap_or(spaceman::WorkspaceId::SIX);
+        ui.edit(|doc| doc.set_monitor(nine, Some(workspaces::THIRD_FIXTURE_ID)));
+    }),
     ("shortcuts", |ui| reset_fixture(ui, Pane::Shortcuts)),
 ];

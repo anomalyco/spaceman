@@ -30,7 +30,7 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
         let source_output = source_resolved.output;
         let old_selector = self.ensure_managed_workspace(moved_ws)?;
 
-        let ordered = ordered_displays(&outputs);
+        let ordered = outputs.ordered();
         let source_index = ordered
             .iter()
             .position(|display| display.id == source_display_id)
@@ -46,7 +46,7 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
         if target_display.id == source_display_id {
             return Ok(self.status(0, &outputs));
         }
-        let target_selector = canonical_selector(target_display, &outputs);
+        let target_selector = outputs.selector_for(target_display);
         if !self.scope.manages_selector(&target_selector) {
             return Err(format!(
                 "Display {} is outside the managed display scope",
@@ -450,7 +450,7 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
             .iter()
             .find(|display| display.id == source_display_id)
         {
-            let source_selector = canonical_selector(source_display, outputs);
+            let source_selector = outputs.selector_for(source_display);
             if &source_selector != old_selector
                 && let Some(active) = self.workspaces.active_for(&source_selector)
                 && eligible(active)
@@ -487,34 +487,6 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
             let _: macos::ApplyOutcome =
                 self.park_window(window, state.source_output, state.outputs);
         }
-    }
-}
-
-fn ordered_displays(outputs: &macos::DisplayOutputs) -> Vec<&macos::DisplayOutput> {
-    let mut displays: Vec<_> = outputs.displays().iter().collect();
-    displays.sort_by(|left, right| {
-        (left.frame.x, left.frame.y, left.id.as_str()).cmp(&(
-            right.frame.x,
-            right.frame.y,
-            right.id.as_str(),
-        ))
-    });
-    displays
-}
-
-fn canonical_selector(
-    display: &macos::DisplayOutput,
-    outputs: &macos::DisplayOutputs,
-) -> DisplaySelector {
-    if display.is_main {
-        DisplaySelector::Main
-    } else if outputs
-        .secondary()
-        .is_some_and(|secondary| secondary.id == display.id)
-    {
-        DisplaySelector::Secondary
-    } else {
-        DisplaySelector::Preferred(display.id.clone())
     }
 }
 

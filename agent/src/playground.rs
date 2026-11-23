@@ -71,6 +71,8 @@ pub(crate) fn blank_fixture() -> Ui {
         drag: None,
         menu: None,
         running: Vec::new(),
+        displays: panes::workspaces::fixture_pair(),
+        displays_at: None,
         error: None,
         fixture: true,
     };
@@ -83,6 +85,8 @@ pub(crate) fn reset_fixture(ui: &mut Ui, pane: Pane) {
     ui.pane = pane;
     ui.tour = None;
     ui.hud_preview = None;
+    ui.displays = panes::workspaces::fixture_pair();
+    ui.displays_at = None;
     ui.doc = Doc::parse(include_str!("../fixtures/config.toml"));
     ui.look_up_apps();
     ui.agent = Some(UiAgentSnapshot {
@@ -137,6 +141,8 @@ mod tests {
             "Rules/rules-drag",
             "Rules/rules-add",
             "Workspaces/workspaces",
+            "Workspaces/workspaces-three-displays",
+            "Workspaces/workspaces-unplugged",
             "Shortcuts/shortcuts",
             "Activity/activity",
             "HUD/hud-switch",

@@ -48,7 +48,11 @@ Where a new window goes (first match wins)                 // ws.adoption
 
 Displays                                                    // ws.displays
 ├── Default: 1-5 main, 6-10 secondary; [[workspaces]] monitor = main | secondary | UUID | name
-├── Preferred display unplugged -> its workspaces fall back to main, return on reconnect
+├── Settings › Workspaces offers every connected display: Main, Secondary, then each further
+│   display as its own picker segment and section card; picking one writes its UUID, the same
+│   selector Option+Shift+Tab persists, and a saved UUID renders back as that display's name
+├── Preferred display unplugged -> its workspaces fall back to main, return on reconnect; its
+│   saved assignment keeps a Disconnected displays card with the picker on Not connected
 └── Display added or removed -> hidden windows re-parked against the new displays
 
 Workspace HUD ([settings] hud, on by default)               // ws.hud
@@ -130,6 +134,15 @@ on the same letter.
   `re_parking_a_grown_window_hides_all_of_it`,
   `switching_away_parks_a_window_that_overflows_the_display_edge`,
   `laying_out_a_parked_window_retires_its_stale_recovery_frame`.
+- Unit, `agent/src/panes/workspaces.rs`: the display picker with two displays (Main | Secondary
+  kept, section captions name the real displays), three displays (two identically named externals
+  as `Studio Display 1`/`Studio Display 2`, picking the third writes its UUID, a saved UUID renders
+  as its label, a saved UUID for Main resolves to Main), one display (Secondary still offered), and
+  an unplugged display (a extra `Not connected` segment, its `config.toml` entry kept). Section
+  cards and segments themselves are seen in the Playground (`Workspaces/workspaces-three-displays`,
+  `Workspaces/workspaces-unplugged`), not by a test.
+- Unit, `src/macos/displays.rs`: `selector_for` (`main`/`secondary`/UUID) and `ordered` (left to
+  right), shared with `Option+Shift+Tab`.
 - Unit (FakeBackend), `src/app/tests/switching.rs`:
   `status_menu_lists_each_displays_visible_and_occupied_workspaces` (menu rows per display, checks,
   app order). The AppKit rows themselves (icons, tooltip of app names) are not covered.

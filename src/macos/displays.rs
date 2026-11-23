@@ -77,6 +77,36 @@ impl DisplayOutputs {
         self.resolve_exact(selector).unwrap_or_else(|| self.main())
     }
 
+    /// The canonical `config.toml` selector for `display`: `main`, `secondary` (the first
+    /// non-main display), or the display's own ID for every display past those two.
+    #[must_use]
+    pub fn selector_for(&self, display: &DisplayOutput) -> DisplaySelector {
+        if display.is_main {
+            DisplaySelector::Main
+        } else if self
+            .secondary()
+            .is_some_and(|secondary| secondary.id == display.id)
+        {
+            DisplaySelector::Secondary
+        } else {
+            DisplaySelector::Preferred(display.id.clone())
+        }
+    }
+
+    /// Every display left to right, then top to bottom, ties broken by ID.
+    #[must_use]
+    pub fn ordered(&self) -> Vec<&DisplayOutput> {
+        let mut displays: Vec<_> = self.displays.iter().collect();
+        displays.sort_by(|left, right| {
+            (left.frame.x, left.frame.y, left.id.as_str()).cmp(&(
+                right.frame.x,
+                right.frame.y,
+                right.id.as_str(),
+            ))
+        });
+        displays
+    }
+
     pub fn frames(&self) -> impl Iterator<Item = Rect> + '_ {
         self.displays.iter().map(|display| display.frame)
     }
@@ -166,5 +196,55 @@ fn union_rect(left: Rect, right: Rect) -> Rect {
         y,
         width: (left.x + left.width).max(right.x + right.width) - x,
         height: (left.y + left.height).max(right.y + right.height) - y,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn display(id: &str, name: &str, x: i32, is_main: bool) -> DisplayOutput {
+        DisplayOutput {
+            id: id.into(),
+            name: name.into(),
+            frame: Rect {
+                x,
+                y: 0,
+                width: 100,
+                height: 100,
+            },
+            is_main,
+        }
+    }
+
+    fn three_displays() -> DisplayOutputs {
+        DisplayOutputs::new(vec![
+            display("built-in", "Built-in Retina Display", 0, true),
+            display("studio-a", "Studio Display", 100, false),
+            display("studio-b", "Studio Display", -100, false),
+        ])
+        .unwrap()
+    }
+
+    #[test]
+    fn selector_for_names_main_secondary_and_every_further_display_by_id() {
+        let outputs = three_displays();
+        let selectors: Vec<String> = outputs
+            .displays()
+            .iter()
+            .map(|display| outputs.selector_for(display).as_str().to_owned())
+            .collect();
+        assert_eq!(selectors, ["main", "secondary", "studio-b"]);
+    }
+
+    #[test]
+    fn ordered_lists_displays_left_to_right() {
+        let outputs = three_displays();
+        let ids: Vec<&str> = outputs
+            .ordered()
+            .iter()
+            .map(|display| display.id.as_str())
+            .collect();
+        assert_eq!(ids, ["studio-b", "built-in", "studio-a"]);
     }
 }
