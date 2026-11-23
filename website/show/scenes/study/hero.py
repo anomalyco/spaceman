@@ -5,7 +5,8 @@
 #          test                 one low still of every candidate camera, asleep and awake
 #          at=0,4,6.8           stills at those film times (seconds)
 #          frames=0-221         the plate's frames (30 fps from film t=0), PNG, plus corners.json
-#          [ev=0 street=1 landing=1 lamp=1 screen=1 blur=1]
+#          close=binders,wall,drill  close-ups of the room's details, the screen asleep (not in the film)
+#          [ev=0 street=1 landing=1 lamp=1 sky=1 spill=1 fill=1 screen=1 blur=1]
 import os, sys, math, json
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, os.path.join(HERE, ".."))
@@ -46,6 +47,9 @@ M, L, scr = built["M"], built["lights"], built["screen"]
 L["street"].data.energy *= num("street", 1)
 L["landing"].data.energy *= num("landing", 1)
 L["lamp"].data.energy *= num("lamp", 1)
+L["sky"].data.energy *= num("sky", 1)
+L["spill"].data.energy *= num("spill", 1)
+L["fill"].data.energy *= num("fill", 1)
 SCREEN = 1.4 * num("screen", 1)
 
 # ── cameras ─────────────────────────────────────────────────────────────
@@ -211,6 +215,24 @@ if "at" in KV:
         place(t)
         still(os.path.join(OUT, "%s-t%05.2f.png" % (CAM, t)), W, H, SPP)
         print("CORNERS", t, json.dumps(corners()))
+
+# close-ups of the details (pos, look-at, vfov, f-stop), for checking them; not in the film
+CLOSE = {
+    "binders": ((0.72, 2.05, 1.32), (0.80, 2.88, 1.18), 38, 4.0),
+    "wall": ((2.35, 1.75, 1.45), (3.12, 3.2, 1.45), 46, 5.6),
+    "drill": ((2.35, 2.35, 1.05), (2.64, 3.08, 0.92), 30, 4.0),
+}
+if "close" in KV:
+    S.set_screen(M, 0)
+    for name in KV["close"].split(","):
+        p, t, v, f = CLOSE[name]
+        p, t = Vector(p), Vector(t)
+        cam.location = p
+        cam.rotation_euler = (t - p).to_track_quat("-Z", "Y").to_euler()
+        cd.lens = 12.0 / math.tan(math.radians(v) / 2)
+        cd.dof.focus_distance = (t - p).length
+        cd.dof.aperture_fstop = f
+        still(os.path.join(OUT, "close-%s.png" % name), W, H, SPP)
 
 if "frames" in KV:
     a, b = [int(x) for x in KV["frames"].split("-")]

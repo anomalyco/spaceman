@@ -13,6 +13,7 @@ SETS = {
     "oak_veneer_01": ("diff", "rough", "disp"),
     "poly_wool_herringbone": ("diff", "rough", "disp"),
     "knitted_fleece": ("diff", "rough", "disp"),
+    "rough_linen": ("diff", "rough", "disp"),
 }
 KEYS = {"diff": "Diffuse", "rough": "Rough", "disp": "Displacement"}
 

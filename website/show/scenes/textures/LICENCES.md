@@ -13,10 +13,11 @@ use; the images themselves aren't committed. No image-model textures.
 | Oak Veneer 01 | [oak_veneer_01](https://polyhaven.com/a/oak_veneer_01) | Jenelle van Heerden | 1.83 m | diff, rough, disp | desk top (stained to walnut), corkboard frame |
 | Poly Wool Herringbone | [poly_wool_herringbone](https://polyhaven.com/a/poly_wool_herringbone) | colormass, Rico Cilliers | 0.27 m | diff, rough, disp | rug |
 | Knitted Fleece | [knitted_fleece](https://polyhaven.com/a/knitted_fleece) | colormass, Rico Cilliers | 0.27 m | diff, rough, disp | chair upholstery |
+| Rough Linen | [rough_linen](https://polyhaven.com/a/rough_linen) | colormass, Rico Cilliers | 0.27 m | diff, rough, disp | binder and hardback cloth (its weave under each cover colour) |
 
 Everything else (paint, metal, plastic, glass, card, paper) is a procedural Blender material.
 
 The paper on the desk and the corkboard (`study/clues/*.png`: the legal pad, the sticky note, the index
-cards) is drawn by `study/clues.py` with Pillow. The handwriting is
+cards, the binder labels, the hardback spines and the framed elevation) is drawn by `study/clues.py` with Pillow. The handwriting is
 [Caveat](https://github.com/googlefonts/caveat) (SIL Open Font License 1.1), fetched to a local cache at
 build time. Only the rendered PNGs are committed, not the font.

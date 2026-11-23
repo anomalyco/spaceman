@@ -37,7 +37,7 @@ def materials():
     M["oakEdge"] = pbr("oakEdge", tx("oak_veneer_01"), 1.83, tint=(0.56, 0.36, 0.25), gain=0.4, rough=(0.3, 0.5), bump=0.05, coat=0.35, coat_rough=0.16, rot=pi / 2)
     M["oakFrame"] = pbr("oakFrame", tx("oak_veneer_01"), 1.83, tint=(0.56, 0.36, 0.25), gain=0.5, rough=(0.35, 0.5), bump=0.05)
     M["rug"] = pbr("rug", tx("poly_wool_herringbone"), 0.27, tint=(0.62, 0.62, 0.64), rough=(0.85, 1.0), bump=0.6)
-    M["fabric"] = pbr("fabric", tx("knitted_fleece"), 0.27, tint=(0.50, 0.52, 0.56), gain=0.85, rough=(0.85, 1.0), bump=0.5)
+    M["fabric"] = pbr("fabric", tx("knitted_fleece"), 0.27, tint=(0.50, 0.52, 0.56), gain=1.0, rough=(0.85, 1.0), bump=0.5)
     # gloss-painted joinery (skirting, frames, the radiator) and satin-painted shelving
     M["paint"] = noisy(mat("paint", rough=0.22), (0.78, 0.77, 0.74), (0.81, 0.80, 0.77), scale=30, rough=(0.18, 0.28), bump=0.01)
     M["shelf"] = noisy(mat("shelf", rough=0.45), (0.74, 0.73, 0.70), (0.77, 0.76, 0.73), scale=12, rough=(0.4, 0.5))
@@ -49,13 +49,18 @@ def materials():
     bsdf(M["glossblack"]).inputs["Coat Roughness"].default_value = 0.02
     M["keys"] = mat("keys", (0.80, 0.80, 0.79), 0.42)
     M["white"] = mat("whiteplastic", (0.82, 0.82, 0.81), 0.3)
-    M["binder"] = noisy(mat("binder", rough=0.5), (0.10, 0.13, 0.17), (0.115, 0.145, 0.185), scale=60, rough=(0.42, 0.55))
-    M["binderOld"] = noisy(mat("binderOld", rough=0.6), (0.13, 0.155, 0.18), (0.145, 0.17, 0.195), scale=60, rough=(0.55, 0.65))
-    M["label"] = mat("label", (0.74, 0.73, 0.70), 0.6)
-    M["binderB"] = noisy(mat("binderB", rough=0.45), (0.05, 0.05, 0.055), (0.06, 0.06, 0.065), scale=60, rough=(0.38, 0.5))
-    M["binderC"] = noisy(mat("binderC", rough=0.55), (0.16, 0.06, 0.05), (0.18, 0.07, 0.06), scale=60, rough=(0.5, 0.6))
+    # the binders' and hardbacks' book cloth: one linen scan, recoloured to each cover
+    for k, c in CLOTH.items():
+        M["cloth_" + k] = cloth("cloth_" + k, c)
+    M["binderC"] = M["cloth_oxblood"]
+    for k in range(20):
+        M["label%02d" % k] = imgmat("label%02d" % k, os.path.join(CLUES, "label%02d.png" % k), 0.7, val=0.85)
+    for k in range(2):
+        M["spine%d" % k] = imgmat("spine%d" % k, os.path.join(CLUES, "spine%d.png" % k), 0.6)
+    M["sleeve"] = sleeve()
+    M["nickel"] = noisy(mat("nickel", rough=0.3, metal=1.0), (0.60, 0.58, 0.54), (0.64, 0.62, 0.58), scale=1500, detail=2, rough=(0.26, 0.36), mscale=(1, 1, 30))
+    M["hole"] = mat("hole", (0.006, 0.006, 0.007), 0.9)
     M["ink"] = mat("ink", (0.03, 0.03, 0.05), 0.5)
-    M["labelOld"] = mat("labelOld", (0.70, 0.66, 0.55), 0.6)
     M["card"] = noisy(mat("card", rough=0.85), (0.40, 0.33, 0.24), (0.45, 0.37, 0.27), scale=80, detail=8, rough=(0.8, 0.9), bump=0.05)
     M["cardLid"] = noisy(mat("cardLid", rough=0.85), (0.37, 0.30, 0.22), (0.42, 0.35, 0.25), scale=80, detail=8, rough=(0.8, 0.9), bump=0.05)
     M["notebook"] = mat("notebook", (0.05, 0.08, 0.065), 0.55)
@@ -72,15 +77,18 @@ def materials():
     M["brass"] = mat("brass", (0.75, 0.56, 0.30), 0.3, metal=1.0)
     M["cable"] = mat("cable", (0.75, 0.75, 0.74), 0.4)
     M["cableBlack"] = mat("cableBlack", (0.02, 0.02, 0.02), 0.45)
-    M["frame"] = mat("frame", (0.02, 0.018, 0.016), 0.4)
-    M["mount"] = mat("mount", (0.80, 0.78, 0.72), 0.85)
-    M["map"] = contour_map()
+    M["frame"] = noisy(mat("frame", rough=0.4, metal=0.7), (0.035, 0.033, 0.031), (0.042, 0.04, 0.038), scale=800, detail=2, rough=(0.34, 0.44))
+    M["mount"] = noisy(mat("mount", rough=0.9), (0.80, 0.79, 0.75), (0.83, 0.82, 0.78), scale=500, detail=4, rough=(0.85, 0.95), bump=0.03)
+    M["elevation"] = imgmat("elevation", os.path.join(CLUES, "elevation.png"), 0.85, val=0.92)
     M["led"] = mat("led", (0, 0, 0), 0.3, emit=(1.0, 0.98, 0.95), strength=60.0)
     M["matte"] = noisy(mat("matte", rough=0.62), (0.014, 0.014, 0.015), (0.02, 0.02, 0.021), scale=300, detail=3, rough=(0.55, 0.7))
     M["bulb"] = mat("bulb", (0, 0, 0), 0.3, emit=(1.0, 0.80, 0.55), strength=40.0)
     M["ruler"] = noisy(mat("ruler", rough=0.3, metal=1.0), (0.62, 0.63, 0.64), (0.66, 0.67, 0.68), scale=2000, detail=2, rough=(0.25, 0.35))
-    M["drill"] = noisy(mat("drill", rough=0.42), (0.72, 0.50, 0.04), (0.76, 0.54, 0.05), scale=200, detail=3, rough=(0.38, 0.48))
-    M["rubber"] = mat("rubber", (0.02, 0.02, 0.022), 0.75)
+    # the drill's housing: a slightly worn, satin yellow plastic, and a soft-touch grey overmould
+    M["drill"] = noisy(mat("drill", rough=0.42), (0.55, 0.38, 0.035), (0.60, 0.42, 0.04), scale=220, detail=4, rough=(0.34, 0.46), bump=0.04)
+    bsdf(M["drill"]).inputs["Coat Weight"].default_value = 0.25
+    bsdf(M["drill"]).inputs["Coat Roughness"].default_value = 0.3
+    M["rubber"] = noisy(mat("rubber", rough=0.75), (0.028, 0.028, 0.03), (0.034, 0.034, 0.036), scale=900, detail=3, rough=(0.62, 0.78), bump=0.08)
     M["chrome"] = mat("chrome", (0.8, 0.8, 0.82), 0.12, metal=1.0)
     M["tin"] = noisy(mat("tin", rough=0.35), (0.25, 0.12, 0.36), (0.28, 0.14, 0.40), scale=40, rough=(0.3, 0.4))
     M["tinEnd"] = mat("tinEnd", (0.75, 0.75, 0.77), 0.25, metal=1.0)
@@ -159,43 +167,69 @@ def glass():
     return g
 
 
-def contour_map():
-    """A contour print: pale paper, brown contour lines, a blue lake. Procedural."""
-    m = mat("map", (0.8, 0.78, 0.7), 0.8)
+def cloth(name, colour, tile=0.2):
+    """Book cloth: the linen scan's weave (its brightness, roughness and height) under one cover colour."""
+    maps = textures.ensure("rough_linen")
+    m = mat(name, colour, 0.7)
     mp = node(m, "ShaderNodeMapping")
-    mp.inputs["Scale"].default_value = (6, 6, 6)
+    mp.inputs["Scale"].default_value = (1 / tile, 1 / tile, 1 / tile)
     link(m, texcoord(m, "Object"), mp.inputs["Vector"])
-    n = node(m, "ShaderNodeTexNoise")
-    n.inputs["Scale"].default_value = 1.2
-    n.inputs["Detail"].default_value = 3
-    link(m, mp.outputs["Vector"], n.inputs["Vector"])
-    s = node(m, "ShaderNodeMath")
-    s.operation = "MULTIPLY"
-    s.inputs[1].default_value = 22
-    link(m, n.outputs["Fac"], s.inputs[0])
-    fr = node(m, "ShaderNodeMath")
-    fr.operation = "FRACT"
-    link(m, s.outputs[0], fr.inputs[0])
-    ln = node(m, "ShaderNodeMath")
-    ln.operation = "LESS_THAN"
-    ln.inputs[1].default_value = 0.14
-    link(m, fr.outputs[0], ln.inputs[0])
-    lake = node(m, "ShaderNodeMath")
-    lake.operation = "LESS_THAN"
-    lake.inputs[1].default_value = 0.36
-    link(m, n.outputs["Fac"], lake.inputs[0])
-    c1 = node(m, "ShaderNodeMix")
-    c1.data_type = "RGBA"
-    c1.inputs[6].default_value = (0.80, 0.77, 0.68, 1)
-    c1.inputs[7].default_value = (0.30, 0.17, 0.08, 1)
-    link(m, ln.outputs[0], c1.inputs[0])
-    c2 = node(m, "ShaderNodeMix")
-    c2.data_type = "RGBA"
-    c2.inputs[7].default_value = (0.30, 0.45, 0.58, 1)
-    link(m, c1.outputs[2], c2.inputs[6])
-    link(m, lake.outputs[0], c2.inputs[0])
-    link(m, c2.outputs[2], bsdf(m).inputs["Base Color"])
+
+    def img(path, colour_space):
+        t = node(m, "ShaderNodeTexImage")
+        t.image = D.images.load(path, check_existing=True)
+        t.image.colorspace_settings.name = colour_space
+        t.projection = "BOX"
+        t.projection_blend = 0.2
+        link(m, mp.outputs["Vector"], t.inputs["Vector"])
+        return t
+
+    bw = node(m, "ShaderNodeRGBToBW")
+    link(m, img(maps["diff"], "sRGB").outputs["Color"], bw.inputs["Color"])
+    lift = node(m, "ShaderNodeMapRange")
+    lift.inputs["From Min"].default_value, lift.inputs["From Max"].default_value = 0.25, 0.55  # the scan's linear range
+    lift.inputs["To Min"].default_value, lift.inputs["To Max"].default_value = 0.7, 1.25
+    link(m, bw.outputs["Val"], lift.inputs["Value"])
+    sc_ = node(m, "ShaderNodeVectorMath")
+    sc_.operation = "SCALE"
+    sc_.inputs[0].default_value = colour
+    link(m, lift.outputs["Result"], sc_.inputs["Scale"])
+    link(m, sc_.outputs[0], bsdf(m).inputs["Base Color"])
+    r = node(m, "ShaderNodeMapRange")
+    r.inputs["To Min"].default_value, r.inputs["To Max"].default_value = 0.62, 0.9
+    link(m, img(maps["rough"], "Non-Color").outputs["Color"], r.inputs["Value"])
+    link(m, r.outputs["Result"], bsdf(m).inputs["Roughness"])
+    b = node(m, "ShaderNodeBump")
+    b.inputs["Strength"].default_value = 0.35
+    b.inputs["Distance"].default_value = 0.0015
+    link(m, img(maps["disp"], "Non-Color").outputs["Color"], b.inputs["Height"])
+    link(m, b.outputs["Normal"], bsdf(m).inputs["Normal"])
     return m
+
+
+# cover colours: charcoal, navy and forest linen, kraft board, slate, oxblood
+CLOTH = {"charcoal": (0.042, 0.043, 0.046), "navy": (0.022, 0.034, 0.07), "forest": (0.026, 0.052, 0.038),
+         "kraft": (0.30, 0.215, 0.13), "slate": (0.10, 0.108, 0.115), "oxblood": (0.11, 0.035, 0.03)}
+
+
+def sleeve():
+    """The clear PVC pocket over a spine label: a faint, slightly rough gloss and nothing else."""
+    g = D.materials.new("Sleeve")
+    g.use_nodes = True
+    nt = g.node_tree
+    nt.nodes.remove(nt.nodes["Principled BSDF"])
+    out = nt.nodes["Material Output"]
+    mix = nt.nodes.new("ShaderNodeMixShader")
+    fr = nt.nodes.new("ShaderNodeFresnel")
+    fr.inputs["IOR"].default_value = 1.54
+    tr = nt.nodes.new("ShaderNodeBsdfTransparent")
+    gl = nt.nodes.new("ShaderNodeBsdfGlossy")
+    gl.inputs["Roughness"].default_value = 0.12
+    nt.links.new(fr.outputs[0], mix.inputs[0])
+    nt.links.new(tr.outputs[0], mix.inputs[1])
+    nt.links.new(gl.outputs[0], mix.inputs[2])
+    nt.links.new(mix.outputs[0], out.inputs["Surface"])
+    return g
 
 
 def screen_material():
@@ -359,24 +393,7 @@ def bookcase(M, R):
     for k, hz in enumerate([0.08, 0.45, 0.82, 1.19, 1.56, 1.89]):
         R.append(box("bcS%d" % k, (sx, sy, hz), (0.78, 0.3, 0.022), P, 0.003))
     rng = random.Random(14)
-    for row, hz in enumerate([0.831, 1.201]):
-        x = sx - 0.36 + 0.004
-        for i in range(11):
-            wdt = rng.choice((0.058, 0.058, 0.052, 0.066))
-            if x + wdt > sx + 0.37:
-                break
-            xc = x + wdt / 2
-            dy = rng.choice((0.0, 0.0, 0.0, -0.012, -0.022, 0.006))
-            mb = M["binderOld"] if row == 0 else M["binder"]
-            mb = {0: mb, 1: mb, 2: mb, 3: M["binderB"], 4: M["binderC"] if row == 1 else mb}[rng.randrange(5)]
-            R.append(slab("binder%d_%d" % (row, i), (xc, sy + 0.005 + dy, hz + 0.011 + 0.155), wdt - 0.003, 0.31, 0.28, 0.008, mb, axis="Y"))
-            R.append(box("label%d_%d" % (row, i), (xc + rng.uniform(-0.002, 0.002), sy - 0.1355 + dy, hz + 0.011 + 0.215 + rng.uniform(-0.006, 0.006)),
-                         (0.034, 0.002, 0.075), M["labelOld"] if row == 0 else M["label"], 0.0, rot=(0, rad(rng.uniform(-2.5, 2.5)), 0)))
-            # the label's handwriting: two or three short strokes of ink
-            for k in range(rng.choice((1, 2, 2, 3))):
-                R.append(box("ink%d_%d_%d" % (row, i, k), (xc + rng.uniform(-0.004, 0.004), sy - 0.137 + dy, hz + 0.011 + 0.235 - k * 0.016), (rng.uniform(0.012, 0.026), 0.0005, 0.0035), M["ink"], 0))
-            R.append(cyl("ring%d_%d" % (row, i), (xc, sy - 0.1355 + dy, hz + 0.011 + 0.075), 0.011, 0.003, M["black"], 20, rot=(pi / 2, 0, 0)))
-            x += wdt + 0.008
+    binders(M, R, sx, sy, rng)
     for i in range(3):
         R.append(box("arch%d" % i, (sx - 0.25 + i * 0.25, sy, 1.571 + 0.12), (0.24, 0.28, 0.24), M["card"], 0.004))
         R.append(box("archLid%d" % i, (sx - 0.25 + i * 0.25, sy, 1.571 + 0.235), (0.245, 0.285, 0.03), M["cardLid"], 0.003))
@@ -404,13 +421,99 @@ def bookcase(M, R):
         R.append(box("bookLean%d" % k, c0 + rm @ Vector(o), sz, m_, 0.0008, rot=lean))
 
 
+# the two shelves of files: what he keeps on the house and the street. Listed from the right-hand end,
+# the end the door camera sees: (cover, spine width, height, label from clues.py)
+SHELVES = [
+    [("charcoal", 0.075, 0.318, 5), ("charcoal", 0.05, 0.318, 4), ("navy", 0.075, 0.318, 6), ("kraft", 0.062, 0.296, 7),
+     ("charcoal", 0.05, 0.318, 14), ("forest", 0.075, 0.318, 15), ("slate", 0.05, 0.31, 16), ("charcoal", 0.05, 0.318, 17),
+     ("navy", 0.05, 0.31, 18), ("charcoal", 0.075, 0.318, 19)],
+    [("navy", 0.075, 0.318, 0), ("navy", 0.05, 0.318, 1), ("forest", 0.05, 0.31, 2), ("kraft", 0.062, 0.296, 3),
+     ("charcoal", 0.05, 0.318, 8), ("charcoal", 0.075, 0.318, 9), ("slate", 0.05, 0.31, 10)],
+]
+
+
+def binders(M, R, sx, sy, rng):
+    """Lever-arch files on two shelves: book-cloth covers, a printed label in a clear pocket near the top,
+    a nickel-rimmed finger hole near the bottom. Packed upright, each a hair off square. On the upper
+    shelf two cloth hardbacks stand at the end, the last leaning on the bookcase's side."""
+    from mathutils import Matrix
+    xr = sx + 0.4 - 0.011  # the right-hand side's inner face
+    for row, hz in enumerate([0.831, 1.201]):
+        z0 = hz + 0.011
+        x = xr - 0.003
+        if row == 1:
+            lean = rad(8)
+            t1, h1 = 0.042, 0.268
+            x1 = xr - h1 * math.tan(lean) - 0.001 - t1
+            hardback(M, R, x1, sy, z0, t1, h1, 0.2, 1, lean)
+            t0, h0 = 0.036, 0.252
+            hardback(M, R, x1 - 0.007 - t0, sy, z0, t0, h0, 0.185, 0, 0.0)
+            x = x1 - 0.007 - t0 - 0.012
+        for i, (c, wdt, h, lab) in enumerate(SHELVES[row]):
+            d = rng.uniform(0.28, 0.29)
+            dy = rng.choice((0.0, 0.0, -0.004, -0.009, 0.003))
+            fy = sy - 0.15 + 0.006 + dy  # the spine's face
+            xc = x - wdt / 2
+            n0 = len(R)
+            R.append(slab("binder%d_%d" % (row, i), (xc, fy + d / 2, z0 + h / 2), wdt - 0.002, h, d, 0.006, M["cloth_" + c], axis="Y", bevel=0.0015))
+            # the label: 42 × 120 mm on a 75 mm spine, scaled down on a narrower one
+            lw = min(0.042, wdt - 0.016)
+            lh = lw * 120 / 42
+            lz = z0 + h - 0.03 - lh / 2
+            R.append(decal("label%d_%d" % (row, i), (xc, fy - 0.0004, lz), lw, lh, M["label%02d" % lab], rot=(pi / 2, 0, 0)))
+            R.append(box("pocket%d_%d" % (row, i), (xc, fy - 0.0009, lz), (lw + 0.006, 0.0005, lh + 0.008), M["sleeve"], 0.0))
+            R[-1].visible_shadow = False
+            # the finger hole: a dark recess in a pressed nickel grommet
+            hzc = z0 + 0.072
+            R.append(cyl("hole%d_%d" % (row, i), (xc, fy - 0.0003, hzc), 0.0112, 0.0008, M["hole"], 32, rot=(pi / 2, 0, 0)))
+            bpy.ops.mesh.primitive_torus_add(major_radius=0.0128, minor_radius=0.0021, major_segments=40, minor_segments=10, location=(xc, fy - 0.0006, hzc), rotation=(pi / 2, 0, 0))
+            g = bpy.context.active_object
+            g.name = "grommet%d_%d" % (row, i)
+            g.scale = (1.0, 1.0, 0.45)  # pressed flat against the spine
+            g.data.materials.append(M["nickel"])
+            for f in g.data.polygons:
+                f.use_smooth = True
+            R.append(g)
+            # a hair off square, about its foot
+            a = rad(rng.uniform(-0.5, 0.5))
+            T = Matrix.Translation((xc, fy, z0)) @ Matrix.Rotation(a, 4, "Y") @ Matrix.Translation((-xc, -fy, -z0))
+            for o in R[n0:]:
+                o.matrix_basis = T @ o.matrix_basis
+            x -= wdt + rng.uniform(0.0015, 0.004)
+            if x - 0.05 < sx - 0.389:
+                break
+
+
+def hardback(M, R, x0, sy, z0, t, h, d, k, lean):
+    """A cloth hardback, spine out: two boards, the spine (its foil title is a picture), the page block set
+    between them. x0 is its left foot; lean tips it to the right about its right foot."""
+    from mathutils import Matrix
+    cl = M["cloth_" + ("forest" if k == 0 else "oxblood")]
+    n0 = len(R)
+    fy = sy - 0.15 + 0.012
+    cx, cy, cz = x0 + t / 2, fy + d / 2, z0 + h / 2
+    R.append(box("hbBoardL%d" % k, (x0 + 0.00125, cy, cz), (0.0025, d, h), cl, 0.0006))
+    R.append(box("hbBoardR%d" % k, (x0 + t - 0.00125, cy, cz), (0.0025, d, h), cl, 0.0006))
+    R.append(slab("hbSpine%d" % k, (cx, fy + 0.0015, cz), t, h, 0.003, 0.004, cl, axis="Y"))
+    R.append(decal("hbTitle%d" % k, (cx, fy - 0.0002, cz), t - 0.002, h - 0.004, M["spine%d" % k], rot=(pi / 2, 0, 0)))
+    R.append(box("hbPages%d" % k, (cx, cy + 0.002, cz), (t - 0.005, d - 0.006, h - 0.007), M["paper"], 0.0008))
+    if lean:
+        T = Matrix.Translation((x0 + t, 0, z0)) @ Matrix.Rotation(lean, 4, "Y") @ Matrix.Translation((-x0 - t, 0, -z0))
+        for o in R[n0:]:
+            o.matrix_basis = T @ o.matrix_basis
+
+
 def wall_things(M, R):
-    # the contour print, framed, right of the desk
+    # an architect's elevation of the terrace, in a slim black aluminium frame hung flat to the wall
     fx, fz = 3.08, 1.62
-    R.append(box("frame", (fx, RD - 0.012, fz), (0.40, 0.022, 0.31), M["frame"], 0.003))
-    R.append(box("mount", (fx, RD - 0.0235, fz), (0.36, 0.002, 0.27), M["mount"], 0))
-    R.append(box("print", (fx, RD - 0.025, fz), (0.29, 0.002, 0.2), M["map"], 0))
-    R.append(box("frameGlass", (fx, RD - 0.028, fz), (0.37, 0.002, 0.28), M["glass"], 0))
+    fw, fh, fd, rim = 0.40, 0.30, 0.016, 0.011
+    for n, c, sz in (("frameT", (fx, RD - fd / 2, fz + fh / 2 - rim / 2), (fw, fd, rim)), ("frameB", (fx, RD - fd / 2, fz - fh / 2 + rim / 2), (fw, fd, rim)),
+                     ("frameL", (fx - fw / 2 + rim / 2, RD - fd / 2, fz), (rim, fd, fh - 2 * rim)), ("frameR", (fx + fw / 2 - rim / 2, RD - fd / 2, fz), (rim, fd, fh - 2 * rim))):
+        R.append(box(n, c, sz, M["frame"], 0.0012))
+    R.append(box("frameBack", (fx, RD - 0.002, fz), (fw - 0.004, 0.003, fh - 0.004), M["mount"], 0))
+    R.append(box("mount", (fx, RD - 0.0045, fz), (fw - 2 * rim, 0.002, fh - 2 * rim), M["mount"], 0))
+    R.append(decal("print", (fx, RD - 0.0057, fz + 0.006), 0.26, 0.182, M["elevation"], rot=(pi / 2, 0, 0)))
+    R.append(box("frameGlass", (fx, RD - fd + 0.003, fz), (fw - 2 * rim + 0.004, 0.002, fh - 2 * rim + 0.004), M["glass"], 0))
     R[-1].visible_shadow = False
     # a double socket under the desk, two plugs in
     R.append(box("socket", (2.55, RD - 0.006, 0.3), (0.146, 0.012, 0.086), M["white"], 0.002))
@@ -569,21 +672,34 @@ def legal_pad(M, N, px, py, top):
 
 def drill(M, N, x, y, top):
     """Mark's cordless drill, stood on its battery in the far corner, the chuck square to the wall; the
-    sticky note on the battery says whose it is."""
-    # battery and foot
-    N.append(slab("drillBatt", (x, y, top + 0.033), 0.085, 0.078, 0.066, 0.01, M["rubber"], axis="Z", bevel=0.004))
-    N.append(slab("drillFoot", (x, y, top + 0.071), 0.07, 0.07, 0.012, 0.01, M["drill"], axis="Z", bevel=0.003))
-    # the grip, rising and leaning back a little
-    N.append(sbox("drillGrip", (x + 0.012, y, top + 0.135), (0.036, 0.046, 0.12), M["rubber"], 0.012, 4, rot=(0, rad(-10), 0)))
-    # the body: motor housing along x, the chuck pointing at -x
-    body = cyl("drillBody", (x - 0.015, y, top + 0.215), 0.034, 0.16, M["drill"], 32, rot=(0, pi / 2, 0), bevel=0.008)
-    N.append(body)
-    N.append(cyl("drillCollar", (x - 0.1, y, top + 0.215), 0.026, 0.02, M["rubber"], 32, rot=(0, pi / 2, 0), bevel=0.003))
-    N.append(cyl("drillChuck", (x - 0.128, y, top + 0.215), 0.021, 0.038, M["rubber"], 24, rot=(0, pi / 2, 0), r2=0.016, bevel=0.002))
-    N.append(cyl("drillBit", (x - 0.168, y, top + 0.215), 0.0035, 0.05, M["chrome"], 12, rot=(0, pi / 2, 0)))
-    N.append(box("drillTrigger", (x - 0.008, y, top + 0.17), (0.012, 0.014, 0.024), M["rubber"], 0.002))
+    sticky note on the battery says whose it is. Soft, moulded forms: the housing in satin yellow, a grey
+    overmould on the grip, a ribbed chuck."""
+    # the battery pack and the foot it clips into
+    N.append(sbox("drillBatt", (x, y, top + 0.033), (0.088, 0.08, 0.064), M["rubber"], 0.012, 3, sub=1))
+    N.append(sbox("drillFoot", (x - 0.002, y, top + 0.071), (0.074, 0.07, 0.016), M["drill"], 0.007, 3, sub=1))
+    # the grip, rising and leaning back a little, waisted where the hand goes
+    g = sbox("drillGrip", (x + 0.012, y, top + 0.138), (0.038, 0.044, 0.124), M["rubber"], 0.016, 6, rot=(0, rad(-10), 0), sub=2)
+    w = g.modifiers.new("waist", "SIMPLE_DEFORM")
+    w.deform_method = "TAPER"
+    w.deform_axis = "Z"
+    w.factor = -0.12
+    g.modifiers.move(len(g.modifiers) - 1, 0)
+    N.append(g)
+    # the motor housing along x, its back rounded off, the chuck pointing at -x
+    N.append(cyl("drillBody", (x - 0.012, y, top + 0.217), 0.035, 0.15, M["drill"], 48, rot=(0, pi / 2, 0), bevel=0.014))
+    N.append(sbox("drillNeck", (x + 0.006, y, top + 0.19), (0.05, 0.05, 0.04), M["drill"], 0.014, 4, sub=1))
+    for k in range(5):  # the vents
+        N.append(box("drillVent", (x + 0.035 - k * 0.007, y - 0.0345, top + 0.225), (0.0028, 0.003, 0.022), M["rubber"], 0.0008))
+    N.append(cyl("drillCollar", (x - 0.093, y, top + 0.217), 0.029, 0.018, M["rubber"], 48, rot=(0, pi / 2, 0), bevel=0.004))
+    N.append(cyl("drillChuck", (x - 0.121, y, top + 0.217), 0.022, 0.04, M["rubber"], 48, rot=(0, pi / 2, 0), r2=0.017, bevel=0.003))
+    for k in range(12):  # the chuck's grip ribs
+        a = k * pi / 6
+        N.append(box("drillRib", (x - 0.12, y + math.cos(a) * 0.0205, top + 0.217 + math.sin(a) * 0.0205), (0.034, 0.0022, 0.0022), M["rubber"], 0.0007, rot=(a, 0, 0)))
+    N.append(cyl("drillJaw", (x - 0.145, y, top + 0.217), 0.0075, 0.01, M["chrome"], 24, rot=(0, pi / 2, 0), r2=0.005))
+    N.append(cyl("drillBit", (x - 0.172, y, top + 0.217), 0.0033, 0.048, M["chrome"], 16, rot=(0, pi / 2, 0)))
+    N.append(sbox("drillTrigger", (x - 0.012, y, top + 0.165), (0.012, 0.016, 0.026), M["rubber"], 0.005, 3, rot=(0, rad(-10), 0)))
     # the note, on the battery's face toward the room
-    N.append(decal("sticky", (x, y - 0.0395, top + 0.036), 0.05, 0.05, M["sticky"], rot=(pi / 2, 0, 0)))
+    N.append(decal("sticky", (x, y - 0.0406, top + 0.036), 0.05, 0.05, M["sticky"], rot=(pi / 2, 0, 0)))
 
 
 def corkboard(M, R):
@@ -683,24 +799,39 @@ def panel_corners(s):
 # ── light ───────────────────────────────────────────────────────────────
 def lights():
     L = {}
-    # a streetlight down the road to the south-east: through the blinds in bands across the desk wall
-    L["street"] = light("street", "SPOT", (RW + 5.2, WY0 - 5.8, 3.2), STREET_W, (0.78, 0.86, 1.0), 0.06, target=(RW, (WY0 + WY1) / 2 + 0.25, 1.75), spot=11, blend=0.9)
-    L["street"].data.shadow_soft_size = 0.11
+    # a streetlight down the road to the south-east, its lamp a big diffuser eight metres off (about 11°
+    # across), so the blinds and glazing bars throw a soft, feathered glow on the desk wall, not a stencil
+    L["street"] = light("street", "SPOT", (RW + 5.2, WY0 - 5.8, 3.2), STREET_W, (0.56, 0.68, 1.0), 0.75, target=(RW, (WY0 + WY1) / 2 + 0.25, 1.75), spot=20, blend=1.0)
+    # the sky past the slats, a dim cool panel inside the window: a rim on the chair, a little fill
+    L["sky"] = light("sky", "AREA", (RW - 0.04, (WY0 + WY1) / 2, (WZ0 + WZ1) / 2), SKY_W, (0.50, 0.62, 1.0), (1.2, 1.0), target=(RW - 2, (WY0 + WY1) / 2, 1.0))
+    L["sky"].visible_camera = False
+    L["sky"].visible_glossy = False
+    # the lamp's light bounced off the desk and the pale walls, from behind the door: a low warm fill so the
+    # chair's fabric reads, never enough to cast a shadow of its own
+    L["fill"] = light("fill", "AREA", (1.5, 0.75, 1.7), FILL_W, (1.0, 0.80, 0.60), (1.8, 1.4), target=(CHAIR[0], CHAIR[1], 0.7))
+    L["fill"].visible_camera = False
+    L["fill"].visible_glossy = False
     # the landing light, warm, through the open door
     lx = (DX0 + DX1) / 2 + 0.3
     L["landing"] = light("landing", "AREA", (lx, -1.0, RH - 0.05), LANDING_W, (1.0, 0.70, 0.45), (0.3, 0.3), target=(lx, -1.0, 0))
     # the night past the slats: a faint glow
     # the last of the dusk past the slats: a deep, cold blue
-    sky = mat("Night", (0, 0, 0), 1.0, emit=(0.045, 0.075, 0.17), strength=0.42)
+    sky = mat("Night", (0, 0, 0), 1.0, emit=(0.035, 0.06, 0.15), strength=0.34)
     L["night"] = box("Night", (RW + 6, (WY0 + WY1) / 2, 2.0), (0.1, 16, 10), sky, 0)
     L["bg"] = world((0.002, 0.0025, 0.004), 1.0)
-    # the desk lamp, a warm pool on the pad
-    L["lamp"] = light("lamp", "SPOT", LAMP["at"], LAMP_W, (1.0, 0.70, 0.40), 0.03, target=LAMP_AIM, spot=64, blend=0.6)
+    # the desk lamp, the room's key: a warm pool on the pad that spills across the desk, and the shade's
+    # glow up its back and onto the wall
+    L["lamp"] = light("lamp", "SPOT", LAMP["at"], LAMP_W, (1.0, 0.70, 0.40), 0.03, target=LAMP_AIM, spot=78, blend=0.75)
+    L["spill"] = light("spill", "POINT", tuple(Vector(LAMP["at"]) + Vector((0, 0.05, 0.06))), SPILL_W, (1.0, 0.66, 0.36), 0.04)
+    L["spill"].visible_camera = False
     return L
 
 
-STREET_W = 9000
-LAMP_W = 10
+STREET_W = 5200
+SKY_W = 18
+FILL_W = 7
+LAMP_W = 15
+SPILL_W = 1.2
 LANDING_W = 140
 
 

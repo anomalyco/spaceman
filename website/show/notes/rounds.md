@@ -567,3 +567,24 @@ Tape K unchanged (take k7, 105.8 s). Commits `a3eb9eb` (controls, opening, clips
 3. The og:image is `og/og.html` shot by `show/tools/stills.ts` (the study behind, a crisp frame of the
    tiled desktop, the icon and the name). `show/tools/serve-site.ts` serves `dist/` through `worker.ts`
    for `ship-site-check --as https://anoma.ly/spaceman/`.
+
+## Draft 23 (Kit's polish round, and Dax at the window), Nov 22
+
+1. The header's mark is the app icon (`icon-192.png`, rounded, a hairline ring and a soft shadow) and
+   "Spaceman" in the page's own type; the hand-drawn `S P Λ C E M Λ N` wordmark is gone. The footer uses
+   the same icon.
+2. The binders: lever-arch files in book cloth (Poly Haven's `rough_linen` under charcoal, navy, forest,
+   slate and kraft), each with a printed label in a clear pocket (`clues.py`, IBM Plex Sans Condensed on
+   off-white paper, numbered, set along the spine) and a nickel-rimmed finger hole. Widths, heights and
+   depths vary; each is a hair off square. Two cloth hardbacks stand at the end of the upper shelf, the
+   second leaning on the side.
+3. The light: the streetlight is a big soft source (0.75 m, a 20° cone, fully feathered, deeper blue,
+   about half the power), so the blinds throw a glow on the wall, not a stencil. The lamp is the key (15 W,
+   a wider pool) with a small warm spill; a dim cool panel in the window rims the chair and a low warm
+   bounce from the door side lets its fabric read.
+4. The print is an architect's elevation of the terrace (`clues.py`) in a slim black aluminium frame
+   hung flat to the wall. The drill is softer moulded forms: a waisted grip, a rounded body, a ribbed
+   chuck, satin yellow over a soft-touch overmould.
+5. Dax at the window is Dax Raad, with his blessing (Kit, Nov 22): the last photo of the Hedge album
+   (`n-alan.jpg`, `photos.md`) and his CCTV clip on six (`seq-alan.jpg`, `feeds.md`).
+6. `hero.py close=binders,wall,drill` renders close-ups of the details for checking.

@@ -26,7 +26,7 @@ puts the same photo next to itself, the row above or two rows up (`library.js as
 | `e-zoom.jpg` | blurry digital zoom on the front door at dusk |
 | `n-rain.jpg` | night mode from across the street in light rain, all windows dark |
 | `n-light.jpg` | grainy 3x night shot up at the house, one upstairs window lit, nobody in it |
-| `n-alan.jpg` | the last photo: a man at his lit window facing the lens, looking straight back; cropped to a telephoto frame, softened like a digital zoom, blacks crushed, heavy grain |
+| `n-alan.jpg` | the last photo: Dax at his lit window facing the lens, looking straight back; cropped to a telephoto frame, softened like a digital zoom, blacks crushed, heavy grain. Since draft 23 it is Dax Raad, with his blessing: an image-model edit (minimax-h3-image) of the old photo with two reference photos of him, then halved and scaled back up, desaturated a little, levelled and grained in ImageMagick |
 
 Rejected: a second take of the last photo (a19) that read as a doorway and looked posed. Retired
 with draft 18: the summer hedge mornings (`h-*`), the drill, the label, the plastic in the boot,

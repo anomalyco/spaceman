@@ -21,8 +21,8 @@ function Header() {
       {/* keeps the links legible over the lit window in the still */}
       <div aria-hidden="true" className="pointer-events-none absolute inset-x-0 top-0 -z-10 h-[170%] bg-[linear-gradient(to_bottom,rgb(8_8_10/0.72),rgb(8_8_10/0.4)_45%,rgb(8_8_10/0.12)_75%,transparent)]" />
       <a href="./" aria-label="Spaceman" className="flex items-center gap-3 rounded-md focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-white/60">
-        <img src="mark.svg" alt="" width={28} height={28} className="size-7" />
-        <Wordmark />
+        <img src="icon-192.png" alt="" width={28} height={28} className="size-7 rounded-[23%] shadow-[0_2px_8px_rgb(0_0_0/0.45)] ring-1 ring-white/15" />
+        <span className="text-[15px] font-semibold tracking-[-0.015em] text-[#f5f5f7] [text-shadow:0_1px_8px_rgb(0_0_0/0.5)]">Spaceman</span>
       </a>
       <nav aria-label="Site" className="flex items-center gap-6 text-[13px] text-[#dfe1e5] [text-shadow:0_1px_8px_rgb(0_0_0/0.6)]">
         <a href="#features" className="hidden transition-colors hover:text-white sm:inline">Features</a>
@@ -141,7 +141,7 @@ function Footer() {
   return (
     <footer className="mx-auto flex max-w-[1080px] flex-col gap-5 border-t border-white/[0.07] px-5 pt-8 pb-12 text-[13px] text-[#6b6e76] sm:flex-row sm:items-center sm:justify-between sm:px-10">
       <p className="flex items-center gap-2.5">
-        <img src="mark.svg" alt="" width={20} height={20} className="size-5" />
+        <img src="icon-192.png" alt="" width={20} height={20} className="size-5 rounded-[23%] ring-1 ring-white/10" />
         <span className="text-[#c4c6cc]">Spaceman {RELEASE_VERSION}</span>
         <span aria-hidden="true">·</span>
         <span>
@@ -415,62 +415,5 @@ function AccessStill() {
         ))}
       </div>
     </div>
-  );
-}
-
-/**
- * Hand-drawn monoline wordmark: thin geometric caps with a crossbar-less A.
- * Glyphs live on an 80-unit cap height; strokes stay unfilled monolines.
- */
-const GLYPHS: Record<string, { width: number; d: string }> = {
-  S: {
-    width: 52,
-    d: "M47 13 C44 4 36 0 26 0 C13 0 5 6 5 16 C5 26 12 31 26 34 C41 37 49 43 49 55 C49 70 40 80 26 80 C14 80 6 75 3 67",
-  },
-  P: {
-    width: 55,
-    d: "M7 80 L7 0 L31 0 C44 0 51 8 51 21 C51 34 44 42 31 42 L7 42",
-  },
-  A: { width: 60, d: "M4 80 L30 0 L56 80" },
-  C: {
-    width: 54,
-    d: "M49 14 C45 4 37 0 27 0 C11 0 5 13 5 40 C5 67 11 80 27 80 C37 80 45 76 49 66",
-  },
-  E: { width: 49, d: "M45 0 L9 0 L9 80 L45 80 M9 40 L35 40" },
-  M: { width: 60, d: "M6 80 L6 0 L30 44 L54 0 L54 80" },
-  N: { width: 56, d: "M7 80 L7 0 L49 80 L49 0" },
-};
-
-const WORDMARK_GAP = 24;
-
-function Wordmark() {
-  let x = 0;
-  const placed = "SPACEMAN".split("").map((letter, index) => {
-    const glyph = GLYPHS[letter];
-    const entry = { key: `${letter}-${index}`, glyph, x };
-    x += glyph.width + WORDMARK_GAP;
-    return entry;
-  });
-  const total = x - WORDMARK_GAP;
-
-  return (
-    <svg
-      viewBox={`-4 -5 ${total + 8} 90`}
-      className="h-6"
-      aria-hidden="true"
-    >
-      {placed.map((entry) => (
-        <path
-          key={entry.key}
-          d={entry.glyph.d}
-          transform={`translate(${entry.x},0)`}
-          fill="none"
-          stroke="rgba(255,255,255,0.92)"
-          strokeWidth="5"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-        />
-      ))}
-    </svg>
   );
 }
