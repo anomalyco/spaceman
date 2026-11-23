@@ -25,6 +25,7 @@ const LAYOUT_SHORTCUTS: &[(&str, &[&[&str]])] = &[
     ("Resize tile", &[&["⌥", "-"], &["⌥", "="]]),
     ("Toggle floating window", &[&["⌥", "⇧", "Space"]]),
     ("Fullscreen layout", &[&["⌥", "⇧", "F"]]),
+    ("Scrolling Strip (Labs)", &[&["⌥", "⇧", "S"]]),
 ];
 
 pub fn pane(p: Paint) -> El {

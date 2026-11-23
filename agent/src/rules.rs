@@ -7,6 +7,7 @@ use std::path::PathBuf;
 use spaceman::{
     WorkspaceId,
     config::{HudStyle, UpdateChannel},
+    labs::LabFeature,
 };
 use toml_edit::{ArrayOfTables, DocumentMut, Item, Table, value};
 
@@ -193,24 +194,43 @@ impl Doc {
         );
     }
 
+    /// Whether a Labs feature is switched on in `[labs]` (every one defaults to off).
+    pub fn lab(&self, feature: LabFeature) -> bool {
+        self.doc
+            .get("labs")
+            .and_then(Item::as_table_like)
+            .and_then(|table| table.get(feature.id()))
+            .and_then(Item::as_bool)
+            .unwrap_or(false)
+    }
+
+    /// Switches a Labs feature; off removes its key, and `[labs]` once it is empty.
+    pub fn set_lab(&mut self, feature: LabFeature, enabled: bool) {
+        self.set_key("labs", feature.id(), enabled.then(|| value(true)));
+    }
+
     /// Sets `key` in `[settings]`, or removes it (and an emptied table) for `None`, the default.
     fn set_setting(&mut self, key: &str, item: Option<Item>) {
+        self.set_key("settings", key, item);
+    }
+
+    /// Sets `key` in table `name`, or removes it (and an emptied table) for `None`.
+    fn set_key(&mut self, name: &str, key: &str, item: Option<Item>) {
         let Some(item) = item else {
-            let empty =
-                if let Some(table) = self.doc.get_mut("settings").and_then(Item::as_table_mut) {
-                    table.remove(key);
-                    table.is_empty()
-                } else {
-                    false
-                };
+            let empty = if let Some(table) = self.doc.get_mut(name).and_then(Item::as_table_mut) {
+                table.remove(key);
+                table.is_empty()
+            } else {
+                false
+            };
             if empty {
-                self.doc.remove("settings");
+                self.doc.remove(name);
             }
             return;
         };
         let entry = self
             .doc
-            .entry("settings")
+            .entry(name)
             .or_insert_with(|| Item::Table(Table::new()));
         if !entry.is_table() {
             *entry = Item::Table(Table::new());

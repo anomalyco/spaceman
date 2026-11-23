@@ -61,7 +61,13 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
         }
         let windows: Vec<_> = visible
             .iter()
-            .flat_map(|resolved| self.workspaces.windows(resolved.workspace))
+            .flat_map(|resolved| {
+                let hidden = self.strip_hidden_windows(resolved.workspace, resolved.output);
+                self.workspaces
+                    .windows(resolved.workspace)
+                    .into_iter()
+                    .filter(move |window| !hidden.contains(window))
+            })
             .collect();
         for window in windows {
             if cancelled.load(Ordering::Acquire) {
@@ -177,6 +183,7 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
             focused.as_ref(),
             server_frames,
         );
+        self.follow_strip_focus(&visible, focused.as_ref().filter(|_| focused_is_frontmost));
         self.restore_visible(&visible, cancelled, &mut failed);
         self.park_inactive(&outputs, &visible, server_frames, cancelled, &mut failed);
         if cancelled.load(Ordering::Acquire) {
@@ -209,6 +216,9 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
                     close_recheck: &mut close_recheck,
                 },
             )?;
+            if self.uses_strip(resolved.workspace) {
+                failed += self.park_strip_columns(resolved.workspace, &outputs);
+            }
         }
         let mut attempted_focus_restore = HashSet::new();
         for resolved in &visible {
@@ -494,6 +504,7 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
                 }
             }
         }
+        self.observe_parked_strip_columns(workspace, &mut scoped_observation, server_frames);
         self.guard_omitted_windows(workspace, output, &mut scoped_observation, onscreen_frames);
         let apps_with_window_server_evidence = self.apps_with_window_server_evidence(
             workspace,
@@ -584,6 +595,7 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
             .collect();
         if inserted_here {
             self.exit_fullscreen_if_split(workspace);
+            self.focus_inserted_strip_column(workspace, &reconciliation.decisions);
         }
         for target in &routed_targets {
             self.exit_fullscreen_if_split(*target);
@@ -608,6 +620,7 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
             engine.record_placement_target(placement.slot, placement.frame);
         }
         self.apply_fullscreen_layout(workspace, &mut placements, output);
+        self.apply_strip_layout(workspace, &mut placements, output);
         if !scoped_observation.mouse_down {
             for placement in &placements {
                 let Some(window) = placement.window.as_ref() else {

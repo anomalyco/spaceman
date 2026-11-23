@@ -31,6 +31,9 @@ impl MainThreadAgent {
                     .and_then(|debug| {
                         serde_json::to_string(debug).map_err(|error| error.to_string())
                     }),
+                ControlCommand::Queue(WorkerAction::ToggleStrip) if !self.labs.scrolling_strip => {
+                    Err(crate::labs::LabFeature::ScrollingStrip.off_message())
+                }
                 ControlCommand::Queue(ref action) if self.automatic => self.queue_action(
                     Action::Worker(action.clone()),
                     &action.queued_acknowledgement(),

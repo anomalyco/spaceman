@@ -43,6 +43,7 @@ fn actions() -> Vec<(WorkerAction, DirectAction)> {
             r.toggle_fullscreen_layout(o, c)
         }),
         (WorkerAction::ToggleFloat, |r, o, c| r.toggle_float(o, c)),
+        (WorkerAction::ToggleStrip, |r, o, c| r.toggle_strip(o, c)),
     ]
 }
 
@@ -217,6 +218,7 @@ fn control_acknowledgements_name_each_queued_action() {
             "balance queued",
             "fullscreen layout toggle queued",
             "float toggle queued",
+            "scrolling strip toggle queued",
         ]
     );
 }

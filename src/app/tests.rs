@@ -14,6 +14,7 @@ mod reconciliation;
 mod reliability;
 mod rules;
 mod startup;
+mod strip;
 mod switching;
 mod tear_regressions;
 use crate::{BindingState, Slot, SlotId};

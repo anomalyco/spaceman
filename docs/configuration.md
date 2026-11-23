@@ -25,7 +25,7 @@ The complete example is [config.example.toml](../config.example.toml).
 ## Current Schema
 
 The parser rejects unknown fields. The root must contain `version = 1` and may contain an optional
-`[settings]` table plus repeated `[[rules]]` and `[[workspaces]]` tables.
+`[settings]` table, an optional `[labs]` table, and repeated `[[rules]]` and `[[workspaces]]` tables.
 
 ```toml
 version = 1
@@ -34,6 +34,9 @@ version = 1
 hud = true                            # optional (default: true); non-activating Workspace HUD
 hud_style = "icons"                   # optional (default: "icons"); or "layouts"
 update_channel = "stable"             # optional (default: "stable"); or "dev", a build of every merge
+
+[labs]                                # optional; experimental features, each off by default
+scrolling_strip = false               # Scrolling Strip layout, toggled per workspace with Option+Shift+S
 
 [[rules]]
 bundle_id = "com.example.Application" # optional exact match
@@ -74,6 +77,10 @@ During the startup recovery window, an unmatched window of an application that h
 in the session may return to a remembered workspace; see
 [Remembered Placements](#remembered-placements). Matching `route` and `ignore` rules always win over
 memory.
+
+`[labs]` holds one switch per experimental feature; Settings › Labs writes it, and an all-off
+table is left out of the file. With every switch off Spaceman behaves exactly as without Labs. See
+[Scrolling Strip](features/scrolling-strip.md).
 
 Title matching occurs only in memory. Titles are not serialized into persisted state, snapshots,
 `ctl debug`, or the HUD.
@@ -140,7 +147,8 @@ normal recovery data.
 ## Applying Changes
 
 Edits saved in Spaceman Settings or in an external editor take effect automatically: rule changes,
-workspace display assignments, `settings.hud`, and `settings.hud_style` reload without restarting;
+workspace display assignments, `settings.hud`, `settings.hud_style`, and `[labs]` (including the
+`Option+Shift+S` shortcut) reload without restarting;
 `settings.update_channel` applies at the next update check. Global shortcuts for a
 newly added named workspace letter (`Option+A` ... `Option+Z`) register on the next app start:
 

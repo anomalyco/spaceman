@@ -23,6 +23,8 @@ pub(super) struct Probe {
     pub(super) config_stamp: Option<SystemTime>,
     /// The HUD setting read for `config_stamp`, when that config loaded.
     pub(super) hud: Option<bool>,
+    /// The `[labs]` switches read for `config_stamp`, when that config loaded.
+    pub(super) labs: Option<crate::labs::LabsConfig>,
 }
 
 /// The probe thread's results, and a way to ask it for a fresh login status.
@@ -39,10 +41,26 @@ impl Prober {
     }
 }
 
+/// The polled settings from one `config.toml` load.
+#[derive(Clone, Copy, Debug, PartialEq)]
+struct ConfigReading {
+    hud: bool,
+    labs: crate::labs::LabsConfig,
+}
+
+impl ConfigReading {
+    fn load() -> Option<Self> {
+        Config::load().ok().map(|config| Self {
+            hud: config.hud(),
+            labs: config.labs(),
+        })
+    }
+}
+
 /// What the probe thread last read.
 #[derive(Default)]
 struct ProbeState {
-    config: Option<(Option<SystemTime>, Option<bool>)>,
+    config: Option<(Option<SystemTime>, Option<ConfigReading>)>,
     login: Option<(Instant, Result<login_item::Status, String>)>,
 }
 
@@ -54,14 +72,14 @@ impl ProbeState {
         now: Instant,
         forced: bool,
         config_stamp: Option<SystemTime>,
-        load_hud: impl FnOnce() -> Option<bool>,
+        load_config: impl FnOnce() -> Option<ConfigReading>,
         login_status: impl FnOnce() -> Result<login_item::Status, String>,
     ) -> Option<Probe> {
-        let (config_changed, hud) = match self.config {
-            Some((stamp, hud)) if stamp == config_stamp => (false, hud),
-            _ => (true, load_hud()),
+        let (config_changed, reading) = match self.config {
+            Some((stamp, reading)) if stamp == config_stamp => (false, reading),
+            _ => (true, load_config()),
         };
-        self.config = Some((config_stamp, hud));
+        self.config = Some((config_stamp, reading));
         let login_due = forced
             || self.login.as_ref().is_none_or(|(read_at, _)| {
                 now.saturating_duration_since(*read_at) >= LOGIN_STATUS_TTL
@@ -78,7 +96,8 @@ impl ProbeState {
         (config_changed || launch_at_login.is_some()).then_some(Probe {
             launch_at_login,
             config_stamp,
-            hud,
+            hud: reading.map(|reading| reading.hud),
+            labs: reading.map(|reading| reading.labs),
         })
     }
 }
@@ -98,7 +117,7 @@ pub(super) fn spawn(interval: Duration) -> Prober {
                     Instant::now(),
                     forced,
                     crate::config::modified(),
-                    || Config::load().ok().map(|config| config.hud()),
+                    ConfigReading::load,
                     login_item::status,
                 );
                 if let Some(probe) = probe
@@ -128,6 +147,13 @@ mod tests {
 
     use super::*;
 
+    fn reading(hud: bool) -> Option<ConfigReading> {
+        Some(ConfigReading {
+            hud,
+            labs: crate::labs::LabsConfig::default(),
+        })
+    }
+
     fn next(
         state: &mut ProbeState,
         now: Instant,
@@ -139,7 +165,7 @@ mod tests {
             now,
             forced,
             None,
-            || Some(true),
+            || reading(true),
             || {
                 reads.set(reads.get() + 1);
                 Ok(status)
@@ -210,7 +236,7 @@ mod tests {
             start,
             false,
             stamp,
-            || Some(false),
+            || reading(false),
             || unreachable!("login status is still fresh"),
         );
         let probe = probe.expect("config changed");

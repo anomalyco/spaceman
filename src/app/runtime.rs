@@ -39,6 +39,7 @@ struct DebugDisplay {
     workspace: WorkspaceId,
     axis: crate::Axis,
     fullscreen_layout: bool,
+    strip_layout: bool,
     layout: Vec<crate::Rect>,
 }
 
@@ -221,6 +222,9 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
         ) {
             self.pending_focus = None;
         }
+        if let Some(result) = self.strip_action(&action, &outputs, cancelled) {
+            return result;
+        }
         match action {
             WorkerAction::Retile => self.cycle(outputs, cancelled),
             WorkerAction::SwitchWorkspace(workspace) => self.switch(workspace, outputs, cancelled),
@@ -247,6 +251,7 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
                 self.toggle_fullscreen_layout(outputs, cancelled)
             }
             WorkerAction::ToggleFloat => self.toggle_float(outputs, cancelled),
+            WorkerAction::ToggleStrip => self.toggle_strip(outputs, cancelled),
             WorkerAction::MarkWrong => {
                 self.mark_wrong();
                 Ok(self.status(0, &outputs))
@@ -477,15 +482,7 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
     ) -> Vec<NavigationTile> {
         let mut tiles = Vec::new();
         for resolved in visible {
-            let mut placements = self
-                .workspaces
-                .engine(resolved.workspace)
-                .placements(&Settings::for_output(resolved.output));
-            if self.workspaces.uses_fullscreen_layout(resolved.workspace) {
-                for placement in &mut placements {
-                    placement.frame = resolved.output;
-                }
-            }
+            let placements = self.shown_placements(resolved);
             tiles.extend(placements.into_iter().filter_map(|placement| {
                 placement.window.map(|window| NavigationTile {
                     workspace: resolved.workspace,
@@ -542,6 +539,7 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
                         fullscreen_layout: self
                             .workspaces
                             .uses_fullscreen_layout(resolved.workspace),
+                        strip_layout: self.uses_strip(resolved.workspace),
                         layout: self.preview_layout(resolved.workspace, HUD_PREVIEW_RECT),
                     })
                 })
@@ -593,6 +591,7 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
         engine.fit_minimums(output, &self.minimum_sizes);
         let mut placements = engine.placements(&settings);
         self.apply_fullscreen_layout(workspace, &mut placements, output);
+        self.apply_strip_layout(workspace, &mut placements, output);
         let attempts = &mut self.apply_attempts[workspace.index()];
         for placement in &placements {
             if let Some(window) = placement.window.as_ref() {
@@ -727,6 +726,9 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
     }
 
     fn preview_layout(&self, workspace: WorkspaceId, output: crate::Rect) -> Vec<crate::Rect> {
+        if let Some(strip) = self.strip_layout(workspace, output) {
+            return strip.visible.into_iter().map(|(_, frame)| frame).collect();
+        }
         let mut layout = self.workspaces.engine(workspace).preview(output);
         if self.workspaces.uses_fullscreen_layout(workspace) {
             layout.fill(output);

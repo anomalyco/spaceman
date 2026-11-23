@@ -49,7 +49,14 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
         let switch_started = Instant::now();
         let mut outgoing = self.workspaces.windows(previous);
         self.order_back_to_front(&mut outgoing, |window| window.window_id);
-        let incoming = self.workspaces.windows(workspace);
+        // Strip columns outside the viewport stay parked; only what will show is revealed.
+        let hidden = self.strip_hidden_windows(workspace, output);
+        let incoming: Vec<_> = self
+            .workspaces
+            .windows(workspace)
+            .into_iter()
+            .filter(|window| !hidden.contains(window))
+            .collect();
         log_event!(
             "switch: workspace {} -> {} (outgoing {}, incoming {})",
             previous,
@@ -527,7 +534,11 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
         }
         let mut failed = 0;
         if !is_floating && self.is_visible(source, &outputs) {
-            let layout = self.layout_workspace(source, source_output, cancelled);
+            let layout = if self.uses_strip(source) {
+                self.layout_strip_workspace(source, &outputs, cancelled)
+            } else {
+                self.layout_workspace(source, source_output, cancelled)
+            };
             failed += layout.failed;
         }
         if target_is_active {
@@ -539,7 +550,13 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
             {
                 failed += 1;
             }
-            if !is_floating {
+            if !is_floating && self.uses_strip(target) {
+                // The moved window becomes the strip's active column.
+                self.workspaces.remember_focus(target, &window);
+                failed += self
+                    .layout_strip_workspace(target, &outputs, cancelled)
+                    .failed;
+            } else if !is_floating {
                 let layout = self.layout_workspace(target, target_output, cancelled);
                 failed += layout.failed;
             }

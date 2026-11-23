@@ -77,6 +77,7 @@ pub(super) struct AppLoopInit {
     pub(super) events: macos::WindowEventMonitor,
     pub(super) hotkey_workspaces: Vec<WorkspaceId>,
     pub(super) hud: bool,
+    pub(super) labs: crate::labs::LabsConfig,
     pub(super) trusted: bool,
     /// A first-run setup tour is open and holds automatic tiling until it ends.
     pub(super) setup_tour_open: bool,
@@ -95,6 +96,8 @@ pub struct MainThreadAgent {
     scope: ManagementScope,
     events: macos::WindowEventMonitor,
     hotkey_workspaces: Vec<WorkspaceId>,
+    /// The `[labs]` switches as last read; Labs shortcuts register only while on.
+    labs: crate::labs::LabsConfig,
     controls: Receiver<ControlRequest>,
     _control_server: control::Server,
     bridge: UiBridge,
@@ -150,7 +153,7 @@ impl MainThreadAgent {
     ) -> Self {
         let trusted = init.trusted;
         let (hotkeys, hotkey_error) = if trusted {
-            match HotkeyPlan::current(&init.hotkey_workspaces)
+            match HotkeyPlan::current(&init.hotkey_workspaces, init.labs)
                 .and_then(|plan| Hotkeys::install(init.actions_sender.clone(), plan))
             {
                 Ok(hotkeys) => {
@@ -189,6 +192,7 @@ impl MainThreadAgent {
             scope: init.scope,
             events: init.events,
             hotkey_workspaces: init.hotkey_workspaces,
+            labs: init.labs,
             controls: init.controls,
             _control_server: init.control_server,
             bridge: init.bridge,
@@ -492,6 +496,12 @@ impl MainThreadAgent {
                     if let Some(hud) = probe.hud {
                         self.hud = hud;
                         status_item::set_hud(hud);
+                    }
+                    if let Some(labs) = probe.labs
+                        && labs != self.labs
+                    {
+                        self.labs = labs;
+                        self.replan_hotkeys("labs changed");
                     }
                 }
             }

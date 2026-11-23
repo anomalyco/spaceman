@@ -21,6 +21,7 @@ fails after the old registrations are released, it pauses and reports `Hotkeys u
 | `Option+-` / `Option+=` | Shrink/grow the focused tile by 50 pixels at its immediate split |
 | `Option+Shift+F` | Toggle the workspace-wide Fullscreen Layout without entering native fullscreen |
 | `Option+Shift+Space` | Float the focused window above the tiles, or tile it again |
+| `Option+Shift+S` | Toggle the Scrolling Strip on the active workspace (Labs; registered only while `[labs] scrolling_strip` is on) |
 | Three-finger swipe left/right | Next/previous workspace on the display under the pointer |
 
 A three-finger horizontal swipe steps through the workspaces that the display's menu section lists
@@ -52,6 +53,18 @@ restarts. `Option+/` exits Fullscreen Layout, toggles the preserved split axis, 
 the resulting normal layout. Keyboard resize, balance, and tile reordering require leaving Fullscreen
 Layout first. Pointer dragging and resizing are ignored while the mode is active. Floating windows are
 not expanded. Removing or moving away the workspace's final tiled window exits Fullscreen Layout.
+
+Scrolling Strip (a Lab, off by default; turn it on in Settings › Labs) lays a workspace's tiles out
+as one horizontal row of wide columns. The focused column takes its width (66% by default, 50%, or
+100%) and its neighbor the rest, so the display is always filled edge to edge; columns outside the
+viewport are parked off-screen exactly like an inactive workspace's windows, and pause, quit, and
+restart restore them. On a strip, `Option+H`/`Option+L` step along the strip (focusing a column that
+is already on screen never moves the viewport; past either end they continue to the adjacent
+display), `Option+Shift+H`/`Option+Shift+L` move the focused column, `Option+-`/`Option+=` step its
+width through 50% · 66% · 100% (columns you have not sized follow the last width you picked), and
+Option-backtick cycles columns. Focusing a parked column any other way (a click, the Dock,
+Command-Tab) slides the viewport to it. Turning on Fullscreen Layout or pressing `Option+/` leaves the
+strip. Pointer dragging and resizing are ignored on a strip.
 
 `Option+Shift+Space` floats the focused window: it leaves the tiles, keeps its exact frame and
 focus, and the remaining tiles re-fill the space it held. Floating is per window and follows that
@@ -131,6 +144,7 @@ spaceman ctl move-direction right
 spaceman ctl layout
 spaceman ctl fullscreen
 spaceman ctl float
+spaceman ctl strip
 spaceman ctl resize shrink
 spaceman ctl resize grow
 spaceman ctl balance
@@ -147,12 +161,14 @@ spaceman doctor 24
 
 Directions are `left`, `down`, `up`, and `right`. `focus next` is Option-backtick,
 `fullscreen` toggles the focused workspace's Fullscreen Layout, like `Option+Shift+F`, and `float`
-toggles the focused window's floating, like `Option+Shift+Space`. `balance` equalizes the focused tile's immediate
+toggles the focused window's floating, like `Option+Shift+Space`. `strip` toggles the workspace's
+Scrolling Strip, like `Option+Shift+S`, and answers `Scrolling Strip is off (enable it in Settings ›
+Labs)` while the Lab is off. `balance` equalizes the focused tile's immediate
 split while respecting nested minimum sizes. `hud` repeatedly renders sanitized runtime geometry in
 the terminal until interrupted. `ctl wrong` marks the journal the moment something looks wrong and
 writes a full arrangement snapshot, so `doctor` shows what the screen held then.
 
-`ctl debug` excludes window titles. It reports each display's Fullscreen Layout state and tiled
+`ctl debug` excludes window titles. It reports each display's Fullscreen Layout and Scrolling Strip state and tiled
 geometry plus floating-window workspace, parked state, and original recovery frame so workspace leaks
 can be diagnosed safely. Its `parking_exempt` list names managed windows that repeatedly rejected
 parking positions and are therefore left visible across workspace switches for the current session.

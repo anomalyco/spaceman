@@ -10,7 +10,7 @@ use spaceman::app::{UiLaunchAtLogin, UiUpdateStatus};
 use crate::{
     Ui, activity,
     controls::Paint,
-    map,
+    labs, map,
     playground::{Scene, reset_fixture},
 };
 
@@ -42,15 +42,17 @@ pub enum Pane {
     Workspaces,
     Shortcuts,
     Activity,
+    Labs,
 }
 
 impl Pane {
-    pub const ALL: [Pane; 5] = [
+    pub const ALL: [Pane; 6] = [
         Pane::General,
         Pane::Rules,
         Pane::Workspaces,
         Pane::Shortcuts,
         Pane::Activity,
+        Pane::Labs,
     ];
 
     pub const fn key(self) -> &'static str {
@@ -60,6 +62,7 @@ impl Pane {
             Pane::Workspaces => "workspaces",
             Pane::Shortcuts => "shortcuts",
             Pane::Activity => "activity",
+            Pane::Labs => "labs",
         }
     }
 
@@ -70,6 +73,7 @@ impl Pane {
             Pane::Workspaces => "Workspaces",
             Pane::Shortcuts => "Shortcuts",
             Pane::Activity => "Activity",
+            Pane::Labs => "Labs",
         }
     }
 
@@ -80,6 +84,7 @@ impl Pane {
             Pane::Workspaces => &WORKSPACES_ICON,
             Pane::Shortcuts => &rune_theme_opencode::icons::KEYBOARD,
             Pane::Activity => &ACTIVITY_ICON,
+            Pane::Labs => &labs::LABS_ICON,
         }
     }
 
@@ -90,6 +95,7 @@ impl Pane {
             Pane::Workspaces => workspaces::pane(ui, p),
             Pane::Shortcuts => shortcuts::pane(p),
             Pane::Activity => activity::pane(ui, p),
+            Pane::Labs => labs::pane(ui, p),
         }
     }
 

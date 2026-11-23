@@ -44,13 +44,25 @@ impl MainThreadAgent {
                 "hotkey: {description} pressed but macOS did not deliver it; registering shortcuts again"
             );
             self.last_hotkey_heal = Some(Instant::now());
-            match HotkeyPlan::current(&self.hotkey_workspaces) {
-                Ok(plan) => self.reinstall_hotkeys(plan),
-                Err(error) => log_event!("hotkeys: could not plan shortcuts: {error}"),
-            }
+            self.replan_hotkeys("undelivered press");
         }
         if self.automatic {
             self.queue_worker_input(QueuedInput::Action(action));
+        }
+    }
+
+    /// Plans the shortcuts again (workspaces, layout and Labs as they are now) and registers
+    /// them, while hotkeys are installed.
+    pub(super) fn replan_hotkeys(&mut self, reason: &str) {
+        if self.hotkeys.is_none() {
+            return;
+        }
+        match HotkeyPlan::current(&self.hotkey_workspaces, self.labs) {
+            Ok(plan) => {
+                log_event!("hotkeys: registering again ({reason})");
+                self.reinstall_hotkeys(plan);
+            }
+            Err(error) => log_event!("hotkeys: could not plan shortcuts: {error}"),
         }
     }
 

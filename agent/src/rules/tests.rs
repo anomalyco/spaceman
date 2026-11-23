@@ -178,3 +178,22 @@ fn update_channel_round_trips_and_leaves_stable_out() {
     doc.set_update_channel(UpdateChannel::Stable);
     assert!(!doc.source().contains("[settings]"));
 }
+
+#[test]
+fn labs_switch_round_trips_and_leaves_an_all_off_table_out() {
+    use spaceman::{config::Config, labs::LabFeature};
+    let mut doc = Doc::parse(SOURCE);
+    assert!(!doc.lab(LabFeature::ScrollingStrip));
+    doc.set_lab(LabFeature::ScrollingStrip, true);
+    assert!(doc.lab(LabFeature::ScrollingStrip));
+    let on = doc.source();
+    assert!(on.contains("[labs]\nscrolling_strip = true"));
+    assert!(Config::parse(&on).unwrap().labs().scrolling_strip);
+    // Other sections and comments survive.
+    assert!(on.contains("# OpenCode Browser's agent window."));
+    assert_eq!(doc.rules().len(), 3);
+
+    doc.set_lab(LabFeature::ScrollingStrip, false);
+    assert!(!doc.lab(LabFeature::ScrollingStrip));
+    assert_eq!(doc.source(), SOURCE);
+}

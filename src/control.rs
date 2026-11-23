@@ -21,7 +21,7 @@ const REQUEST_READ_TIMEOUT: Duration = Duration::from_millis(250);
 const RESPONSE_TIMEOUT: Duration = Duration::from_secs(5);
 const CLIENT_TIMEOUT: Duration = Duration::from_secs(6);
 
-pub const COMMAND_USAGE: &str = "status|debug|settings|open-settings|open-accessibility|check-for-updates|toggle-launch-at-login|switch WORKSPACE|back-and-forth|move-workspace [next|prev|DISPLAY]|move WORKSPACE|move-app ID WORKSPACE|focus DIR|focus next|move-direction DIR|layout|fullscreen|float|resize shrink|resize grow|balance|pause|resume|retile|wrong|restart|quit";
+pub const COMMAND_USAGE: &str = "status|debug|settings|open-settings|open-accessibility|check-for-updates|toggle-launch-at-login|switch WORKSPACE|back-and-forth|move-workspace [next|prev|DISPLAY]|move WORKSPACE|move-app ID WORKSPACE|focus DIR|focus next|move-direction DIR|layout|fullscreen|float|strip|resize shrink|resize grow|balance|pause|resume|retile|wrong|restart|quit";
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub(crate) enum Command {
@@ -217,6 +217,7 @@ fn parse_line(line: &str) -> Result<Command, String> {
         ["layout"] => WorkerAction::ToggleLayout,
         ["fullscreen"] => WorkerAction::ToggleFullscreenLayout,
         ["float"] => WorkerAction::ToggleFloat,
+        ["strip"] => WorkerAction::ToggleStrip,
         ["resize", "shrink"] => WorkerAction::Resize(ResizeDirection::Shrink),
         ["resize", "grow"] => WorkerAction::Resize(ResizeDirection::Grow),
         ["balance"] => WorkerAction::Balance,
@@ -294,6 +295,7 @@ mod tests {
             WorkerAction::Reorder(Direction::Right)
         );
         assert_eq!(queued("layout"), WorkerAction::ToggleLayout);
+        assert_eq!(queued("strip"), WorkerAction::ToggleStrip);
         assert_eq!(
             queued("resize shrink"),
             WorkerAction::Resize(ResizeDirection::Shrink)

@@ -137,6 +137,7 @@ Core controls:
 | `Option+-`, `Option+=` | Shrink/grow the focused tile by 50 pixels |
 | `Option+Shift+F` | Toggle Fullscreen Layout without native fullscreen |
 | `Option+Shift+Space` | Float the focused window above the tiles, or tile it again |
+| `Option+Shift+S` | Toggle the Scrolling Strip (Labs: enable it in Settings › Labs first) |
 | Three-finger swipe left/right | Next/previous occupied workspace on the display under the pointer |
 
 The swipe shares three fingers with macOS's "Swipe between full-screen applications"; set that to

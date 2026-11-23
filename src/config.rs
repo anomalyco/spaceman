@@ -2,7 +2,7 @@ use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
 
-use crate::{DisplaySelector, ObservedWindow, WorkspaceId, Workspaces};
+use crate::{DisplaySelector, ObservedWindow, WorkspaceId, Workspaces, labs::LabsConfig};
 
 #[derive(Clone, Copy, Debug)]
 struct AppSettings {
@@ -84,6 +84,7 @@ impl HudStyle {
 #[derive(Clone, Debug, Default)]
 pub struct Config {
     settings: AppSettings,
+    labs: LabsConfig,
     rules: Vec<WindowRule>,
     workspace_monitors: Vec<(WorkspaceId, DisplaySelector)>,
 }
@@ -116,6 +117,8 @@ struct RawConfig {
     version: u32,
     #[serde(default)]
     settings: RawSettings,
+    #[serde(default)]
+    labs: LabsConfig,
     #[serde(default)]
     rules: Vec<RawWindowRule>,
     #[serde(default)]
@@ -220,6 +223,7 @@ impl Config {
                 hud_style: raw.settings.hud_style,
                 update_channel: raw.settings.update_channel,
             },
+            labs: raw.labs,
             rules,
             workspace_monitors,
         })
@@ -238,6 +242,12 @@ impl Config {
     #[must_use]
     pub const fn update_channel(&self) -> UpdateChannel {
         self.settings.update_channel
+    }
+
+    /// The `[labs]` switches: experimental features, all off by default.
+    #[must_use]
+    pub const fn labs(&self) -> LabsConfig {
+        self.labs
     }
 
     pub fn load() -> Result<Self, String> {
@@ -656,6 +666,26 @@ monitor = "main"
         assert!(Config::parse("version = 1\n[settings]\nhud_style = \"grid\"\n").is_err());
         assert!(Config::parse("version = 1\n[settings]\nhud_style = true\n").is_err());
         assert_eq!(HudStyle::parse("Icons"), None);
+    }
+
+    #[test]
+    fn parses_labs_with_every_experiment_off_by_default() {
+        assert!(!Config::default().labs().scrolling_strip);
+        assert!(!Config::parse("version = 1").unwrap().labs().scrolling_strip);
+        assert!(
+            !Config::parse("version = 1\n[labs]\n")
+                .unwrap()
+                .labs()
+                .scrolling_strip
+        );
+        assert!(
+            Config::parse("version = 1\n[labs]\nscrolling_strip = true\n")
+                .unwrap()
+                .labs()
+                .scrolling_strip
+        );
+        assert!(Config::parse("version = 1\n[labs]\nwarp_drive = true\n").is_err());
+        assert!(Config::parse("version = 1\n[labs]\nscrolling_strip = 1\n").is_err());
     }
 
     #[test]

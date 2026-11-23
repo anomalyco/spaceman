@@ -37,10 +37,13 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
         if self.displays.repark_pending.is_empty() {
             return;
         }
-        let visible: HashSet<_> = self
-            .visible_workspaces(outputs)
+        let resolved = self.visible_workspaces(outputs);
+        let visible: HashSet<_> = resolved.iter().map(|resolved| resolved.workspace).collect();
+        // A visible strip's columns outside its viewport stay hidden too.
+        let strip_hidden: HashSet<_> = self
+            .parked_strip_columns(&resolved)
             .into_iter()
-            .map(|resolved| resolved.workspace)
+            .map(|(_, window)| window)
             .collect();
         let displays: Vec<_> = outputs.frames().collect();
         for window in std::mem::take(&mut self.displays.repark_pending) {
@@ -49,7 +52,7 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
                 continue;
             };
             if !self.parked.contains_key(&window)
-                || visible.contains(&owner)
+                || (visible.contains(&owner) && !strip_hidden.contains(&window))
                 || self.parking_exempt.contains(&window)
             {
                 continue;

@@ -55,6 +55,7 @@ mod move_workspace;
 mod parking;
 mod runtime;
 mod state_writer;
+mod strip;
 mod switching;
 mod worker;
 
@@ -209,6 +210,8 @@ pub(crate) enum WorkerAction {
     ToggleFullscreenLayout,
     /// Float the focused window above the workspace's tiles, or tile it again.
     ToggleFloat,
+    /// Scrolling Strip on the focused workspace (a Lab).
+    ToggleStrip,
     /// Kit noticed something wrong: mark the journal and snapshot it.
     MarkWrong,
 }
@@ -231,6 +234,7 @@ impl WorkerAction {
             Self::Balance => "balance queued".into(),
             Self::ToggleFullscreenLayout => "fullscreen layout toggle queued".into(),
             Self::ToggleFloat => "float toggle queued".into(),
+            Self::ToggleStrip => "scrolling strip toggle queued".into(),
             Self::MarkWrong => "marking the journal".into(),
         }
     }
@@ -313,6 +317,7 @@ pub struct PreparedAgent {
     scope: ManagementScope,
     hotkey_workspaces: Vec<WorkspaceId>,
     hud: bool,
+    labs: crate::labs::LabsConfig,
     controls: Receiver<ControlRequest>,
     control_server: control::Server,
     bridge: UiBridge,
@@ -330,6 +335,7 @@ pub fn prepare() -> Result<(PreparedAgent, UiBridge), String> {
     let (config, workspace_state) =
         recover_startup_metadata(Config::load(), load_workspace_state());
     let hud = config.hud();
+    let labs = config.labs();
     let mut configured_workspaces = Workspaces::default();
     config.configure_workspaces(&mut configured_workspaces);
     let mut hotkey_workspaces = WorkspaceId::numbered()
@@ -377,6 +383,7 @@ pub fn prepare() -> Result<(PreparedAgent, UiBridge), String> {
             scope,
             hotkey_workspaces,
             hud,
+            labs,
             controls,
             control_server,
             bridge: bridge.clone(),
@@ -435,6 +442,7 @@ impl PreparedAgent {
                 events,
                 hotkey_workspaces: self.hotkey_workspaces,
                 hud: self.hud,
+                labs: self.labs,
                 trusted,
                 setup_tour_open,
                 controls: self.controls,

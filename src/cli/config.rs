@@ -1,7 +1,10 @@
 use std::path::{Path, PathBuf};
 
 use serde::Serialize;
-use spaceman::config::{HudStyle, UpdateChannel, load_path};
+use spaceman::{
+    config::{HudStyle, UpdateChannel, load_path},
+    labs::{LabFeature, LabsConfig},
+};
 
 use super::{
     Outcome,
@@ -23,6 +26,7 @@ struct ShowOutput {
     exists: bool,
     version: u32,
     settings: EffectiveSettings,
+    labs: LabsConfig,
     rules: Vec<RuleView>,
     workspaces: Vec<WorkspaceDoc>,
 }
@@ -47,16 +51,23 @@ enum SettingKey {
     Hud,
     HudStyle,
     UpdateChannel,
+    /// A `[labs]` switch.
+    Lab(LabFeature),
 }
 
 impl SettingKey {
     fn parse(raw: &str) -> Result<Self, String> {
+        if let Some(id) = raw.strip_prefix("labs.") {
+            return LabFeature::from_id(id).map(Self::Lab).ok_or_else(|| {
+                format!("unknown setting {raw:?}; valid labs keys: labs.scrolling_strip")
+            });
+        }
         match raw.strip_prefix("settings.").unwrap_or(raw) {
             "hud" => Ok(Self::Hud),
             "hud_style" => Ok(Self::HudStyle),
             "update_channel" => Ok(Self::UpdateChannel),
             _ => Err(format!(
-                "unknown setting {raw:?}; valid keys: hud, hud_style, update_channel"
+                "unknown setting {raw:?}; valid keys: hud, hud_style, update_channel, labs.scrolling_strip"
             )),
         }
     }
@@ -66,7 +77,19 @@ impl SettingKey {
             Self::Hud => "hud",
             Self::HudStyle => "hud_style",
             Self::UpdateChannel => "update_channel",
+            Self::Lab(LabFeature::ScrollingStrip) => "labs.scrolling_strip",
         }
+    }
+}
+
+fn parse_bool(key: SettingKey, raw: &str) -> Result<bool, String> {
+    match raw {
+        "true" => Ok(true),
+        "false" => Ok(false),
+        _ => Err(format!(
+            "invalid value for {}: expected 'true' or 'false', got {raw:?}",
+            key.as_str()
+        )),
     }
 }
 
@@ -148,6 +171,7 @@ fn run_show(args: &[&str], path_override: Option<&Path>) -> Result<String, Strin
             exists,
             version: doc.version,
             settings: doc.effective_settings(),
+            labs: doc.labs,
             rules: doc.rule_views(),
             workspaces: doc.workspaces,
         })
@@ -184,6 +208,10 @@ fn run_get(args: &[&str], path_override: Option<&Path>) -> Result<String, String
                 serde_json::Value::String(channel.to_owned()),
             )
         }
+        SettingKey::Lab(feature) => {
+            let enabled = doc.labs.enabled(feature);
+            (enabled.to_string(), serde_json::Value::Bool(enabled))
+        }
     };
     if json {
         to_json_pretty(&SettingOutput {
@@ -207,15 +235,7 @@ fn run_set(args: &[&str], path_override: Option<&Path>) -> Result<String, String
 
     let (text, value) = match key {
         SettingKey::Hud => {
-            let parsed = match *raw_value {
-                "true" => true,
-                "false" => false,
-                _ => {
-                    return Err(format!(
-                        "invalid value for hud: expected 'true' or 'false', got {raw_value:?}"
-                    ));
-                }
-            };
+            let parsed = parse_bool(key, raw_value)?;
             doc.settings.hud = Some(parsed);
             (
                 format!("set hud = {parsed}"),
@@ -244,6 +264,14 @@ fn run_set(args: &[&str], path_override: Option<&Path>) -> Result<String, String
             (
                 format!("set update_channel = {}", parsed.as_str()),
                 serde_json::Value::String(parsed.as_str().to_owned()),
+            )
+        }
+        SettingKey::Lab(feature) => {
+            let parsed = parse_bool(key, raw_value)?;
+            doc.labs.set(feature, parsed);
+            (
+                format!("set {} = {parsed}", key.as_str()),
+                serde_json::Value::Bool(parsed),
             )
         }
     };

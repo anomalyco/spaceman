@@ -76,7 +76,7 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
         let Some(source) = self.workspaces.workspace_of(&window) else {
             return self.cycle(outputs, cancelled);
         };
-        if self.workspaces.uses_fullscreen_layout(source) {
+        if self.workspaces.uses_fullscreen_layout(source) || self.uses_strip(source) {
             return Ok(self.status(0, &outputs));
         }
         self.constrained[source.index()].remove(&window);
@@ -151,7 +151,7 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
         let Some(workspace) = self.workspaces.workspace_of(&window) else {
             return self.cycle(outputs, cancelled);
         };
-        if self.workspaces.uses_fullscreen_layout(workspace) {
+        if self.workspaces.uses_fullscreen_layout(workspace) || self.uses_strip(workspace) {
             return Ok(self.status(0, &outputs));
         }
         self.constrained[workspace.index()].remove(&window);
@@ -237,7 +237,7 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
 
     /// The focused window, trusting a focus command still in flight over the
     /// stale window Accessibility reports until the target app activates.
-    fn current_focus(&mut self) -> Option<crate::PhysicalWindowId> {
+    pub(super) fn current_focus(&mut self) -> Option<crate::PhysicalWindowId> {
         let reported = self.backend.focused_window();
         let Some(pending) = self.pending_focus.take() else {
             return reported;
@@ -250,7 +250,7 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
         reported
     }
 
-    fn focus_tile(
+    pub(super) fn focus_tile(
         &mut self,
         origin: Option<crate::PhysicalWindowId>,
         target: &crate::PhysicalWindowId,
@@ -315,7 +315,7 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
         Ok(self.status(0, &outputs))
     }
 
-    fn focused_active_workspace(
+    pub(super) fn focused_active_workspace(
         &mut self,
         outputs: &macos::DisplayOutputs,
         cancelled: &AtomicBool,
@@ -374,6 +374,9 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
         if self.workspaces.uses_fullscreen_layout(workspace) {
             self.workspaces.set_fullscreen_layout(workspace, false);
             self.pending_fullscreen_focus_restore.remove(&workspace);
+        }
+        if self.uses_strip(workspace) {
+            self.workspaces.set_strip_layout(workspace, false);
         }
         self.workspaces.engine_mut(workspace).toggle_axis();
         let axis = self.workspaces.engine(workspace).root_axis();
@@ -521,11 +524,7 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
         outputs: &macos::DisplayOutputs,
         cancelled: &AtomicBool,
     ) -> Result<CycleStatus, String> {
-        let layout = self.layout_workspace(
-            workspace,
-            output_for(&self.workspaces, workspace, outputs),
-            cancelled,
-        );
+        let layout = self.layout_strip_workspace(workspace, outputs, cancelled);
         self.persist_workspace_state_if_changed()?;
         Ok(self.status(layout.failed, outputs))
     }

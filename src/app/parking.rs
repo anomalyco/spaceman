@@ -193,7 +193,9 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
     ) {
         let visible_workspaces: HashSet<_> =
             visible.iter().map(|resolved| resolved.workspace).collect();
-        let inactive = self.workspaces.inactive_windows_except(&visible_workspaces);
+        let mut inactive = self.workspaces.inactive_windows_except(&visible_workspaces);
+        // Strip columns outside the viewport are hidden like inactive workspaces' windows.
+        inactive.extend(self.parked_strip_columns(visible));
         let displays = outputs.frames().collect::<Vec<_>>();
         let frontmost = self.backend.frontmost_application();
         let context = ParkContext {
@@ -389,7 +391,7 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
     /// Whether an Accessibility "gone" for `window` is real: the window
     /// server no longer lists it, its process exited, or Accessibility has
     /// failed to find it for [`INACCESSIBLE_GRACE`].
-    fn confirm_gone(&mut self, window: &crate::PhysicalWindowId) -> bool {
+    pub(super) fn confirm_gone(&mut self, window: &crate::PhysicalWindowId) -> bool {
         if self.backend.window_server_frame(window).is_none()
             || !self.backend.is_process_running(&window.app)
         {

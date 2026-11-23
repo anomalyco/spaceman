@@ -8,6 +8,7 @@ use crate::{
     Direction, DisplayTarget, ResizeDirection, WorkspaceId,
     app::{Action, WorkerAction},
     keyboard_layout::{LayoutFingerprint, LayoutSnapshot, LogicalKey, SemanticKey},
+    labs::LabsConfig,
 };
 
 const EVENT_CLASS_KEYBOARD: u32 = u32::from_be_bytes(*b"keyb");
@@ -96,12 +97,16 @@ struct Registration {
 }
 
 impl HotkeyPlan {
-    pub(crate) fn current(enabled: &[WorkspaceId]) -> Result<Self, String> {
+    pub(crate) fn current(enabled: &[WorkspaceId], labs: LabsConfig) -> Result<Self, String> {
         let layout = LayoutSnapshot::current().map_err(|error| error.to_string())?;
-        Self::from_layout(enabled, &layout)
+        Self::from_layout(enabled, labs, &layout)
     }
 
-    fn from_layout(enabled: &[WorkspaceId], layout: &LayoutSnapshot) -> Result<Self, String> {
+    fn from_layout(
+        enabled: &[WorkspaceId],
+        labs: LabsConfig,
+        layout: &LayoutSnapshot,
+    ) -> Result<Self, String> {
         let mut plan = PlanBuilder::new(layout, 16 + enabled.len() * 2);
         let claimed_letters = enabled
             .iter()
@@ -203,6 +208,16 @@ impl HotkeyPlan {
                 continue;
             }
             plan.push(key, modifiers, action, description);
+        }
+        // Labs shortcuts come last, so they never take a chord from a built-in one. A feature
+        // that is off claims nothing, and a named workspace S keeps ⌥⇧S for itself.
+        if labs.scrolling_strip && !claimed_letters.contains(&'s') {
+            plan.push(
+                LogicalKey::Character('s'),
+                OPTION_KEY | SHIFT_KEY,
+                WorkerAction::ToggleStrip,
+                "toggle scrolling strip",
+            );
         }
 
         if plan.registrations.is_empty() {
@@ -468,7 +483,7 @@ mod tests {
     #[test]
     fn registrations_carry_switch_move_layout_and_float_actions_including_zero_key() {
         let enabled = WorkspaceId::numbered().collect::<Vec<_>>();
-        let plan = HotkeyPlan::from_layout(&enabled, &layout()).unwrap();
+        let plan = HotkeyPlan::from_layout(&enabled, LabsConfig::default(), &layout()).unwrap();
         let one = WorkspaceId::new(1).unwrap();
         let ten = WorkspaceId::new(10).unwrap();
         for (description, expected) in [
@@ -510,7 +525,7 @@ mod tests {
     #[test]
     fn full_plan_contains_all_thirty_six_registrations() {
         let enabled = WorkspaceId::numbered().collect::<Vec<_>>();
-        let plan = HotkeyPlan::from_layout(&enabled, &layout()).unwrap();
+        let plan = HotkeyPlan::from_layout(&enabled, LabsConfig::default(), &layout()).unwrap();
         assert_eq!(plan.registrations.len(), 36);
         assert!(plan.registrations.capacity() >= 36);
         let move_ws = plan
@@ -526,7 +541,7 @@ mod tests {
     #[test]
     fn float_shortcut_is_option_shift_space_and_collides_with_nothing() {
         let enabled = WorkspaceId::numbered().collect::<Vec<_>>();
-        let plan = HotkeyPlan::from_layout(&enabled, &layout()).unwrap();
+        let plan = HotkeyPlan::from_layout(&enabled, LabsConfig::default(), &layout()).unwrap();
         let float = plan
             .registrations
             .iter()
@@ -551,12 +566,52 @@ mod tests {
             "every planned chord must be registered once"
         );
     }
+    #[test]
+    fn scrolling_strip_shortcut_registers_only_while_its_lab_is_on() {
+        let mut keys = vec![(1, 's', false, false)];
+        keys.extend([
+            (60, 'h', false, false),
+            (61, 'j', false, false),
+            (62, 'k', false, false),
+            (63, 'l', false, false),
+            (64, 'f', false, false),
+            (65, '/', false, false),
+            (66, '-', false, false),
+            (67, '=', false, false),
+            (68, '`', false, false),
+        ]);
+        let layout = LayoutSnapshot::for_test(keys, vec![]);
+        let numbered = WorkspaceId::numbered().collect::<Vec<_>>();
+        let plan_with = |enabled: &[WorkspaceId], scrolling_strip| {
+            HotkeyPlan::from_layout(enabled, LabsConfig { scrolling_strip }, &layout).unwrap()
+        };
+        let off = plan_with(&numbered, false);
+        assert_eq!(action(&off, "toggle scrolling strip"), None);
+        let on = plan_with(&numbered, true);
+        let strip = on
+            .registrations
+            .iter()
+            .find(|registration| registration.action == WorkerAction::ToggleStrip)
+            .unwrap();
+        assert_eq!(
+            (strip.key_code, strip.modifiers),
+            (1, OPTION_KEY | SHIFT_KEY)
+        );
+        assert_eq!(on.registrations.len(), off.registrations.len() + 1);
+
+        let mut with_s = numbered;
+        with_s.push(WorkspaceId::named('S').unwrap());
+        assert_eq!(
+            action(&plan_with(&with_s, true), "toggle scrolling strip"),
+            None
+        );
+    }
 
     #[test]
     fn named_workspace_claims_its_letter_shortcuts() {
         let mut enabled = WorkspaceId::numbered().collect::<Vec<_>>();
         enabled.push(WorkspaceId::named('H').unwrap());
-        let plan = HotkeyPlan::from_layout(&enabled, &layout()).unwrap();
+        let plan = HotkeyPlan::from_layout(&enabled, LabsConfig::default(), &layout()).unwrap();
         let h = WorkspaceId::named('H').unwrap();
         assert_eq!(
             action(&plan, "switch workspace H"),
@@ -586,7 +641,7 @@ mod tests {
             ],
             vec![],
         );
-        let plan = HotkeyPlan::from_layout(&[], &layout).unwrap();
+        let plan = HotkeyPlan::from_layout(&[], LabsConfig::default(), &layout).unwrap();
         let toggle_layout = plan
             .registrations
             .iter()
@@ -611,7 +666,7 @@ mod tests {
             ],
             vec![],
         );
-        let plan = HotkeyPlan::from_layout(&[], &layout).unwrap();
+        let plan = HotkeyPlan::from_layout(&[], LabsConfig::default(), &layout).unwrap();
         assert_eq!(
             action(&plan, "focus left"),
             Some(&WorkerAction::Focus(Direction::Left))
@@ -648,7 +703,7 @@ mod tests {
             vec![],
         );
         let enabled = WorkspaceId::numbered().collect::<Vec<_>>();
-        let plan = HotkeyPlan::from_layout(&enabled, &italian).unwrap();
+        let plan = HotkeyPlan::from_layout(&enabled, LabsConfig::default(), &italian).unwrap();
         let registration = |description: &str| {
             plan.registrations
                 .iter()
@@ -702,7 +757,7 @@ mod tests {
             ],
             vec![],
         );
-        let plan = HotkeyPlan::from_layout(&[], &german).unwrap();
+        let plan = HotkeyPlan::from_layout(&[], LabsConfig::default(), &german).unwrap();
         let cycle = plan
             .registrations
             .iter()
@@ -729,7 +784,12 @@ mod tests {
             vec![],
         );
 
-        let plan = HotkeyPlan::from_layout(&[], &non_latin_without_ascii_fallback).unwrap();
+        let plan = HotkeyPlan::from_layout(
+            &[],
+            LabsConfig::default(),
+            &non_latin_without_ascii_fallback,
+        )
+        .unwrap();
         assert_eq!(action(&plan, "focus left"), None);
         assert_eq!(
             action(&plan, "toggle layout"),

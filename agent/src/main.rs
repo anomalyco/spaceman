@@ -12,6 +12,7 @@ mod controls;
 #[cfg(target_os = "macos")]
 mod host;
 mod hud;
+mod labs;
 mod map;
 mod onboarding;
 mod panes;
@@ -185,6 +186,11 @@ impl Ui {
             }
             self.send_action(UiAction::SetHud(enabled));
         }
+    }
+
+    /// Switches a Labs feature in `config.toml`; the agent reloads it from there.
+    pub fn set_lab(&mut self, feature: spaceman::labs::LabFeature, enabled: bool) {
+        self.edit(|doc| doc.set_lab(feature, enabled));
     }
 
     pub fn mark_wrong(&self) {
