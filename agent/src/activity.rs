@@ -1,4 +1,4 @@
-//! Activity and Doctor diagnostics pane: summarizes Spaceman's title-free
+//! Activity and Doctor diagnostics pane: summarizes Pane's title-free
 //! arrangement journal (`journal.jsonl`), model/screen anomalies, placement
 //! recalls, and `procwatch` process vitals inside the Rune Settings window.
 
@@ -515,7 +515,7 @@ pub fn pane(ui: &Ui, p: Paint) -> El {
             "journal-empty",
             "No arrangement events yet",
             Some((
-                "Spaceman records title-free starts, restores, recalls, and anomalies here.".into(),
+                "Pane records title-free starts, restores, recalls, and anomalies here.".into(),
                 p.muted(),
             )),
             controls::status_dot(p.k.c.border_strong),
@@ -559,7 +559,7 @@ pub fn pane(ui: &Ui, p: Paint) -> El {
             "journal-file",
             "journal.jsonl",
             Some((
-                "Title-free local log summarized here and by `spaceman doctor`.".into(),
+                "Title-free local log summarized here and by `pane doctor`.".into(),
                 p.muted(),
             )),
             controls::button(
@@ -612,7 +612,7 @@ const fn plural(count: usize) -> &'static str {
 fn human_restore_reason(reason: &str) -> String {
     match reason {
         "pause" => "Paused automatic tiling".into(),
-        "restore all" => "Paused or quitting Spaceman".into(),
+        "restore all" => "Paused or quitting Pane".into(),
         "startup without saved workspaces" => "Startup recovery without saved workspaces".into(),
         other => other.into(),
     }

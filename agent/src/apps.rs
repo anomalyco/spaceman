@@ -61,7 +61,9 @@ pub fn running() -> Vec<Running> {
                     name: app.localizedName()?.to_string(),
                 })
             })
-            .filter(|app| app.bundle_id != "com.kitlangton.spaceman")
+            .filter(|app| {
+                app.bundle_id != "anomaly.pane" && app.bundle_id != "com.kitlangton.spaceman"
+            })
             .collect();
         running.sort_by_key(|app| app.name.to_lowercase());
         running.dedup_by(|a, b| a.bundle_id == b.bundle_id);
@@ -75,6 +77,7 @@ pub fn running() -> Vec<Running> {
 }
 
 const KNOWN_WINDOW_MANAGERS: &[(&str, &str)] = &[
+    ("com.kitlangton.spaceman", "Spaceman"),
     ("bobko.aerospace", "AeroSpace"),
     ("com.amethyst.Amethyst", "Amethyst"),
     ("com.knollsoft.Rectangle", "Rectangle"),
@@ -103,7 +106,7 @@ pub fn window_manager_name(
     None
 }
 
-/// Other macOS window managers currently running alongside Spaceman.
+/// Other macOS window managers currently running alongside Pane.
 #[cfg(target_os = "macos")]
 pub fn conflicting_window_managers() -> Vec<String> {
     use objc2_app_kit::NSWorkspace;

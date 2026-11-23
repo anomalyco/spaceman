@@ -192,6 +192,29 @@ fn icons_show_each_app_once_in_tile_order_then_floating() {
 }
 
 #[test]
+fn icons_marker_is_concentric_and_stays_circular_when_empty() {
+    use super::pill::{INNER, Icons};
+    use crate::controls::Paint;
+
+    let entries = vec![workspace(1, &["term", "web"]), workspace(4, &[])];
+    let paint = Paint::new(true, 2.0);
+
+    let first = icons::track(&entries, Some(id(1)), &Icons::new(), paint);
+    let [mx, my, _, mh] = first.marker.unwrap();
+    assert_eq!(first.marker_radius, icons::MARKER_RADIUS);
+    // Horizontal inset at the capsule end matches the vertical inset for a concentric pill.
+    assert!((mx - my).abs() < 0.01, "x={mx} vs y={my}");
+    assert!((my - (INNER - mh) / 2.0).abs() < 0.01);
+
+    let empty = icons::track(&entries, Some(id(4)), &Icons::new(), paint);
+    let [_, _, empty_w, empty_h] = empty.marker.unwrap();
+    assert!(
+        empty_w >= empty_h,
+        "empty marker should be at least circular: {empty_w}x{empty_h}"
+    );
+}
+
+#[test]
 fn displays_keep_their_panels_as_others_come_and_go() {
     let some = |id: &str| Some(id.to_owned());
     let none = || None::<String>;

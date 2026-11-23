@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Dev loop: every save under src/, agent/, native/, app/ or the Cargo files rebuilds the signed
-# bundle and swaps it into /Applications with install-app.sh, which restores every window before
+# Pane.app bundle and swaps it into /Applications with install-app.sh, which restores every window before
 # the old agent quits and resumes tiling in the new one, so workspaces and layouts come back as
 # they were. Builds go through the ~/bin cargo wrapper (HiveMind) when it is on PATH.
 #   scripts/dev            build and install once, then on every save

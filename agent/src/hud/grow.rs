@@ -95,6 +95,7 @@ pub fn track(
     Track {
         width,
         marker,
+        marker_radius: 9.0,
         cells,
     }
 }

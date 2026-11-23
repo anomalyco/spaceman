@@ -121,9 +121,11 @@ This file is the current engineering contract. README and `docs/` describe curre
   scoped live tests.
 - Read live harnesses before running them. Confirm expected displays, preserve baseline workspace and
   focus, and verify cleanup. Never experiment on unrelated user windows.
-- Live harness state must use the internal `SPACEMAN_APPLICATION_SUPPORT` override and must never read
-  or mutate the user's normal workspace or parked-window state.
-- Preserve `~/Library/Application Support/Spaceman/parked-windows.json` until pause/quit restoration is
+- Live harness state must use the internal `PANE_APPLICATION_SUPPORT` (or legacy
+  `SPACEMAN_APPLICATION_SUPPORT`) override and must never read or mutate the user's normal
+  workspace or parked-window state.
+- Preserve `~/Library/Application Support/Pane/parked-windows.json` (and any legacy
+  `~/Library/Application Support/Spaceman/parked-windows.json`) until pause/quit restoration is
   confirmed. If a test crashes, reopen the same app and recover before cleaning state.
 
 ## Verification

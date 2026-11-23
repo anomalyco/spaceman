@@ -101,6 +101,8 @@ pub struct Track {
     pub width: f32,
     /// The marker's left edge, top and size, when the focus is in the row.
     pub marker: Option<[f32; 4]>,
+    /// Corner radius of the marker (concentric pill for Icons, rounded rect for Layouts).
+    pub marker_radius: f32,
     pub cells: Vec<El>,
 }
 
@@ -174,9 +176,9 @@ fn capsule(view: &HudView, track: Track, max_width: f32, p: Paint) -> El {
             .absolute(x, y)
             .w(w)
             .h(h)
-            .radius(9.0)
-            .fill(rgba(0xffffff, 0.1))
-            .border(p.hair, rgba(0xffffff, 0.2))
+            .radius(track.marker_radius)
+            .fill(rgba(0xffffff, 0.10))
+            .border(p.hair, rgba(0xffffff, 0.16))
             .motion(MARKER)
             .lead(MARKER_LEAD, MARKER_TRAIL)
             .transition(Transition::opacity().springs(SETTLE));

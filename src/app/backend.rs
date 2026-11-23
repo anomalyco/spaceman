@@ -275,7 +275,13 @@ fn workspace_state_path() -> Option<PathBuf> {
 
 pub(super) fn load_parked() -> Result<HashMap<crate::PhysicalWindowId, crate::Rect>, String> {
     let path = parked_path().ok_or("HOME is unavailable")?;
-    load_json::<ParkedWindows>(&path, "parked-window")
+    load_parked_at(&path)
+}
+
+pub(super) fn load_parked_at(
+    path: &std::path::Path,
+) -> Result<HashMap<crate::PhysicalWindowId, crate::Rect>, String> {
+    load_json::<ParkedWindows>(path, "parked-window")
         .map(|parked| parked.map_or_else(HashMap::new, |parked| parked.0))
 }
 
@@ -322,12 +328,12 @@ pub(super) fn recover_startup_metadata(
     let config = match config {
         Ok(config) => config,
         Err(error) => {
-            log_event!("ignoring invalid Spaceman config during recovery: {error}");
+            log_event!("ignoring invalid Pane config during recovery: {error}");
             return (Config::default(), None);
         }
     };
     let workspace_state = workspace_state.unwrap_or_else(|error| {
-        log_event!("ignoring invalid Spaceman workspace state during recovery: {error}");
+        log_event!("ignoring invalid Pane workspace state during recovery: {error}");
         None
     });
     (config, workspace_state)

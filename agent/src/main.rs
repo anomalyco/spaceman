@@ -1,4 +1,4 @@
-//! Spaceman's single-process macOS agent (`spaceman-agent`): runs the window
+//! Pane's single-process macOS agent (`spaceman-agent`): runs the window
 //! manager, native status bar item, Sparkle updater, Settings window, and Rune
 //! Playground (`⇧⌘D` / `--playground`) on one AppKit + Rune event loop.
 
@@ -211,7 +211,7 @@ fn setup(ui: &mut Ui, waker: Waker) {
 
 fn poll(ui: &mut Ui, _clock: f64, tx: &mut Tx) -> bool {
     if !ui.fixture && !ui.frame_remembered {
-        ui.frame_remembered = rune_mac::remember_frame("Spaceman");
+        ui.frame_remembered = rune_mac::remember_frame("Pane");
     }
     let mut changed = onboarding::poll(ui, tx);
     changed |= ui.activity.poll(
@@ -295,7 +295,7 @@ fn on_reopen(ui: &mut Ui, _has_visible_windows: bool, _tx: &mut Tx) -> bool {
 
 fn spec() -> AppSpec<Ui> {
     AppSpec {
-        title: "Spaceman",
+        title: "Pane",
         size: WINDOW_SIZE,
         min_size: Some(WINDOW_SIZE),
         init: playground::blank_fixture,
@@ -374,7 +374,7 @@ fn main() {
     if let Err(error) = host::run() {
         drop(std::io::Write::write_all(
             &mut std::io::stderr(),
-            format!("Spaceman failed: {error}\n").as_bytes(),
+            format!("Pane failed: {error}\n").as_bytes(),
         ));
         std::process::exit(1);
     }

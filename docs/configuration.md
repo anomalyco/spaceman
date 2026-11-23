@@ -1,23 +1,27 @@
 # Configuration
 
-Spaceman loads configuration when `spaceman-agent` starts and reloads it automatically whenever the
+Pane loads configuration when `spaceman-agent` starts and reloads it automatically whenever the
 file changes on disk:
 
 ```text
-~/Library/Application Support/Spaceman/config.toml
+~/.config/pane/config.toml
 ```
 
-Set `SPACEMAN_CONFIG` in the agent's environment to replace that path. A missing file means default
-configuration. Invalid configuration at startup is reported to stderr for terminal launches and to
-`~/Library/Application Support/Spaceman/agent.log` for app-bundle launches; Spaceman falls back to
-defaults and ignores workspace state so it can prioritize restoring parked windows. If an edit saved
-while running fails validation, the running agent logs the error and keeps the previous valid
-configuration.
+If `~/.config/pane/config.toml` does not exist yet and a legacy Spaceman configuration exists at
+`~/.config/spaceman/config.toml` or `~/Library/Application Support/Spaceman/config.toml`, Pane
+copies it atomically on startup without modifying or deleting the original.
+
+Set `PANE_CONFIG` (or legacy `SPACEMAN_CONFIG`) in the agent's environment to replace that path.
+A missing file means default configuration. Invalid configuration at startup is reported to stderr
+for terminal launches and to `~/Library/Application Support/Pane/agent.log` for app-bundle
+launches; Pane falls back to defaults and ignores workspace state so it can prioritize restoring
+parked windows. If an edit saved while running fails validation, the running agent logs the error
+and keeps the previous valid configuration.
 
 Validate a file before replacing or restarting the app:
 
 ```sh
-spaceman config-check "$HOME/Library/Application Support/Spaceman/config.toml"
+pane config-check "$HOME/.config/pane/config.toml"
 ```
 
 The complete example is [config.example.toml](../config.example.toml).
@@ -32,7 +36,7 @@ version = 1
 
 [settings]
 hud = true                            # optional (default: true); non-activating Workspace HUD
-hud_style = "layouts"                 # optional (default: "layouts"); or "icons"
+hud_style = "icons"                   # optional (default: "icons"); or "layouts"
 
 [[rules]]
 bundle_id = "com.example.Application" # optional exact match
@@ -80,12 +84,12 @@ Title matching occurs only in memory. Titles are not serialized into persisted s
 ## Remembered Placements
 
 Window identity in workspace state is tied to a running process, so it cannot survive a reboot or an
-application relaunch. Spaceman therefore also remembers, per application bundle identifier, which
+application relaunch. Pane therefore also remembers, per application bundle identifier, which
 workspace each managed window lived on, whether it floated, and its last on-screen frame. It never
 records window titles.
 
-During the first 60 seconds after Spaceman starts, when an application bundle is seen for the first
-time and owns no windows yet (such as after a reboot or a Spaceman start without valid workspace
+During the first 60 seconds after Pane starts, when an application bundle is seen for the first
+time and owns no windows yet (such as after a reboot or a Pane start without valid workspace
 state), its windows may claim those remembered placements:
 first a window whose frame matches a remembered frame within 8 pixels, then the remaining windows in
 creation order. A claimed window joins its remembered workspace (hidden if that workspace is not
@@ -114,7 +118,7 @@ Defaults assign workspaces 1-5 to `main` and 6-10 to `secondary`. `monitor` acce
 spaceman displays
 ```
 
-A missing `secondary`, UUID, or name falls back to the main display. Spaceman retains the preferred
+A missing `secondary`, UUID, or name falls back to the main display. Pane retains the preferred
 assignment as its own active lane; reconnecting that display makes its assigned active workspace
 visible again.
 
@@ -127,27 +131,30 @@ across config edits until that state no longer refers to it.
 
 ## Process Scope
 
-`SPACEMAN_MANAGED_DISPLAY` is an internal process-scope override used by isolated tests. It accepts
-`main`, `secondary`, or `both` (the default). It is not a TOML field, and the installed app does not
-provide a UI for setting it. A scoped process registers only workspace hotkeys assigned to its managed
-main/secondary selectors; normal users should leave it unset.
+`PANE_MANAGED_DISPLAY` (or legacy `SPACEMAN_MANAGED_DISPLAY`) is an internal process-scope override
+used by isolated tests. It accepts `main`, `secondary`, or `both` (the default). It is not a TOML
+field, and the installed app does not provide a UI for setting it. A scoped process registers only
+workspace hotkeys assigned to its managed main/secondary selectors; normal users should leave it
+unset.
 
-`SPACEMAN_APPLICATION_SUPPORT` is another internal test override. It replaces the Application Support
-directory for the default config path, state, logs, and control files so live harnesses cannot touch
-normal recovery data.
+`PANE_APPLICATION_SUPPORT` (or legacy `SPACEMAN_APPLICATION_SUPPORT`) is another internal test
+override. It replaces the Application Support directory for the default config path, state, logs,
+and control files (and disables legacy Spaceman migration) so live harnesses cannot touch normal
+recovery data.
 
 ## Applying Changes
 
-Edits saved in Spaceman Settings or in an external editor take effect automatically: rule changes,
-workspace display assignments, `settings.hud`, and `settings.hud_style` reload without restarting. Global shortcuts for a
-newly added named workspace letter (`Option+A` ... `Option+Z`) register on the next app start:
+Edits saved in Pane Settings or in an external editor take effect automatically: rule changes,
+workspace display assignments, `settings.hud`, and `settings.hud_style` reload without restarting.
+Global shortcuts for a newly added named workspace letter (`Option+A` ... `Option+Z`) register on
+the next app start:
 
 ```sh
-spaceman ctl pause
-spaceman ctl status
-spaceman ctl quit
-open "/Applications/Spaceman.app"
+pane ctl pause
+pane ctl status
+pane ctl quit
+open "/Applications/Pane.app"
 ```
 
-`spaceman ctl restart` safely restores parked windows and exits, but currently does not relaunch the
+`pane ctl restart` safely restores parked windows and exits, but currently does not relaunch the
 app by itself. The source installer uses it before replacing the bundle, then opens the new bundle.

@@ -11,7 +11,7 @@ scripts/dev          # build and install now, then again on every save
 scripts/dev --once   # build and install once
 ```
 
-Each install restores every window, swaps `/Applications/Spaceman.app`, and resumes tiling, so
+Each install restores every window, swaps `/Applications/Pane.app`, and resumes tiling, so
 workspaces and layouts come back. `scripts/install-app.sh --bundle PATH --wait-idle SECS` installs a
 built bundle once the keyboard and mouse have been idle; the updater
 (`scripts/spaceman-updater`, set up with `scripts/install-updater`) uses it to keep the installed
@@ -61,9 +61,9 @@ AeroSpace to be enabled initially so they can capture a baseline, then they disa
 ./scripts/live-workspaces.sh
 ```
 
-`live-workspaces.sh` requires a current signed bundle at `target/Spaceman.app`; build it with
+`live-workspaces.sh` requires a current signed bundle at `target/Pane.app`; build it with
 `./scripts/build-app.sh` first. It isolates control and recovery files with
-`SPACEMAN_APPLICATION_SUPPORT`. `live-ghostty-tabs.sh` instead uses `cargo run` to start a scoped,
+`PANE_APPLICATION_SUPPORT` (legacy `SPACEMAN_APPLICATION_SUPPORT` is also honored). `live-ghostty-tabs.sh` instead uses `cargo run` to start a scoped,
 non-persistent `watch-window` process. Both restore their baseline but still exercise live
 Accessibility writes. Start them with AeroSpace enabled, read each script, preserve unrelated
 windows, and confirm its expected display and Ghostty assumptions. Never run a destructive live test
@@ -77,7 +77,7 @@ and whitespace:
 
 ```sh
 rg -n '\[[^]]+\]\([^)]+' --glob '*.md'
-rg -n 'Disable Tiling|Enable Tiling|Settings\.\.\.|Quit Spaceman' --glob '*.md'
+rg -n 'Disable Tiling|Enable Tiling|Settings\.\.\.|Quit Pane' --glob '*.md'
 rg -n 'Automatic Tiling|Retile Now|starts paused|paused startup' --glob '*.md' --glob '!docs/development.md'
 git diff --check
 ```

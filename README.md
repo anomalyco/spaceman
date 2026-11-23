@@ -1,18 +1,19 @@
-# Spaceman
+# Pane
 
-Spaceman is an experimental macOS tiling window manager built around stable logical windows. A
-native window, including a selected Ghostty native tab, can change physical Accessibility identity
-without creating a new tile. Spaceman keeps the logical slot and replaces its physical binding when
-the evidence is unambiguous.
+Pane (formerly Spaceman) is an experimental macOS tiling window manager built around stable logical
+windows. A native window, including a selected Ghostty native tab, can change physical Accessibility
+identity without creating a new tile. Pane keeps the logical slot and replaces its physical binding
+when the evidence is unambiguous.
 
-[Website](https://spaceman.kitlangton.com) · [Download for Apple silicon](https://pub-6f85d683ffe0419cad0a71508904053a.r2.dev/releases/Spaceman-v0.2.0-macos-arm64.zip)
+[Website](https://anoma.ly/pane/) · [Download for Apple silicon](https://pub-6f85d683ffe0419cad0a71508904053a.r2.dev/releases/Pane-v0.3.0-macos-arm64.zip)
 
 > [!WARNING]
-> Disable AeroSpace, yabai, Amethyst, and every other window manager before first opening Spaceman
-> or installing it from source. Two managers can repeatedly move the same windows. Keep the parked
-> window state until Spaceman has successfully paused or quit and restored every window.
+> Disable AeroSpace, yabai, Amethyst, and every other window manager (including any earlier
+> `Spaceman.app`) before first opening Pane or installing it from source. Two managers can
+> repeatedly move the same windows. Keep the parked window state until Pane has successfully paused
+> or quit and restored every window.
 
-Spaceman currently:
+Pane currently:
 
 - starts automatic tiling when Accessibility permission and its global hotkeys are available;
 - provides ten default numbered workspaces plus opt-in named workspaces A-Z, with 1-5 on the main
@@ -20,15 +21,17 @@ Spaceman currently:
 - assigns workspaces to `main`, `secondary`, a display UUID, or an exact display name, falling back
   to the main display when a preferred display disconnects;
 - persists active workspaces, nested split layouts, tile order and weights, and parked-window recovery
-  metadata across Spaceman restarts, and remembers each application's window placements by bundle
+  metadata across Pane restarts, and remembers each application's window placements by bundle
   identifier so reboots and startup recovery return windows to their workspaces;
+- migrates existing Spaceman configuration and recovery state safely on first launch without deleting
+  the originals;
 - journals window arrangements and model/screen disagreements locally, summarized in Settings (`Activity`)
-  and by `spaceman doctor`;
+  and by `pane doctor`;
 - shows a non-activating Workspace HUD capsule on each display on workspace switches,
   cross-workspace moves, and layout toggles (`[settings] hud = true`): a row of that display's
-  workspaces, drawn as their layouts with app icons or (`hud_style = "icons"`) as numbers and app
-  icons, with a marker that travels to the one you are on. It follows quick switches without
-  restarting and honors Reduce Motion;
+  workspaces, drawn by default as tabular numbers and app icons (`hud_style = "icons"`), or as
+  layout thumbnails (`hud_style = "layouts"`), with a marker that travels to the one you are on. It
+  follows quick switches without restarting and honors Reduce Motion;
 - can register its signed app bundle with macOS to launch automatically at login;
 - supports directional focus and movement across displays, drag-to-reorder/nest, mouse and keyboard
   resizing, balancing, and a workspace-wide Fullscreen Layout;
@@ -36,7 +39,7 @@ Spaceman currently:
   or resizing them;
 - exposes a local CLI over a user-only Unix socket.
 
-Spaceman uses Accessibility APIs to observe, focus, move, and resize eligible windows. It requires no
+Pane uses Accessibility APIs to observe, focus, move, and resize eligible windows. It requires no
 SIP change. Read [Security and privacy](docs/security-and-privacy.md),
 [Compatibility](docs/compatibility.md), and [Limitations](docs/limitations.md) before trying it.
 
@@ -45,24 +48,25 @@ SIP change. Read [Security and privacy](docs/security-and-privacy.md),
 The current preview is a Developer ID-signed, notarized arm64 build for Apple silicon Macs. It remains
 experimental; read [Known limitations](docs/limitations.md) before installing it.
 
-1. Disable every other window manager. For AeroSpace: `aerospace enable off`.
+1. Disable every other window manager. For AeroSpace: `aerospace enable off`. If upgrading from
+   Spaceman, pause and quit it first (`spaceman ctl pause && spaceman ctl quit`).
 2. Download, install and open the latest build:
 
    ```sh
-   curl -fL https://pub-6f85d683ffe0419cad0a71508904053a.r2.dev/releases/Spaceman-latest-macos-arm64.zip -o /tmp/Spaceman.zip \
-     && ditto -x -k /tmp/Spaceman.zip /Applications && open /Applications/Spaceman.app
+   curl -fL https://pub-6f85d683ffe0419cad0a71508904053a.r2.dev/releases/Pane-latest-macos-arm64.zip -o /tmp/Pane.zip \
+     && ditto -x -k /tmp/Pane.zip /Applications && open /Applications/Pane.app
    ```
 
 3. Follow the setup tour, which walks through granting Accessibility access.
-4. Optionally link the bundled CLI: `mkdir -p "$HOME/.local/bin" && ln -sf "/Applications/Spaceman.app/Contents/MacOS/spaceman" "$HOME/.local/bin/spaceman"`.
+4. Optionally link the bundled CLI: `mkdir -p "$HOME/.local/bin" && ln -sf "/Applications/Pane.app/Contents/MacOS/spaceman" "$HOME/.local/bin/pane"`.
 
 To check the download first, get
-[Spaceman 0.2.0 for Apple silicon](https://pub-6f85d683ffe0419cad0a71508904053a.r2.dev/releases/Spaceman-v0.2.0-macos-arm64.zip)
-and its [SHA-256 checksum](https://pub-6f85d683ffe0419cad0a71508904053a.r2.dev/releases/Spaceman-v0.2.0-macos-arm64.zip.sha256),
-run `shasum -a 256 -c Spaceman-v0.2.0-macos-arm64.zip.sha256`, then unzip it and move `Spaceman.app`
+[Pane 0.3.0 for Apple silicon](https://pub-6f85d683ffe0419cad0a71508904053a.r2.dev/releases/Pane-v0.3.0-macos-arm64.zip)
+and its [SHA-256 checksum](https://pub-6f85d683ffe0419cad0a71508904053a.r2.dev/releases/Pane-v0.3.0-macos-arm64.zip.sha256),
+run `shasum -a 256 -c Pane-v0.3.0-macos-arm64.zip.sha256`, then unzip it and move `Pane.app`
 to `/Applications`.
 
-Later preview updates are signed and delivered through Sparkle. Use Spaceman Settings for upgrades. If
+Later preview updates are signed and delivered through Sparkle. Use Pane Settings for upgrades. If
 a manual replacement is necessary, pause and quit the running version and confirm that every parked
 window has returned before replacing its bundle.
 
@@ -79,9 +83,10 @@ From an existing repository checkout, first disable every other window manager, 
 ./scripts/install-app.sh
 ```
 
-Set `SPACEMAN_CODESIGN_IDENTITY` if auto-detection does not choose the desired identity. The script
-builds and signs `target/Spaceman.app`, installs it at `/Applications/Spaceman.app`, links the CLI to
-`~/.local/bin/spaceman`, and opens the app.
+Set `PANE_CODESIGN_IDENTITY` (or `SPACEMAN_CODESIGN_IDENTITY`) if auto-detection does not choose the
+desired identity. The script builds and signs `target/Pane.app`, installs it at `/Applications/Pane.app`
+(removing any legacy `/Applications/Spaceman.app` after restoring windows), links the CLI to
+`~/.local/bin/pane` and `~/.local/bin/spaceman`, and opens the app.
 
 Ensure `~/.local/bin` is on `PATH`. For zsh:
 
@@ -96,19 +101,19 @@ maintainer workflow.
 ## First Open
 
 1. Disable every other window manager. For AeroSpace: `aerospace enable off`.
-2. Open Spaceman: `open "/Applications/Spaceman.app"`.
-3. On a fresh install, Spaceman opens its four-step setup tour when Accessibility access is missing.
-   Choose `Allow`, enable Spaceman under **System Settings > Privacy & Security > Accessibility**,
+2. Open Pane: `open "/Applications/Pane.app"`.
+3. On a fresh install, Pane opens its four-step setup tour when Accessibility access is missing.
+   Choose `Allow`, enable Pane under **System Settings > Privacy & Security > Accessibility**,
    optionally enable `Launch at Login`, and pick starter app rules.
-4. Confirm operation with `spaceman ctl status`.
+4. Confirm operation with `pane ctl status`.
 
-When Accessibility permission is granted and hotkeys register successfully, Spaceman starts automatic
+When Accessibility permission is granted and hotkeys register successfully, Pane starts automatic
 tiling; it does not otherwise start paused intentionally. Without Accessibility permission, the menu
 reports the permission error and tiling remains paused. While tiling, the menu lists each display's
 workspaces (the visible one checked, plus any holding windows, with their apps' icons); choosing one
 switches to it. The menu actions are `Run Setup...` (while
 Accessibility is missing), `Disable Tiling` (or `Enable Tiling` while paused), `Workspace HUD`,
-`Launch at Login`, `Settings...` (`⌘,`), `Check for Updates...`, and `Quit Spaceman` (`⌘Q`). Settings
+`Launch at Login`, `Settings...` (`⌘,`), `Check for Updates...`, and `Quit Pane` (`⌘Q`). Settings
 includes `General`, `Rules`, `Workspaces`, `Shortcuts`, and `Activity` (title-free arrangement
 diagnostics and process vitals). If macOS requires approval, the login item action opens **System
 Settings > General > Login Items & Extensions**.
@@ -145,29 +150,32 @@ incoming parked windows cannot finish restoring. Parking targets are checked aga
 display, including middle displays in three-display arrangements.
 
 ```sh
-spaceman ctl status
-spaceman ctl switch 2
-spaceman ctl move 7
-spaceman ctl layout
-spaceman ctl balance
-spaceman ctl pause
-spaceman ctl resume
+pane ctl status
+pane ctl switch 2
+pane ctl move 7
+pane ctl layout
+pane ctl balance
+pane ctl pause
+pane ctl resume
 ```
 
 ## Configure
 
-Spaceman reads `~/Library/Application Support/Spaceman/config.toml` at startup and reloads rule,
-display, and HUD (on/off and style) edits automatically when the file changes. See the exact current schema and
+Pane reads `~/.config/pane/config.toml` at startup and reloads rule, display, and HUD (on/off and
+style) edits automatically when the file changes. If `~/.config/pane/config.toml` does not exist yet
+and a legacy Spaceman config exists at `~/.config/spaceman/config.toml` or
+`~/Library/Application Support/Spaceman/config.toml`, Pane copies it safely without modifying the
+original. See the exact current schema and
 [config.example.toml](config.example.toml) in [Configuration](docs/configuration.md).
 
 ```sh
-spaceman config-check "$HOME/Library/Application Support/Spaceman/config.toml"
-spaceman displays
+pane config-check "$HOME/.config/pane/config.toml"
+pane displays
 ```
 
 ## Recover Or Remove
 
-Use `spaceman ctl pause` or `spaceman ctl quit` and wait for `spaceman ctl status` or process exit to
+Use `pane ctl pause` or `pane ctl quit` and wait for `pane ctl status` or process exit to
 confirm that restoration completed **before** removing the app or state. Do not delete
 `parked-windows.json` as an early troubleshooting step: it records where off-screen parked windows
 must return.

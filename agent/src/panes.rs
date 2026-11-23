@@ -145,7 +145,7 @@ fn general(ui: &Ui, p: Paint) -> El {
                 p,
                 "accessibility",
                 "Accessibility",
-                Some(("Granted. Spaceman can move windows.".into(), p.muted())),
+                Some(("Granted. Pane can move windows.".into(), p.muted())),
                 controls::status_dot(c.success.fg),
             )
         } else {
@@ -154,7 +154,7 @@ fn general(ui: &Ui, p: Paint) -> El {
                 "accessibility",
                 "Accessibility",
                 Some((
-                    "Spaceman needs it to move and resize windows.".into(),
+                    "Pane needs it to move and resize windows.".into(),
                     c.warning.fg,
                 )),
                 controls::button(
@@ -225,7 +225,7 @@ fn general(ui: &Ui, p: Paint) -> El {
             "hud-style",
             "HUD style",
             Some((
-                "Each workspace as its layout, or as its number and app icons.".into(),
+                "Each workspace as its number and app icons, or as its layout.".into(),
                 p.muted(),
             )),
             SegmentedControl::new(
@@ -262,7 +262,7 @@ fn general(ui: &Ui, p: Paint) -> El {
         sections.push(controls::section(
             p,
             "agent",
-            "Spaceman",
+            "Pane",
             vec![access, tiling, hud, hud_style, login, setup_tour],
         ));
     }
@@ -299,7 +299,7 @@ fn general(ui: &Ui, p: Paint) -> El {
 
 const MONITORS: [&str; 3] = ["Any", "Main", "Secondary"];
 const HUD_STYLES: [(&str, HudStyle); 2] =
-    [("Layouts", HudStyle::Layouts), ("Icons", HudStyle::Icons)];
+    [("Icons", HudStyle::Icons), ("Layouts", HudStyle::Layouts)];
 
 fn workspaces(ui: &Ui, p: Paint) -> El {
     let rows = ui
