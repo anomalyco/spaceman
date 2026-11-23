@@ -6,7 +6,7 @@
 import { easeInOut, smooth, clamp, mix } from "./springs.js"
 import { BAR_H, settingsGeom } from "./content.js"
 import { WORDS, TAPE } from "./tape.js"
-import { ALBUM, albumGrid } from "./library.js"
+import { ALBUM, albumGrid, scrollOn } from "./library.js"
 import { walkerAt } from "./feeds.js"
 
 // this cut has no visitor's turn: Option+1/2/3 never take over the film
@@ -395,7 +395,7 @@ export function build(S) {
   clickAt(camera - 0.2, "settings", closeBtn, () => w.close("settings"), 0.45)
   // a new Messages window: Joan, a year ago, saying hello. It goes straight to two.
   at(camera + 0.05, () => {
-    w.openMany([{ ws: 2, id: "joan", app: "chatter", kind: "chat", title: "Joan (No. 16)", data: { who: "Joan (No. 16)", when: "Nov 26, 2025", msgs: [{ t: "Hi! Welcome to the street 🙂" }, { t: "Bins are Wednesdays btw" }] } }])
+    w.openMany([{ ws: 2, id: "joan", app: "chatter", kind: "chat", title: "Joan (No. 16)", data: { who: "Joan (No. 16)", when: "Nov 26, 2025", msgs: [{ t: "Hi! Welcome to the street 🙂" }, { t: "Just putting mine out Wednesdays now, hope that's ok!" }] } }])
     w.pulse(2)
   })
 
@@ -502,7 +502,9 @@ export function build(S) {
   at(orderT, () => (w.clock = "Fri Dec 5  9:02 AM"))
   push(orderT + 0.05, orderT + 0.85, () => frameOf("order", 1.12), "order")
   const gave = word("gave each")
-  push(gave + 1.2, gave + 2.4, home, null)
+  // he talks on over the naming, so the order lands a beat after "bought"; give it a second on screen
+  const backT = Math.max(gave + 1.2, orderT + 1.15)
+  push(backT, backT + 1.0, home, null)
   shut(word("Mark is four") - 0.2, "order", 0.45)
 
   // ── "Mark is four. Joan is five. Alan is six." ──
@@ -560,45 +562,27 @@ export function build(S) {
   at(hedge + 0.1, () => (w.clock = "Mon Feb 16  11:58 PM"))
   push(hedge + 0.2, hedge + 0.9, () => frameOf("album", 1.04), "album")
   const ag = () => albumGrid(R("album").w.t, R("album").h.t)
-  // each throw slows on its own (velocity decaying exponentially)
-  const flick = (t0, t1, tau, to) => {
-    let from = null
-    let goal = null
-    span(t0, t1, (u, t) => {
-      if (from == null) {
-        from = R("album").data.scroll || 0
-        goal = to(ag())
-      }
-      // the finger's push takes a few frames to get the page going (c), then it coasts
-      const c = 0.07
-      const e = (x) => x - c * (1 - Math.exp(-x / c))
-      const k = (1 - Math.exp(-e(Math.min(t, t1) - t0) / tau)) / (1 - Math.exp(-e(t1 - t0) / tau))
-      w.set("album", { data: { scroll: S.reduced ? (u < 0.5 ? from : goal) : from + (goal - from) * k, bar: 1 } })
-    })
-  }
   at(hedge + 0.4, () => {
     const p = R("album")
     w.cursorTo(p.x.t + p.w.t * 0.6, p.y.t + p.h.t * 0.62, hedge + 1.0)
   })
+  // his scroll: three unhurried throws down the first day, each photo there to be seen, then ⌘↓
+  // to the newest; the rows load as they come into view
   const f0 = hedge + 0.9
-  flick(f0, f0 + 1.2, 0.45, (g) => g.scrollTo(26, 0.2))
-  flick(f0 + 1.3, f0 + 2.9, 0.4, (g) => g.scrollTo(150, 0.2))
-  flick(f0 + 3.0, f0 + 4.7, 0.38, (g) => g.scrollTo(1500, 0.2))
-  flick(f0 + 4.8, f0 + 6.5, 0.36, (g) => g.maxScroll)
-  span(f0 + 6.5, f0 + 6.9, (u) => w.set("album", { data: { bar: 1 - smooth(u) } }))
-  // the thumbnails: blurry while the page moves fast, sharpening a few at a time once it slows
-  {
-    let last = null
-    let calm = hedge + 0.1
-    span(hedge + 0.1, word("And Joan") - 0.2, (u, t) => {
-      const p = R("album")
-      if (!p) return
-      const s = p.data.scroll || 0
-      if (last && t > last.t && Math.abs(s - last.s) / (t - last.t) > 1400) calm = t
-      last = { t, s }
-      if (t - calm < 0.7 || p.data.since < 0.7) w.set("album", { data: { since: S.reduced ? 9 : t - calm } })
-    })
-  }
+  const jumpT = f0 + 4.75
+  const path = (g) => [
+    { t0: f0, t1: f0 + 1.35, tau: 0.5, to: g.scrollTo(26, 0.2) },
+    { t0: f0 + 1.5, t1: f0 + 3.05, tau: 0.45, to: g.scrollTo(62, 0.2) },
+    { t0: f0 + 3.2, t1: f0 + 4.6, tau: 0.45, to: g.scrollTo(104, 0.2) },
+    { t0: jumpT, t1: jumpT, to: g.maxScroll },
+  ]
+  span(hedge + 0.1, word("And Joan") - 0.2, (u, t) => {
+    if (!R("album")) return
+    const p = path(ag())
+    const bar = Math.max(0, Math.min(1, t < f0 ? 0 : 1 - (t - (jumpT + 0.7)) / 0.4))
+    w.set("album", { data: { scroll: scrollOn(p, t, S.reduced), path: S.reduced ? null : p, now: t, open0: hedge + 0.1, bar } })
+  })
+  key(jumpT, ["⌘", "↓"], () => {})
   // the last one: him, at his window, looking back
   const lastAt = () => {
     const p = R("album")
@@ -632,15 +616,21 @@ export function build(S) {
     return [p.x.t + p.w.t - ww - 18, p.y.t + p.h.t - ww * 0.62 - 40, ww, ww * 0.62]
   }
   float(bins + 1.25, { id: "lid", app: "jot", kind: "sticky", title: "", at: lidAt, data: { text: "Thursday. It says so on the lid." } })
-  // eleven drafts to her, none sent
-  const DRAFTS = ["Hi Joan, just about the bins —", "Joan, the council website says Thursday.", "I don't want to make a thing of it, but", "It does say Thursday on the lid.", "Morning! Quick one about the bins", "Joan.", "Yours were out again tonight.", "Thursday.", "I've attached a photo of the lid.", "Is everything all right? Your lights went off early.", "I'd like to talk."]
+  // what he sent her, one after another; she never answered
+  const SENT = ["Hi Joan — collection is Thursday. It says so on the lid.", "Just a quick reminder, it's Wednesday today.", "I rolled them back behind your gate for you.", "Joan."]
   const dr = bins + 2.75
   shut(dr - 0.2, "lid", 0.35)
   push(dr - 0.2, dr, home, null)
   sw(dr, 2, "Mon Feb 23  1:40 AM")
-  at(dr + 0.02, () => w.set("joan", { data: { when: "Mon 1:40 AM", day: "Wed, Nov 26, 2025", drafts: DRAFTS, shownDrafts: 0, compose: "", caret: 1 } }))
+  at(dr + 0.02, () => w.set("joan", { data: { when: "Mon 1:40 AM", day: "Wed, Nov 26, 2025", msgs: [{ t: "Just putting mine out Wednesdays now, hope that's ok!" }], sent: SENT, sentAt: "Wed, Feb 18 at 9:14 PM", shownSent: 0, compose: "", caret: 1 } }))
   push(dr + 0.1, dr + 0.75, () => frameOf("joan", 1.06), "joan")
-  DRAFTS.forEach((_, i) => at(dr + 0.35 + i * 0.13, () => w.set("joan", { data: { shownDrafts: i + 1 } })))
+  SENT.forEach((_, i) => {
+    const s = dr + 0.3 + i * 0.42
+    at(s, () => w.set("joan", { data: { shownSent: i + 1, pop: 0 } }))
+    span(s, s + 0.22, (u) => w.set("joan", { data: { pop: u } }))
+    // (a seek replays cues, not spans: land the pop)
+    at(s + 0.23, () => w.set("joan", { data: { pop: 1 } }))
+  })
   // the letter
   const letter = dr + 2.35
   push(letter - 0.15, letter + 0.6, () => frameOf("postbox", 1.08), "postbox")

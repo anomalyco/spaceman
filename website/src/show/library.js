@@ -1,6 +1,6 @@
 // His album "Hedge": 4,812 phone photos of No. 14 and its hedge, in three days' sections, drawn as
 // the Photos grid: square thumbnails edge to edge with 2 px gaps, a header per day that sticks while
-// its photos scroll under it, thumbnails that arrive blurry and sharpen as the scroll settles. Daylight
+// its photos scroll under it, thumbnails that load in as their rows come into view. Daylight
 // for most of it, then afternoons and dusk; only the last row is at night, ending on his window with
 // him in it, looking back. Photos are in public/show/photos (show/notes/photos.md).
 import { FONT, roundRect } from "./apps.js"
@@ -106,6 +106,40 @@ export function albumGrid(w, h) {
   return { top, cols, tw, cell, secTop, total, view, maxScroll, tile, scrollTo, rowY }
 }
 
+// His scroll, as a pure function of show time: each throw coasts to its stop (velocity decaying
+// exponentially after the finger's push gets going); a step with no length is a jump (⌘↓).
+export function scrollOn(path, t, reduced = false) {
+  let s = 0
+  for (const f of path || []) {
+    if (t < f.t0) break
+    const from = s
+    if (f.t1 <= f.t0 || reduced) {
+      s = f.to
+      continue
+    }
+    const c = 0.07
+    const e = (x) => x - c * (1 - Math.exp(-x / c))
+    const k = (1 - Math.exp(-e(Math.min(t, f.t1) - f.t0) / f.tau)) / (1 - Math.exp(-e(f.t1 - f.t0) / f.tau))
+    s = from + (f.to - from) * k
+  }
+  return s
+}
+
+// when a row first came into view: the album opening, the scroll bringing it up from below, or a jump
+// (the scroll only ever goes down, so a bisection finds it)
+function arrival(G, d, y) {
+  if (y < scrollOn(d.path, d.open0) + G.view) return { at: d.open0, from: y - scrollOn(d.path, d.open0) }
+  let lo = d.open0
+  let hi = d.now
+  if (scrollOn(d.path, hi) + G.view <= y) return null
+  for (let i = 0; i < 22; i++) {
+    const m = (lo + hi) / 2
+    if (scrollOn(d.path, m) + G.view > y) hi = m
+    else lo = m
+  }
+  return { at: hi, from: y - scrollOn(d.path, hi) }
+}
+
 // per photo: a small copy for the grid (whole frame, 300 px high) and a tiny one, blurred, for the
 // moment before a thumbnail arrives
 const small = new Map()
@@ -126,9 +160,15 @@ function smallOf(p) {
   return c
 }
 
-// A tile: its own crop of the photo (each frames the house a little differently), sharpening in.
-function drawTile(ctx, e, k, r, a) {
+// A tile: its own crop of the photo (each frames the house a little differently). Before it loads
+// it's a grey placeholder; then the tiny soft copy, then the sharp one over it (soft, sharp: 0..1).
+function drawTile(ctx, e, k, r, soft01, a) {
   const p = plates[e.plate]
+  if (soft01 < 1) {
+    ctx.fillStyle = "#2c2c2f"
+    ctx.fillRect(r.x, r.y, r.w, r.h)
+  }
+  if (soft01 <= 0) return
   if (!p) {
     ctx.fillStyle = e.night ? "#1c1c20" : "#3d4438"
     ctx.fillRect(r.x, r.y, r.w, r.h)
@@ -150,8 +190,10 @@ function drawTile(ctx, e, k, r, a) {
   ctx.clip()
   if (a < 1) {
     ctx.imageSmoothingEnabled = true
+    ctx.globalAlpha = soft01
     const [sx, sy, sw, sh] = src(soft)
     ctx.drawImage(soft, sx, sy, sw, sh, r.x - 2, r.y - 2, r.w + 4, r.h + 4)
+    ctx.globalAlpha = 1
   }
   if (a > 0) {
     ctx.globalAlpha = a
@@ -187,7 +229,6 @@ function header(ctx, s, y, w, solid) {
 export function album(ctx, w, h, d) {
   const G = albumGrid(w, h)
   const scroll = Math.max(0, Math.min(G.maxScroll, d.scroll || 0))
-  const since = d.since ?? 9
   ctx.fillStyle = "#1e1e20"
   ctx.fillRect(0, BAR_H, w, h - BAR_H)
   ctx.save()
@@ -206,10 +247,18 @@ export function album(ctx, w, h, d) {
         const k = START[s] + row * G.cols + c
         if (k >= START[s + 1]) break
         const r = G.tile(k, scroll)
-        // the thumbnails arrive a few at a time once the page slows
-        // (the last row first: it's where the scroll comes to rest)
-        const a = Math.max(0, Math.min(1, (since - 0.03 - (k >= ALBUM - G.cols ? 0 : h01(k, 7) * 0.18)) / 0.1))
-        drawTile(ctx, albumAt(k, G.cols), k, r, a)
+        // the thumbnails load as their row comes into view, in a quick wave: left to right with a
+        // little scatter, rows further down a touch later
+        let soft01 = 1
+        let a = 1
+        if (d.path) {
+          const arr = arrival(G, d, G.rowY(k))
+          const c = (k - START[s]) % G.cols
+          const d0 = arr ? arr.at + 0.06 + c * 0.03 + h01(k, 7) * 0.07 + Math.min(4, Math.max(0, arr.from / G.cell)) * 0.05 : Infinity
+          soft01 = Math.max(0, Math.min(1, (d.now - d0) / 0.07))
+          a = Math.max(0, Math.min(1, (d.now - d0 - 0.06) / 0.2))
+        }
+        drawTile(ctx, albumAt(k, G.cols), k, r, soft01, a)
         if (d.sel === k) {
           ctx.strokeStyle = "#0a84ff"
           ctx.lineWidth = 3

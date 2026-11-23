@@ -12,7 +12,11 @@ const EDGE_PAD = 10
 // The Grow track: { w: 50, ht: 32, small: 0.62, gap: 8, pad: 3 }
 const BAR = { w: 50, ht: 32, small: 0.62, gap: 8, pad: 3, edge: 12, inner: 42 }
 // A tiler's moves are short: windows land in about a third of a second, a beat apart.
-const TILE_D = 0.34
+// a tile's frame settles in about 0.4 s, critically damped (no overshoot on size: text would shimmer)
+const TILE_D = 0.38
+// a window arriving: from 94% with the smallest settle, faded in a little ahead of its size
+const OPEN_D = 0.34
+const OPEN_BOUNCE = 0.3
 const STAGGER = 0.024
 
 export function tile(n, a) {
@@ -132,6 +136,8 @@ export class World {
       s: sp(1, 0.26),
       off: sp(0, 0.2),
       fo: sp(0, 0.24),
+      // lift: 1 for a float, which rises over the tiles (a few points up, a softer, wider shadow)
+      lf: sp(def.float ? 1 : 0, 0.42),
       z: ++this.z,
       canvas: null,
       dirty: true,
@@ -205,9 +211,14 @@ export class World {
     const w = this.add({ ...def, hidden: true })
     const r = (!w.float && this.tiling && this.rectsOf(w.ws).get(w.id)) || { x: def.at[0], y: def.at[1], w: def.at[2], h: def.at[3] }
     for (const k of ["x", "y", "w", "h"]) jump(w[k], r[k])
-    jump(w.s, 0.95)
-    to(w.s, 1)
-    to(w.a, 1)
+    jump(w.s, 0.94)
+    to(w.s, 1, OPEN_D, this.reduced ? 0 : OPEN_BOUNCE)
+    to(w.a, 1, 0.16)
+    // a float rises off the tiles as it arrives, swelling a hair and settling
+    if (w.float && !this.reduced) {
+      jump(w.lf, 0)
+      to(w.lf, 1, 0.42, 0.25)
+    }
     if (w.ws === this.active) this.reflow()
     if (focus) this.setFocus(w.id)
     return w
@@ -222,7 +233,7 @@ export class World {
     made.forEach((m, i) => {
       const r = (this.tiling && rs.get(m.id)) || { x: m.at?.[0] ?? 100, y: m.at?.[1] ?? 100, w: m.at?.[2] ?? 480, h: m.at?.[3] ?? 340 }
       for (const k of ["x", "y", "w", "h"]) jump(m[k], r[k])
-      jump(m.s, 0.95)
+      jump(m.s, 0.94)
       m.revealAt = this.time + i * gap
     })
     if (ws === this.active) this.reflow()
@@ -244,11 +255,11 @@ export class World {
     if (!w) return
     w.leaving = true
     // a closed window is gone almost at once, as on a Mac; the others don't grow over its ghost
-    to(w.s, 0.97, 0.14)
-    to(w.a, 0, 0.1)
-    w.removeAt = this.time + 0.2
+    to(w.s, 0.95, 0.16)
+    to(w.a, 0, 0.11)
+    w.removeAt = this.time + 0.22
     if (this.focus === id) this.focus = null
-    this.reflow({ delay: 0.07 })
+    this.reflow({ delay: 0.06 })
   }
 
   // Option+Shift+n: the window leaves for workspace n, shrinking into its little layout in the bar.
@@ -433,7 +444,7 @@ export class World {
           w.target = null
         }
       }
-      for (const k of ["x", "y", "w", "h", "a", "s", "off", "fo"]) step(w[k], dt)
+      for (const k of ["x", "y", "w", "h", "a", "s", "off", "fo", "lf"]) step(w[k], dt)
       if (w.a.x > 0.5) w.seen = true
       if (w.removeAt && this.time >= w.removeAt) {
         this.wins.delete(w.id)
@@ -443,8 +454,8 @@ export class World {
       if (w.flying && this.time >= w.flying) w.flying = 0
       if (w.revealAt !== undefined && this.time >= w.revealAt) {
         w.revealAt = undefined
-        to(w.s, 1)
-        to(w.a, 1)
+        to(w.s, 1, OPEN_D, this.reduced ? 0 : OPEN_BOUNCE)
+        to(w.a, 1, 0.16)
         if (w.ws === this.active) this.setFocus(w.id)
       }
       // once a workspace's windows have faded out, they rest where they are
@@ -715,15 +726,16 @@ export class World {
       if (w.a.x < 0.003) continue
       if ((!w.float || w.pin) && w.ws !== this.active && !w.flying && w.off.x === 0) continue
       this.ensureCanvas(w)
-      const s = w.s.x
+      // a float's lift: up a few points, with a 1.5% swell at the middle of the rise
+      const lift = w.float ? clamp(w.lf.x, 0, 1.2) : 0
+      const s = w.s.x * (1 + 0.015 * Math.sin(Math.PI * clamp(w.lf.x)) * (w.float ? 1 : 0))
       const ww = w.w.x * s
       const hh = w.h.x * s
       const x = w.x.x + (w.w.x - ww) / 2 + w.off.x
-      const y = w.y.x + (w.h.x - hh) / 2
+      const y = w.y.x + (w.h.x - hh) / 2 - 3 * lift
       const r = Math.min(11, ww * 0.1, hh * 0.1)
       const a = w.a.x
       const f = w.fo.x
-      const lift = w.float ? 1 : 0
       // once tiled, the window you're in lifts and the rest step back: an accent edge and a soft glow
       // on it, the others dimmed a sixth
       const tiled = this.tiling && !w.float

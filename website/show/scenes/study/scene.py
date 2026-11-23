@@ -23,6 +23,7 @@ PW, PH = 0.62, 0.3875
 BODY = (0.646, 0.022, 0.4135)
 CHAIR = (2.78, RD - 1.02, 140)  # x, y, turned (degrees): pushed back from the desk, turned side-on to the door
 DESKTOP = os.path.join(os.path.dirname(os.path.abspath(__file__)), "desktop.jpg")
+CLUES = os.path.join(os.path.dirname(os.path.abspath(__file__)), "clues")  # clues.py draws these
 
 
 def materials():
@@ -31,8 +32,10 @@ def materials():
     M["wall"] = pbr("plaster", tx("painted_plaster_wall"), 2.0, tint=(0.80, 0.78, 0.72), gain=1.15, rough=(0.75, 0.95), bump=0.15, contrast=-0.6)
     M["ceiling"] = pbr("ceiling", tx("plastered_wall_04"), 3.2, tint=(0.95, 0.94, 0.92), gain=1.2, rough=(0.85, 1.0), bump=0.08)
     M["floor"] = pbr("floor", tx("wood_floor"), 1.7, rough=(0.28, 0.55), bump=0.25, coat=0.25, coat_rough=0.18, rot=pi / 2)
-    M["oak"] = pbr("oak", tx("oak_veneer_01"), 1.83, gain=0.85, rough=(0.3, 0.5), bump=0.1, coat=0.3, coat_rough=0.2)
-    M["oakEdge"] = pbr("oakEdge", tx("oak_veneer_01"), 1.83, gain=0.5, rough=(0.3, 0.5), bump=0.05, coat=0.3, coat_rough=0.2, rot=pi / 2)
+    # the desk: the oak scan stained to walnut, its grain kept, under an oiled satin coat
+    M["oak"] = pbr("oak", tx("oak_veneer_01"), 1.83, tint=(0.56, 0.36, 0.25), gain=0.62, rough=(0.28, 0.46), bump=0.1, coat=0.35, coat_rough=0.16, contrast=0.12)
+    M["oakEdge"] = pbr("oakEdge", tx("oak_veneer_01"), 1.83, tint=(0.56, 0.36, 0.25), gain=0.4, rough=(0.3, 0.5), bump=0.05, coat=0.35, coat_rough=0.16, rot=pi / 2)
+    M["oakFrame"] = pbr("oakFrame", tx("oak_veneer_01"), 1.83, tint=(0.56, 0.36, 0.25), gain=0.5, rough=(0.35, 0.5), bump=0.05)
     M["rug"] = pbr("rug", tx("poly_wool_herringbone"), 0.27, tint=(0.62, 0.62, 0.64), rough=(0.85, 1.0), bump=0.6)
     M["fabric"] = pbr("fabric", tx("knitted_fleece"), 0.27, tint=(0.50, 0.52, 0.56), gain=0.85, rough=(0.85, 1.0), bump=0.5)
     # gloss-painted joinery (skirting, frames, the radiator) and satin-painted shelving
@@ -73,9 +76,66 @@ def materials():
     M["mount"] = mat("mount", (0.80, 0.78, 0.72), 0.85)
     M["map"] = contour_map()
     M["led"] = mat("led", (0, 0, 0), 0.3, emit=(1.0, 0.98, 0.95), strength=60.0)
+    M["matte"] = noisy(mat("matte", rough=0.62), (0.014, 0.014, 0.015), (0.02, 0.02, 0.021), scale=300, detail=3, rough=(0.55, 0.7))
+    M["bulb"] = mat("bulb", (0, 0, 0), 0.3, emit=(1.0, 0.80, 0.55), strength=40.0)
+    M["ruler"] = noisy(mat("ruler", rough=0.3, metal=1.0), (0.62, 0.63, 0.64), (0.66, 0.67, 0.68), scale=2000, detail=2, rough=(0.25, 0.35))
+    M["drill"] = noisy(mat("drill", rough=0.42), (0.72, 0.50, 0.04), (0.76, 0.54, 0.05), scale=200, detail=3, rough=(0.38, 0.48))
+    M["rubber"] = mat("rubber", (0.02, 0.02, 0.022), 0.75)
+    M["chrome"] = mat("chrome", (0.8, 0.8, 0.82), 0.12, metal=1.0)
+    M["tin"] = noisy(mat("tin", rough=0.35), (0.25, 0.12, 0.36), (0.28, 0.14, 0.40), scale=40, rough=(0.3, 0.4))
+    M["tinEnd"] = mat("tinEnd", (0.75, 0.75, 0.77), 0.25, metal=1.0)
+    M["plastic"] = polythene()
+    M["core"] = noisy(mat("core", rough=0.85), (0.45, 0.36, 0.25), (0.5, 0.4, 0.28), scale=60, rough=(0.8, 0.9))
+    M["bandBlue"] = mat("bandBlue", (0.03, 0.09, 0.30), 0.45)
+    M["bandWhite"] = mat("bandWhite", (0.78, 0.78, 0.76), 0.5)
+    for k in ("sticky", "card4", "card5", "card6", "card7"):
+        M[k] = imgmat(k, os.path.join(CLUES, k + ".png"), 0.82)
+    M["legalpad"] = imgmat("legalpad", os.path.join(CLUES, "legalpad.png"), 0.85, sat=1.5, val=0.62)
+    M["padBand"] = mat("padBand", (0.22, 0.05, 0.05), 0.6)
+    M["padBack"] = mat("padBack", (0.40, 0.33, 0.24), 0.85)
+    M["pin"] = mat("pin", (0.60, 0.45, 0.22), 0.3, metal=1.0)
     M["glass"] = glass()
     M["screen"] = screen_material()
     return M
+
+
+def imgmat(name, path, rough=0.8, sat=1.0, val=1.0):
+    """Paper with a picture on it (clues.py), mapped by the plane's UVs. sat/val keep a sheet that sits
+    under the lamp from washing out to white."""
+    m = mat(name, (0.8, 0.8, 0.8), rough)
+    t = node(m, "ShaderNodeTexImage")
+    t.image = D.images.load(path, check_existing=True)
+    link(m, texcoord(m, "UV"), t.inputs["Vector"])
+    hsv = node(m, "ShaderNodeHueSaturation")
+    hsv.inputs["Saturation"].default_value = sat
+    hsv.inputs["Value"].default_value = val
+    link(m, t.outputs["Color"], hsv.inputs["Color"])
+    link(m, hsv.outputs["Color"], bsdf(m).inputs["Base Color"])
+    return m
+
+
+def polythene():
+    """Heavy clear sheeting on a roll: a milky, slightly rough transmissive film."""
+    m = mat("plastic", (0.86, 0.88, 0.90), 0.22)
+    p = bsdf(m)
+    p.inputs["Transmission Weight"].default_value = 0.85
+    p.inputs["IOR"].default_value = 1.45
+    p.inputs["Coat Weight"].default_value = 0.4
+    p.inputs["Coat Roughness"].default_value = 0.08
+    return m
+
+
+def decal(name, center, w, h, m, rot=(0, 0, 0)):
+    """A flat UV-mapped sheet (paper, a card, a note), w × h, its picture upright along +y before rot."""
+    bm = bmesh.new()
+    bm.loops.layers.uv.new("UVMap")
+    bmesh.ops.create_grid(bm, x_segments=1, y_segments=1, size=0.5, calc_uvs=True)
+    for v in bm.verts:
+        v.co = Vector((v.co.x * w, v.co.y * h, 0))
+    o = obj_from_bm(name, bm, m)
+    o.location = center
+    o.rotation_euler = rot
+    return o
 
 
 def glass():
@@ -321,14 +381,12 @@ def bookcase(M, R):
         R.append(box("arch%d" % i, (sx - 0.25 + i * 0.25, sy, 1.571 + 0.12), (0.24, 0.28, 0.24), M["card"], 0.004))
         R.append(box("archLid%d" % i, (sx - 0.25 + i * 0.25, sy, 1.571 + 0.235), (0.245, 0.285, 0.03), M["cardLid"], 0.003))
         R.append(slab("archHole%d" % i, (sx - 0.25 + i * 0.25, sy - 0.141, 1.571 + 0.17), 0.08, 0.025, 0.002, 0.012, M["black"]))
-    for i in range(2):
-        R.append(box("archLow%d" % i, (sx - 0.19 + i * 0.38, sy, 0.091 + 0.15), (0.36, 0.28, 0.3), M["card"], 0.004))
-        R.append(box("archLowLid%d" % i, (sx - 0.19 + i * 0.38, sy, 0.091 + 0.295), (0.365, 0.285, 0.03), M["cardLid"], 0.003))
+    bookcase_clues(M, R, sx, sy)
     # a shelf of paperbacks and manuals, muted spines, one leaning
     x = sx - 0.36
     cols = [(0.20, 0.17, 0.13), (0.12, 0.14, 0.15), (0.32, 0.30, 0.26), (0.16, 0.10, 0.08), (0.42, 0.40, 0.34), (0.10, 0.11, 0.10), (0.25, 0.22, 0.15)]
     i = 0
-    while x < sx + 0.3:
+    while x < sx + 0.12:
         bw = rng.uniform(0.018, 0.04)
         bh = rng.uniform(0.18, 0.24)
         bd = rng.uniform(0.13, 0.17)
@@ -377,28 +435,33 @@ def desk(M, N):
     N.append(slab("pad", (dx + 0.06, RD - 0.6, top + 0.0015), 0.8, 0.34, 0.003, 0.012, M["felt"], axis="Z"))
     mon(M, N)
     keyboard(M, N, dx - 0.04, RD - 0.6, top + 0.003)
-    N.append(slab("trackpad", (dx + 0.262, RD - 0.585, top + 0.0075), 0.16, 0.115, 0.009, 0.01, M["white"], axis="Z", bevel=0.002, rot=(0, 0, rad(-4))))
+    # everything on the desk square to its edges, a hand's width apart: he tiles the desk as he tiles the Mac
+    N.append(slab("trackpad", (dx + 0.262, RD - 0.6, top + 0.0075), 0.16, 0.115, 0.009, 0.01, M["white"], axis="Z", bevel=0.002))
     # the Mac mini to the left of the stand, its light on
     N.append(slab("mini", (dx - 0.45, RD - 0.26, top + 0.019), 0.197, 0.197, 0.036, 0.022, M["alu"], axis="Z", bevel=0.003))
     N.append(slab("miniFoot", (dx - 0.45, RD - 0.26, top + 0.0006), 0.17, 0.17, 0.0012, 0.02, M["black"], axis="Z"))
     N.append(cyl("miniLED", (dx - 0.45 + 0.07, RD - 0.26 - 0.0986, top + 0.012), 0.0013, 0.001, M["led"], 12, rot=(pi / 2, 0, 0)))
-    # three pens, parallel; a notebook squared to the edge, its band; the label maker; a mug on a coaster
-    for i, (ox, oy, a) in enumerate(((0.0, 0.0, 4), (0.026, 0.012, -9), (0.075, -0.03, 31))):
-        pen(M, N, Vector((dx + 0.56 + ox, RD - 0.62 + oy, top + 0.0045)), rad(a), i == 1)
-    # a letter, opened and folded in thirds, left by the keyboard
-    for k, (oz, tilt) in enumerate(((0.0006, 0), (0.0035, 2.2))):
-        N.append(box("letter%d" % k, (dx - 0.3, RD - 0.66, top + 0.003 + oz), (0.21, 0.099, 0.0004), M["paper"], 0, rot=(rad(tilt), 0, rad(-7))))
+    # three pens, parallel, a finger apart; a steel rule beside them
+    for i in range(3):
+        pen(M, N, Vector((dx + 0.40 + i * 0.024, RD - 0.6, top + 0.0045)), 0.0, i == 1)
+    N.append(box("ruler", (dx + 0.5, RD - 0.6, top + 0.0007), (0.025, 0.3, 0.0012), M["ruler"], 0.0003))
+    for k in range(30):
+        N.append(box("tick", (dx + 0.5 - 0.0125 + (0.003 if k % 5 else 0.0045), RD - 0.6 - 0.145 + k * 0.01, top + 0.00135), (0.006 if k % 5 else 0.009, 0.0004, 0.0001), M["ink"], 0))
     N.append(slab("notebook", (dx + 0.62, RD - 0.32, top + 0.0075), 0.13, 0.21, 0.015, 0.006, M["notebook"], axis="Z"))
     N.append(box("pages", (dx + 0.6215, RD - 0.32, top + 0.0075), (0.125, 0.2, 0.012), M["paper"], 0.001))
     N.append(box("band", (dx + 0.67, RD - 0.32, top + 0.0075), (0.006, 0.212, 0.0162), M["black"], 0.001))
-    N.append(slab("labelmaker", (dx - 0.56, RD - 0.6, top + 0.018), 0.065, 0.13, 0.036, 0.012, M["black"], axis="Z", bevel=0.003))
-    N.append(cyl("coaster", (dx + 0.45, RD - 0.48, top + 0.003), 0.048, 0.006, M["cork"], 40, bevel=0.0015))
-    mug = cyl("mug", (dx + 0.45, RD - 0.48, top + 0.006 + 0.048), 0.041, 0.095, M["ceramic"], 48)
+    N.append(slab("labelmaker", (dx - 0.7, RD - 0.6, top + 0.018), 0.065, 0.13, 0.036, 0.012, M["black"], axis="Z", bevel=0.003))
+    legal_pad(M, N, dx - 0.48, RD - 0.58, top)
+    drill(M, N, dx + 0.64, RD - 0.12, top)
+    mx_, my_ = dx + 0.62, RD - 0.6
+    N.append(cyl("coaster", (mx_, my_, top + 0.003), 0.048, 0.006, M["cork"], 40, bevel=0.0015))
+    mug = cyl("mug", (mx_, my_, top + 0.006 + 0.048), 0.041, 0.095, M["ceramic"], 48)
     bm_open(mug, 0.004)
     N.append(mug)
-    N.append(cyl("mugBase", (dx + 0.45, RD - 0.48, top + 0.008), 0.039, 0.004, M["ceramic"], 48))
-    N.append(cyl("tea", (dx + 0.45, RD - 0.48, top + 0.06), 0.0365, 0.002, M["tea"], 48))
-    bpy.ops.mesh.primitive_torus_add(major_radius=0.026, minor_radius=0.0055, major_segments=32, minor_segments=12, location=(dx + 0.45 + 0.045, RD - 0.48, top + 0.056), rotation=(pi / 2, 0, 0))
+    N.append(cyl("mugBase", (mx_, my_, top + 0.008), 0.039, 0.004, M["ceramic"], 48))
+    N.append(cyl("tea", (mx_, my_, top + 0.06), 0.0365, 0.002, M["tea"], 48))
+    # the handle square to the desk's edge
+    bpy.ops.mesh.primitive_torus_add(major_radius=0.026, minor_radius=0.0055, major_segments=32, minor_segments=12, location=(mx_ + 0.045, my_, top + 0.056), rotation=(pi / 2, 0, 0))
     h = bpy.context.active_object
     h.name = "handle"
     h.scale = (0.8, 1.0, 1.0)
@@ -456,22 +519,99 @@ def keyboard(M, N, kx, ky, z):
 
 
 def lamp(M, N, lx, ly, top):
-    b = M["black"]
+    """An architect's lamp, matte black with brass joints, on: a warm pool on the legal pad."""
+    b, br = M["matte"], M["brass"]
     N.append(cyl("lampBase", (lx, ly, top + 0.012), 0.075, 0.024, b, 48, bevel=0.006))
+    N.append(cyl("lampBaseRing", (lx, ly, top + 0.0245), 0.03, 0.004, br, 32, bevel=0.001))
     p0 = Vector((lx, ly, top + 0.03))
     p1 = p0 + Vector((0, -0.06, 0.38))
-    p2 = p1 + Vector((0, -0.24, 0.05))
+    p2 = p1 + Vector((0.04, -0.24, 0.05))
     for n, a, c in (("lampArm1", p0, p1), ("lampArm2", p1, p2)):
         d = c - a
-        for off, r, s in ((0, 0.0055, 1.0), (0.016, 0.0035, 0.9)):
-            o = cyl(n, (a + c) / 2 + Vector((off, 0, 0)), r, d.length * s, b, 12)
+        for off, r, s_ in ((0, 0.0055, 1.0), (0.016, 0.0035, 0.9)):
+            o = cyl(n, (a + c) / 2 + Vector((off, 0, 0)), r, d.length * s_, b, 12)
             o.rotation_euler = d.to_track_quat("Z", "Y").to_euler()
             N.append(o)
     for p in (p0, p1, p2):
-        N.append(cyl("joint", p, 0.012, 0.03, b, 16, rot=(0, pi / 2, 0)))
-    head = cyl("lampHead", p2 + Vector((0, -0.03, -0.05)), 0.055, 0.12, b, 40, r2=0.02)
-    head.rotation_euler = (rad(-30), 0, 0)
+        N.append(cyl("joint", p, 0.012, 0.03, br, 16, rot=(0, pi / 2, 0), bevel=0.002))
+    # the head looks down at the pad; its wide mouth toward it
+    aim = Vector(LAMP_AIM)
+    hc = p2 + Vector((0, -0.02, -0.06))
+    d = (aim - hc).normalized()
+    head = cyl("lampHead", hc, 0.058, 0.13, b, 48, r2=0.022)
+    head.rotation_euler = (-d).to_track_quat("Z", "Y").to_euler()
+    bm_open(head, 0.0015)
     N.append(head)
+    rim = cyl("lampRim", hc + d * 0.064, 0.059, 0.005, br, 48, bevel=0.001)
+    rim.rotation_euler = head.rotation_euler
+    bm_open(rim, 0.002)  # a ring, not a lid over the mouth
+    N.append(rim)
+    bulb = cyl("lampBulb", hc + d * 0.03, 0.02, 0.03, M["bulb"], 24)
+    bulb.rotation_euler = head.rotation_euler
+    N.append(bulb)
+    LAMP["at"] = tuple(hc + d * 0.05)
+
+
+LAMP_AIM = (1.53, 2.63, 0.74)  # the middle of the legal pad
+LAMP = {}
+
+
+def legal_pad(M, N, px, py, top):
+    """A yellow legal pad squared to the desk: its glued band at the top, a card back, the page of timings."""
+    w, h = 0.216, 0.356
+    N.append(box("padBack", (px, py, top + 0.0006), (w, h, 0.0012), M["padBack"], 0))
+    N.append(box("padBlock", (px, py - 0.004, top + 0.0045), (w - 0.001, h - 0.012, 0.006), M["paper"], 0.0005))
+    N.append(decal("padTop", (px, py - 0.004, top + 0.0076), w - 0.001, h - 0.012, M["legalpad"]))
+    N.append(box("padBand", (px, py + h / 2 - 0.009, top + 0.005), (w + 0.001, 0.018, 0.0085), M["padBand"], 0.0008))
+    # his pen, capped, squared beside it
+    pen(M, N, Vector((px + w / 2 + 0.018, py, top + 0.0045)), 0.0, True)
+
+
+def drill(M, N, x, y, top):
+    """Mark's cordless drill, stood on its battery in the far corner, the chuck square to the wall; the
+    sticky note on the battery says whose it is."""
+    # battery and foot
+    N.append(slab("drillBatt", (x, y, top + 0.033), 0.085, 0.078, 0.066, 0.01, M["rubber"], axis="Z", bevel=0.004))
+    N.append(slab("drillFoot", (x, y, top + 0.071), 0.07, 0.07, 0.012, 0.01, M["drill"], axis="Z", bevel=0.003))
+    # the grip, rising and leaning back a little
+    N.append(sbox("drillGrip", (x + 0.012, y, top + 0.135), (0.036, 0.046, 0.12), M["rubber"], 0.012, 4, rot=(0, rad(-10), 0)))
+    # the body: motor housing along x, the chuck pointing at -x
+    body = cyl("drillBody", (x - 0.015, y, top + 0.215), 0.034, 0.16, M["drill"], 32, rot=(0, pi / 2, 0), bevel=0.008)
+    N.append(body)
+    N.append(cyl("drillCollar", (x - 0.1, y, top + 0.215), 0.026, 0.02, M["rubber"], 32, rot=(0, pi / 2, 0), bevel=0.003))
+    N.append(cyl("drillChuck", (x - 0.128, y, top + 0.215), 0.021, 0.038, M["rubber"], 24, rot=(0, pi / 2, 0), r2=0.016, bevel=0.002))
+    N.append(cyl("drillBit", (x - 0.168, y, top + 0.215), 0.0035, 0.05, M["chrome"], 12, rot=(0, pi / 2, 0)))
+    N.append(box("drillTrigger", (x - 0.008, y, top + 0.17), (0.012, 0.014, 0.024), M["rubber"], 0.002))
+    # the note, on the battery's face toward the room
+    N.append(decal("sticky", (x, y - 0.0395, top + 0.036), 0.05, 0.05, M["sticky"], rot=(pi / 2, 0, 0)))
+
+
+def corkboard(M, R):
+    """A small corkboard left of the screen: four index cards in a level row, four, five, six, and seven,
+    blank, each pinned at its top."""
+    cx, cz = 1.2, 1.63
+    w, h = 0.56, 0.38
+    R.append(box("corkFrame", (cx, RD - 0.012, cz), (w + 0.04, 0.022, h + 0.04), M["oakFrame"], 0.003))
+    R.append(box("cork", (cx, RD - 0.0235, cz), (w, 0.004, h), M["cork"], 0))
+    for i, n in enumerate("4567"):
+        x = cx - 0.195 + i * 0.13
+        R.append(decal("card" + n, (x, RD - 0.0262, cz + 0.04), 0.115, 0.069, M["card" + n], rot=(pi / 2, 0, 0)))
+        R.append(cyl("pin" + n, (x, RD - 0.031, cz + 0.064), 0.0045, 0.008, M["pin"], 16, rot=(pi / 2, 0, 0), bevel=0.001))
+
+
+def bookcase_clues(M, R, sx, sy):
+    """On the shelves to the left, where the screen's light doesn't reach: a roll of heavy clear sheeting
+    on the bottom shelf, and two tins of cat food stacked at the end of the paperbacks."""
+    z = 0.091 + 0.082
+    R.append(cyl("plasticCore", (sx, sy - 0.02, z), 0.038, 0.745, M["core"], 32, rot=(0, pi / 2, 0)))
+    R.append(cyl("plastic", (sx, sy - 0.02, z), 0.08, 0.72, M["plastic"], 64, rot=(0, pi / 2, 0)))
+    R.append(cyl("plasticBand", (sx + 0.08, sy - 0.02, z), 0.0805, 0.05, M["bandBlue"], 64, rot=(0, pi / 2, 0)))
+    R.append(cyl("plasticBand2", (sx + 0.17, sy - 0.02, z), 0.0805, 0.13, M["bandWhite"], 64, rot=(0, pi / 2, 0)))
+    for k in range(2):
+        zz = 0.461 + 0.0225 + k * 0.046
+        R.append(cyl("tin%d" % k, (sx + 0.3, sy - 0.06, zz), 0.0425, 0.04, M["tin"], 40))
+        for e in (-1, 1):
+            R.append(cyl("tinRim%d" % k, (sx + 0.3, sy - 0.06, zz + e * 0.021), 0.0428, 0.003, M["tinEnd"], 40, bevel=0.0008))
 
 
 def cables(M, N):
@@ -549,13 +689,17 @@ def lights():
     lx = (DX0 + DX1) / 2 + 0.3
     L["landing"] = light("landing", "AREA", (lx, -1.0, RH - 0.05), LANDING_W, (1.0, 0.70, 0.45), (0.3, 0.3), target=(lx, -1.0, 0))
     # the night past the slats: a faint glow
-    sky = mat("Night", (0, 0, 0), 1.0, emit=(0.06, 0.07, 0.09), strength=0.22)
+    # the last of the dusk past the slats: a deep, cold blue
+    sky = mat("Night", (0, 0, 0), 1.0, emit=(0.045, 0.075, 0.17), strength=0.42)
     L["night"] = box("Night", (RW + 6, (WY0 + WY1) / 2, 2.0), (0.1, 16, 10), sky, 0)
     L["bg"] = world((0.002, 0.0025, 0.004), 1.0)
+    # the desk lamp, a warm pool on the pad
+    L["lamp"] = light("lamp", "SPOT", LAMP["at"], LAMP_W, (1.0, 0.70, 0.40), 0.03, target=LAMP_AIM, spot=64, blend=0.6)
     return L
 
 
 STREET_W = 9000
+LAMP_W = 10
 LANDING_W = 140
 
 
@@ -566,6 +710,7 @@ def build():
     window(M, ROOM)
     bookcase(M, ROOM)
     wall_things(M, ROOM)
+    corkboard(M, ROOM)
     ROOM.append(slab("rug", (2.0, RD - 1.05, 0.004), 1.7, 1.25, 0.008, 0.01, M["rug"], axis="Z", bevel=0.003))
     desk(M, NEAR)
     chair(M, NEAR)

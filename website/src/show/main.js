@@ -18,6 +18,9 @@ import { FEEDS } from "./feeds.js"
 import { loadIcons } from "./apps.js"
 import { clamp, mix, smooth } from "./springs.js"
 
+// the black between the last cut and the end card, in seconds (Show.tsx's CARD_MS)
+export const CARD_AT = 0.75
+
 // pictures inside his apps (renders of our own scenes), and the still Canvas 2D pushes into
 const PLATES = ["wall", "wall-s", "across"]
 const STILLS = { CamChair: "intro" }
@@ -463,6 +466,10 @@ export function createShow({ still, canvas, base, capture = false, reduced = fal
       // a hard cut: picture and sound stop on the same frame, nothing runs on under the card
       audio.stopAll()
       tapeAt = null
+      // then 0.75 s of black and dead silence, and the card arrives with a children's "Yaaay!" (kind
+      // "card": the export mixes it after the cut that silences everything else)
+      const yay = audio.manifest?.sfx?.yay
+      if (yay) audio.play(yay, { t: t + CARD_AT, delay: CARD_AT, kind: "card" })
       emit("phase", "ended")
     },
   }

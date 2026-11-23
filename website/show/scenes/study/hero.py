@@ -5,7 +5,7 @@
 #          test                 one low still of every candidate camera, asleep and awake
 #          at=0,4,6.8           stills at those film times (seconds)
 #          frames=0-221         the plate's frames (30 fps from film t=0), PNG, plus corners.json
-#          [ev=0 street=1 landing=1 screen=1 blur=1]
+#          [ev=0 street=1 landing=1 lamp=1 screen=1 blur=1]
 import os, sys, math, json
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, os.path.join(HERE, ".."))
@@ -45,13 +45,14 @@ built = S.build()
 M, L, scr = built["M"], built["lights"], built["screen"]
 L["street"].data.energy *= num("street", 1)
 L["landing"].data.energy *= num("landing", 1)
+L["lamp"].data.energy *= num("lamp", 1)
 SCREEN = 1.4 * num("screen", 1)
 
 # ── cameras ─────────────────────────────────────────────────────────────
 # the opening's candidates (pos, look-at, vfov, f-stop); the film's opening is CAM
 CANDS = {
     "chair": ((2.16, 1.70, 1.24), (1.98, 2.93, 0.98), 44, 2.8),
-    "door": ((0.85, 0.42, 1.50), (2.30, 2.80, 0.92), 42, 2.8),
+    "door": ((0.85, 0.42, 1.50), (2.30, 2.80, 0.92), 42, 2.0),
     "corner": ((0.45, 0.95, 1.38), (2.30, 2.90, 0.95), 40, 2.8),
     "back": ((1.55, 0.55, 1.42), (2.05, 2.93, 0.98), 36, 2.8),
 }

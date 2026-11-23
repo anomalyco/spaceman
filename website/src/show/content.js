@@ -1,6 +1,7 @@
 // Window painters. Each window owns a canvas; paint() draws its chrome and contents at logical size
 // (the context is already scaled). Contents are redrawn only when a window is marked dirty.
 import { APPS, FONT, MONO, iconCanvas, roundRect } from "./apps.js"
+import { favTile } from "./favicons.js"
 import { plates, coverUV } from "./plates.js"
 import { album as albumPainter } from "./library.js"
 import { feed as paintFeed } from "./feeds.js"
@@ -562,17 +563,14 @@ function startPage(ctx, w, h, top) {
   const cw = Math.min(w - 40, 560)
   const x0 = (w - cw) / 2
   text(ctx, "Favourites", x0, top + 54, { size: 17, weight: 700 })
-  const favs = [["Pinecrest", "#3e7d54"], ["Council", "#2f5c9e"], ["Weather", "#3a8ed6"], ["Maps", "#58a55c"], ["News", "#d4443c"], ["Bank", "#1f3f73"]]
+  const favs = ["Pinecrest", "Council", "Weather", "Maps", "News", "Bank"]
   const n = Math.max(3, Math.min(6, Math.floor(cw / 86)))
   const step = cw / n
-  favs.slice(0, n * 2).forEach(([name, col], i) => {
+  favs.slice(0, n * 2).forEach((name, i) => {
     const x = x0 + (i % n) * step + step / 2
-    const y = top + 78 + Math.floor(i / n) * 96
-    if (y + 70 > h) return
-    ctx.fillStyle = col
-    roundRect(ctx, x - 30, y, 60, 60, 13)
-    ctx.fill()
-    text(ctx, name[0], x, y + 39, { size: 26, weight: 600, color: "#fff", align: "center" })
+    const y = top + 80 + Math.floor(i / n) * 98
+    if (y + 72 > h) return
+    favTile(ctx, name, x - 30, y, 60)
     text(ctx, name, x, y + 78, { size: 11.5, color: INK, align: "center", max: step - 6 })
   })
 }
@@ -656,7 +654,7 @@ function chatList(ctx, h, side, d, focused) {
     { n: "Pinecrest Neighbours · 9", p: "Whose is the blue car?", t: "8:02 PM" },
     { n: "Mark (No. 10)", p: "Thanks for the drill!", t: "Yesterday" },
     { n: "Ruth (No. 8)", p: "See you Saturday", t: "Saturday" },
-    { n: "Joan (No. 16)", p: "Bins are Wednesdays btw", t: "11/26/25" },
+    { n: "Joan (No. 16)", p: "Just putting mine out Wednesdays now, hope that's ok!", t: "11/26/25" },
     { n: "Pinecrest Dental", p: "Your appointment is confirmed", t: "11/14/25" },
   ])
     if (r.n !== d.who) rows.push(r)
@@ -696,59 +694,93 @@ function bubble(ctx, x, y, bw, bh, me, color) {
   ctx.fill()
 }
 
+// a message's lines at 15 px, wrapped to the bubble's widest
+function wrapMsg(ctx, s, max) {
+  ctx.font = `400 15px ${FONT}`
+  const out = []
+  let line = ""
+  for (const word of s.split(" ")) {
+    const next = line ? line + " " + word : word
+    if (line && ctx.measureText(next).width > max) {
+      out.push(line)
+      line = word
+    } else line = next
+  }
+  if (line) out.push(line)
+  return out
+}
+
 function thread(ctx, w, h, d) {
   ctx.fillStyle = PAGE
   ctx.fillRect(0, BAR_H, w, h - BAR_H)
   const foot = d.compose != null ? 52 : 0
-  let y = BAR_H + 18
-  // drafts that don't fit push the conversation up, under the title bar
-  const DR = 30
-  let over = 0
-  if (d.drafts) {
-    let mh = 26
-    for (const m of d.msgs || []) mh += (m.from ? 16 : 0) + (m.note ? 66 : 44)
-    over = Math.max(0, y + mh + (d.shownDrafts ?? d.drafts.length) * DR - (h - foot - 10))
-  }
+  const maxW = Math.min(w * 0.72, 420)
+  // the conversation as rows: a centred time, or a bubble (with its lines), in order
+  const rows = [{ stamp: d.day || d.when || "Today 11:52 PM", head: 1 }]
+  for (const m of d.msgs || []) rows.push({ m, lines: wrapMsg(ctx, m.t, maxW - 26) })
+  const sent = (d.sent || []).slice(0, d.shownSent ?? (d.sent || []).length)
+  if (sent.length && d.sentAt) rows.push({ stamp: d.sentAt })
+  sent.forEach((t, i) => rows.push({ m: { t, me: 1 }, lines: wrapMsg(ctx, t, maxW - 26), last: i === sent.length - 1, pop: i === sent.length - 1 ? d.pop ?? 1 : 1 }))
+  // heights: bubbles in a run sit 3 px apart and only the run's last one has a tail; a new sender or a
+  // time opens a 12 px gap; "Delivered" sits under the last one he sent
+  const bh = (r) => 14 + r.lines.length * 20
+  let total = 0
+  rows.forEach((r, i) => {
+    const prev = rows[i - 1]
+    r.gap = !prev ? 0 : r.stamp || prev.stamp || !!prev.m.me !== !!r.m?.me || prev.m.from ? 12 : 3
+    r.h = r.stamp ? (r.head ? 34 : 30) : (r.m.from ? 15 : 0) + bh(r)
+    total += r.gap + r.h
+  })
+  if (sent.length) total += 18
+  // a long thread is scrolled to its newest message, the way Messages opens it
+  const top = BAR_H + 18
+  const room = h - foot - 12 - top
+  let y = top - Math.max(0, total - room)
   ctx.save()
   ctx.beginPath()
   ctx.rect(0, BAR_H, w, h - BAR_H - foot)
   ctx.clip()
-  y -= over
-  // the service and the time, centred, the way a thread opens
-  text(ctx, "iMessage", w / 2, y + 4, { size: 11, weight: 600, color: SOFT, align: "center" })
-  text(ctx, d.day || d.when || "Today 11:52 PM", w / 2, y + 18, { size: 11, color: SOFT, align: "center" })
-  y += 34
-  for (const m of d.msgs || []) {
+  rows.forEach((r, i) => {
+    y += r.gap
+    if (r.stamp) {
+      if (r.head) text(ctx, "iMessage", w / 2, y + 4, { size: 11, weight: 600, color: SOFT, align: "center" })
+      text(ctx, r.stamp, w / 2, y + (r.head ? 18 : 14), { size: 11, color: SOFT, align: "center" })
+      y += r.h
+      return
+    }
+    const m = r.m
     ctx.font = `400 15px ${FONT}`
-    const bw = Math.min(w * 0.74, ctx.measureText(m.t).width + 26)
-    const x = m.me ? w - bw - 16 : 16
+    const bw = Math.min(maxW, Math.max(...r.lines.map((l) => ctx.measureText(l).width)) + 26)
+    const x = m.me ? w - bw - 18 : 18
     if (m.from) {
       text(ctx, m.from, x + 12, y + 8, { size: 11, color: SOFT })
       y += 15
     }
-    bubble(ctx, x, y, bw, 34, m.me, m.me ? ACCENT : "#e9e9eb")
-    text(ctx, m.t, x + 13, y + 22, { size: 15, color: m.me ? "#fff" : "#000", max: bw - 22 })
-    if (m.note) text(ctx, m.note, m.me ? w - 18 : 20, y + 51, { size: 11, weight: 500, color: SOFT, align: m.me ? "right" : "left" })
-    y += m.note ? 66 : 44
-  }
-  // drafts: written to her, one after another, and never sent
-  if (d.drafts) {
-    const n = d.shownDrafts ?? d.drafts.length
-    d.drafts.slice(0, n).forEach((s, i) => {
-      ctx.font = `400 13.5px ${FONT}`
-      const bw = Math.min(w * 0.78, ctx.measureText(s).width + 26)
-      const x = w - bw - 64
-      const yy = y + i * DR
-      ctx.setLineDash([4, 3])
-      ctx.strokeStyle = "rgba(10,132,255,.55)"
-      ctx.lineWidth = 1.2
-      roundRect(ctx, x + 0.5, yy + 0.5, bw, DR - 6, (DR - 6) / 2)
-      ctx.stroke()
-      ctx.setLineDash([])
-      text(ctx, s, x + 13, yy + DR / 2 + 2, { size: 13.5, color: "#2c6fd1", max: bw - 20 })
-      text(ctx, "Draft", w - 16, yy + DR / 2 + 2, { size: 11.5, weight: 600, color: "#d63a2f", align: "right" })
-    })
-  }
+    const next = rows[i + 1]
+    const tail = !next || next.stamp || !!next.m?.me !== !!m.me
+    const hh = bh(r)
+    ctx.save()
+    // a message just sent pops up from its corner
+    if (r.pop < 1) {
+      const k = 0.86 + 0.14 * r.pop + 0.03 * Math.sin(r.pop * Math.PI)
+      const ox = m.me ? x + bw : x
+      ctx.globalAlpha = Math.min(1, r.pop * 2.2)
+      ctx.translate(ox, y + hh)
+      ctx.scale(k, k)
+      ctx.translate(-ox, -(y + hh))
+    }
+    if (tail) bubble(ctx, x, y, bw, hh, m.me, m.me ? ACCENT : "#e9e9eb")
+    else {
+      ctx.fillStyle = m.me ? ACCENT : "#e9e9eb"
+      roundRect(ctx, x, y, bw, hh, Math.min(18, hh / 2))
+      ctx.fill()
+    }
+    r.lines.forEach((l, k) => text(ctx, l, x + 13, y + 22 + k * 20, { size: 15, color: m.me ? "#fff" : "#000" }))
+    ctx.restore()
+    if (m.note) text(ctx, m.note, m.me ? w - 18 : 20, y + hh + 17, { size: 11, weight: 500, color: SOFT, align: m.me ? "right" : "left" })
+    if (r.last && r.pop >= 1) text(ctx, "Delivered", w - 20, y + hh + 14, { size: 11, weight: 500, color: SOFT, align: "right" })
+    y += hh
+  })
   ctx.restore()
   if (d.compose != null) {
     const fy = h - 42

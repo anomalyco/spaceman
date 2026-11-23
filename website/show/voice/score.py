@@ -13,17 +13,28 @@ raw = os.path.join(here, "raw", "score")
 SR = 44100
 # the first half-minute is dry: the strings come in with the door camera
 SCORE_AT = 30.0
-# stem, take, where its first sample sits in show time, and its fades (show time)
-# cello-1 is silent for 2 s and creeps in from nothing; dread-1 builds for 33 s; peak-1 crests 20-22 s in
-# lift: extra dB over show time (the peak's first seventeen seconds are much quieter than its crest;
-# on seven they hold a taut floor instead)
-STEMS = [
-    ("cello-1", 33.0, (33.0, 0.5), (53.5, 4.0), []),
-    # "Where is Alan now?" falls into the hush between the dread's tail and the peak's first bow
-    ("dread-1", 55.0, (55.0, 3.0), (88.0, 3.0), []),
-    ("peak", None, (89.0, 2.0), None, [(91, 9), (103, 8), (107.5, 2), (110, 0)]),
-]
-PEAK_CREST = 21.3  # seconds into peak-1 where the cut should land
+
+
+def stems(A, end):
+    """Where each take sits and how it fades, from the story's anchors (show time, from the tape's words):
+    (take, its first sample in show time, fade in (at, secs), fade out (at, secs), lift [(t, dB)]).
+    The arc: a brooding cello at the door camera; the neighbours, the hedge, the bins and their pulse and
+    rising violins (dread, then urgent, which climbs to Mark); a held breath under the three questions;
+    and on the switch to seven a full string stab that keeps climbing, cresting on the cut."""
+    return [
+        ("cello-1", A["door"] + 1.6, (A["door"] + 1.6, 0.5), (A["hedge"] - 3.0, 4.0), []),
+        # dread-1's first bars are faint: lift them so the hedge keeps climbing from the cello
+        ("dread-1", A["hedge"] - 2.0, (A["hedge"] - 2.0, 3.0), (A["bins"] + 1.0, 4.0), [(A["hedge"] - 2.0, 6), (A["hedge"] + 12.0, 0)]),
+        # urgent-0 climbs for 18 s: its top lands on "I moved Mark in June"
+        ("urgent-0", A["mark"] - 17.0, (A["mark"] - 17.0, 3.0), (A["markEnd"] + 0.3, 1.4), [(A["mark"] - 17.0, -3), (A["mark"], 1)]),
+        # the held breath: a thin high harmonic, gone just before the switch
+        ("hush-0", A["markEnd"] + 0.2, (A["markEnd"] + 0.2, 1.0), (A["seven7"] - 1.4, 1.2), [(0, -9), (999, -9)]),
+        # the stab: climax-0 speaks 0.17 s in; then it eases back under the build
+        ("climax-0", A["seven7"] - 0.17, None, (A["seven7"] + 2.6, 3.0), [(A["seven7"], 2), (A["seven7"] + 2.0, -2)]),
+        # the build: climax-2 crests 11.8 s in, peak-1 21.3 s in: both on the cut
+        ("climax-2", end - 11.8, (end - 11.8, 0.6), None, [(end - 11.8, -2), (end - 1.0, 3), (end, 4)]),
+        ("peak-1", end - 21.3, (end - 7.0, 4.0), None, [(end - 7.0, -4), (end - 1.0, 2), (end, 3)]),
+    ]
 
 
 def load(path, ch=2):
@@ -35,25 +46,22 @@ def db(x):
     return 10 ** (x / 20)
 
 
+KEY_DB = -12.0  # the play key's peak in the finished tape (dBFS); process.py trims it after loudnorm
+
+
 def recorder(dest):
-    """The play key's clunk (tape-0's first 0.6 s), then the reels' whir (whir-0) easing down to the
-    tape's own hiss over five seconds."""
-    clunk = load(os.path.join(raw, "tape-0.mp3"), 1)[:, 0][: int(0.62 * SR)]
-    clunk = clunk * np.minimum(1, np.linspace(1, 0, len(clunk)) * 4) * db(-7)
-    whir = load(os.path.join(raw, "whir-0.mp3"), 1)[:, 0][int(0.1 * SR): int(2.7 * SR)]
-    # two passes, crossfaded, for five seconds of motor
-    xf = int(0.4 * SR)
-    ramp = np.linspace(0, 1, xf)
-    loop = np.concatenate([whir[:-xf], whir[-xf:] * np.sqrt(1 - ramp) + whir[:xf] * np.sqrt(ramp), whir[xf:]])
-    n = int(6.0 * SR)
-    loop = np.resize(loop, n)
-    t = np.arange(n) / SR
-    # the motor comes up to speed just after the key, then settles under the room
-    env = np.clip((t - 0.06) / 0.18, 0, 1) * (db(-5) * np.exp(-t / 1.2) + db(-17)) * np.clip((6.0 - t) / 2.5, 0, 1)
-    out = np.zeros(n, dtype=np.float32)
-    out[: len(clunk)] += clunk
-    out += loop * env * db(4)
-    subprocess.run(["ffmpeg", "-y", "-v", "error", "-f", "f32le", "-ac", "1", "-ar", str(SR), "-i", "-", dest], input=out.astype(np.float32).tobytes(), check=True)
+    """The recorder's play key: one dry press (key-3, ElevenLabs SFX), from just before it lands to its
+    settle, gently low-passed so nothing in it is harsh. No motor: a looped whir under the opening silence
+    sounded awful. It goes into the tape after the compressor, so nothing pumps it."""
+    x = load(os.path.join(raw, "key-3.mp3"), 1)[:, 0]
+    i = int(np.argmax(np.abs(x)))
+    x = x[max(0, i - int(0.03 * SR)): max(0, i - int(0.03 * SR)) + int(1.1 * SR)].copy()
+    t = np.arange(len(x)) / SR
+    # in over 3 ms, out from 0.35 s to 1.0 s: the settle trails away into the room
+    x *= np.clip(t / 0.003, 0, 1) * np.clip((1.0 - t) / 0.65, 0, 1) ** 2
+    x /= np.abs(x).max()
+    subprocess.run(["ffmpeg", "-y", "-v", "error", "-f", "f32le", "-ac", "1", "-ar", str(SR), "-i", "-",
+                    "-af", "highpass=f=110,lowpass=f=6000:p=2,lowpass=f=9000", dest], input=x.astype(np.float32).tobytes(), check=True)
     return dest
 
 
@@ -85,15 +93,23 @@ def smooth_db(target, up, down):
     return np.repeat(out, hop)[: len(target)]
 
 
-def build(manifest, words, end, out):
-    """words: [(t, end)] of everything said; end: the film's last cut (show time)."""
+def bandpass(x, f, octaves):
+    """x through ffmpeg's constant-0 dB-peak band-pass, so x - k·bp(x) is a k-deep bell cut at f."""
+    pcm = subprocess.run(["ffmpeg", "-v", "error", "-f", "f32le", "-ac", "2", "-ar", str(SR), "-i", "-", "-af", f"bandpass=f={f}:width_type=o:w={octaves}:csg=0",
+                          "-f", "f32le", "-ac", "2", "-ar", str(SR), "-"], input=x.astype(np.float32).tobytes(), check=True, capture_output=True).stdout
+    y = np.frombuffer(pcm, dtype=np.float32).reshape(-1, 2)
+    out = np.zeros_like(x)
+    out[: len(y)] = y[: len(x)]
+    return out
+
+
+def build(manifest, words, A, end, out):
+    """words: [(t, end)] of everything said; A: the story's anchors (show time); end: the last cut."""
     n = int((end + 0.05 - SCORE_AT) * SR)
     t = SCORE_AT + np.arange(n) / SR
     mix = np.zeros((n, 2), dtype=np.float32)
-    for name, at, fin, fout, lift in STEMS:
-        x = load(os.path.join(raw, name + ".mp3") if name != "peak" else os.path.join(raw, "peak-1.mp3"))
-        if at is None:
-            at = end - PEAK_CREST
+    for name, at, fin, fout, lift in stems(A, end):
+        x = load(os.path.join(raw, name + ".mp3"))
         # level each stem by its loudest ten seconds, so the automation below means the same for all
         r = np.sqrt(np.convolve((x ** 2).mean(1), np.ones(SR) / SR, "valid"))
         x = x * (db(-20) / max(np.percentile(r, 90), 1e-6))
@@ -110,23 +126,49 @@ def build(manifest, words, end, out):
         if lift:
             g *= db(np.interp(ts, [k[0] for k in lift], [k[1] for k in lift])).astype(np.float32)
         mix[max(0, a): max(0, a) + len(seg)] += seg * g[:, None]
-    # the arc: how far under the voice the strings sit while he talks, and in the pauses (dB on the
-    # stems' -20 dBFS); higher as the story darkens; unducked for the held second on seven
-    keys = [(30, -16, -10), (46, -14, -7), (58, -13, -6), (72, -11, -5), (86, -10, -4), (97, -9, -4), (106, -8, -3), (end - 1.0, -6, 3), (end, -6, 3)]
+    # the arc (dB on the stems' -20 dBFS): (time, under his voice, in the pauses). It climbs act by act,
+    # drops to a held breath for the three questions, and steps straight up on the switch to seven.
+    s7 = A["seven7"]
+    keys = [(30, -16, -10), (A["door"], -15, -9), (A["bought"], -14, -7), (A["hedge"], -13, -6), (A["bins"], -11, -5),
+            (A["seven"], -10, -4), (A["mark"], -9, -3), (A["markEnd"] + 0.4, -13, -10), (s7 - 0.06, -13, -10),
+            (s7, -6, 1), (end - 1.0, -5, 4), (end, -2, 5)]
     kt = np.array([k[0] for k in keys], dtype=float)
     under = np.interp(t, kt, [k[1] for k in keys])
     clear = np.interp(t, kt, [k[2] for k in keys])
     talk = speaking(words, n)
-    lev = smooth_db(clear + (under - clear) * talk, up=0.9, down=0.18)
-    mix *= db(lev)[:, None]
+    # the duck is smoothed (quick down, slow swell back); the arc itself isn't, so the switch is a hit
+    depth = smooth_db((clear - under) * talk, up=0.18, down=0.9)
+    mix *= db(clear - depth)[:, None]
+    # under his voice in the climax, carve 1-3 kHz out of the strings so he stays easy and clear
+    carve = smooth_db(talk * np.clip((t - (s7 - 0.5)) / 0.5, 0, 1) * 0.6, up=0.05, down=0.3).astype(np.float32)
+    mix -= bandpass(mix, 1800, 1.6) * carve[:, None]
+    # soft-limit the crest rather than turning the whole score down for it
+    mix = (0.89 * np.tanh(mix / 0.89)).astype(np.float32)
     # the last cut: 4 ms to nothing, so it doesn't click
     c = int((end - SCORE_AT) * SR)
     mix[c:] = 0
     mix[max(0, c - int(0.004 * SR)): c] *= np.linspace(1, 0, c - max(0, c - int(0.004 * SR)))[:, None]
-    peak = np.abs(mix).max()
-    if peak > 0.89:
-        mix *= 0.89 / peak
     name = "score.mp3"
     subprocess.run(["ffmpeg", "-y", "-v", "error", "-f", "f32le", "-ac", "2", "-ar", str(SR), "-i", "-", "-c:a", "libmp3lame", "-b:a", "96k", os.path.join(out, name)], input=mix.astype(np.float32).tobytes(), check=True)
     manifest["score"] = {"file": name, "at": SCORE_AT, "end": round(end, 3)}
+    return name
+
+
+YAY_LUFS = -15.0
+
+
+def yay(manifest, out):
+    """The end card's cheer (yay-0: a children's party "Yaaay!"), trimmed to its first sound so it lands on
+    the card's frame, faded to nothing, at -15 LUFS: it bursts out of the black's dead silence."""
+    x = load(os.path.join(raw, "yay-0.mp3"), 1)[:, 0]
+    on = int(np.argmax(np.abs(x) > db(-40)))
+    x = x[max(0, on - int(0.005 * SR)):].copy()
+    tt = np.arange(len(x)) / SR
+    x *= np.clip(tt / 0.004, 0, 1) * np.clip((len(x) / SR - tt) / 0.25, 0, 1)
+    name = "sfx-yay.mp3"
+    raw_wav = os.path.join(out, ".yay.wav")
+    subprocess.run(["ffmpeg", "-y", "-v", "error", "-f", "f32le", "-ac", "1", "-ar", str(SR), "-i", "-", raw_wav], input=x.astype(np.float32).tobytes(), check=True)
+    subprocess.run(["ffmpeg", "-y", "-v", "error", "-i", raw_wav, "-af", f"loudnorm=I={YAY_LUFS}:TP=-1.5:LRA=11", "-ar", "44100", "-ac", "1", "-b:a", "128k", os.path.join(out, name)], check=True)
+    os.remove(raw_wav)
+    manifest["sfx"]["yay"] = name
     return name

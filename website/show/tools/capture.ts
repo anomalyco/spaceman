@@ -87,6 +87,11 @@ if (probeArg) {
     await page.addStyleTag({ content: "[data-ui=hint],[data-ui=controls]{display:none!important}" })
     for (const t of times) {
       await page.evaluate((t) => (window as any).__show.seek(t), t)
+      // past the end: the card, with its confetti at that moment of the burst
+      if (t > END_ + 0.75) {
+        await page.waitForTimeout(120)
+        await page.evaluate((s) => (window as any).__confetti?.(s), t - END_ - 0.75)
+      }
       const file = join(out, name + "-" + String(t).replace(".", "_"))
       if (x2 && name === "gpu") await page.screenshot({ path: file + ".png" })
       else await shot(page, file + ".jpg")
@@ -104,14 +109,14 @@ if (probeArg) {
 
 // --master: the whole film as a file to share, at 1440×900 @2x (2880×1800), straight into the encoder
 // (no frames on disk): film-master.mp4 (HEVC Main 10, CRF 17, AAC 256k) and film-share.mp4 (H.264,
-// 1440×900, CRF 21). No hint or CC button; the end is the live one: a hard cut, 0.65 s of black and silence, the card.
+// 1440×900, CRF 23). No hint or CC button; the end is the live one: a hard cut, 0.75 s of black and silence, the card, its confetti and its cheer.
 // (--master=T starts at T s, to check the end quickly)
 const masterArg = process.argv.find((a) => a.startsWith("--master"))
 if (masterArg) {
   const { page, errors, ctx } = await open({ w: 1440, h: 900, dpr: 2, muted: true })
   await page.addStyleTag({ content: "[data-ui=hint],[data-ui=cc],[data-ui=again],[data-ui=controls]{display:none!important}html[data-black] [data-ui=card]{visibility:hidden!important}" })
   await press(page)
-  const cut = Math.round(END_ * FPS), card = Math.round((END_ + 0.65) * FPS), total = Math.round((END_ + 0.65 + 4) * FPS)
+  const cut = Math.round(END_ * FPS), card = Math.round((END_ + 0.75) * FPS), total = Math.round((END_ + 0.75 + 4) * FPS)
   const raw = join(out, "master-v.mp4")
   const color = ["-colorspace", "bt709", "-color_primaries", "bt709", "-color_trc", "bt709", "-color_range", "tv"]
   const ff = Bun.spawn(["ffmpeg", "-y", "-loglevel", "error", "-f", "image2pipe", "-c:v", "mjpeg", "-framerate", String(FPS), "-i", "-",
@@ -127,6 +132,7 @@ if (masterArg) {
     if (f === Math.round((HOLD[0] + 4.6) * FPS)) await page.keyboard.press("Alt+Digit1")
     if (f === cut) await page.evaluate(() => (document.documentElement.dataset.black = "1"))
     if (f === card) await page.evaluate(() => delete document.documentElement.dataset.black)
+    if (f >= card) await page.evaluate((s) => (window as any).__confetti?.(s), (f - card) / FPS)
     ff.stdin.write(await page.screenshot({ type: "jpeg", quality: 95 }))
     await ff.stdin.flush()
     await step(page, 1 / FPS)
@@ -144,7 +150,8 @@ if (masterArg) {
   if (!mix) throw new Error("no mix")
   const master = join(out, "film-master.mp4"), share = join(out, "film-share.mp4")
   await $`ffmpeg -y -loglevel error -i ${raw} -i ${mix} -map 0:v -map 1:a -c copy -movflags +faststart ${master}`
-  await $`ffmpeg -y -loglevel error -i ${master} -vf scale=1440:900:flags=lanczos -c:v libx264 -preset slow -crf 21 -pix_fmt yuv420p ${color} -c:a aac -b:a 160k -movflags +faststart ${share}`
+  // for phones and social: H.264 High 4.1, yuv420p, stereo AAC, faststart, well under 40 MB
+  await $`ffmpeg -y -loglevel error -i ${master} -vf scale=1440:900:flags=lanczos -c:v libx264 -preset slow -crf 23 -profile:v high -level:v 4.1 -pix_fmt yuv420p ${color} -c:a aac -b:a 160k -ac 2 -movflags +faststart ${share}`
   rmSync(raw)
   for (const f of [master, share]) (report.master as any)[f.split("/").pop()!] = (Bun.file(f).size / 1e6).toFixed(1) + " MB"
   writeFileSync(join(out, "report.json"), JSON.stringify(report, null, 1))

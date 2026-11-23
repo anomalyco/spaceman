@@ -279,10 +279,6 @@ if VER.get("hm"):
     at = shift(words[i]["end"]) + h["delay"]
     extra_fc.append(f"[{6 + len(extra_lab)}:a]aformat=channel_layouts=mono,lowpass=f=2400,volume={10 ** (h['db'] / 20):.3f},adelay={int(at * 1000)}[x{len(extra_lab)}]")
     extra_lab.append(f"[x{len(extra_lab)}]")
-# the recorder's play key and its reels, under the room from the first frame
-extra_in.append(score.recorder(os.path.join(raw, "mono", "recorder.wav")))
-extra_fc.append(f"[{6 + len(extra_lab)}:a]aformat=channel_layouts=mono[x{len(extra_lab)}]")
-extra_lab.append(f"[x{len(extra_lab)}]")
 for c in cuts:
     if c.get("sfx"):
         extra_in.append(os.path.join(raw, f"sfx-{c['sfx']}.mp3"))
@@ -291,10 +287,10 @@ for c in cuts:
         extra_lab.append(f"[x{len(extra_lab)}]")
 # the interview room: ventilation, the strip light's buzz, the recorder's own floor; the tones at
 # either end; the detective further from the microphone than he is
-fc.append(f"anoisesrc=r=44100:color=brown:amplitude=0.016:seed=11,lowpass=f=420,highpass=f=60,atrim=0:{total:.3f}[vent]")
-fc.append(f"anoisesrc=r=44100:color=pink:amplitude=0.0025:seed=7,highpass=f=2500,atrim=0:{total:.3f}[hiss]")
-fc.append(f"sine=f=100:r=44100,volume=0.0011,atrim=0:{total:.3f}[hum1]")
-fc.append(f"sine=f=300:r=44100,volume=0.0004,atrim=0:{total:.3f}[hum3]")
+fc.append(f"anoisesrc=r=44100:color=brown:amplitude=0.009:seed=11,lowpass=f=420,highpass=f=60,atrim=0:{total:.3f}[vent]")
+fc.append(f"anoisesrc=r=44100:color=pink:amplitude=0.0014:seed=7,highpass=f=2500,atrim=0:{total:.3f}[hiss]")
+fc.append(f"sine=f=100:r=44100,volume=0.0006,atrim=0:{total:.3f}[hum1]")
+fc.append(f"sine=f=300:r=44100,volume=0.00022,atrim=0:{total:.3f}[hum3]")
 tone = "sine=f=1000:r=44100,atrim=0:{d},afade=t=in:d=0.01,afade=t=out:st={o}:d=0.02,volume=0.085,adelay={ms}"
 far = "aformat=channel_layouts=mono,highpass=f=200,lowpass=f=4000,aecho=0.8:0.6:19|37|61:0.36|0.26|0.14,volume=0.25"
 if ENDS:
@@ -338,7 +334,12 @@ if VER.get("echo") or tight or head_wav:
     os.remove(src)
 if head_wav and os.path.exists(head_wav):
     os.remove(head_wav)
-run(["ffmpeg", "-y", "-i", tmp, "-af", ln, "-ac", "1", "-ar", "22050", "-b:a", "40k" if not ALT else "64k", os.path.join(out, name)])
+# the recorder's play key at 0.0 goes in last, after the compressor and the loudness pass, at its own
+# fixed peak (score.KEY_DB): nothing pumps it, and it can't push loudnorm into its dynamic mode
+key = score.recorder(os.path.join(raw, "mono", "recorder.wav"))
+run(["ffmpeg", "-y", "-i", tmp, "-i", key, "-filter_complex", f"[0:a]{ln}[t];[1:a]aformat=sample_rates=44100:channel_layouts=mono,volume={10 ** (score.KEY_DB / 20):.4f}[k];[t][k]amix=inputs=2:normalize=0:duration=first",
+     "-ac", "1", "-ar", "22050", "-b:a", "40k" if not ALT else "64k", os.path.join(out, name)])
+os.remove(key)
 os.remove(tmp)
 pcm = subprocess.run(["ffmpeg", "-v", "error", "-i", os.path.join(out, name), "-f", "s16le", "-ac", "1", "-ar", "22050", "-"], check=True, capture_output=True).stdout
 a16 = array.array("h", pcm)
@@ -395,7 +396,16 @@ import keys  # noqa: E402
 keys.build(manifest)
 # the strings, ducked under everything said on the tape
 said_spans = [(w["t"], w["end"]) for w in tw] + [(c["said_at"], c["said_at"] + INTER[c["insert"]["line"]]["dur"]) for c in inserts]
-score.build(manifest, said_spans, marks["end"], out)
+def said(phrase, last=False):
+    return tw[find(tw, phrase, last)]
+
+
+anchors = {"door": said("front door")["t"], "bought": said("So I bought")["t"], "hedge": said("Alan's hedge")["t"], "bins": said("And Joan and I")["t"],
+           "seven": said("I'd kept seven")["t"], "mark": said("I moved Mark")["t"], "markEnd": tw[find(tw, "I moved Mark in June.") + 4]["end"],
+           "seven7": said("Only the one")["t"] - 0.1}
+score.build(manifest, said_spans, anchors, marks["end"], out)
+# the end card's cheer
+score.yay(manifest, out)
 
 json.dump(manifest, open(os.path.join(out, "manifest.json"), "w"))
 # the cut's clock: the engine times the picture and captions to these, with or without audio

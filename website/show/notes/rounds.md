@@ -439,3 +439,74 @@ Tape K unchanged (take k7, 105.8 s). Commits `a3eb9eb` (controls, opening, clips
      now made the way the app makes it: Add on workspace 2's tile, then Chatter from "Running apps".
    - The bar wears the HUD capsule from `hud/pill.rs` (#161618, a #303036 hairline) and says what the HUD
      says: "Workspace 3 · 2 windows", "Moved to Workspace 2 · 3 windows". Changes roll in the way of travel.
+
+## Draft 18 (script draft 18, tape L), Nov 22
+
+1. Tape L, take l5 of eight (Sarah as the detective): word-perfect, unhurried, and a clean "great many".
+   113.97 s, −18.0 LUFS. The recorder's play clunk and reel whir (ElevenLabs SFX, `gen-score.ts`) are mixed
+   into the tape at 0.0 by `score.recorder()`, so seek, pause and export carry them.
+2. The score (`score.py`): three ElevenLabs Music stems (cello at 33 s, dread at 55 s, peak placed so the
+   cut lands 21.3 s into it, on its crest), premixed into one `score.mp3` that starts at 30.0 s. Its gain is
+   ducked from the tape's words and inserts, there's a hush on "Where is Alan now?", and the held last second
+   swells +3 dB. It starts on the audio context's clock (`delay`), and the export mixes it as kind `score`.
+3. Weaves: the to-do list with "Return Mark's drill", ticked on Mark's workspace before "Mark → 7";
+   Messages → 2 in Rules; the door camera as a pinned float (`pin: true`, a "Floating" badge, raised); a Rules
+   glimpse ending "Cellar → 7".
+4. Apple's app names and icons (`public/show/icons/`, from `/System/Applications`); Vigil stays invented.
+   The licensing risk is flagged to Kit on the report.
+5. Photos (`library.js`): the real grid, 2 px gaps, sticky headers, blur-to-sharp hydration, 18 new photos
+   (`notes/photos.md`), no repeats nearby, dusk by 75%, one night row per section, Alan last.
+6. The end: `TAPE.marks.end` is the last word plus 1.0 s (END 111.567), then 0.65 s of black and silence,
+   then the bright page.
+7. The study (`scene.py`, `clues.py`): the desk is stained walnut, and there's an architect's lamp (matte
+   black and brass) with a warm pool on a yellow legal pad of timings (22:31 WED 5 …). The night past the
+   blinds is a deeper blue. Every desk object is squared to the edge: keyboard, trackpad, three parallel
+   pens, a steel rule, the mug's handle. Mark's drill stands in the far corner with a sticky note ("MARK /
+   No. 10"). A roll of polythene sheeting and two tins of cat food sit on the bookcase's lower shelves.
+   Index cards 4, 5, 6 and a blank 7 are pinned to a corkboard left of the screen. The handwriting is Caveat
+   (OFL). Bug found on the way: the lamp's brass rim was a capped cylinder, a lid over the mouth that blocked
+   the spot. It's open now, a ring.
+
+## Draft 19 (Kit's notes on draft 18), Nov 22
+
+1. The tape's start "sounds terrible": `recorder()` looped a 2.6 s motor take for 6 s at +4 dB, before the
+   voice compressor, so the opening silence pumped it up. Now it's one dry play-key press (key-3 of six
+   new ElevenLabs takes; the least bright, a single latch, −50 dB within 0.13 s), low-passed at 6 kHz and
+   faded out by 1.0 s. It's mixed after the compressor and after loudnorm, at a fixed peak
+   (`score.KEY_DB`). Measured in the built tape: the key peaks at −16.8 dBFS, and 0.5–5.5 s sits at
+   −41.7 dB RMS. The room itself is ~5 dB lower (vent, hiss and hum amplitudes).
+2. Talking over the dog walker: the pause after "I found it pleasing." is 3 s, not 6. "So I bought one or
+   two more" now plays over ⌘S and typing "dog walker 2", and the order lands as he names her. The push
+   back from the order waits for it (`backT`). Everything after moves 3 s earlier (END 108.567).
+3. The score, re-arced on word anchors (`score.stems(A, end)`):
+   - a lone cello at the door camera;
+   - dread-1 (lifted at its start) for the neighbours and the hedge;
+   - urgent-0 (new: a pulsing cello ostinato with climbing violins) peaking on "I moved Mark in June";
+   - hush-0 (new, −9 dB) under the three questions;
+   - and on the switch to seven, climax-0's stab followed by climax-2 and peak-1, both cresting on the cut.
+   The arc itself isn't smoothed, so the switch is a hit (silent → −22 dB in 0.2 s). The duck is smoothed.
+   Under his voice in the climax, 1–3 kHz is carved out (a band-pass subtraction, −8 dB at 1.8 kHz), and a
+   tanh soft limit takes the crest. Per second, under his voice: cello −33, hedge −35, bins −26, Mark −27,
+   hush −39 to −45, the switch −26, the last line −20, the held second −13.
+4. The end: 0.75 s of black and dead silence, then a dark card (#0a0a0c, a faint radial light), 220 pieces
+   of confetti from two corner cannons (`src/confetti.ts`: closed-form drag, gravity, sway and flip, a pure
+   function of time since the burst; skipped under reduced motion), and a children's "Yaaay!" (yay-0,
+   -15 LUFS, kind `card`). The export mixes card audio after the cut and steps the confetti per frame
+   (`window.__confetti`).
+5. Messages: the eleven dashed "Draft" bubbles are gone. Joan's one grey bubble ("Just putting mine out
+   Wednesdays now, hope that's ok!"), then a timestamp, then his four sent blue bubbles (run-aware tails,
+   wrapping, a small pop as each one sends) and "Delivered". The thread scrolls to its newest message, as
+   Messages opens it.
+6. Safari's Favourites: vector touch icons on glassy tiles (`favicons.js`): a pine crest, a civic front, a sun
+   and cloud, a map with a road and a pin, a newspaper, a gold-shielded bank. Tab favicons and initials
+   avatars stay: that's what Safari and Messages draw at those sizes.
+7. Photos: the blur was the thumbnails falling back to their 9 px copies whenever the scroll was fast, at
+   about a viewport per frame. Now there are three unhurried throws down the first day, then ⌘↓ to the newest.
+   Each tile is a grey placeholder until its row first comes into view, then loads in a wave (soft
+   0.07 s, sharp 0.2 s, left to right with scatter). It's computed from the scroll path and the film time
+   (`scrollOn`, `arrival`), so seeking and the export are exact.
+8. Windows: they open from 94% with a small settle (0.34 s, bounce 0.3) and fade in ahead of their size.
+   They close to 95% and fade in 0.11 s while the rest reflow after 0.06 s. Tiles settle in 0.38 s,
+   critically damped, keeping their velocity. A float rises 3 pt with a 1.5% swell and a wider shadow (the
+   `lf` spring).
+9. A click on the picture pauses and plays, except a tap on the workspace bar during "your turn".

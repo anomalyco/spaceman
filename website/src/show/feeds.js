@@ -6,7 +6,7 @@
 import { plates, coverUV } from "./plates.js"
 import { MONO } from "./apps.js"
 
-export const FEEDS = ["seq-walker", "seq-cat", "seq-alan", "cam-hall", "cam-kitchen", "cam-living", "cam-landing", "cam-back", "st-08", "st-10", "st-10-empty", "st-14", "st-16", "st-16-empty", "st-16-cat", "st-16-bins", "st-18", "cam-cellar", "sixteen"]
+export const FEEDS = ["seq-walker", "seq-cat", "seq-alan", "cam-hall", "cam-kitchen", "cam-living", "cam-landing", "cam-back", "st-08", "st-10", "st-10-empty", "st-14", "st-16", "st-16-empty", "st-16-cat", "st-16-bins", "st-18", "cam-cellar"]
 let clock = 0
 // the film's own time, so a feed is the same frame at the same moment in every run
 export function feedClock(t) {

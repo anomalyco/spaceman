@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { CONFETTI_SECS, drawConfetti } from "./confetti";
 
 export const RELEASE_VERSION = "0.2.0";
 export const DOWNLOAD_URL = `https://pub-6f85d683ffe0419cad0a71508904053a.r2.dev/releases/Spaceman-v${RELEASE_VERSION}-macos-arm64.zip`;
@@ -168,6 +169,47 @@ function newContext(): AudioContext | null {
   }
 }
 
+// the black between the last cut and the card (main.js's CARD_AT; capture.ts steps the same)
+const CARD_MS = 750;
+
+// The card's confetti over everything but the buttons. Live, it runs on its own clock from the card's
+// first frame; in an export (?capture) the stepper draws each frame through window.__confetti(t).
+function Confetti() {
+  const ref = useRef<HTMLCanvasElement>(null);
+  useEffect(() => {
+    const cv = ref.current;
+    if (!cv || matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+    const ctx = cv.getContext("2d");
+    if (!ctx) return;
+    const dpr = Math.min(2, window.devicePixelRatio || 1);
+    const size = () => {
+      cv.width = Math.round(cv.clientWidth * dpr);
+      cv.height = Math.round(cv.clientHeight * dpr);
+    };
+    size();
+    const draw = (t: number) => {
+      if (cv.width !== Math.round(cv.clientWidth * dpr)) size();
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      drawConfetti(ctx, t, cv.clientWidth, cv.clientHeight);
+    };
+    if (new URLSearchParams(location.search).has("capture")) {
+      (window as unknown as { __confetti?: (t: number) => void }).__confetti = draw;
+      draw(0);
+      return () => void delete (window as unknown as { __confetti?: unknown }).__confetti;
+    }
+    const t0 = performance.now();
+    let raf = 0;
+    const frame = () => {
+      const t = (performance.now() - t0) / 1000;
+      draw(t);
+      if (t < CONFETTI_SECS) raf = requestAnimationFrame(frame);
+    };
+    frame();
+    return () => cancelAnimationFrame(raf);
+  }, []);
+  return <canvas ref={ref} aria-hidden="true" data-ui="confetti" className="pointer-events-none absolute inset-0 size-full" />;
+}
+
 export function Show({ header }: { header: React.ReactNode }) {
   const section = useRef<HTMLElement>(null);
   const canvas = useRef<HTMLCanvasElement>(null);
@@ -175,6 +217,8 @@ export function Show({ header }: { header: React.ReactNode }) {
   const context = useRef<AudioContext | null>(null);
   const [phase, setPhase] = useState<Phase>("still");
   const [card, setCard] = useState(false);
+  // an export (?capture) is a video for sharing: the card shows the address instead of buttons
+  const [exported, setExported] = useState(false);
   const cardTimer = useRef(0);
   const [caption, setCaption] = useState<Caption>(null);
   const [hint, setHint] = useState(false);
@@ -191,6 +235,7 @@ export function Show({ header }: { header: React.ReactNode }) {
     setTouch(matchMedia("(hover: none) and (pointer: coarse)").matches);
     const params = new URLSearchParams(location.search);
     const capture = params.has("capture");
+    setExported(capture);
     const reduced = matchMedia("(prefers-reduced-motion: reduce)").matches || params.has("reduced");
     let cancelled = false;
     const load = () =>
@@ -206,7 +251,7 @@ export function Show({ header }: { header: React.ReactNode }) {
               setPhase(p);
               // a hard cut: the last image, a moment of black and silence, then the card, with no fades
               clearTimeout(cardTimer.current);
-              if (p === "ended") cardTimer.current = window.setTimeout(() => setCard(true), capture ? 0 : 650);
+              if (p === "ended") cardTimer.current = window.setTimeout(() => setCard(true), capture ? 0 : CARD_MS);
               if (p === "live") setCard(false);
             },
             caption: (c: Caption) => setCaption(c),
@@ -311,9 +356,12 @@ export function Show({ header }: { header: React.ReactNode }) {
     };
   }, [phase]);
 
+  // a click on the picture pauses and plays, like any video; a tap on the workspace bar during
+  // "your turn" switches instead
   const onTap = (e: React.PointerEvent) => {
     const r = canvas.current?.getBoundingClientRect();
-    if (r) show.current?.tap(e.clientX - r.left, e.clientY - r.top);
+    if (r && show.current?.tap(e.clientX - r.left, e.clientY - r.top)) return;
+    if (e.button === 0) toggle();
   };
 
   const captions = cc ?? false;
@@ -350,32 +398,41 @@ export function Show({ header }: { header: React.ReactNode }) {
       )}
 
       {phase === "ended" && (
-        // black and silence for a breath, then daylight: the plain page, the way it looks on any other day
-        <div className={`absolute inset-0 ${card ? "bg-[#fbf9f4]" : "bg-black"}`}>
+        // black and dead silence for a breath, then the card, the confetti and the cheer, all at once
+        <div className={`absolute inset-0 ${card ? "bg-[#0a0a0c]" : "bg-black"}`}>
           <div
             data-ui="card"
             className={`relative flex size-full flex-col items-center justify-center gap-8 px-6 text-center ${card ? "" : "invisible"}`}
-            style={{ background: "radial-gradient(120% 80% at 50% -10%, #fff6dc 0%, #fdf8ec 38%, #fbf9f4 70%), #fbf9f4" }}
+            style={{ background: "radial-gradient(110% 75% at 50% -12%, #23232b 0%, #141418 42%, #0a0a0c 72%), #0a0a0c" }}
           >
-            <img src="icon-512.png" alt="" width={104} height={104} className="size-[clamp(80px,9vw,104px)] rounded-[23%] shadow-[0_1px_2px_rgba(60,45,10,.12),0_14px_34px_-10px_rgba(60,45,10,.32)]" />
+            <img src="icon-512.png" alt="" width={104} height={104} className="size-[clamp(80px,9vw,104px)] rounded-[23%] shadow-[0_0_0_1px_rgba(255,255,255,.06),0_18px_40px_-12px_rgba(0,0,0,.8)]" />
             <div className="flex flex-col items-center gap-1.5">
-              <p className="text-[clamp(30px,4vw,44px)] leading-none font-semibold tracking-[-0.02em] text-[#1d1d1f]">Spaceman</p>
-              <p className="text-[clamp(16px,1.7vw,19px)] text-[#6e6b64]">For your windows.</p>
+              <p className="text-[clamp(30px,4vw,44px)] leading-none font-semibold tracking-[-0.02em] text-[#f5f5f7]">Spaceman</p>
+              <p className="text-[clamp(16px,1.7vw,19px)] text-[#8e8e93]">For your windows.</p>
             </div>
-            <div className="flex flex-col items-center gap-3.5">
-              <a
-                href={DOWNLOAD_URL}
-                className="rounded-full bg-[#1d1d1f] px-7 py-3 text-[15px] font-medium text-white shadow-[0_1px_1px_rgba(0,0,0,.08),0_6px_16px_-6px_rgba(0,0,0,.35)] transition-[background-color,transform] duration-150 hover:bg-[#2c2c2f] active:scale-[0.98] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#1d1d1f]"
-              >
-                Download for macOS
-              </a>
-              <p className="rounded-full bg-[#1d1d1f]/[0.05] px-3 py-1 text-[12.5px] text-[#6e6b64] tabular-nums">
-                Version {RELEASE_VERSION} · macOS 14 or later · Apple silicon
+            {exported ? (
+              <p data-ui="url" className="rounded-full bg-white/[0.07] px-5 py-2.5 text-[clamp(17px,1.9vw,21px)] font-medium tracking-[-0.01em] text-[#f5f5f7] shadow-[inset_0_0_0_1px_rgba(255,255,255,.08)]">
+                spaceman.kitlangton.dev
               </p>
-            </div>
-            <button type="button" data-ui="again" onClick={start} className="text-[13px] text-[#8a867d] underline-offset-4 transition-colors hover:text-[#1d1d1f] hover:underline">
-              Watch again
-            </button>
+            ) : (
+              <>
+              <div className="flex flex-col items-center gap-3.5">
+                <a
+                  href={DOWNLOAD_URL}
+                  className="rounded-full bg-[#f5f5f7] px-7 py-3 text-[15px] font-medium text-[#1d1d1f] shadow-[0_1px_1px_rgba(0,0,0,.3),0_8px_22px_-8px_rgba(255,255,255,.18)] transition-[background-color,transform] duration-150 hover:bg-white active:scale-[0.98] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#f5f5f7]"
+                >
+                  Download for macOS
+                </a>
+                <p className="rounded-full bg-white/[0.06] px-3 py-1 text-[12.5px] text-[#8e8e93] tabular-nums">
+                  Version {RELEASE_VERSION} · macOS 14 or later · Apple silicon
+                </p>
+              </div>
+              <button type="button" data-ui="again" onClick={start} className="text-[13px] text-[#8e8e93] underline-offset-4 transition-colors hover:text-[#f5f5f7] hover:underline">
+                Watch again
+              </button>
+              </>
+            )}
+            {card && <Confetti />}
           </div>
         </div>
       )}
