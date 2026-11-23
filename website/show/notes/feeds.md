@@ -39,8 +39,8 @@ themselves are the record. The MP4s are 11 MB together, so `show/feeds/clips/` i
 | --- | --- | --- | --- |
 | `walker.mp4` (6.0 s) | `seq-walker.jpg`, 24 frames | Front Door (ws 3) | No. 8 at night: a woman in a mid-grey coat walks a dog left to right past the house. She enters at 0.5 s and crosses in about six seconds (`walker` in `director.js`: x 0.07 → 0.855 of the frame). |
 | `cat.mp4` (5.0 s) | `seq-cat.jpg`, 20 frames | Joan's three feeds (ws 5) | No. 16 dark, post on the step, the cat waiting at the door; played forward, then back and forth from frame 6. |
-| `alan.mp4` (5.0 s) | `seq-alan.jpg`, 20 frames | Alan's three feeds (ws 6) | No. 14, the same house as the Hedge album (hedge, white boards, the upstairs window): the window lit, then him at it. |
+| `alan.mp4` (5.0 s) | `seq-alan.jpg`, 20 frames | Dax's three feeds (ws 6) | No. 14, the same house as the Hedge album (hedge, white boards, the upstairs window): the window lit, then Dax steps into it and stares across. Since draft 23 he is Dax Raad, with his blessing: gemini-omni from `st-14-start.jpg` with two reference photos of him. |
 
 `st-08.jpg` and `st-14.jpg` are now frame 0 of their clips, so a feed's still and its clip are the same
 camera. Before a clip's start time a window shows frame 0; after its end it holds or ping-pongs. At "still"
-Alan's feeds drop the clip, so his window is empty in the last look.
+Dax's feeds drop the clip, so his window is empty in the last look.

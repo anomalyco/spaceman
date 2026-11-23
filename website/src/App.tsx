@@ -1,90 +1,168 @@
 import { motion } from "motion/react";
 import { useEffect, useRef, useState } from "react";
-import { DOWNLOAD_URL, RELEASE_VERSION, Show } from "./Show";
-
-const CHECKSUM_URL = `${DOWNLOAD_URL}.sha256`;
-const INSTALL = `curl -fL https://pub-6f85d683ffe0419cad0a71508904053a.r2.dev/releases/Spaceman-latest-macos-arm64.zip -o /tmp/Spaceman.zip \\
-  && ditto -x -k /tmp/Spaceman.zip /Applications && open /Applications/Spaceman.app`;
+import { Download, downloadNote, HeaderDownload } from "./Download";
+import { usePlatform } from "./platform";
+import { CHECKSUM_URL, INSTALL, RELEASE_VERSION } from "./release";
+import { Show } from "./Show";
 
 export function App() {
   return (
-    <main className="bg-[#0b0c0e] text-[#f2f2f0] antialiased">
-      <Show header={<Header />} />
+    <main className="bg-[#0a0b0d] text-[#f3f4f6] antialiased">
+      <Show header={<Header />} hero={(start) => <Hero start={start} />} />
       <Product />
+      <Footer />
     </main>
   );
 }
 
 function Header() {
   return (
-    <header className="flex items-center justify-between px-5 py-4 sm:px-7 sm:py-5">
-      <h1 className="flex items-center gap-3">
-        <img src="mark.svg" alt="" width={28} height={28} className="size-7 rounded-[8px]" />
-        <span className="sr-only">Spaceman</span>
-        <Wordmark />
-      </h1>
-      <nav className="flex items-center gap-5 text-[13px] text-[#c9c6bf]">
-        <a href="llms-full.txt" className="hidden hover:text-white sm:inline">Docs</a>
-        <a href={DOWNLOAD_URL} className="rounded-full border border-white/15 bg-black/30 px-4 py-1.5 backdrop-blur hover:bg-black/50">Download</a>
+    <header className="relative isolate flex h-16 items-center justify-between px-5 sm:h-[72px] sm:px-7">
+      {/* keeps the links legible over the lit window in the still */}
+      <div aria-hidden="true" className="pointer-events-none absolute inset-x-0 top-0 -z-10 h-[170%] bg-[linear-gradient(to_bottom,rgb(8_8_10/0.72),rgb(8_8_10/0.4)_45%,rgb(8_8_10/0.12)_75%,transparent)]" />
+      <a href="./" aria-label="Spaceman" className="flex items-center gap-3 rounded-md focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-white/60">
+        <img src="icon-192.png" alt="" width={28} height={28} className="size-7 rounded-[23%] shadow-[0_2px_8px_rgb(0_0_0/0.45)] ring-1 ring-white/15" />
+        <span className="text-[15px] font-semibold tracking-[-0.015em] text-[#f5f5f7] [text-shadow:0_1px_8px_rgb(0_0_0/0.5)]">Spaceman</span>
+      </a>
+      <nav aria-label="Site" className="flex items-center gap-6 text-[13px] text-[#dfe1e5] [text-shadow:0_1px_8px_rgb(0_0_0/0.6)]">
+        <a href="#features" className="hidden transition-colors hover:text-white sm:inline">Features</a>
+        <a href="#shortcuts" className="hidden transition-colors hover:text-white sm:inline">Shortcuts</a>
+        <HeaderDownload />
       </nav>
     </header>
   );
 }
 
+// over the bottom of the still: the line, then the download and the film (the still itself plays too)
+function Hero({ start }: { start: () => void }) {
+  return (
+    <div className="flex flex-col gap-7 px-5 pb-9 sm:px-7 sm:pb-12">
+      <div className="flex max-w-[36rem] flex-col gap-3">
+        <h1 className="text-[clamp(44px,6.4vw,76px)] leading-[0.96] font-semibold tracking-[-0.04em] text-balance">For your windows.</h1>
+        <p className="max-w-[30rem] text-[17px] leading-[1.5] text-pretty text-[#c4c6cc]">
+          Spaceman is a tiling window manager for macOS. Every window side by side, nothing on top of anything else.
+        </p>
+      </div>
+      <div className="flex flex-col gap-3">
+        <div className="pointer-events-auto flex flex-wrap items-center gap-3">
+          <Download note={false} />
+          <button
+            type="button"
+            onClick={start}
+            className="inline-flex h-11 items-center gap-2.5 rounded-full bg-white/[0.1] pr-5 pl-4 text-[15px] font-medium text-[#f3f4f6] shadow-[inset_0_0_0_1px_rgba(255,255,255,.12)] backdrop-blur-md backdrop-saturate-150 transition-[background-color,transform] duration-150 hover:bg-white/[0.16] active:scale-[0.98] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white/70"
+          >
+            <svg width="12" height="12" viewBox="0 0 12 12" fill="currentColor" aria-hidden="true"><path d="M2.5 1.4v9.2c0 .5.5.8.9.5l7.2-4.6a.6.6 0 0 0 0-1L3.4.9c-.4-.3-.9 0-.9.5Z" /></svg>
+            Watch the film
+            <span className="text-[#9a9ca3] tabular-nums">2 min</span>
+          </button>
+        </div>
+        <HeroNote />
+      </div>
+    </div>
+  );
+}
+
+function HeroNote() {
+  const p = usePlatform();
+  return <p className="h-5 text-[13px] leading-5 text-[#9a9ca3] tabular-nums">{downloadNote(p)}</p>;
+}
+
 function Product() {
   return (
-    <div className="mx-auto flex max-w-5xl flex-col gap-24 px-6 py-24 sm:py-32">
-      <section className="flex flex-col gap-8">
-        <h2 className="max-w-2xl text-[clamp(26px,3.6vw,38px)] leading-tight font-medium tracking-tight">
-          Spaceman is a tiling window manager for macOS.
-        </h2>
-        <p className="max-w-2xl text-[17px] leading-relaxed text-[#a3a29d]">
-          Windows open side by side instead of on top of each other, across ten workspaces you switch with the keyboard.
-        </p>
-        <Install />
-      </section>
-
-      <section aria-label="Features" className="grid gap-x-12 gap-y-20 md:grid-cols-2">
-        <Feature title="Windows tile as they open" demo={<TilingDemo />}>
-          Each new window takes a share of the screen and the others make room. Drag a window onto another to swap them, or drag an edge to resize the split.
-        </Feature>
-        <Feature title="Ten workspaces on the keyboard" demo={<WorkspacesDemo />}>
-          <Kbd>⌥1</Kbd> to <Kbd>⌥0</Kbd> switch workspaces. Add <Kbd>⇧</Kbd> to send the focused window to one without following it. A small capsule shows each workspace's layout as you go.
-        </Feature>
-        <Feature title="Rules for where apps go" demo={<RulesStill />}>
-          Send an app to a workspace when it opens, or leave a window alone by its title. Rules are checked in order and the first match wins.
-        </Feature>
-        <Feature title="Your windows come back" demo={<RestoreStill />}>
-          Pausing, quitting or updating Spaceman brings every hidden window back on screen. It needs Accessibility access and nothing else, so System Integrity Protection stays on.
-        </Feature>
-      </section>
-
-      <footer className="flex flex-col items-start gap-6 border-t border-white/8 pt-10 sm:flex-row sm:items-center sm:justify-between">
-        <div className="flex flex-col gap-1.5">
-          <a href={DOWNLOAD_URL} className="w-fit rounded-full bg-[#f0efec] px-6 py-2.5 text-[14px] font-medium text-[#111214] hover:opacity-85">
-            Download for macOS
-          </a>
-          <p className="text-[13px] text-[#6f6e6a]">
-            Spaceman {RELEASE_VERSION} · macOS 14 or later · Apple silicon preview ·{" "}
-            <a href={CHECKSUM_URL} className="underline-offset-4 hover:underline">SHA-256</a>
+    <div className="mx-auto flex max-w-[1080px] flex-col gap-28 px-5 py-24 sm:px-10 sm:py-32">
+      <section id="features" aria-labelledby="features-title" className="flex scroll-mt-8 flex-col gap-16">
+        <div className="flex max-w-[40rem] flex-col gap-4">
+          <h2 id="features-title" className="text-[clamp(28px,3.6vw,40px)] leading-[1.1] font-semibold tracking-[-0.03em] text-balance">Every window has a place.</h2>
+          <p className="text-[17px] leading-[1.55] text-pretty text-[#9a9ca3]">
+            Windows open side by side and make room for each other. Ten numbered workspaces sit under your fingers, and rules send each app where it belongs.
           </p>
         </div>
-        <a href="llms-full.txt" className="text-[14px] text-[#c9c6bf] underline-offset-4 hover:underline">
-          Read the documentation
-        </a>
-      </footer>
+        <div className="grid gap-x-10 gap-y-16 md:grid-cols-2">
+          <Feature title="Windows tile as they open" demo={<TilingDemo />}>
+            Each new window takes a share of the screen and the others make room. Drag a window onto another to swap them, or drag an edge to resize the split.
+          </Feature>
+          <Feature title="Ten workspaces on the keyboard" demo={<WorkspacesDemo />}>
+            <Kbd>⌥1</Kbd> to <Kbd>⌥0</Kbd> switch workspaces. Add <Kbd>⇧</Kbd> to send the focused window to one without following it. A small bar shows each workspace's number and apps as you go.
+          </Feature>
+          <Feature title="Rules for where apps go" demo={<RulesStill />}>
+            Send an app to a workspace when it opens, or leave a window alone by its title. Rules are checked in order and the first match wins.
+          </Feature>
+          <Feature title="Tabs keep their tile" demo={<TabsDemo />}>
+            Switch native tabs, in Ghostty for one, and the window keeps its tile, its size and its place in the layout.
+          </Feature>
+          <Feature title="Your windows come back" demo={<RestoreDemo />}>
+            Pausing, quitting or updating Spaceman brings every hidden window back where it was. It remembers where each one goes before it moves it.
+          </Feature>
+          <Feature title="Accessibility, and nothing else" demo={<AccessStill />}>
+            System Integrity Protection stays on. Window titles stay in memory: Spaceman never saves, logs or sends them, and nothing reports home.
+          </Feature>
+        </div>
+      </section>
+
+      <section id="shortcuts" aria-labelledby="shortcuts-title" className="flex scroll-mt-8 flex-col gap-10">
+        <div className="flex max-w-[40rem] flex-col gap-4">
+          <h2 id="shortcuts-title" className="text-[clamp(28px,3.6vw,40px)] leading-[1.1] font-semibold tracking-[-0.03em]">On the keyboard.</h2>
+          <p className="text-[17px] leading-[1.55] text-pretty text-[#9a9ca3]">Everything starts with Option. Shortcuts follow your keyboard layout; the numbers are always the top row.</p>
+        </div>
+        <dl className="grid gap-x-10 md:grid-cols-2">
+          {SHORTCUTS.map(([action, keys]) => (
+            <div key={action} className="flex min-h-12 items-center justify-between gap-6 border-b border-white/[0.07] py-2.5">
+              <dt className="text-[15px] text-[#c4c6cc]">{action}</dt>
+              <dd className="flex shrink-0 items-center gap-1.5">{keys}</dd>
+            </div>
+          ))}
+        </dl>
+      </section>
+
+      <section id="download" aria-labelledby="download-title" className="flex scroll-mt-8 flex-col gap-8 rounded-[28px] bg-white/[0.03] p-6 shadow-[inset_0_0_0_1px_rgba(255,255,255,.06)] sm:p-10">
+        <div className="flex flex-col gap-8 md:flex-row md:items-end md:justify-between">
+          <div className="flex max-w-[30rem] flex-col gap-4">
+            <img src="icon-192.png" alt="" width={64} height={64} className="size-16" />
+            <h2 id="download-title" className="text-[clamp(28px,3.6vw,40px)] leading-[1.1] font-semibold tracking-[-0.03em]">Get Spaceman.</h2>
+            <p className="text-[15px] leading-[1.6] text-pretty text-[#9a9ca3]">
+              Free, signed and notarized. It's a preview, so turn off any other window manager first; the setup tour asks for Accessibility access.
+            </p>
+          </div>
+          <Download />
+        </div>
+        <div className="flex flex-col gap-3">
+          <Install />
+          <p className="text-[13px] leading-5 text-[#6b6e76]">
+            Later updates arrive inside the app. Check the download against its{" "}
+            <a href={CHECKSUM_URL} className="text-[#9a9ca3] underline decoration-white/20 underline-offset-4 transition-colors hover:text-[#f3f4f6]">SHA-256</a>.
+          </p>
+        </div>
+      </section>
     </div>
+  );
+}
+
+function Footer() {
+  return (
+    <footer className="mx-auto flex max-w-[1080px] flex-col gap-5 border-t border-white/[0.07] px-5 pt-8 pb-12 text-[13px] text-[#6b6e76] sm:flex-row sm:items-center sm:justify-between sm:px-10">
+      <p className="flex items-center gap-2.5">
+        <img src="icon-192.png" alt="" width={20} height={20} className="size-5 rounded-[23%] ring-1 ring-white/10" />
+        <span className="text-[#c4c6cc]">Spaceman {RELEASE_VERSION}</span>
+        <span aria-hidden="true">·</span>
+        <span>
+          by <a href="https://anoma.ly" className="transition-colors hover:text-[#f3f4f6]">Anomaly</a>
+        </span>
+      </p>
+      <nav aria-label="Documentation" className="flex flex-wrap gap-x-6 gap-y-2">
+        <a href="llms-full.txt" className="transition-colors hover:text-[#f3f4f6]">Documentation</a>
+        <a href="skill.md" className="transition-colors hover:text-[#f3f4f6]">Setup skill for agents</a>
+        <a href="llms.txt" className="transition-colors hover:text-[#f3f4f6]">llms.txt</a>
+      </nav>
+    </footer>
   );
 }
 
 function Install() {
   const [copied, setCopied] = useState(false);
   return (
-    <div className="flex max-w-3xl flex-col gap-2.5">
-      <div className="relative rounded-xl border border-white/10 bg-[#121316]">
-        <pre className="mr-20 overflow-x-auto py-4 pl-5 font-mono text-[13px] leading-relaxed text-[#d9d7d1]">
-          <code>{INSTALL}</code>
-        </pre>
+    <div className="overflow-hidden rounded-2xl bg-black/40 shadow-[inset_0_0_0_1px_rgba(255,255,255,.08)]">
+      <div className="flex h-11 items-center justify-between border-b border-white/[0.06] pr-2 pl-5">
+        <span className="text-[13px] font-medium text-[#c4c6cc]">Or install it from Terminal</span>
         <button
           type="button"
           onClick={() => {
@@ -93,12 +171,14 @@ function Install() {
               window.setTimeout(() => setCopied(false), 1500);
             });
           }}
-          className="absolute top-3 right-3 rounded-md border border-white/10 bg-white/5 px-2.5 py-1 text-[12px] text-[#c9c6bf] hover:bg-white/10"
+          className="inline-flex h-7 w-[72px] items-center justify-center rounded-full bg-white/[0.08] text-[12px] font-medium text-[#c4c6cc] transition-colors hover:bg-white/[0.14] hover:text-white focus-visible:outline-2 focus-visible:outline-white/60"
         >
           {copied ? "Copied" : "Copy"}
         </button>
       </div>
-      <p className="text-[13px] text-[#76756f]">Turn off any other window manager first. The setup tour asks for Accessibility access.</p>
+      <pre className="overflow-x-auto px-5 py-4 font-mono text-[13px] leading-[1.7] text-[#d4d6db]">
+        <code>{INSTALL}</code>
+      </pre>
     </div>
   );
 }
@@ -106,20 +186,37 @@ function Install() {
 function Feature({ title, demo, children }: { title: string; demo: React.ReactNode; children: React.ReactNode }) {
   return (
     <div className="flex flex-col gap-5">
-      <div aria-hidden="true" inert className="aspect-[16/10] overflow-hidden rounded-xl border border-white/8 bg-[#141518]">
+      <div aria-hidden="true" inert className="aspect-[16/10] overflow-hidden rounded-2xl bg-[#141518] shadow-[inset_0_0_0_1px_rgba(255,255,255,.06),0_20px_40px_-24px_rgba(0,0,0,.8)]">
         {demo}
       </div>
-      <div className="flex flex-col gap-2">
-        <h3 className="text-[18px] font-medium">{title}</h3>
-        <p className="text-[15px] leading-relaxed text-[#a3a29d]">{children}</p>
+      <div className="flex flex-col gap-2 pr-4">
+        <h3 className="text-[17px] font-semibold tracking-[-0.01em]">{title}</h3>
+        <p className="text-[15px] leading-[1.6] text-pretty text-[#9a9ca3]">{children}</p>
       </div>
     </div>
   );
 }
 
 function Kbd({ children }: { children: React.ReactNode }) {
-  return <kbd className="rounded-[5px] border border-white/12 bg-white/6 px-1.5 py-px font-sans text-[13px] text-[#e4e2dc]">{children}</kbd>;
+  return (
+    <kbd className="inline-flex h-6 min-w-6 items-center justify-center rounded-[6px] bg-white/[0.07] px-1.5 font-sans text-[13px] leading-none text-[#e4e6ea] shadow-[inset_0_0_0_1px_rgba(255,255,255,.1),0_1px_0_rgba(0,0,0,.4)]">
+      {children}
+    </kbd>
+  );
 }
+
+const SHORTCUTS: [string, React.ReactNode][] = [
+  ["Switch workspace", <><Kbd>⌥1</Kbd><span className="text-[#6b6e76]">…</span><Kbd>⌥0</Kbd></>],
+  ["Send the window to a workspace", <><Kbd>⌥⇧1</Kbd><span className="text-[#6b6e76]">…</span><Kbd>⌥⇧0</Kbd></>],
+  ["Back to the last workspace", <Kbd>⌥Tab</Kbd>],
+  ["Next window", <Kbd>⌥`</Kbd>],
+  ["Focus left, down, up, right", <><Kbd>⌥H</Kbd><Kbd>J</Kbd><Kbd>K</Kbd><Kbd>L</Kbd></>],
+  ["Move the tile", <><Kbd>⌥⇧H</Kbd><Kbd>J</Kbd><Kbd>K</Kbd><Kbd>L</Kbd></>],
+  ["Flip the split", <Kbd>⌥/</Kbd>],
+  ["Shrink or grow the tile", <><Kbd>⌥-</Kbd><Kbd>⌥=</Kbd></>],
+  ["Fullscreen Layout", <Kbd>⌥⇧F</Kbd>],
+  ["Next or previous workspace", <span className="text-[13px] text-[#9a9ca3]">Three-finger swipe</span>],
+];
 
 // ── Demos ───────────────────────────────────────────────────────────────
 
@@ -160,16 +257,16 @@ function MiniWindow({ r, color, pad = 0.012 }: { r: R; color: string; pad?: numb
       animate={{ opacity: 1, scale: 1 }}
       exit={{ opacity: 0, scale: 0.94 }}
       transition={{ type: "spring", duration: 0.42, bounce: 0 }}
-      className="absolute overflow-hidden rounded-[6px] bg-[#ebe8e2] shadow-[0_6px_18px_rgba(0,0,0,.35)]"
+      className="absolute overflow-hidden rounded-[6px] bg-[#e9ebef] shadow-[0_6px_18px_rgba(0,0,0,.35)]"
       style={{ left: `${(r.x + pad) * 100}%`, top: `${(r.y + pad * 1.6) * 100}%`, width: `${(r.w - pad * 2) * 100}%`, height: `${(r.h - pad * 3.2) * 100}%` }}
     >
-      <div className="flex h-[14%] max-h-4 min-h-2.5 items-center gap-[3px] bg-[#dedad3] px-1.5">
-        {[0, 1, 2].map((k) => <span key={k} className="size-[5px] rounded-full bg-[#c4bfb7]" />)}
+      <div className="flex h-[14%] max-h-4 min-h-2.5 items-center gap-[3px] bg-[#dcdfe4] px-1.5">
+        {[0, 1, 2].map((k) => <span key={k} className="size-[5px] rounded-full bg-[#c2c6cd]" />)}
       </div>
       <div className="flex flex-col gap-[6%] p-[6%]">
         <span className="h-1.5 w-1/2 rounded-full" style={{ background: color }} />
-        <span className="h-1 w-4/5 rounded-full bg-[#d3cfc7]" />
-        <span className="h-1 w-3/5 rounded-full bg-[#d3cfc7]" />
+        <span className="h-1 w-4/5 rounded-full bg-[#d0d3d9]" />
+        <span className="h-1 w-3/5 rounded-full bg-[#d0d3d9]" />
       </div>
     </motion.div>
   );
@@ -188,55 +285,80 @@ function TilingDemo() {
   );
 }
 
-const SPACES = [
-  [{ c: 0 }, { c: 1 }, { c: 2 }],
-  [{ c: 3 }, { c: 4 }],
-  [{ c: 5 }],
-];
+// apps by colour, per workspace
+const SPACES = [[0, 1, 2], [3, 4], [5]];
 
+// the Icons bar Spaceman shows on a switch: each number with its apps, a marker on the current one
 function WorkspacesDemo() {
   const [ref, i] = useCycle(3, 2000);
   return (
     <div ref={ref} className="relative size-full bg-[linear-gradient(135deg,#465363,#262c35)] p-[3%]">
-      <div className="relative h-[78%] w-full">
-        {tiles(SPACES[i].length).map((r, k) => <MiniWindow key={`${i}-${k}`} r={r} color={APP_COLORS[SPACES[i][k].c]} />)}
+      <div className="relative h-[80%] w-full">
+        {tiles(SPACES[i].length).map((r, k) => <MiniWindow key={`${i}-${k}`} r={r} color={APP_COLORS[SPACES[i][k]]} />)}
       </div>
       <div className="absolute inset-x-0 bottom-[5%] flex justify-center">
-        <div className="relative flex items-center gap-2 rounded-full border border-white/10 bg-[#161618] px-3 py-1.5">
-          {SPACES.map((s, k) => (
-            <div key={k} className="relative">
-              {k === i && <motion.span layoutId="ws-marker" transition={{ type: "spring", duration: 0.34, bounce: 0 }} className="absolute -inset-[3px] rounded-[7px] border border-white/20 bg-white/10" />}
-              <motion.div animate={{ width: k === i ? 46 : 29, height: k === i ? 29 : 18, opacity: k === i ? 1 : 0.55 }} transition={{ type: "spring", duration: 0.34, bounce: 0 }} className="relative rounded-[4px] border border-white/20 bg-white/5">
-                {tiles(s.length).map((r, j) => (
-                  <span key={j} className="absolute rounded-[2px]" style={{ left: `${r.x * 100 + 6}%`, top: `${r.y * 100 + 8}%`, width: `${r.w * 100 - 12}%`, height: `${r.h * 100 - 16}%`, background: APP_COLORS[s[j].c], opacity: 0.8 }} />
-                ))}
-              </motion.div>
+        <div className="flex items-center gap-1 rounded-[13px] bg-[#1c1d20]/90 p-1 shadow-[inset_0_0_0_1px_rgba(255,255,255,.09),0_10px_28px_rgba(0,0,0,.45)]">
+          {SPACES.map((apps, k) => (
+            <div key={k} className="relative flex h-7 items-center gap-[5px] px-2.5">
+              {k === i && <motion.span layoutId="ws-marker" transition={{ type: "spring", duration: 0.34, bounce: 0 }} className="absolute inset-0 rounded-[9px] bg-white/[0.13] shadow-[inset_0_0_0_1px_rgba(255,255,255,.1)]" />}
+              <span className={`relative pr-0.5 text-[12px] font-semibold tabular-nums transition-opacity duration-300 ${k === i ? "text-white" : "text-white/45"}`}>{k + 1}</span>
+              {apps.map((c) => (
+                <span key={c} className={`relative size-3.5 rounded-[4px] transition-opacity duration-300 ${k === i ? "" : "opacity-45"}`} style={{ background: APP_COLORS[c] }} />
+              ))}
             </div>
           ))}
         </div>
       </div>
-      <div className="absolute top-[6%] right-[4%] rounded-md bg-black/50 px-2 py-0.5 font-sans text-[12px] text-[#ece9e3]">⌥{i + 1}</div>
+    </div>
+  );
+}
+
+// a tabbed window keeps its tile while its tabs change under it
+function TabsDemo() {
+  const [ref, i] = useCycle(3, 1500);
+  const r = { x: 0, y: 0, w: 0.5, h: 1 };
+  return (
+    <div ref={ref} className="relative size-full bg-[linear-gradient(135deg,#465363,#262c35)] p-[3%]">
+      <div className="relative size-full">
+        <div className="absolute flex flex-col overflow-hidden rounded-[6px] bg-[#16171a] shadow-[0_6px_18px_rgba(0,0,0,.35)]" style={{ left: "1.2%", top: "1.9%", width: "47.6%", height: "96.2%" }}>
+          <div className="flex h-[14%] max-h-6 min-h-4 items-end gap-[2px] bg-[#0f1012] px-1.5">
+            {[0, 1, 2].map((k) => (
+              <span key={k} className={`relative flex h-[80%] flex-1 items-center gap-1 rounded-t-[4px] px-1.5 transition-colors duration-200 ${k === i ? "bg-[#16171a]" : ""}`}>
+                <span className="size-[5px] shrink-0 rounded-full" style={{ background: APP_COLORS[[2, 0, 5][k]], opacity: k === i ? 1 : 0.5 }} />
+                <span className={`h-1 flex-1 rounded-full ${k === i ? "bg-white/40" : "bg-white/15"}`} />
+              </span>
+            ))}
+          </div>
+          <div className="flex flex-col gap-[7%] p-[7%] font-mono">
+            {[0.72, 0.5, 0.86, 0.4, 0.64].map((w, k) => (
+              <motion.span key={`${i}-${k}`} initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.18, delay: k * 0.03 }} className="h-1 rounded-full" style={{ width: `${(w * (1 - ((i + k) % 3) * 0.12)) * 100}%`, background: k === 0 ? APP_COLORS[[2, 0, 5][i]] : "rgba(255,255,255,.18)" }} />
+            ))}
+          </div>
+        </div>
+        <MiniWindow r={{ ...r, x: 0.5, h: 0.5 }} color={APP_COLORS[1]} />
+        <MiniWindow r={{ ...r, x: 0.5, y: 0.5, h: 0.5 }} color={APP_COLORS[3]} />
+      </div>
     </div>
   );
 }
 
 const RULES = [
-  { app: "Chat", title: "Standup", action: "Ignore", ws: "" },
-  { app: "Chat", title: "Any", action: "Route", ws: "2" },
-  { app: "Mail", title: "Any", action: "Route", ws: "2" },
-  { app: "Browser", title: "Any", action: "Route", ws: "3" },
+  { app: "Chat", color: 1, title: "Standup", action: "Ignore", ws: "" },
+  { app: "Chat", color: 1, title: "Any", action: "Route", ws: "2" },
+  { app: "Mail", color: 2, title: "Any", action: "Route", ws: "2" },
+  { app: "Browser", color: 3, title: "Any", action: "Route", ws: "3" },
 ];
 
 function RulesStill() {
   return (
-    <div className="flex size-full flex-col justify-center gap-1.5 bg-[#f2f0ec] px-[6%] text-[#2b2a28]">
-      <div className="grid grid-cols-[1.1fr_1.2fr_1fr_0.8fr] px-2 pb-1 text-[11px] font-semibold text-[#7b776f]">
+    <div className="flex size-full flex-col justify-center gap-1.5 bg-[#eceef1] px-[6%] text-[#1f2126]">
+      <div className="grid grid-cols-[1.1fr_1.2fr_1fr_0.8fr] px-2 pb-1 text-[11px] font-semibold text-[#6b6e76]">
         <span>App</span><span>Window title</span><span>Action</span><span>Workspace</span>
       </div>
       {RULES.map((r, k) => (
         <div key={k} className="grid grid-cols-[1.1fr_1.2fr_1fr_0.8fr] items-center rounded-md bg-white px-2 py-1.5 text-[13px] shadow-[0_1px_0_rgba(0,0,0,.05)]">
-          <span className="flex items-center gap-1.5"><span className="size-3 rounded-[3px]" style={{ background: APP_COLORS[k + 1] }} />{r.app}</span>
-          <span className={r.title === "Any" ? "text-[#9a968e]" : ""}>{r.title === "Any" ? "Any" : `“${r.title}”`}</span>
+          <span className="flex items-center gap-1.5"><span className="size-3 rounded-[3px]" style={{ background: APP_COLORS[r.color] }} />{r.app}</span>
+          <span className={r.title === "Any" ? "text-[#9a9ca3]" : ""}>{r.title === "Any" ? "Any" : `“${r.title}”`}</span>
           <span>{r.action}</span>
           <span>{r.ws || "—"}</span>
         </div>
@@ -245,73 +367,53 @@ function RulesStill() {
   );
 }
 
-function RestoreStill() {
+// Disable Tiling: the parked windows come back to the frames they had before Spaceman moved them
+const PLACED: R[] = [{ x: 0.06, y: 0.18, w: 0.42, h: 0.52 }, { x: 0.36, y: 0.3, w: 0.44, h: 0.5 }, { x: 0.55, y: 0.14, w: 0.38, h: 0.44 }];
+
+function RestoreDemo() {
+  const [ref, i] = useCycle(2, 2200);
+  const on = i === 0;
+  const tiled = tiles(2);
   return (
-    <div className="relative size-full bg-[linear-gradient(135deg,#465363,#262c35)]">
-      <div className="absolute top-0 inset-x-0 flex h-[9%] items-center justify-end gap-3 bg-[#ece9e3]/85 px-[3%] text-[11px] text-[#2b2a28]">
-        <span className="rounded-[4px] bg-[#2b2a28] px-1.5 py-px text-[10px] font-bold text-[#ece9e3]">1</span>
-        <span>Disable Tiling</span>
+    <div ref={ref} className="relative size-full bg-[linear-gradient(135deg,#465363,#262c35)]">
+      <div className="absolute inset-x-0 top-0 z-10 flex h-[9%] items-center justify-end gap-2 bg-[#eceef1]/85 px-[3%] text-[11px] text-[#24262b]">
+        <span className={`rounded-[4px] px-1.5 py-px text-[10px] font-bold transition-colors duration-300 ${on ? "bg-[#24262b] text-[#eceef1]" : "bg-[#24262b]/25 text-[#24262b]"}`}>1</span>
+        <span className="w-[84px] text-right">{on ? "Disable Tiling" : "Enable Tiling"}</span>
       </div>
-      {[{ x: 0.07, y: 0.2, w: 0.42, h: 0.5 }, { x: 0.38, y: 0.3, w: 0.44, h: 0.48 }, { x: 0.55, y: 0.16, w: 0.36, h: 0.42 }].map((r, k) => (
-        <MiniWindow key={k} r={r} color={APP_COLORS[k + 2]} pad={0} />
-      ))}
+      <div className="absolute inset-x-[3%] top-[12%] bottom-[3%]">
+        {PLACED.map((p, k) => {
+          const r = on ? tiled[k] : p;
+          return k === 2 && on ? null : <MiniWindow key={k} r={r} color={APP_COLORS[k + 2]} pad={on ? 0.012 : 0} />;
+        })}
+      </div>
     </div>
   );
 }
 
-/**
- * Hand-drawn monoline wordmark: thin geometric caps with a crossbar-less A.
- * Glyphs live on an 80-unit cap height; strokes stay unfilled monolines.
- */
-const GLYPHS: Record<string, { width: number; d: string }> = {
-  S: {
-    width: 52,
-    d: "M47 13 C44 4 36 0 26 0 C13 0 5 6 5 16 C5 26 12 31 26 34 C41 37 49 43 49 55 C49 70 40 80 26 80 C14 80 6 75 3 67",
-  },
-  P: {
-    width: 55,
-    d: "M7 80 L7 0 L31 0 C44 0 51 8 51 21 C51 34 44 42 31 42 L7 42",
-  },
-  A: { width: 60, d: "M4 80 L30 0 L56 80" },
-  C: {
-    width: 54,
-    d: "M49 14 C45 4 37 0 27 0 C11 0 5 13 5 40 C5 67 11 80 27 80 C37 80 45 76 49 66",
-  },
-  E: { width: 49, d: "M45 0 L9 0 L9 80 L45 80 M9 40 L35 40" },
-  M: { width: 60, d: "M6 80 L6 0 L30 44 L54 0 L54 80" },
-  N: { width: 56, d: "M7 80 L7 0 L49 80 L49 0" },
-};
-
-const WORDMARK_GAP = 24;
-
-function Wordmark() {
-  let x = 0;
-  const placed = "SPACEMAN".split("").map((letter, index) => {
-    const glyph = GLYPHS[letter];
-    const entry = { key: `${letter}-${index}`, glyph, x };
-    x += glyph.width + WORDMARK_GAP;
-    return entry;
-  });
-  const total = x - WORDMARK_GAP;
-
+// the one permission Spaceman asks for, as System Settings shows it
+function AccessStill() {
+  const rows = [
+    { name: "Spaceman", on: true, icon: <img src="icon-192.png" alt="" className="size-full" /> },
+    { name: "Terminal", on: false, icon: <span className="block size-full rounded-[5px] bg-[#2a2c31]" /> },
+    { name: "Script Editor", on: false, icon: <span className="block size-full rounded-[5px] bg-[#c9ccd2]" /> },
+  ];
   return (
-    <svg
-      viewBox={`-4 -5 ${total + 8} 90`}
-      className="h-6"
-      aria-hidden="true"
-    >
-      {placed.map((entry) => (
-        <path
-          key={entry.key}
-          d={entry.glyph.d}
-          transform={`translate(${entry.x},0)`}
-          fill="none"
-          stroke="rgba(255,255,255,0.92)"
-          strokeWidth="5"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-        />
-      ))}
-    </svg>
+    <div className="flex size-full flex-col justify-center gap-3 bg-[#eceef1] px-[8%] text-[#1f2126]">
+      <div className="flex items-center gap-2 text-[13px] font-semibold">
+        <svg width="20" height="20" viewBox="0 0 20 20" aria-hidden="true"><rect width="20" height="20" rx="5" fill="#3478f6" /><circle cx="10" cy="5.6" r="1.6" fill="#fff" /><path d="M5.2 8.2 10 9l4.8-.8M10 9v3.4m0 0-2.2 4m2.2-4 2.2 4" stroke="#fff" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" fill="none" /></svg>
+        Accessibility
+      </div>
+      <div className="overflow-hidden rounded-[10px] bg-white shadow-[0_0_0_1px_rgba(0,0,0,.06)]">
+        {rows.map((r, k) => (
+          <div key={r.name} className={`flex items-center gap-2.5 px-3 py-2 text-[13px] ${k ? "border-t border-black/[0.06]" : ""} ${r.on ? "" : "text-[#1f2126]/45"}`}>
+            <span className={`size-5 shrink-0 ${r.on ? "" : "opacity-50"}`}>{r.icon}</span>
+            <span className="flex-1">{r.name}</span>
+            <span className={`relative h-[18px] w-8 rounded-full ${r.on ? "bg-[#3478f6]" : "bg-black/[0.12]"}`}>
+              <span className={`absolute top-[2px] size-[14px] rounded-full bg-white shadow-[0_1px_2px_rgba(0,0,0,.25)] ${r.on ? "left-[16px]" : "left-[2px]"}`} />
+            </span>
+          </div>
+        ))}
+      </div>
+    </div>
   );
 }

@@ -17,7 +17,7 @@ export const STEMS: Record<string, { prompt: string; secs: number; takes?: numbe
   // the hedge, the bins, the dark houses: cellos swell, high violins creep in
   dread: { secs: 38, prompt: `Dark chamber strings building dread: two low cellos swelling slowly on a minor drone, eerie high violins entering with quiet bowed tremolo and sul ponticello, tense dissonant minor-second clusters, growing gradually louder and more anxious throughout, never resolving. ${CHAMBER}` },
   // seven, the questions, the cellar: a taut swell to its peak
-  // seven, Joan, the cat, Mark: urgent pulsing cellos, violins climbing
+  // seven, Juliana, the cat, Alan: urgent pulsing cellos, violins climbing
   urgent: { secs: 22, takes: 2, prompt: `Urgent, relentless horror strings: low cellos playing a driving repeated pulsing ostinato that slowly accelerates, violins climbing in uneasy rising chromatic lines and tremolo, dissonant and dense, steadily getting louder and more anxious from start to finish, never resolving. ${CHAMBER}` },
   // the three questions: a held breath
   hush: { secs: 12, takes: 2, prompt: `Near silence: one very quiet, thin, high violin harmonic held and barely trembling, a faint low cello note under it, almost inaudible, breathless suspense, no movement, no swell. ${CHAMBER}` },

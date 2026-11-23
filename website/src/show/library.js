@@ -310,7 +310,7 @@ export function album(ctx, w, h, d) {
     }
     if (a > 0.6) {
       ctx.globalAlpha = Math.min(1, (a - 0.6) / 0.3)
-      label(ctx, SECTIONS[e.section].date + ", 2026 · " + (e.time || ""), 14, h - 12, 13.5, 600, "#d9d5ce")
+      label(ctx, SECTIONS[e.section].date + (e.section ? ", 2026 · " : ", 2025 · ") + (e.time || ""), 14, h - 12, 13.5, 600, "#d9d5ce")
       label(ctx, (d.open + 1).toLocaleString("en-US") + " of " + ALBUM.toLocaleString("en-US"), w - 14, h - 12, 13, 400, "#9d988f", "right")
       ctx.globalAlpha = 1
     }

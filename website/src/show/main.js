@@ -148,13 +148,26 @@ export function createShow({ still, canvas, base, capture = false, reduced = fal
   // as video, fetched on the click; the live desktop sits on the panel's quad in each frame, so the
   // hand-off to the flat desktop is exact. Until the video has a frame, the page's still stands in for
   // it (it is frame 0). If the video fails, the film pushes into the still instead.
-  const plate = { src: null, meta: null, video: null, still: null, frame: -1, ready: false, failed: false, loading: null, done: false }
+  const plate = { src: null, meta: null, video: null, frames: null, still: null, frame: -1, ready: false, failed: false, loading: null, done: false }
+  // capture with ?plateFrames: the plate's frames as images (capture.ts serves them), because a seek in
+  // the video can land a frame or two off at the end of a group of pictures
+  const plateFrames = capture && typeof location !== "undefined" && new URLSearchParams(location.search).has("plateFrames")
   function loadOpening() {
     if (plate.loading) return plate.loading
     plate.loading = (async () => {
       try {
         await renderer.preparePlate()
         if (!(await loadOpeningMeta())) throw new Error("no plate")
+        if (plateFrames) {
+          const c = document.createElement("canvas")
+          c.width = plate.meta.size[0]
+          c.height = plate.meta.size[1]
+          c.version = 0
+          plate.src = "frames"
+          plate.frames = c
+          plate.ready = true
+          return true
+        }
         const v = document.createElement("video")
         v.muted = true
         v.playsInline = true
@@ -192,7 +205,7 @@ export function createShow({ still, canvas, base, capture = false, reduced = fal
   // a replay or a seek back into the opening brings the video back
   function resetPlate() {
     if (!plate.done) return
-    Object.assign(plate, { done: false, ready: false, video: null, loading: null, frame: -1, failed: false })
+    Object.assign(plate, { done: false, ready: false, video: null, frames: null, loading: null, frame: -1, failed: false })
     if (renderer?.renderPlate && !reduced) void loadOpening()
   }
   function loadOpeningStill() {
@@ -210,6 +223,7 @@ export function createShow({ still, canvas, base, capture = false, reduced = fal
   function plateEnd() {
     if (plate.done || !plate.meta || t < plate.meta.end) return
     plate.done = true
+    plate.frames = null
     if (plate.video) {
       plate.video.pause()
       plate.video.removeAttribute("src")
@@ -243,9 +257,20 @@ export function createShow({ still, canvas, base, capture = false, reduced = fal
   // capture: the frame for t, decoded, before the picture is drawn
   async function seekPlate() {
     const v = plate.video
-    if (!v || !plateOn()) return
+    const c = plate.frames
+    if ((!v && !c) || !plateOn()) return
     const f = Math.min(plate.meta.frames - 1, Math.round(t * plate.meta.fps))
     if (f === plate.frame) return
+    if (c) {
+      const r = await fetch("/__plate_frames/" + String(f).padStart(4, "0") + ".png")
+      if (!r.ok) throw new Error("plate frame " + f + ": " + r.status)
+      const bm = await createImageBitmap(await r.blob())
+      c.getContext("2d").drawImage(bm, 0, 0, c.width, c.height)
+      bm.close()
+      plate.frame = f
+      c.version++
+      return
+    }
     await new Promise((res) => {
       v.addEventListener("seeked", res, { once: true })
       v.currentTime = (f + 0.5) / plate.meta.fps
@@ -256,7 +281,7 @@ export function createShow({ still, canvas, base, capture = false, reduced = fal
   function renderPlate() {
     const m = plate.meta
     const live = plate.ready && plate.frame >= 0
-    const src = live ? plate.video : plate.still
+    const src = live ? plate.frames || plate.video : plate.still
     if (!src) return false
     const f = live ? clamp(plate.frame, 0, m.frames - 1) : 0
     const c = m.corners[f] // [bl, br, tr, tl], 0..1 from the frame's top-left
@@ -682,6 +707,9 @@ export function createShow({ still, canvas, base, capture = false, reduced = fal
       if (!opening) void stillsIn()
       if (capture) await Promise.all([ready, platesIn, opening])
       for (const w of world.wins.values()) w.dirty = true
+      // the cues at 0 (the room's first shot) before the first frame, so it isn't the flat desktop
+      while (ci < cues.length && cues[ci].t <= 0) cues[ci++].fn()
+      if (capture) await seekPlate()
       phase = "live"
       emit("phase", "live")
       last = 0
@@ -739,6 +767,7 @@ export function createShow({ still, canvas, base, capture = false, reduced = fal
       }
       audio.quiet = true
       while (t < to - 1e-6 && phase === "live") advance(Math.min(0.25, to - t))
+      while (ci < cues.length && cues[ci].t <= t) cues[ci++].fn()
       audio.quiet = false
       for (const w of world.wins.values()) w.dirty = true
       plateEnd()

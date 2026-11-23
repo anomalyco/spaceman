@@ -119,6 +119,14 @@ export function feed(ctx, x, y, w, h, d, win) {
     vg.addColorStop(1, `rgba(0,0,0,${0.45 + q * 0.25})`)
     g.fillStyle = vg
     g.fillRect(0, 0, SW, SH)
+    // each camera's own white balance: one runs warm under the porch light, one cold, one a touch green
+    if (!d.ir) {
+      const WB = ["rgba(255,170,90,", "rgba(110,160,255,", "rgba(150,255,170,", "rgba(255,140,200,", "rgba(255,210,140,"]
+      g.globalCompositeOperation = "soft-light"
+      g.fillStyle = WB[seed % WB.length] + (0.1 + 0.08 * rnd(seed * 3.7)) + ")"
+      g.fillRect(0, 0, SW, SH)
+      g.globalCompositeOperation = "source-over"
+    }
     // sensor noise: a grain over everything, and a floor that lifts the blacks
     const n = noiseTile(Math.floor(rnd(f + seed * 7) * 6))
     const ox = -Math.floor(rnd(f * 1.3 + seed) * 64)
@@ -173,6 +181,17 @@ export function feed(ctx, x, y, w, h, d, win) {
     g.textAlign = "right"
     g.strokeText(tstr, SW - m, m)
     g.fillText(tstr, SW - m, m)
+    // REC, its dot blinking once a second
+    g.strokeText("REC", SW - m, m + fs * 1.35)
+    g.fillText("REC", SW - m, m + fs * 1.35)
+    if (Math.floor(t) % 2 === 0) {
+      const rw = g.measureText("REC").width
+      g.beginPath()
+      g.arc(SW - m - rw - fs * 0.55, m + fs * 1.35 + fs * 0.48, fs * 0.3, 0, Math.PI * 2)
+      g.fillStyle = "#e5322d"
+      g.fill()
+      g.fillStyle = "rgba(245,245,240,.95)"
+    }
     if (d.ch) {
       g.textAlign = "left"
       g.strokeText(d.ch, m, SH - m - fs)

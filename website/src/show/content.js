@@ -2,6 +2,7 @@
 // (the context is already scaled). Contents are redrawn only when a window is marked dirty.
 import { APPS, FONT, MONO, iconCanvas, roundRect } from "./apps.js"
 import { favTile } from "./favicons.js"
+import { downloadIndicator, sitePage } from "./sitepage.js"
 import { plates, coverUV } from "./plates.js"
 import { album as albumPainter } from "./library.js"
 import { feed as paintFeed } from "./feeds.js"
@@ -235,6 +236,7 @@ const TOOLBARS = {
     glyph(ctx, "back", x, cy, c, 0.9)
     glyph(ctx, "fwd", x + 22, cy, d.fwd ? c : tool(false), 0.9)
     const right = w > 380 ? 92 : 12
+    if (d.dl != null && w > 380) downloadIndicator(ctx, w - 100, cy, d.dl, c)
     if (w > 380) {
       glyph(ctx, "share", w - 72, cy, c, 0.85)
       glyph(ctx, "plus", w - 46, cy, c, 0.9)
@@ -243,10 +245,43 @@ const TOOLBARS = {
     const lo = x + 40
     const pw = Math.max(60, Math.min(w * 0.46, 520, w - right - lo - 8))
     const px = Math.max(lo, w / 2 - pw / 2)
+    // typing in the address field: white, a focus ring, the old address selected until the first key
+    if (d.edit != null) {
+      ctx.fillStyle = "#fff"
+      roundRect(ctx, px, 4.5, pw, BAR_H - 9, 7)
+      ctx.fill()
+      ctx.strokeStyle = "rgba(10,132,255,.55)"
+      ctx.lineWidth = 2.5
+      roundRect(ctx, px - 1, 3.5, pw + 2, BAR_H - 7, 8)
+      ctx.stroke()
+      const s = d.sel ? "https://" + (d.url || "") : d.edit
+      ctx.font = `400 12.5px ${FONT}`
+      const tw = Math.min(ctx.measureText(s).width, pw - 24)
+      if (d.sel && s) {
+        ctx.fillStyle = "#b3d7ff"
+        ctx.fillRect(px + 10, cy - 7.5, tw + 1, 15)
+      }
+      text(ctx, s, px + 10, cy + 4.5, { size: 12.5, color: INK, max: pw - 24 })
+      if (!d.sel) {
+        ctx.fillStyle = "#0a84ff"
+        ctx.fillRect(px + 10 + tw + 1, cy - 7, 1.25, 14)
+      }
+      return
+    }
     ctx.fillStyle = focused ? "rgba(0,0,0,.065)" : "rgba(0,0,0,.045)"
     roundRect(ctx, px, 4.5, pw, BAR_H - 9, 7)
     ctx.fill()
-    const site = host(d.url)
+    // a page loading: the blue bar along the foot of the field
+    if (d.load != null) {
+      ctx.save()
+      roundRect(ctx, px, 4.5, pw, BAR_H - 9, 7)
+      ctx.clip()
+      ctx.fillStyle = "#0a84ff"
+      ctx.fillRect(px, BAR_H - 6.5, pw * d.load, 2)
+      ctx.restore()
+    }
+    // a page he typed the address of shows it in full
+    const site = d.full ? (d.url || "").replace(/^https?:\/\//, "") : host(d.url)
     ctx.font = `400 12.5px ${FONT}`
     const sw = Math.min(ctx.measureText(site || "Search or enter website name").width, pw - 34)
     const tx = px + pw / 2 - sw / 2 + (site ? 6 : 0)
@@ -652,9 +687,9 @@ function chatList(ctx, h, side, d, focused) {
   const rows = [{ n: d.who, p: last?.t || "", t: "11:52 PM" }]
   for (const r of [
     { n: "Pinecrest Neighbours · 9", p: "Whose is the blue car?", t: "8:02 PM" },
-    { n: "Mark (No. 10)", p: "Thanks for the drill!", t: "Yesterday" },
+    { n: "Alan (No. 10)", p: "Thanks for the drill!", t: "Yesterday" },
     { n: "Ruth (No. 8)", p: "See you Saturday", t: "Saturday" },
-    { n: "Joan (No. 16)", p: "Just putting mine out Wednesdays now, hope that's ok!", t: "11/26/25" },
+    { n: "Juliana (No. 16)", p: "Just putting mine out Wednesdays now, hope that's ok!", t: "11/26/25" },
     { n: "Pinecrest Dental", p: "Your appointment is confirmed", t: "11/14/25" },
   ])
     if (r.n !== d.who) rows.push(r)
@@ -670,7 +705,18 @@ function chatList(ctx, h, side, d, focused) {
     avatar(ctx, r.n, 34, y + 28, 19, i)
     text(ctx, r.n || "", 62, y + 23, { size: 13, weight: 600, color: on ? "#fff" : INK, max: side - 140 })
     text(ctx, r.t, side - 16, y + 23, { size: 11.5, color: on ? "rgba(255,255,255,.8)" : SOFT, align: "right" })
-    text(ctx, r.p, 62, y + 41, { size: 12, color: on ? "rgba(255,255,255,.85)" : SOFT, max: side - 78 })
+    // unread: a count in a blue capsule at the row's end
+    const u = d.unread?.[r.n]
+    let pw = 0
+    if (u) {
+      ctx.font = `600 11px ${FONT}`
+      pw = Math.max(18, ctx.measureText(String(u)).width + 10)
+      ctx.fillStyle = on ? "#fff" : ACCENT
+      roundRect(ctx, side - 16 - pw, y + 30, pw, 16, 8)
+      ctx.fill()
+      text(ctx, String(u), side - 16 - pw / 2, y + 42, { size: 11, weight: 600, color: on ? ACCENT : "#fff", align: "center" })
+    }
+    text(ctx, r.p, 62, y + 41, { size: 12, weight: u ? 600 : 400, color: on ? "rgba(255,255,255,.85)" : u ? INK : SOFT, max: side - 78 - (pw ? pw + 6 : 0) })
   })
 }
 
@@ -717,7 +763,7 @@ function thread(ctx, w, h, d) {
   const maxW = Math.min(w * 0.72, 420)
   // the conversation as rows: a centred time, or a bubble (with its lines), in order
   const rows = [{ stamp: d.day || d.when || "Today 11:52 PM", head: 1 }]
-  for (const m of d.msgs || []) rows.push({ m, lines: wrapMsg(ctx, m.t, maxW - 26) })
+  for (const m of d.msgs || []) rows.push(m.stamp ? { stamp: m.stamp } : { m, lines: wrapMsg(ctx, m.t, maxW - 26) })
   const sent = (d.sent || []).slice(0, d.shownSent ?? (d.sent || []).length)
   if (sent.length && d.sentAt) rows.push({ stamp: d.sentAt })
   sent.forEach((t, i) => rows.push({ m: { t, me: 1 }, lines: wrapMsg(ctx, t, maxW - 26), last: i === sent.length - 1, pop: i === sent.length - 1 ? d.pop ?? 1 : 1 }))
@@ -1107,7 +1153,7 @@ const painters = {
         text(ctx, m.from, tx, ay + 14, { size: 15, weight: 700, max: mw - 140 })
         if (m.when) text(ctx, m.when, w - 22, ay + 14, { size: 12, color: SOFT, align: "right" })
         text(ctx, m.subject, tx, ay + 34, { size: 14, weight: 500, max: mw - 52 })
-        text(ctx, "To: Me", tx, ay + 52, { size: 12, color: SOFT })
+        text(ctx, "To: " + (m.to || "Me") + (m.cc ? "   Cc: " + m.cc : ""), tx, ay + 52, { size: 12, color: SOFT, max: mw - 52 })
         ctx.fillStyle = RULE
         ctx.fillRect(x0 + 20, ay + 70, w - x0 - 40, 1)
         const end = lines(ctx, m.body || [], x0 + 28, ay + 102, mw, { size: 15, gap: 24 })
@@ -1174,7 +1220,7 @@ const painters = {
           ctx.fillStyle = FAVICONS[i % FAVICONS.length]
           roundRect(ctx, x + 8, BAR_H + TB / 2 - 5, 10, 10, 2.5)
           ctx.fill()
-          text(ctx, TAB_TITLES[i % TAB_TITLES.length], x + 24, BAR_H + TB / 2 + 4, { size: 11.5, color: "#5b5b60", max: rw - 32 })
+          text(ctx, (d.tabNames || TAB_TITLES)[(i - 1) % (d.tabNames || TAB_TITLES).length], x + 24, BAR_H + TB / 2 + 4, { size: 11.5, color: "#5b5b60", max: rw - 32 })
         } else if (rw >= 11) {
           ctx.fillStyle = FAVICONS[i % FAVICONS.length]
           roundRect(ctx, x + (rw - f) / 2, BAR_H + TB / 2 - f / 2, f, f, 2.5)
@@ -1185,6 +1231,7 @@ const painters = {
     const top = BAR_H + (n > 1 ? TB : 0)
     ctx.fillStyle = PAGE
     ctx.fillRect(0, top, w, h - top)
+    if (d.page === "spaceman") return sitePage(ctx, w, h, top, d)
     if (d.tab === "New Tab") return startPage(ctx, w, h, top)
     if (d.lines) return storePage(ctx, w, h, top, d)
     const cw = Math.min(w - 52, 620)
@@ -1354,7 +1401,7 @@ const painters = {
       paneIcon(ctx, ic, 24, y + 14, on ? "#3a3a3e" : "#8a8a90")
       text(ctx, label, 40, y + 18.5, { size: 13, color: on ? INK : "#6e6e73", max: G.side - 56 })
     })
-    text(ctx, "Version 0.2.0", 16, h - 38, { size: 11.5, color: "#a1a1a6" })
+    text(ctx, "Version 0.3.0", 16, h - 38, { size: 11.5, color: "#a1a1a6" })
     text(ctx, "Check for updates", 16, h - 18, { size: 11.5, color: "#6e6e73" })
     // the raised panel
     ctx.fillStyle = "#fff"
@@ -1585,7 +1632,7 @@ function marchPile() {
   const wins = [
     [{ kind: "browser", app: "browsy", title: "Hedge height bylaws", data: { tabs: 21, url: "pinecrest.example/bylaws/4-12", heading: "Hedge height bylaws" } }, 40, 60, 620, 470],
     [{ kind: "daybook", app: "daybook", title: "Calendar", data: { date: "Monday, March 2", events: [{ at: 8, len: 1, t: "Bins out" }] } }, 520, 40, 420, 520],
-    [jot("Untitled 44", "Untitled 44", ["hedge — measure?", "ask Mark re: drill"], "Edited February 3"), 300, 230, 380, 330],
+    [jot("Untitled 44", "Untitled 44", ["hedge — measure?", "ask Alan re: drill"], "Edited February 3"), 300, 230, 380, 330],
     [{ kind: "browser", app: "browsy", title: "Cordless drills compared", data: { tabs: 21, url: "homedesk.example/cordless-drills", heading: "Cordless drills compared" } }, 820, 120, 580, 440],
     [jot("notes", "notes", ["call about the gutters", "drill → return", "passwords??"], "Edited March 2"), 120, 380, 360, 330],
     [jot("cameras — No. 16", "About the cameras", ["We'd like the two cameras on No. 12", "that face our houses taken down."], "Signed Feb 26"), 640, 330, 420, 300],

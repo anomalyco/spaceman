@@ -8,7 +8,13 @@ Spaceman treats a logical tile slot as product identity rather than tying layout
 
 - **Platform:** Apple silicon Mac running macOS 14 or later. No System Integrity Protection (SIP) changes are required.
 - **Before launching:** Disable AeroSpace (`aerospace enable off`), yabai, Amethyst, or any other window manager so two managers do not move the same windows.
-- **Download:** `https://pub-6f85d683ffe0419cad0a71508904053a.r2.dev/releases/Spaceman-v0.2.0-macos-arm64.zip` (verify against `Spaceman-v0.2.0-macos-arm64.zip.sha256`).
+- **Download:** `https://anoma.ly/spaceman/download/macos-arm64` (verify against `https://anoma.ly/spaceman/download/macos-arm64.sha256`), or install the latest build from Terminal:
+
+  ```sh
+  curl -fL https://anoma.ly/spaceman/download/macos-arm64 -o /tmp/Spaceman.zip \
+    && ditto -x -k /tmp/Spaceman.zip /Applications && open /Applications/Spaceman.app
+  ```
+
 - **Setup:** Move `Spaceman.app` to `/Applications`, open it, grant **System Settings > Privacy & Security > Accessibility**, and optionally link `/Applications/Spaceman.app/Contents/MacOS/spaceman` to `~/.local/bin/spaceman`.
 
 ## Keyboard Shortcuts
@@ -24,10 +30,13 @@ Spaceman treats a logical tile slot as product identity rather than tying layout
 - `Option+/`: toggle the workspace's root split axis (horizontal / vertical)
 - `Option+-` / `Option+=`: shrink or grow the focused tile by 50 pixels
 - `Option+Shift+F`: toggle workspace-wide Fullscreen Layout without entering macOS native fullscreen Spaces
+- Three-finger swipe left / right: next / previous occupied workspace on the display under the pointer
 
-## Configuration (`~/.config/spaceman/config.toml`)
+While you switch or move a window, a small bar on each display shows its workspaces as numbers with their apps' icons, with a marker on the current one (`[settings] hud_style`).
 
-Spaceman reads ordered first-match rules and workspace display assignments from `~/.config/spaceman/config.toml`:
+## Configuration (`~/Library/Application Support/Spaceman/config.toml`)
+
+Spaceman reads ordered first-match rules and workspace display assignments from `~/Library/Application Support/Spaceman/config.toml` (or `$SPACEMAN_CONFIG`), and reloads rule, display and HUD edits when the file changes:
 
 ```toml
 version = 1
@@ -61,7 +70,7 @@ Rule actions:
 - `float`: keep matching windows associated with their workspace without tiling or resizing them.
 - `ignore`: never adopt, tile, or park matching windows.
 
-Validate a config file with `spaceman config-check ~/.config/spaceman/config.toml`.
+Validate a config file with `spaceman config-check "$HOME/Library/Application Support/Spaceman/config.toml"`.
 
 ## CLI and Diagnostics
 

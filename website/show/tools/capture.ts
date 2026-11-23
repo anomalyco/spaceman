@@ -20,10 +20,25 @@ const out = resolve(outArg)
 const audioDir = join(dist, "show/audio")
 mkdirSync(out, { recursive: true })
 
+// The opening plate's frames as PNGs, served at /__plate_frames/, so each captured frame composites
+// exactly its own plate frame (a seek in the video can land up to two frames off before a keyframe).
+// From the 10-bit HEVC the site plays; deleted when the capture ends.
+const plateFrames = join(out, "plate-frames")
+rmSync(plateFrames, { recursive: true, force: true })
+mkdirSync(plateFrames)
+process.on("exit", () => rmSync(plateFrames, { recursive: true, force: true }))
+await $`ffmpeg -v error -i ${join(dist, "show/plate/opening-hevc.mp4")} -vf scale=in_color_matrix=bt709:in_range=tv:flags=accurate_rnd+full_chroma_int,format=rgb24 -start_number 0 ${join(plateFrames, "%04d.png")}`
+
 const server = Bun.serve({
   port: 0,
   async fetch(req) {
     let p = decodeURIComponent(new URL(req.url).pathname)
+    // A normal production build uses /spaceman/; static gallery builds use ./ instead.
+    if (p.startsWith("/spaceman/")) p = p.slice(9)
+    if (p.startsWith("/__plate_frames/")) {
+      const f = Bun.file(join(plateFrames, p.slice(16)))
+      return (await f.exists()) ? new Response(f) : new Response("not found", { status: 404 })
+    }
     if (p.endsWith("/")) p += "index.html"
     const f = Bun.file(join(dist, p))
     return (await f.exists()) ? new Response(f) : new Response("not found", { status: 404 })
@@ -37,7 +52,7 @@ const END = END_ + 0.6
 // keyframes: the middle of every other sentence, and every sentence from seven on
 const sig = word("I'd kept seven", 0)
 const KEYS = LINES.filter((l: any, i: number) => i % 2 === 0 || l[1] >= sig - 0.1).map((l: any) => +((l[1] + l[2]) / 2).toFixed(2))
-const X2 = [1.5, 4.5, ...["It tiles", "numbered workspaces", "front door", "pleasing", "So I bought", "Mark is four", "Joan is five", "Alan's hedge", "for the record", "bins go out", "I'd kept seven", "in March", "her cat", "in June", "other two", "Only the one", "You should try"].map((p) => +(word(p, 0) + 0.9).toFixed(2))]
+const X2 = [1.5, 4.5, ...["It tiles", "numbered workspaces", "front door", "pleasing", "So I bought", "Alan is four", "Juliana is five", "Dax's hedge", "for the record", "bins go out", "I'd kept seven", "in March", "her cat", "in June", "other two", "Only the one", "You should try"].map((p) => +(word(p, 0) + 0.9).toFixed(2))]
 // --probe t1,t2,... : only these moments, 1440×900 WebGPU and Canvas 2D, then stop
 const probeArg = process.argv.find((a) => a.startsWith("--probe="))
 
@@ -57,8 +72,12 @@ async function open(o: Opts = {}) {
   page.on("console", (m) => (m.type() === "error" || m.type() === "warning") && errors.push(m.type() + ": " + m.text()))
   const requests: string[] = []
   page.on("request", (r) => requests.push(r.url().replace(site, "")))
-  await page.goto(`${site}/?capture${o.query ? "&" + o.query : ""}`)
-  await page.waitForFunction(() => "__show" in window)
+  await page.goto(`${site}/?capture&plateFrames${o.query ? "&" + o.query : ""}`)
+  try {
+    await page.waitForFunction(() => "__show" in window)
+  } catch (cause) {
+    throw new Error("show startup failed: " + JSON.stringify({ errors, requests }), { cause })
+  }
   await page.evaluate(() => document.fonts.ready)
   return { page, errors, requests, ctx }
 }
@@ -69,6 +88,8 @@ async function press(page: Page, mobile = false) {
   if (mobile) await page.tap('section [role="button"][aria-label]')
   else await page.keyboard.press("Alt+Digit1")
   await page.waitForFunction(() => document.querySelector("section")?.dataset.phase === "live", null, { timeout: 20000 })
+  // the first frame drawn and finished before anything is shot
+  await page.evaluate(() => (window as any).__show.seek(0))
 }
 const shot = (page: Page, path: string) => page.screenshot({ path, type: "jpeg", quality: 86 })
 
@@ -154,6 +175,10 @@ if (masterArg) {
   await $`ffmpeg -y -loglevel error -i ${master} -vf scale=1440:900:flags=lanczos -c:v libx264 -preset slow -crf 23 -profile:v high -level:v 4.1 -pix_fmt yuv420p ${color} -c:a aac -b:a 160k -ac 2 -movflags +faststart ${share}`
   rmSync(raw)
   for (const f of [master, share]) (report.master as any)[f.split("/").pop()!] = (Bun.file(f).size / 1e6).toFixed(1) + " MB"
+  // the opening must move as smoothly as its plate: no flash on the first frame, no jump or freeze
+  const pc = await $`bun ${join(import.meta.dir, "plate-check.ts")} ${share}`.nothrow().quiet()
+  ;(report.master as any).plateCheck = { ok: pc.exitCode === 0, ...JSON.parse(pc.stdout.toString() || "{}") }
+  if (pc.exitCode) console.error("plate-check failed: the opening stutters, see report.json")
   writeFileSync(join(out, "report.json"), JSON.stringify(report, null, 1))
   console.log(JSON.stringify(report.master, null, 1))
   await browser.close()
@@ -267,4 +292,3 @@ writeFileSync(join(out, "report.json"), JSON.stringify(report, null, 1))
 console.log(JSON.stringify({ ...report, states: undefined }, null, 1))
 await browser.close()
 server.stop()
-

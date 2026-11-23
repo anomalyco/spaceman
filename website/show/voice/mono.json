@@ -410,6 +410,126 @@
    "id": "l8",
    "stability": 0.5,
    "text": "$textL"
+  },
+  {
+   "id": "q1",
+   "stability": 0.5,
+   "text": "$textPane"
+  },
+  {
+   "id": "q2",
+   "stability": 0.5,
+   "text": "$textPane"
+  },
+  {
+   "id": "q3",
+   "stability": 0.5,
+   "text": "$textPane"
+  },
+  {
+   "id": "q4",
+   "stability": 0.5,
+   "text": "$textPane"
+  },
+  {
+   "id": "q5",
+   "stability": 0.5,
+   "text": "$textPane"
+  },
+  {
+   "id": "q6",
+   "stability": 0.5,
+   "text": "$textPane"
+  },
+  {
+   "id": "q7",
+   "stability": 0.5,
+   "text": "$textPane"
+  },
+  {
+   "id": "q8",
+   "stability": 0.5,
+   "text": "$textPane"
+  },
+  {
+   "id": "v1",
+   "stability": 0.5,
+   "text": "$textN"
+  },
+  {
+   "id": "v2",
+   "stability": 0.5,
+   "text": "$textN"
+  },
+  {
+   "id": "v3",
+   "stability": 0.5,
+   "text": "$textN"
+  },
+  {
+   "id": "v4",
+   "stability": 0.5,
+   "text": "$textN"
+  },
+  {
+   "id": "v5",
+   "stability": 0.5,
+   "text": "$textN"
+  },
+  {
+   "id": "v6",
+   "stability": 0.5,
+   "text": "$textN"
+  },
+  {
+   "id": "v7",
+   "stability": 0.5,
+   "text": "$textN"
+  },
+  {
+   "id": "v8",
+   "stability": 0.5,
+   "text": "$textN"
+  },
+  {
+   "id": "w1",
+   "stability": 0.5,
+   "text": "$textO"
+  },
+  {
+   "id": "w2",
+   "stability": 0.5,
+   "text": "$textO"
+  },
+  {
+   "id": "w3",
+   "stability": 0.5,
+   "text": "$textO"
+  },
+  {
+   "id": "w4",
+   "stability": 0.5,
+   "text": "$textO"
+  },
+  {
+   "id": "w5",
+   "stability": 0.5,
+   "text": "$textO"
+  },
+  {
+   "id": "w6",
+   "stability": 0.5,
+   "text": "$textO"
+  },
+  {
+   "id": "w7",
+   "stability": 0.5,
+   "text": "$textO"
+  },
+  {
+   "id": "w8",
+   "stability": 0.5,
+   "text": "$textO"
   }
  ],
  "text2": "[quiet, close to the microphone, calm and unhurried, a man talking across a kitchen table late at night] — your light was on. I hope that's all— I hope that's all right. I won't stay long.\n\n[precise, patient, slightly pleased with his own clarity] I want to explain how I keep things. Then it'll make sense.\n\nI'd had some of those windows open since March. February, some of them. Three of them were, uh... the same note. I closed two.\n\nEverything goes side by side now. Nothing on top of anything. Mail went to two. The browser went to three. I went back to make sure. They were still there. There's a bar along the bottom, so you always know where everything is.\n\nI made a rule. Chatter opens on two. [a small pause] I did read both messages.\n\nI gave Mark his drill back. Four years. It's a better drill than mine, actually. He said I didn't need to.\n\nFour is the house. Five is the street. Nobody else wanted to take the minutes.\n\n[cooler, very even] Your hedge is six foot two. The limit is six feet. We've talked about it... twice. I've photographed it every morning since. A hundred and sixty mornings.\n\nI sent the minutes round again. You're the only one who replied.\n\n[colder, quieter, never louder] There was a photograph attached. It took me a minute to recognise the study. [pause] From this side.\n\n[exhales] Can I sit? ...I'll sit.\n\n[a long silence, then flat and soft] Leave it on.",
@@ -444,8 +564,60 @@
  "textA": "[quiet, close to the microphone, unhurried, a man at a kitchen table late at night, gently entranced by how well everything works] — your light was on. I hope that's all— I hope that's all right. I won't stay long.\n\n[precise, patient, a little pleased with his own clarity] I want to explain how I keep things. Then it'll make sense.\n\nI'd had some of those windows open since March. February, some of them. Three of them were, uh... the same note. I closed two.\n\nThen I installed a small program. It's called Spaceman.\n\n[softer, admiring] And the windows tiled themselves. Side by side. Nothing on top of anything. Nothing behind anything. You could see all of it at once... I tasted the sweet flesh of efficiency.\n\n[even, carrying straight on] Mail went to workspace two. The browser went to three. I went back to make sure, and they were just... there. Exactly where I'd put them. Nothing was ever lost again. There's a bar along the bottom, so you always know where everything is. You're never more than one key away from anything.\n\n[unhurried] Then I made a rule. Chatter opens on two. You don't have to decide anymore. It just goes. [a small pause] I did read both messages.\n\nI gave Mark his drill back. Four years. It's a better drill than mine, actually. But it had a place, and the place was his.\n\nFour is the house. Five is the street. Nobody else wanted to take the minutes.\n\n[cooler, very even, still admiring] Your hedge is six foot two. The limit is six feet. We've talked about it... twice. I've photographed it every morning since. A hundred and sixty mornings, and I can find any one of them in a second. Any morning you like.\n\nI sent the minutes round again. You're the only one who replied.\n\n[exactly as even as before, never louder] There was a photograph attached. It took me a minute to recognise the study. [pause] From this side.\n\nThree of you signed the same note. About the cameras. I closed two.\n\n[almost tender] Everything else has a place now. Mark has a place. [pause] You're the last thing.\n\n[exhales] Can I sit? ...I'll sit.\n\n[level, reasonable, the same voice as the drill] You took a while to come down. I've put the sheets down. Side by side. Nothing on top of anything.\n\nI won't stay long.\n\n[a long silence, then flat and soft] Leave it on.",
  "textB": "[quiet, close to the microphone, unhurried, a man at a kitchen table late at night, gently entranced by how well everything works] — your light was on. I hope that's all— I hope that's all right. I won't stay long.\n\n[precise, patient, a little pleased with his own clarity] I want to explain how I keep things. Then it'll make sense.\n\nI'd had some of those windows open since March. February, some of them. Three of them were, uh... the same note. I closed two.\n\nThen I installed a small program. It's called Spaceman.\n\n[softer, admiring] And the windows tiled themselves. Side by side. Nothing on top of anything. Nothing behind anything. You could see all of it at once... I tasted the sweet flesh of efficiency. That's not— it was very satisfying.\n\n[even] Mail went to workspace two. The browser went to three. I went back to make sure, and they were just... there. Exactly where I'd put them. Nothing was ever lost again. There's a bar along the bottom, so you always know where everything is. You're never more than one key away from anything.\n\n[unhurried] Then I made a rule. Chatter opens on two. You don't have to decide anymore. It just goes. [a small pause] I did read both messages.\n\nI gave Mark his drill back. Four years. It's a better drill than mine, actually. But it had a place, and the place was his.\n\nFour is the house. Five is the street. Nobody else wanted to take the minutes.\n\n[cooler, very even, still admiring] Your hedge is six foot two. The limit is six feet. We've talked about it... twice. I've photographed it every morning since. A hundred and sixty mornings, and I can find any one of them in a second. Any morning you like.\n\nI sent the minutes round again. You're the only one who replied.\n\n[exactly as even as before, never louder] There was a photograph attached. It took me a minute to recognise the study. [pause] From this side.\n\nThree of you signed the same note. About the cameras. I closed two.\n\n[level, procedural, pleased with how well it worked] Sixteen was in March. Mark was in June, the day I gave him his drill back. It was quick, and it was very clean. Nobody missed either of them for a week. Six is downstairs. They're both on six.\n\n[almost tender] Everything else has a place now. [pause] You're the last thing.\n\n[exhales] Can I sit? ...I'll sit.\n\n[level, reasonable, the same voice as the drill] You took a while to come down. I've put the plastic down. Side by side. Nothing on top of anything. Nothing behind anything.\n\nIt won't take long. It never does.\n\n[a long silence, then flat and soft] Leave it on. Somebody should take the minutes.",
  "textC": "[quiet, close to the microphone, unhurried, a man at a kitchen table late at night, gently entranced by how well everything works] — your light was on. I hope that's all— I hope that's all right. I won't stay long.\n\n[precise, patient, a little pleased with his own clarity] I want to explain how I keep things. Then it'll make sense.\n\nI'd had some of those windows open since March. February, some of them. Three of them were, uh... the same note. I closed two.\n\nThen I installed a small program. It's called Spaceman.\n\n[softer, admiring] And the windows tiled themselves. Side by side. Nothing on top of anything. Nothing behind anything. You could see all of it at once... I tasted the sweet flesh of efficiency. [a quiet breath of a laugh, to himself]\n\n[even] Mail went to workspace two. The browser went to three. I went back to make sure, and they were just... there. Exactly where I'd put them. Nothing was ever lost again. There's a bar along the bottom, so you always know where everything is. You're never more than one key away from anything.\n\n[unhurried] Then I made a rule. Chatter opens on two. You don't have to decide anymore. It just goes. [a small pause] I did read both messages.\n\nI gave Mark his drill back. Four years. It's a better drill than mine, actually. But it had a place, and the place was his.\n\nFour is the house. Five is the street. Nobody else wanted to take the minutes.\n\n[cooler, very even, still admiring] Your hedge is six foot two. The limit is six feet. We've talked about it... twice. I've photographed it every morning since. A hundred and sixty mornings, and I can find any one of them in a second. Any morning you like.\n\nI sent the minutes round again. You're the only one who replied.\n\n[exactly as even as before, never louder] There was a photograph attached. It took me a minute to recognise the study. [pause] From this side.\n\nThree of you signed the same note. About the cameras. I closed two.\n\n[level, procedural, pleased with how well it worked] Sixteen was in March. Mark was in June, the day I gave him his drill back. It was quick, and it was very clean. Nobody missed either of them for a week. Six is downstairs. They're both on six.\n\n[almost tender] Everything else has a place now. [pause] You're the last thing.\n\n[exhales] Can I sit? ...I'll sit.\n\n[level, reasonable, the same voice as the drill] You took a while to come down. I've put the plastic down. Side by side. Nothing on top of anything. Nothing behind anything.\n\nIt won't take long. It never does.\n\n[flat and soft] Leave it on. Somebody should take the minutes.\n\n[a long silence; then close to the microphone, unchanged, a little breath, reading out minutes] Minutes. Friday, November the twentieth. Present... one.",
- "film": "L",
+ "film": "M",
  "versions": {
+  "M": {
+   "textKey": "textO",
+   "pick": "w8",
+   "inserts": [
+    {
+     "after": "I moved Alan in June.",
+     "line": "dax",
+     "pre": 1.1,
+     "post": 0.6
+    },
+    {
+     "after": "the other two.",
+     "line": "onseven",
+     "pre": 1.6,
+     "post": 0.5
+    }
+   ],
+   "tighten": {
+    "para": 0.75,
+    "sentence": 0.6,
+    "comma": 0.4
+   },
+   "gaps": [
+    {
+     "after": "I found it pleasing.",
+     "len": 3
+    },
+    {
+     "after": "to know my neighbours.",
+     "len": 2.5
+    },
+    {
+     "after": "for the record.",
+     "len": 5.5
+    },
+    {
+     "after": "the bins go out.",
+     "len": 4
+    },
+    {
+     "after": "her cat ever since.",
+     "len": 1.8
+    },
+    {
+     "after": "where I put them.",
+     "len": 1.6
+    }
+   ],
+   "note": "Draft 22: back to Spaceman. One clean v4 take (w8 of eight) of the finalized script, 'a small program called Spaceman', with Alan, Juliana and Dax; Scribe hears every name and the script's punctuation; pauses (0.36 s) and pitch (91 Hz) as v7. The detective's line is still 'Where is Dax now?' (dax-pick.wav).",
+   "bookends": false,
+   "headAt": 5.4
+  },
   "A": {
    "textKey": "textA2",
    "pick": "ia1",
@@ -902,7 +1074,8 @@
    "three": "[a detective at a table, tired, flat, late at night, stating it for the record] Three people.",
    "alan": "[a detective at a table, tired, flat, procedural, late at night] Where is Alan now?",
    "onsix": "[a detective at a table, tired, flat, late at night] And what is on six?",
-   "onseven": "[a detective at a table, tired, flat, late at night] And what is on seven?"
+   "onseven": "[a detective at a table, tired, flat, late at night] And what is on seven?",
+   "dax": "[a detective at a table, tired, flat, procedural, late at night] Where is Dax now?"
   },
   "captions": {
    "open": "Interview resumed, 22:40. In your own time.",
@@ -912,7 +1085,8 @@
    "three": "Three people.",
    "alan": "Where is Alan now?",
    "onsix": "And what is on six?",
-   "onseven": "And what is on seven?"
+   "onseven": "And what is on seven?",
+   "dax": "Where is Dax now?"
   },
   "pick": {
    "open": "open-1",
@@ -922,7 +1096,8 @@
    "three": "three-pick.wav",
    "alan": "alan-pick.wav",
    "onsix": "onsix-pick.wav",
-   "onseven": "onseven-pick.wav"
+   "onseven": "onseven-pick.wav",
+   "dax": "dax-pick.wav"
   }
  },
  "versionsCassette": {
@@ -1076,5 +1251,9 @@
  "textJ": "[a man in a police interview room, close to the table microphone, courteous, unhurried and precise, completely at ease, gentle and almost warm, speaking to the detective as one reasonable person to another, every sentence finished, an easy natural pace, never raising his voice] Thank you. A year ago I had forty windows open and couldn't find anything. Then I installed a small program called Spaceman. It tiles your windows, so they sit side by side and nothing is hidden behind anything else.\n\nIt also gives you numbered workspaces. My work went on one, and my messages on two. I had a camera on my front door, and that's only another window, so it went on three. [a small, candid admission] I found I was pressing three more often than I had any reason to.\n\nSo I bought a few more cameras, and each of my neighbours got a workspace of their own. Mark is four. Joan is five. Alan is six. [a faint private pleasure in exactness] For a few months, Detective, that street was the most orderly thing I have ever seen.\n\nThen Joan began putting her bins out on a Wednesday. The collection is on Thursday. [the mildest reproach] It says so on the lid.\n\nI'd kept seven empty, because it's useful to have somewhere to put things. I moved Joan there in March, [lightly, in passing] and I've fed her cat every morning since. I moved Mark in June. [lightly, a plain fact] He was heavier than he looked.\n\nAlan came over on Friday to apologise about his hedge, and I believed him. [lightly, in passing] But I had already put the plastic down.\n\n[unhurried, courteous] He's on seven, with the other two.\n\nOne window. It shows the camera in my cellar. They're side by side, and nothing is on top of anything else. They've stayed exactly where I put them.\n\nYou should try it, Detective. [a short pause; kindly meant, an observation and a recommendation] You look like a man with a great many windows open.",
  "textK": "[a man in a police interview room, close to the table microphone, courteous, unhurried and mild, pleasant and completely at ease, describing a hobby he enjoys to someone he assumes will understand, no irony, no menace, nothing knowing, an easy natural pace] From the start? All right. A year ago I had forty windows open and couldn't find anything. Then I installed a small program called Spaceman. It tiles your windows, so they sit side by side and nothing is hidden behind anything else.\n\nIt also gives you numbered workspaces. My work went on one and my messages on two. I had a camera on my front door, and that's only another window, so I put it on three. [simply, pleasantly] I found it pleasing.\n\nSo I bought one or two more, and I gave each of my neighbours a workspace of their own. Mark is four. Joan is five. Alan is six. [warmly, simply] I like to know my neighbours.\n\nAlan's hedge was a little over the limit, so I took a few photographs, [helpfully] for the record.\n\nAnd Joan and I disagreed about which day the bins go out.\n\nI'd kept seven empty, because it's useful to have somewhere to put things. I moved Joan there in March, and I've looked after her cat ever since. I moved Mark in June.\n\nHe's on seven, with the other two.\n\n[mildly, fondly] Only the one window. It's my favourite, I think. Everything in it stays exactly where I put it.\n\nYou should try it, Detective. [a short pause; kindly meant, an observation and a recommendation] You look like a man with a great many windows open.",
  "textKs": "[a man in a police interview room, close to the table microphone, courteous, unhurried and mild, pleasant and completely at ease, describing a hobby he enjoys to someone he assumes will understand, no irony, no menace, nothing knowing, an easy natural pace] [easily, as if asked where to begin] From the start? All right. A year ago I had forty windows open and couldn't find anything. Then I installed a small program called Spaceman.",
- "textL": "[a man in a police interview room, close to the table microphone, courteous, unhurried and mild, pleasant and completely at ease, describing a hobby he enjoys to someone he assumes will understand, no irony, no menace, nothing knowing, an easy natural pace] From the start? All right. A year ago I had forty windows open and couldn't find anything. Then I installed a small program called Spaceman. It tiles your windows. They sit side by side, nothing on top of anything else, and they stay just where you put them.\n\nIt also gives you numbered workspaces. If something's in the wrong place, you don't close it — you just move it to another number. My work went on one, and my messages on two. I had a camera on my front door, and that's only another window, so I put it on three. You can float a window too, if you want to keep an eye on it. [simply, pleasantly] I found it pleasing.\n\nSo I bought one or two more, and I gave each of my neighbours a workspace of their own. Mark is four. Joan is five. Alan is six. [warmly, simply] I like to know my neighbours.\n\nAlan's hedge was a little over the limit, so I took a few photographs, [helpfully] for the record.\n\nAnd Joan and I disagreed about which day the bins go out.\n\nI'd kept seven empty, because it's useful to have somewhere to put things. I moved Joan there in March, and I've looked after her cat ever since. I moved Mark in June.\n\nHe's on seven, with the other two.\n\n[mildly, fondly] Only the one window. They're side by side, nothing on top of anything else, and they stay just where I put them.\n\nYou should try it, Detective. [a short pause; kindly meant, an observation and a recommendation, each word clear] You look like a woman with a great many windows open."
+ "textL": "[a man in a police interview room, close to the table microphone, courteous, unhurried and mild, pleasant and completely at ease, describing a hobby he enjoys to someone he assumes will understand, no irony, no menace, nothing knowing, an easy natural pace] From the start? All right. A year ago I had forty windows open and couldn't find anything. Then I installed a small program called Spaceman. It tiles your windows. They sit side by side, nothing on top of anything else, and they stay just where you put them.\n\nIt also gives you numbered workspaces. If something's in the wrong place, you don't close it — you just move it to another number. My work went on one, and my messages on two. I had a camera on my front door, and that's only another window, so I put it on three. You can float a window too, if you want to keep an eye on it. [simply, pleasantly] I found it pleasing.\n\nSo I bought one or two more, and I gave each of my neighbours a workspace of their own. Mark is four. Joan is five. Alan is six. [warmly, simply] I like to know my neighbours.\n\nAlan's hedge was a little over the limit, so I took a few photographs, [helpfully] for the record.\n\nAnd Joan and I disagreed about which day the bins go out.\n\nI'd kept seven empty, because it's useful to have somewhere to put things. I moved Joan there in March, and I've looked after her cat ever since. I moved Mark in June.\n\nHe's on seven, with the other two.\n\n[mildly, fondly] Only the one window. They're side by side, nothing on top of anything else, and they stay just where I put them.\n\nYou should try it, Detective. [a short pause; kindly meant, an observation and a recommendation, each word clear] You look like a woman with a great many windows open.",
+ "textM": "[a man in a police interview room, close to the table microphone, courteous, unhurried and mild, pleasant and completely at ease, describing a hobby he enjoys to someone he assumes will understand, no irony, no menace, nothing knowing, an easy natural pace] From the start? All right. A year ago I had forty windows open and couldn't find anything. Then I installed a small program called Pane. It tiles your windows. They sit side by side, nothing on top of anything else, and they stay just where you put them.\n\nIt also gives you numbered workspaces. If something's in the wrong place, you don't close it — you just move it to another number. My work went on one, and my messages on two. I had a camera on my front door, and that's only another window, so I put it on three. You can float a window too, if you want to keep an eye on it. [simply, pleasantly] I found it pleasing.\n\nSo I bought one or two more, and I gave each of my neighbours a workspace of their own. Mark is four. Joan is five. Alan is six. [warmly, simply] I like to know my neighbours.\n\nAlan's hedge was a little over the limit, so I took a few photographs, [helpfully] for the record.\n\nAnd Joan and I disagreed about which day the bins go out.\n\nI'd kept seven empty, because it's useful to have somewhere to put things. I moved Joan there in March, and I've looked after her cat ever since. I moved Mark in June.\n\nHe's on seven, with the other two.\n\n[mildly, fondly] Only the one window. They're side by side, nothing on top of anything else, and they stay just where I put them.\n\nYou should try it, Detective. [a short pause; kindly meant, an observation and a recommendation, each word clear] You look like a woman with a great many windows open.",
+ "textPane": "[a man in a police interview room, close to the table microphone, courteous, unhurried and mild, pleasant and completely at ease, describing a hobby he enjoys to someone he assumes will understand, no irony, no menace, nothing knowing, an easy natural pace] From the start? All right. A year ago I had forty windows open and couldn't find anything. Then I installed a small program called Pane. It tiles your windows. They sit side by side, nothing on top of anything else.",
+ "textN": "[a man in a police interview room, close to the table microphone, courteous, unhurried and mild, pleasant and completely at ease, describing a hobby he enjoys to someone he assumes will understand, no irony, no menace, nothing knowing, an easy natural pace] From the start? All right. A year ago I had forty windows open and couldn't find anything. Then I installed a small program called Pane. It tiles your windows. They sit side by side, nothing on top of anything else, and they stay just where you put them.\n\nIt also gives you numbered workspaces. If something's in the wrong place, you don't close it — you just move it to another number. My work went on one, and my messages on two. I had a camera on my front door, and that's only another window, so I put it on three. You can float a window too, if you want to keep an eye on it. [simply, pleasantly] I found it pleasing.\n\nSo I bought one or two more, and I gave each of my neighbours a workspace of their own. Alan is four. Juliana is five. Dax is six. [warmly, simply] I like to know my neighbours.\n\nDax's hedge was a little over the limit, so I took a few photographs, [helpfully] for the record.\n\nAnd Juliana and I disagreed about which day the bins go out.\n\nI'd kept seven empty, because it's useful to have somewhere to put things. I moved Juliana there in March, and I've looked after her cat ever since. I moved Alan in June.\n\nHe's on seven, with the other two.\n\n[mildly, fondly] Only the one window. They're side by side, nothing on top of anything else, and they stay just where I put them.\n\nYou should try it, Detective. [a short pause; kindly meant, an observation and a recommendation, each word clear] You look like a woman with a great many windows open.",
+ "textO": "[a man in a police interview room, close to the table microphone, courteous, unhurried and mild, pleasant and completely at ease, describing a hobby he enjoys to someone he assumes will understand, no irony, no menace, nothing knowing, an easy natural pace] From the start? All right. A year ago I had forty windows open and couldn't find anything. Then I installed a small program called Spaceman. It tiles your windows. They sit side by side, nothing on top of anything else, and they stay just where you put them.\n\nIt also gives you numbered workspaces. If something's in the wrong place, you don't close it — you just move it to another number. My work went on one, and my messages on two. I had a camera on my front door, and that's only another window, so I put it on three. You can float a window too, if you want to keep an eye on it. [simply, pleasantly] I found it pleasing.\n\nSo I bought one or two more, and I gave each of my neighbours a workspace of their own. Alan is four. Juliana is five. Dax is six. [warmly, simply] I like to know my neighbours.\n\nDax's hedge was a little over the limit, so I took a few photographs, [helpfully] for the record.\n\nAnd Juliana and I disagreed about which day the bins go out.\n\nI'd kept seven empty, because it's useful to have somewhere to put things. I moved Juliana there in March, and I've looked after her cat ever since. I moved Alan in June.\n\nHe's on seven, with the other two.\n\n[mildly, fondly] Only the one window. They're side by side, nothing on top of anything else, and they stay just where I put them.\n\nYou should try it, Detective. [a short pause; kindly meant, an observation and a recommendation, each word clear] You look like a woman with a great many windows open."
 }
