@@ -1,10 +1,8 @@
 //! Pure state machine and owner-only persistence for Spaceman's 3-step setup tour.
 
-use std::{
-    fs::{self, OpenOptions},
-    io::Write,
-    path::Path,
-};
+use std::{fs, path::Path};
+
+use spaceman::state_file::write_atomic_owner_only;
 
 use crate::controls::PermissionControl;
 
@@ -244,37 +242,13 @@ pub(crate) fn saved_step_at(directory: &Path) -> Option<Step> {
 }
 
 pub(crate) fn record_step_at(directory: &Path, step: Step) -> Result<(), String> {
-    write_owner_only(&directory.join("onboarding-step"), step.key().as_bytes())
+    write_atomic_owner_only(&directory.join("onboarding-step"), step.key().as_bytes())
+        .map_err(|error| error.to_string())
 }
 
 pub(crate) fn record_completion_at(directory: &Path) -> Result<(), String> {
-    let temp = directory.join(".onboarding-complete.tmp");
-    let dest = directory.join("onboarding-complete");
-    write_owner_only(&temp, b"1\n")?;
-    fs::rename(&temp, &dest).map_err(|error| error.to_string())?;
+    write_atomic_owner_only(&directory.join("onboarding-complete"), b"1\n")
+        .map_err(|error| error.to_string())?;
     drop(fs::remove_file(directory.join("onboarding-step")));
     Ok(())
-}
-
-fn write_owner_only(path: &Path, contents: &[u8]) -> Result<(), String> {
-    if let Some(parent) = path.parent() {
-        fs::create_dir_all(parent).map_err(|error| error.to_string())?;
-    }
-    let mut options = OpenOptions::new();
-    options.create(true).truncate(true).write(true);
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::OpenOptionsExt;
-        options.mode(0o600);
-    }
-    let mut file = options.open(path).map_err(|error| error.to_string())?;
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::PermissionsExt;
-        file.set_permissions(fs::Permissions::from_mode(0o600))
-            .map_err(|error| error.to_string())?;
-    }
-    file.write_all(contents)
-        .map_err(|error| error.to_string())?;
-    file.sync_all().map_err(|error| error.to_string())
 }

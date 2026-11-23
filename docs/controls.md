@@ -144,7 +144,7 @@ parking positions and are therefore left visible across workspace switches for t
 
 `doctor` summarizes the arrangement journal (all of it, or the last N hours): agent starts and their
 loaded state, exit restorations, remembered placements recalled or left unclaimed, wrong placements
-(windows Kit moved to another workspace by hand within 120 seconds of Spaceman placing them, by
+(windows the user moved to another workspace by hand within 120 seconds of Spaceman placing them, by
 placement source: active workspace, recall, or rule), the times `ctl wrong` was run, and every
 model/screen disagreement that lasted at least three seconds, grouped by kind with counts, total and
 longest durations, and the applications involved. It ends with the last known per-workspace

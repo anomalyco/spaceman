@@ -18,7 +18,7 @@ use serde::{Deserialize, Serialize};
 use crate::{Rect, WorkspaceId};
 
 mod doctor;
-pub use doctor::summarize;
+pub use doctor::{KindSummary, Summary, human_age, human_duration, short_bundle_name, summarize};
 
 pub const JOURNAL_FILE: &str = "journal.jsonl";
 pub const ROTATED_JOURNAL_FILE: &str = "journal.jsonl.1";
@@ -88,7 +88,7 @@ pub enum JournalEvent {
         requested: usize,
         failed: usize,
     },
-    /// Kit moved a window to another workspace by hand within
+    /// The user moved a window to another workspace by hand within
     /// [`CORRECTION_WINDOW`] of Spaceman placing it: the placement was wrong.
     WrongPlacement {
         bundle_id: String,
@@ -98,7 +98,7 @@ pub enum JournalEvent {
         moved_to: WorkspaceId,
         after_ms: u64,
     },
-    /// Kit ran `spaceman ctl wrong` when something looked wrong; a full
+    /// The user ran `spaceman ctl wrong` (or Save Snapshot) when something looked wrong; a full
     /// snapshot follows.
     MarkedWrong,
     Stop,
@@ -267,6 +267,20 @@ impl AnomalyKind {
             Self::Misplaced => "misplaced",
             Self::Missing => "missing",
             Self::ParkingExempt => "parking_exempt",
+        }
+    }
+
+    /// The label shown in Settings: `parked_visible` → `Parked but visible`.
+    #[must_use]
+    pub const fn display_label(self) -> &'static str {
+        match self {
+            Self::Leaked => "Leaked",
+            Self::Stranded => "Stranded",
+            Self::ParkedVisible => "Parked but visible",
+            Self::Unadopted => "Unadopted",
+            Self::Misplaced => "Misplaced",
+            Self::Missing => "Missing",
+            Self::ParkingExempt => "Parking exempt",
         }
     }
 

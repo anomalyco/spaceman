@@ -1,14 +1,16 @@
-//! Activity and Doctor diagnostics pane: summarizes Spaceman's title-free
-//! arrangement journal (`journal.jsonl`), model/screen anomalies, placement
-//! recalls, and `procwatch` process vitals inside the Rune Settings window.
+//! Activity pane: the last 24 hours of the arrangement journal (`journal.jsonl`), summarized
+//! with the same [`Summary`] as `spaceman doctor`, plus `procwatch` process vitals.
 
 #[cfg(test)]
 mod tests;
 
-use std::{collections::BTreeMap, time::SystemTime};
+use std::{path::Path, time::SystemTime};
 
 use rune::{El, Tx, col, row, text};
-use spaceman::journal::{AnomalyKind, AnomalyState, JournalEvent, JournalLine};
+use spaceman::journal::{
+    AnomalyKind, AnomalyState, JournalEvent, JournalLine, Summary, human_age, human_duration,
+    short_bundle_name,
+};
 
 use crate::{
     Pane, Ui,
@@ -45,200 +47,169 @@ pub struct DoctorReport {
     pub total_events: usize,
     pub skipped_lines: usize,
     pub starts: usize,
-    pub stops: usize,
     pub restores: usize,
     pub restore_failures: usize,
     pub recalled_windows: usize,
     pub wrong_placements: usize,
-    pub marked_wrong: usize,
     pub anomalies: usize,
     pub open_anomalies: usize,
     pub top_anomaly: Option<(AnomalyKind, usize)>,
+    /// How long ago the last snapshot was saved by hand.
+    pub last_snapshot: Option<String>,
     pub rows: Vec<ActivityRow>,
 }
 
 impl DoctorReport {
     #[must_use]
     pub fn from_lines(lines: &[JournalLine], now_ms: u64, skipped_lines: usize) -> Self {
-        let since_ms = now_ms.saturating_sub(WINDOW_24H_MS);
-        let mut report = Self {
+        let summary = Summary::new(lines, now_ms.saturating_sub(WINDOW_24H_MS), now_ms);
+        let rows = summary
+            .lines
+            .iter()
+            .rev()
+            .filter_map(|line| activity_row(line, now_ms))
+            .take(MAX_ROWS)
+            .collect();
+        Self {
+            total_events: summary.lines.len(),
             skipped_lines,
-            ..Self::default()
-        };
-        let mut anomaly_counts: BTreeMap<AnomalyKind, usize> = BTreeMap::new();
-        let mut open_anomalies: BTreeMap<(AnomalyKind, u32), ()> = BTreeMap::new();
-        let mut notable = Vec::new();
-
-        for line in lines.iter().filter(|line| line.t >= since_ms) {
-            report.total_events += 1;
-            let age = human_age(now_ms, line.t);
-            match &line.event {
-                JournalEvent::Start {
-                    version,
-                    restored_state,
-                    slots,
-                    parked,
-                    remembered_apps,
-                    ..
-                } => {
-                    open_anomalies.clear();
-                    report.starts += 1;
-                    let state = if *restored_state {
-                        "resumed saved workspaces"
-                    } else {
-                        "fresh workspace state"
-                    };
-                    notable.push(ActivityRow {
-                        title: format!("Agent started (v{version})"),
-                        detail: format!(
-                            "{state} · {slots} slots, {parked} parked, {remembered_apps} apps in memory"
-                        ),
-                        age,
-                        tone: Tone::Normal,
-                    });
-                }
-                JournalEvent::Stop => {
-                    open_anomalies.clear();
-                    report.stops += 1;
-                    notable.push(ActivityRow {
-                        title: "Agent stopped cleanly".into(),
-                        detail: "Parked windows restored before exit.".into(),
-                        age,
-                        tone: Tone::Success,
-                    });
-                }
-                JournalEvent::Restore {
-                    reason,
-                    requested,
-                    failed,
-                } => {
-                    report.restores += 1;
-                    report.restore_failures += *failed;
-                    notable.push(ActivityRow {
-                        title: if *failed == 0 {
-                            format!("Restored {requested} parked window{}", plural(*requested))
-                        } else {
-                            format!("Window restore had {failed} failure{}", plural(*failed))
-                        },
-                        detail: human_restore_reason(reason),
-                        age,
-                        tone: if *failed == 0 {
-                            Tone::Success
-                        } else {
-                            Tone::Warning
-                        },
-                    });
-                }
-                JournalEvent::Recall {
-                    bundle_id,
-                    workspace,
-                    floating,
-                    ..
-                } => {
-                    report.recalled_windows += 1;
-                    let app = short_bundle_name(bundle_id);
-                    let mode = if *floating { "floating" } else { "tiled" };
-                    notable.push(ActivityRow {
-                        title: format!("Recalled {app} to Workspace {workspace}"),
-                        detail: format!("Matched remembered {mode} placement ({bundle_id})"),
-                        age,
-                        tone: Tone::Normal,
-                    });
-                }
-                JournalEvent::WrongPlacement {
-                    bundle_id,
-                    source,
-                    placed,
-                    moved_to,
-                    ..
-                } => {
-                    report.wrong_placements += 1;
-                    let app = short_bundle_name(bundle_id);
-                    notable.push(ActivityRow {
-                        title: format!("Hand-moved {app} from {placed} to {moved_to}"),
-                        detail: format!("Originally {}", source.label()),
-                        age,
-                        tone: Tone::Warning,
-                    });
-                }
-                JournalEvent::Anomaly {
-                    state,
-                    anomaly,
-                    duration_ms,
-                } => {
-                    let key = (anomaly.kind, anomaly.window);
-                    let app = short_bundle_name(&anomaly.bundle_id);
-                    match state {
-                        AnomalyState::Begin => {
-                            report.anomalies += 1;
-                            *anomaly_counts.entry(anomaly.kind).or_default() += 1;
-                            open_anomalies.insert(key, ());
-                            let where_label = anomaly
-                                .workspace
-                                .map_or_else(String::new, |ws| format!(" on Workspace {ws}"));
-                            notable.push(ActivityRow {
-                                title: format!(
-                                    "Anomaly: {} ({app}){where_label}",
-                                    anomaly.kind.label()
-                                ),
-                                detail: anomaly.kind.meaning().into(),
-                                age,
-                                tone: Tone::Warning,
-                            });
-                        }
-                        AnomalyState::End => {
-                            open_anomalies.remove(&key);
-                            let lasted = human_duration(duration_ms.unwrap_or_default());
-                            notable.push(ActivityRow {
-                                title: format!("Resolved {} ({app})", anomaly.kind.label()),
-                                detail: format!("Settled after {lasted}"),
-                                age,
-                                tone: Tone::Success,
-                            });
-                        }
-                    }
-                }
-                JournalEvent::MarkedWrong => {
-                    report.marked_wrong += 1;
-                    notable.push(ActivityRow {
-                        title: "Arrangement marked for inspection".into(),
-                        detail: "Recorded full title-free snapshot into journal.jsonl.".into(),
-                        age,
-                        tone: Tone::Warning,
-                    });
-                }
-                JournalEvent::Diff {
-                    active: Some(active),
-                    ..
-                } if !active.is_empty() => {
-                    let list = active
-                        .iter()
-                        .map(ToString::to_string)
-                        .collect::<Vec<_>>()
-                        .join(" · ");
-                    notable.push(ActivityRow {
-                        title: format!("Active workspaces: {list}"),
-                        detail: "Workspace visibility updated".into(),
-                        age,
-                        tone: Tone::Normal,
-                    });
-                }
-                JournalEvent::RecallExpired { .. }
-                | JournalEvent::Remembered { .. }
-                | JournalEvent::Snapshot { .. }
-                | JournalEvent::Diff { .. } => {}
-            }
+            starts: summary.starts.len(),
+            restores: summary.restores.len(),
+            restore_failures: summary.restore_failures,
+            recalled_windows: summary.recalled(),
+            wrong_placements: summary.wrong_placements(),
+            anomalies: summary.anomaly_count(),
+            open_anomalies: summary.open_anomalies(),
+            top_anomaly: summary.top_anomaly(),
+            last_snapshot: summary.marked.last().map(|t| human_age(now_ms, *t)),
+            rows,
         }
-
-        report.open_anomalies = open_anomalies.len();
-        report.top_anomaly = anomaly_counts
-            .into_iter()
-            .max_by(|a, b| a.1.cmp(&b.1).then_with(|| b.0.cmp(&a.0)));
-        notable.reverse();
-        notable.truncate(MAX_ROWS);
-        report.rows = notable;
-        report
     }
+}
+
+/// The Recent activity row for `line`, or `None` for bookkeeping (snapshots, diffs, memory).
+fn activity_row(line: &JournalLine, now_ms: u64) -> Option<ActivityRow> {
+    let row = |title: String, detail: String, tone| ActivityRow {
+        title,
+        detail,
+        age: human_age(now_ms, line.t),
+        tone,
+    };
+    Some(match &line.event {
+        JournalEvent::Start {
+            version,
+            restored_state,
+            slots,
+            parked,
+            remembered_apps,
+            ..
+        } => {
+            let state = if *restored_state {
+                "Resumed saved workspaces"
+            } else {
+                "Fresh workspace state"
+            };
+            row(
+                format!("Agent started (v{version})"),
+                format!(
+                    "{state} · {slots} slots, {parked} parked, {remembered_apps} apps in memory"
+                ),
+                Tone::Normal,
+            )
+        }
+        JournalEvent::Stop => row(
+            "Agent stopped cleanly".into(),
+            "Parked windows restored before exit.".into(),
+            Tone::Success,
+        ),
+        JournalEvent::Restore {
+            reason,
+            requested,
+            failed: 0,
+        } => row(
+            format!("Restored {requested} parked window{}", plural(*requested)),
+            human_restore_reason(reason),
+            Tone::Success,
+        ),
+        JournalEvent::Restore { reason, failed, .. } => row(
+            format!("Window restore had {failed} failure{}", plural(*failed)),
+            human_restore_reason(reason),
+            Tone::Warning,
+        ),
+        JournalEvent::Recall {
+            bundle_id,
+            workspace,
+            floating,
+            ..
+        } => {
+            let mode = if *floating { "floating" } else { "tiled" };
+            row(
+                format!(
+                    "Recalled {} to Workspace {workspace}",
+                    short_bundle_name(bundle_id)
+                ),
+                format!("Matched remembered {mode} placement ({bundle_id})"),
+                Tone::Normal,
+            )
+        }
+        JournalEvent::WrongPlacement {
+            bundle_id,
+            source,
+            placed,
+            moved_to,
+            ..
+        } => row(
+            format!(
+                "Hand-moved {} from {placed} to {moved_to}",
+                short_bundle_name(bundle_id)
+            ),
+            format!("Originally {}", source.label()),
+            Tone::Warning,
+        ),
+        JournalEvent::Anomaly {
+            state: AnomalyState::Begin,
+            anomaly,
+            ..
+        } => {
+            let workspace = anomaly
+                .workspace
+                .map_or_else(String::new, |ws| format!(" on Workspace {ws}"));
+            row(
+                format!(
+                    "{}: {}{workspace}",
+                    anomaly.kind.display_label(),
+                    short_bundle_name(&anomaly.bundle_id)
+                ),
+                capitalized(anomaly.kind.meaning()),
+                Tone::Warning,
+            )
+        }
+        JournalEvent::Anomaly {
+            state: AnomalyState::End,
+            anomaly,
+            duration_ms,
+        } => row(
+            format!(
+                "Resolved {}: {}",
+                anomaly.kind.display_label().to_lowercase(),
+                short_bundle_name(&anomaly.bundle_id)
+            ),
+            format!(
+                "Settled after {}",
+                human_duration(duration_ms.unwrap_or_default())
+            ),
+            Tone::Success,
+        ),
+        JournalEvent::MarkedWrong => row(
+            "Snapshot saved".into(),
+            "Recorded the full arrangement for spaceman doctor.".into(),
+            Tone::Normal,
+        ),
+        JournalEvent::Diff { .. }
+        | JournalEvent::Snapshot { .. }
+        | JournalEvent::RecallExpired { .. }
+        | JournalEvent::Remembered { .. } => return None,
+    })
 }
 
 #[derive(Clone, Default)]
@@ -251,22 +222,19 @@ pub struct ActivityPane {
 }
 
 impl ActivityPane {
+    /// Reloads the journal when the pane is visible and the file changed since the last read.
     pub fn poll(&mut self, visible: bool, fixture: bool) -> bool {
         if !visible || fixture {
             return false;
         }
-        let current_stamp = journal_stamp();
-        if self.loaded && self.stamp == current_stamp {
+        if self.loaded && self.stamp == journal_stamp() {
             return false;
         }
-        self.reload(fixture);
+        self.reload();
         true
     }
 
-    pub fn reload(&mut self, fixture: bool) {
-        if fixture {
-            return;
-        }
+    fn reload(&mut self) {
         self.loaded = true;
         self.stamp = journal_stamp();
         let Some((live, rotated)) = spaceman::journal::default_paths() else {
@@ -327,14 +295,6 @@ impl ActivityPane {
                     failed: 0,
                 },
             },
-            JournalLine {
-                t: at(18),
-                event: JournalEvent::Diff {
-                    active: Some(vec![spaceman::WorkspaceId::TWO, spaceman::WorkspaceId::SIX]),
-                    displays: None,
-                    changes: Vec::new(),
-                },
-            },
         ];
         Self {
             stamp: None,
@@ -346,30 +306,9 @@ impl ActivityPane {
     }
 }
 
-pub fn header_actions(ui: &Ui, p: Paint) -> El {
-    let can_mark = ui.agent.as_ref().is_some_and(|agent| agent.automatic);
-    let mut actions = row().key("activity-actions").gap(8.0).center_y();
-    if can_mark {
-        actions = actions.child(controls::button(
-            p,
-            "mark-wrong",
-            "Mark Issue",
-            ButtonKind::Secondary,
-            |ui: &mut Ui, _: &mut Tx| {
-                ui.mark_wrong();
-            },
-        ));
-    }
-    actions.child(controls::button(
-        p,
-        "refresh-activity",
-        "Refresh",
-        ButtonKind::Secondary,
-        |ui: &mut Ui, _: &mut Tx| {
-            let fixture = ui.fixture;
-            ui.activity.reload(fixture);
-        },
-    ))
+/// The Activity pane has no header actions; Save Snapshot lives in the Diagnostics card.
+pub fn header_actions(_: &Ui, _: Paint) -> El {
+    row().key("activity-actions")
 }
 
 pub fn pane(ui: &Ui, p: Paint) -> El {
@@ -416,30 +355,16 @@ pub fn pane(ui: &Ui, p: Paint) -> El {
         .child(controls::status_dot(runtime_dot));
 
     let (anomaly_desc, anomaly_color, anomaly_dot) = if report.anomalies == 0 {
-        (
-            "No model/screen disagreements lasting over 3s in the last 24h.".to_owned(),
-            p.muted(),
-            p.success(),
-        )
+        ("None".to_owned(), p.muted(), p.success())
     } else {
-        let top = report
-            .top_anomaly
-            .map(|(kind, count)| format!(" Most common: {} ({count}×).", kind.label()))
-            .unwrap_or_default();
-        let open = if report.open_anomalies > 0 {
-            format!(" {} currently active.", report.open_anomalies)
-        } else {
-            String::new()
-        };
-        (
-            format!(
-                "{} disagreement{} in the last 24h.{top}{open}",
-                report.anomalies,
-                plural(report.anomalies)
-            ),
-            p.warning(),
-            p.warning(),
-        )
+        let mut parts = vec![format!("{} lasting over 3s", report.anomalies)];
+        if let Some((kind, count)) = report.top_anomaly {
+            parts.push(format!("mostly {} ({count}×)", kind.display_label()));
+        }
+        if report.open_anomalies > 0 {
+            parts.push(format!("{} still open", report.open_anomalies));
+        }
+        (parts.join(" · "), p.warning(), p.warning())
     };
 
     let memory_desc = format!(
@@ -448,14 +373,16 @@ pub fn pane(ui: &Ui, p: Paint) -> El {
         plural(report.recalled_windows),
         report.wrong_placements
     );
-    let recovery_desc = format!(
-        "{} start{} · {} restore{} ({} failed)",
+    let mut recovery_desc = format!(
+        "{} start{} · {} restore{}",
         report.starts,
         plural(report.starts),
         report.restores,
-        plural(report.restores),
-        report.restore_failures
+        plural(report.restores)
     );
+    if report.restore_failures > 0 {
+        recovery_desc.push_str(&format!(" ({} failed)", report.restore_failures));
+    }
     let recovery_dot = if report.restore_failures == 0 {
         p.success()
     } else {
@@ -477,7 +404,7 @@ pub fn pane(ui: &Ui, p: Paint) -> El {
             controls::setting_row(
                 p,
                 "anomalies",
-                "Model vs. screen",
+                "Layout issues",
                 Some((anomaly_desc, anomaly_color)),
                 controls::status_dot(anomaly_dot),
             ),
@@ -515,7 +442,7 @@ pub fn pane(ui: &Ui, p: Paint) -> El {
             "journal-empty",
             "No arrangement events yet",
             Some((
-                "Spaceman records title-free starts, restores, recalls, and anomalies here.".into(),
+                "Starts, restores, recalls, and layout issues show up here.".into(),
                 p.muted(),
             )),
             controls::status_dot(p.k.c.border_strong),
@@ -546,34 +473,53 @@ pub fn pane(ui: &Ui, p: Paint) -> El {
     sections.push(controls::section(
         p,
         "journal",
-        "Recent journal",
+        "Recent activity",
         journal_rows,
     ));
 
+    let journal_path = spaceman::journal::default_paths()
+        .map_or_else(|| "journal.jsonl".into(), |(live, _)| home_relative(&live));
+    let mut diagnostics = vec![controls::setting_row(
+        p,
+        "journal-file",
+        "Journal",
+        Some((journal_path, p.muted())),
+        controls::button(
+            p,
+            "reveal-journal",
+            "Show in Finder",
+            ButtonKind::Secondary,
+            |_: &mut Ui, _: &mut Tx| {
+                if let Some((live, _)) = spaceman::journal::default_paths() {
+                    controls::reveal_in_finder(&live);
+                }
+            },
+        ),
+    )];
+    if ui.agent.as_ref().is_some_and(|agent| agent.automatic) {
+        let snapshot_desc = report.last_snapshot.as_ref().map_or_else(
+            || "Records the current arrangement for spaceman doctor.".to_owned(),
+            |age| format!("Last saved {age}"),
+        );
+        diagnostics.push(controls::setting_row(
+            p,
+            "snapshot",
+            "Snapshot",
+            Some((snapshot_desc, p.muted())),
+            controls::button(
+                p,
+                "save-snapshot",
+                "Save Snapshot",
+                ButtonKind::Secondary,
+                |ui: &mut Ui, _: &mut Tx| ui.mark_wrong(),
+            ),
+        ));
+    }
     sections.push(controls::section(
         p,
         "diagnostics",
         "Diagnostics",
-        vec![controls::setting_row(
-            p,
-            "journal-file",
-            "journal.jsonl",
-            Some((
-                "Title-free local log summarized here and by `spaceman doctor`.".into(),
-                p.muted(),
-            )),
-            controls::button(
-                p,
-                "reveal-journal",
-                "Show in Finder",
-                ButtonKind::Secondary,
-                |_: &mut Ui, _: &mut Tx| {
-                    if let Some((live, _)) = spaceman::journal::default_paths() {
-                        controls::reveal_in_finder(&live);
-                    }
-                },
-            ),
-        )],
+        diagnostics,
     ));
 
     scroll_body(
@@ -597,14 +543,6 @@ pub(crate) fn process_vitals() -> String {
     }
 }
 
-fn short_bundle_name(bundle_id: &str) -> &str {
-    bundle_id
-        .rsplit('.')
-        .next()
-        .filter(|segment| !segment.is_empty())
-        .unwrap_or(bundle_id)
-}
-
 const fn plural(count: usize) -> &'static str {
     if count == 1 { "" } else { "s" }
 }
@@ -618,21 +556,19 @@ fn human_restore_reason(reason: &str) -> String {
     }
 }
 
-fn human_age(now_ms: u64, at_ms: u64) -> String {
-    let elapsed = now_ms.saturating_sub(at_ms);
-    if elapsed < 2_000 {
-        "just now".into()
-    } else {
-        format!("{} ago", human_duration(elapsed))
-    }
+/// `path` with the home directory shortened to `~`.
+fn home_relative(path: &Path) -> String {
+    std::env::var_os("HOME")
+        .and_then(|home| path.strip_prefix(home).ok())
+        .map_or_else(
+            || path.display().to_string(),
+            |rest| format!("~/{}", rest.display()),
+        )
 }
 
-fn human_duration(ms: u64) -> String {
-    let secs = ms / 1_000;
-    match secs {
-        0..60 => format!("{secs}s"),
-        60..3_600 => format!("{}m", secs / 60),
-        3_600..86_400 => format!("{}h {}m", secs / 3_600, (secs % 3_600) / 60),
-        _ => format!("{}d", secs / 86_400),
-    }
+fn capitalized(text: &str) -> String {
+    let mut chars = text.chars();
+    chars.next().map_or_else(String::new, |first| {
+        first.to_uppercase().chain(chars).collect()
+    })
 }

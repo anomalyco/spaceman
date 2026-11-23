@@ -223,7 +223,7 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
         );
     }
 
-    /// Kit moved `window` from `from` to `to` by hand. Soon after Spaceman
+    /// The user moved `window` from `from` to `to` by hand. Soon after Spaceman
     /// placed it there, that placement was wrong: journal it, and when the
     /// window had opened on the active workspace, make its app return to its
     /// remembered placements from now on.

@@ -89,8 +89,31 @@ fn aggregates_recalls_restores_wrong_placements_and_open_anomalies() {
     assert_eq!(report.top_anomaly, Some((AnomalyKind::Misplaced, 1)));
     assert_eq!(report.restores, 1);
     assert_eq!(report.restore_failures, 0);
-    assert_eq!(report.marked_wrong, 1);
-    assert_eq!(report.rows[0].title, "Arrangement marked for inspection");
+    assert_eq!(report.last_snapshot.as_deref(), Some("just now"));
+    assert_eq!(report.rows[0].title, "Snapshot saved");
     assert_eq!(report.rows[0].age, "just now");
-    assert_eq!(report.rows[0].tone, Tone::Warning);
+    assert_eq!(report.rows[0].tone, Tone::Normal);
+    assert_eq!(report.rows[2].title, "Misplaced: Terminal on Workspace 3");
+}
+
+#[test]
+fn workspace_switch_diffs_stay_out_of_recent_activity() {
+    let switch = |t| JournalLine {
+        t,
+        event: JournalEvent::Diff {
+            active: Some(vec![WorkspaceId::TWO]),
+            displays: None,
+            changes: Vec::new(),
+        },
+    };
+    let mut lines = vec![JournalLine {
+        t: 1_000,
+        event: JournalEvent::Stop,
+    }];
+    lines.extend((0..40).map(|i| switch(2_000 + i)));
+
+    let report = DoctorReport::from_lines(&lines, 10_000, 0);
+    assert_eq!(report.total_events, 41);
+    assert_eq!(report.rows.len(), 1);
+    assert_eq!(report.rows[0].title, "Agent stopped cleanly");
 }

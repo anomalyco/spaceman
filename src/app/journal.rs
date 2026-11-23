@@ -73,10 +73,10 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
         });
     }
 
-    /// Kit noticed something wrong. Mark the moment and force a full
+    /// The user noticed something wrong. Mark the moment and force a full
     /// snapshot on the next arrangement check, which follows every action.
     pub(super) fn mark_wrong(&mut self) {
-        log_event!("Kit marked something wrong");
+        log_event!("marked arrangement wrong");
         self.journal_event(JournalEvent::MarkedWrong);
         self.journal.last_check = None;
         self.journal.last_snapshot = None;

@@ -3,7 +3,7 @@
 //! rule. Everything sits at computed positions, so a drag knows where the pointer is from the
 //! dragged icon's own spot.
 
-use rune::{Cursor, El, PointerPress, Tx, col, el, row, text};
+use rune::{Cursor, El, PointerPress, Tx, el, row, text};
 use rune_kit::{Menu as KitMenu, MenuItem, Placement};
 use spaceman::WorkspaceId;
 
@@ -13,6 +13,7 @@ use crate::{
     controls::{self, Paint},
     playground::{Scene, reset_fixture},
     rules::{Doc, Place, Rule},
+    view::scroll_body,
 };
 
 const COLS: usize = 5;
@@ -77,7 +78,7 @@ impl Drag {
             .find(|rule| rule.bundle_id.as_deref() == Some("com.tinyspeck.slackmacgap"))?;
         let (origin, size) = layout.spot(&rule)?;
         let grab = (size.0 / 2.0, size.1 / 2.0);
-        let to = layout.tile_origin(3);
+        let to = layout.grid.tile_origin(3);
         let delta = (
             to.0 + TILE_W / 2.0 - origin.0 - grab.0,
             to.1 + TILE_H / 2.0 - origin.1 - grab.1,
@@ -89,14 +90,16 @@ impl Drag {
             grab,
             delta,
             moved: true,
-            target: layout.target_at(to.0 + TILE_W / 2.0, to.1 + TILE_H / 2.0),
+            target: layout
+                .grid
+                .target_at(to.0 + TILE_W / 2.0, to.1 + TILE_H / 2.0),
         })
     }
 }
 
 /// Where everything in the map goes, from the rules.
 struct Layout {
-    tiles: Vec<WorkspaceId>,
+    grid: DropGrid,
     /// Rules by tile, in file order.
     routed: Vec<Vec<Rule>>,
     floating: Vec<Rule>,
@@ -119,12 +122,47 @@ impl Layout {
             }
         }
         Layout {
-            tiles,
+            grid: DropGrid {
+                tiles,
+                floating_len: floating.len(),
+            },
             routed,
             floating,
         }
     }
 
+    /// The `slot`th icon in a tile, from the tile's top-left.
+    fn icon_offset(slot: usize) -> (f32, f32) {
+        let (col, row) = (slot % ICONS_PER_ROW, slot / ICONS_PER_ROW);
+        (
+            TILE_PAD + col as f32 * (ICON + ICON_GAP),
+            ICONS_TOP + row as f32 * (ICON + ICON_GAP),
+        )
+    }
+
+    /// A rule's item: its top-left in the map and its size.
+    fn spot(&self, rule: &Rule) -> Option<((f32, f32), (f32, f32))> {
+        if let Some(slot) = self.floating.iter().position(|r| r.index == rule.index) {
+            return Some((self.grid.chip_origin(slot), (CHIP_W, CHIP_H)));
+        }
+        self.routed.iter().enumerate().find_map(|(tile, rules)| {
+            let slot = rules.iter().position(|r| r.index == rule.index)?;
+            let (x, y) = self.grid.tile_origin(tile);
+            let (dx, dy) = Self::icon_offset(slot);
+            Some(((x + dx, y + dy), (ICON, ICON)))
+        })
+    }
+}
+
+/// The map's geometry: the tiles and how many chips the float box holds. Drag handlers keep a
+/// copy to hit-test the pointer.
+#[derive(Clone, Debug)]
+struct DropGrid {
+    tiles: Vec<WorkspaceId>,
+    floating_len: usize,
+}
+
+impl DropGrid {
     fn grid_rows(&self) -> usize {
         self.tiles.len().div_ceil(COLS)
     }
@@ -144,7 +182,7 @@ impl Layout {
 
     /// The float box holds its rules and the Add chip.
     fn box_h(&self) -> f32 {
-        let rows = (self.floating.len() + 1).div_ceil(CHIPS_PER_ROW) as f32;
+        let rows = (self.floating_len + 1).div_ceil(CHIPS_PER_ROW) as f32;
         2.0 * BOX_PAD + rows * CHIP_H + (rows - 1.0) * CHIP_GAP
     }
 
@@ -160,34 +198,12 @@ impl Layout {
         )
     }
 
-    /// The `slot`th icon in a tile, from the tile's top-left.
-    fn icon_offset(slot: usize) -> (f32, f32) {
-        let (col, row) = (slot % ICONS_PER_ROW, slot / ICONS_PER_ROW);
-        (
-            TILE_PAD + col as f32 * (ICON + ICON_GAP),
-            ICONS_TOP + row as f32 * (ICON + ICON_GAP),
-        )
-    }
-
     fn chip_origin(&self, slot: usize) -> (f32, f32) {
         let (col, row) = (slot % CHIPS_PER_ROW, slot / CHIPS_PER_ROW);
         (
             BOX_PAD + col as f32 * (CHIP_W + CHIP_GAP),
             self.box_top() + BOX_PAD + row as f32 * (CHIP_H + CHIP_GAP),
         )
-    }
-
-    /// A rule's item: its top-left in the map and its size.
-    fn spot(&self, rule: &Rule) -> Option<((f32, f32), (f32, f32))> {
-        if let Some(slot) = self.floating.iter().position(|r| r.index == rule.index) {
-            return Some((self.chip_origin(slot), (CHIP_W, CHIP_H)));
-        }
-        self.routed.iter().enumerate().find_map(|(tile, rules)| {
-            let slot = rules.iter().position(|r| r.index == rule.index)?;
-            let (x, y) = self.tile_origin(tile);
-            let (dx, dy) = Self::icon_offset(slot);
-            Some(((x + dx, y + dy), (ICON, ICON)))
-        })
     }
 
     /// The place under a point in the map.
@@ -208,24 +224,6 @@ impl Layout {
         ((0.0..=MAP_W).contains(&x) && (top..=self.box_top() + self.box_h() + GAP).contains(&y))
             .then_some(Place::Float)
     }
-
-    /// A layout rebuilt from indices alone, for drag handlers, which can't hold rules.
-    fn from_parts(tiles: &[WorkspaceId], routed: &[Vec<usize>], floating: &[usize]) -> Layout {
-        let rule = |index: usize| Rule {
-            index,
-            bundle_id: None,
-            title: None,
-            place: Place::Float,
-        };
-        Layout {
-            tiles: tiles.to_vec(),
-            routed: routed
-                .iter()
-                .map(|rules| rules.iter().copied().map(rule).collect())
-                .collect(),
-            floating: floating.iter().copied().map(rule).collect(),
-        }
-    }
 }
 
 pub fn pane(ui: &Ui, p: Paint, layer: &mut Vec<El>) -> El {
@@ -243,38 +241,34 @@ pub fn pane(ui: &Ui, p: Paint, layer: &mut Vec<El>) -> El {
             .filter(|drag| drag.moved)
             .and_then(|drag| drag.target),
     };
-    let mut map = el().key("map").w(MAP_W).h(layout.height()).child(
-        controls::heading(
-            p,
-            "where",
-            "Where apps open",
-            Some("Drag an app to move it"),
-        )
-        .w(MAP_W)
-        .px(0.0)
-        .absolute(0.0, 0.0),
+    let hint = if ui.doc.rules().is_empty() {
+        "Hover a workspace to add an app"
+    } else {
+        "Drag an app to move it"
+    };
+    let mut map = el().key("map").w(MAP_W).h(layout.grid.height()).child(
+        controls::heading(p, "where", "Where apps open", Some(hint))
+            .w(MAP_W)
+            .px(0.0)
+            .absolute(0.0, 0.0),
     );
-    for (index, workspace) in layout.tiles.iter().copied().enumerate() {
-        let (x, y) = layout.tile_origin(index);
+    for (index, workspace) in layout.grid.tiles.iter().copied().enumerate() {
+        let (x, y) = layout.grid.tile_origin(index);
         map = map.child(view.tile(index, workspace, layer).absolute(x, y));
     }
     map = map
         .child(
-            controls::heading(p, "float-heading", "Float, never tiled", None)
+            controls::heading(p, "float-heading", "Floating", None)
                 .w(MAP_W)
                 .px(0.0)
-                .absolute(0.0, layout.float_head_top()),
+                .absolute(0.0, layout.grid.float_head_top()),
         )
         .child(view.float_box(layer));
     if let Some(drag) = ui.drag.filter(|drag| drag.moved) {
         map = map.children(view.ghost(drag));
     }
-    col()
-        .key("rules-body")
-        .grow(1.0)
-        .px(crate::view::CONTENT_PADDING)
-        .pt(4.0)
-        .child(map)
+    // Drag positions are in map coordinates, so scrolling the body doesn't move drop targets.
+    scroll_body("rules-body", map)
 }
 
 #[derive(Clone, Copy)]
@@ -351,12 +345,12 @@ impl MapView<'_> {
     /// The float box: a chip per floating app, then Add.
     fn float_box(self, layer: &mut Vec<El>) -> El {
         let c = &self.p.k.c;
-        let top = self.layout.box_top();
+        let top = self.layout.grid.box_top();
         let target = self.target == Some(Place::Float);
         let mut area = el()
             .key("float-box")
             .w(MAP_W)
-            .h(self.layout.box_h())
+            .h(self.layout.grid.box_h())
             .radius(self.p.k.radius.lg)
             .fill(if target { c.layer_02 } else { c.layer_01 })
             .border(
@@ -369,11 +363,11 @@ impl MapView<'_> {
             )
             .absolute(0.0, top);
         for (slot, rule) in self.layout.floating.iter().enumerate() {
-            let (x, y) = self.layout.chip_origin(slot);
+            let (x, y) = self.layout.grid.chip_origin(slot);
             let chip = self.chip(rule);
             area = area.child(self.draggable(rule, chip, layer).absolute(x, y - top));
         }
-        let (x, y) = self.layout.chip_origin(self.layout.floating.len());
+        let (x, y) = self.layout.grid.chip_origin(self.layout.floating.len());
         area.child(self.add_chip(layer).absolute(x, y - top))
     }
 
@@ -495,14 +489,7 @@ impl MapView<'_> {
             .ui
             .drag
             .is_some_and(|drag| drag.rule == index && drag.moved);
-        let tiles = self.layout.tiles.clone();
-        let floating: Vec<usize> = self.layout.floating.iter().map(|r| r.index).collect();
-        let routed: Vec<Vec<usize>> = self
-            .layout
-            .routed
-            .iter()
-            .map(|rules| rules.iter().map(|r| r.index).collect())
-            .collect();
+        let grid = self.layout.grid.clone();
         let item = item
             .key(format!("rule-{index}"))
             .role("button")
@@ -511,10 +498,7 @@ impl MapView<'_> {
             .cursor(Cursor::Grab)
             .opacity(if dragging { 0.3 } else { 1.0 })
             .on_drag(move |ui: &mut Ui, d: &mut rune::Drag, _: &mut Tx| {
-                drag(ui, d, index, origin, size, |x, y| {
-                    let layout = Layout::from_parts(&tiles, &routed, &floating);
-                    layout.target_at(x, y)
-                })
+                drag(ui, d, index, origin, size, |x, y| grid.target_at(x, y))
             })
             .on_secondary_press(move |ui: &mut Ui, press: PointerPress, _: &mut Tx| {
                 ui.menu = Some(Menu::Rule(index, press));
@@ -527,12 +511,10 @@ impl MapView<'_> {
             .on_close(|ui: &mut Ui| ui.menu = None);
         if point.is_some() {
             if rule.place != Place::Float {
-                menu = menu.item(MenuItem::new("Float, never tiled").on_select(
-                    move |ui: &mut Ui| {
-                        ui.menu = None;
-                        ui.edit(|doc| doc.place(index, Place::Float));
-                    },
-                ));
+                menu = menu.item(MenuItem::new("Float").on_select(move |ui: &mut Ui| {
+                    ui.menu = None;
+                    ui.edit(|doc| doc.place(index, Place::Float));
+                }));
             }
             menu = menu.item(MenuItem::new("Remove rule").on_select(move |ui: &mut Ui| {
                 ui.menu = None;
@@ -671,18 +653,19 @@ mod tests {
     fn hit_tests_tiles_and_the_float_box() {
         let doc = Doc::parse(include_str!("../fixtures/config.toml"));
         let layout = Layout::new(&doc);
-        assert_eq!(layout.tiles.len(), 10, "1–9 and M");
+        let grid = &layout.grid;
+        assert_eq!(grid.tiles.len(), 10, "1–9 and M");
         let ws = |name| Some(Place::Workspace(WorkspaceId::parse(name).unwrap()));
-        assert_eq!(layout.target_at(5.0, GRID_TOP + 5.0), ws("1"));
-        let (x, y) = layout.tile_origin(3);
-        assert_eq!(layout.target_at(x + 50.0, y + 50.0), ws("4"));
-        let (x, y) = layout.tile_origin(9);
-        assert_eq!(layout.target_at(x + 50.0, y + 50.0), ws("M"));
+        assert_eq!(grid.target_at(5.0, GRID_TOP + 5.0), ws("1"));
+        let (x, y) = grid.tile_origin(3);
+        assert_eq!(grid.target_at(x + 50.0, y + 50.0), ws("4"));
+        let (x, y) = grid.tile_origin(9);
+        assert_eq!(grid.target_at(x + 50.0, y + 50.0), ws("M"));
         assert_eq!(
-            layout.target_at(20.0, layout.box_top() + 10.0),
+            grid.target_at(20.0, grid.box_top() + 10.0),
             Some(Place::Float)
         );
-        assert_eq!(layout.target_at(20.0, layout.height() + 100.0), None);
+        assert_eq!(grid.target_at(20.0, grid.height() + 100.0), None);
     }
 
     #[test]
