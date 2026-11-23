@@ -5,6 +5,8 @@
   "account_id": "15d29c8639fd3733b1b5486a2acfd968",
   "main": "./worker.ts",
   "compatibility_date": "2026-08-05",
+  // /spaceman/download/* fetches the release service, another Worker on this zone.
+  "compatibility_flags": ["global_fetch_strictly_public"],
   "workers_dev": false,
   "preview_urls": false,
   "assets": {
