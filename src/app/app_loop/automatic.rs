@@ -101,7 +101,8 @@ impl MainThreadAgent {
                     window_created,
                     event_dirty,
                     self.last_refresh.elapsed()
-                        >= fallback_refresh_interval(self.last_activity.elapsed()),
+                        >= fallback_refresh_interval(self.last_activity.elapsed())
+                        || self.close_recheck.is_some_and(|at| Instant::now() >= at),
                     activation_ready,
                 )
             }
@@ -110,6 +111,9 @@ impl MainThreadAgent {
                 .send_with_outputs(|outputs| WorkerCommand::Action(WorkerAction::Retile, outputs))
         {
             self.last_refresh = Instant::now();
+            if self.close_recheck.is_some_and(|at| self.last_refresh >= at) {
+                self.close_recheck = None;
+            }
         }
     }
 

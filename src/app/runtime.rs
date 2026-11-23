@@ -1,6 +1,7 @@
 use super::*;
 
 pub(super) struct CycleStatus {
+    pub(super) close_recheck: Option<Instant>,
     pub(super) active: Vec<WorkspaceId>,
     pub(super) layouts: Vec<status_item::WorkspaceLayout>,
     pub(super) menu: Vec<status_item::DisplayWorkspaces>,
@@ -90,9 +91,9 @@ pub(super) struct WorkspaceRuntime<B = MacWorkspaceBackend> {
     /// Windows that repeatedly un-park themselves. They remain managed and
     /// tiled, but are left visible across workspace switches for the session.
     pub(super) parking_exempt: HashSet<crate::PhysicalWindowId>,
-    /// Bound windows the window server shows on screen while the app's
-    /// Accessibility snapshot omits them, and when the omission began.
-    pub(super) omitted_windows: HashMap<crate::PhysicalWindowId, Instant>,
+    /// Bound windows omitted from the AX snapshot but still listed by CG,
+    /// with their settling and close-recheck state.
+    pub(super) omitted_windows: HashMap<crate::PhysicalWindowId, cycle::Omission>,
     /// Owned windows Accessibility reports gone while the window server still
     /// lists them, and when that began.
     pub(super) inaccessible_since: HashMap<crate::PhysicalWindowId, Instant>,
@@ -738,6 +739,7 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
             .map(|resolved| resolved.workspace)
             .collect();
         CycleStatus {
+            close_recheck: None,
             layouts: active
                 .iter()
                 .map(|workspace| status_item::WorkspaceLayout {

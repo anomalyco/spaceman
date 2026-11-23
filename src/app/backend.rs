@@ -17,6 +17,8 @@ pub(super) trait WorkspaceBackend {
         outputs: &macos::DisplayOutputs,
     ) -> Result<crate::NativeObservation, String>;
     fn is_process_running(&mut self, app: &AppInstanceId) -> bool;
+    /// True only when a visible app successfully reports an empty AXWindows list.
+    fn confirms_no_windows(&mut self, app: &AppInstanceId) -> bool;
     fn apply_observed(
         &mut self,
         placements: &[crate::Placement],
@@ -120,6 +122,10 @@ impl WorkspaceBackend for MacWorkspaceBackend {
         outputs: &macos::DisplayOutputs,
     ) -> Result<crate::NativeObservation, String> {
         macos::snapshot_in_outputs(cycle, outputs).map_err(|error| error.to_string())
+    }
+
+    fn confirms_no_windows(&mut self, app: &AppInstanceId) -> bool {
+        macos::confirms_no_windows(app)
     }
 
     fn is_process_running(&mut self, app: &AppInstanceId) -> bool {

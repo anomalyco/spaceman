@@ -401,6 +401,24 @@ pub(super) fn process_start_time(pid: i32) -> Option<u64> {
     (millis > 0).then_some(millis)
 }
 
+/// A fresh, unfiltered empty AXWindows list can confirm that an ordered-out
+/// surface is stale. A hidden or unresponsive app provides no such evidence.
+pub(crate) fn confirms_no_windows(id: &AppInstanceId) -> bool {
+    let Some(application) = running_application(id) else {
+        return false;
+    };
+    if application.isHidden() {
+        return false;
+    }
+    let element = application_element(id.pid);
+    // SAFETY: This fresh application element is valid. Bound this optional
+    // request so an unresponsive app cannot hold up neighboring frame writes.
+    if unsafe { element.set_messaging_timeout(0.05) } != AXError::Success {
+        return false;
+    }
+    attribute::<CFArray>(&element, "AXWindows").is_ok_and(|windows| windows.count() == 0)
+}
+
 fn observe_application(
     application: &NSRunningApplication,
     pid: i32,

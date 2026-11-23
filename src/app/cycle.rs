@@ -1,4 +1,6 @@
 mod affinity;
+mod omission;
+pub(super) use omission::Omission;
 
 use affinity::{FrozenAffinityPolicy, FrozenWindowAffinity};
 
@@ -44,6 +46,7 @@ struct ReconcileDisplayContext<'a> {
     onscreen_frames: Option<&'a HashMap<u32, crate::Rect>>,
     cancelled: &'a AtomicBool,
     failed: &'a mut usize,
+    close_recheck: &'a mut Option<Instant>,
 }
 
 impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
@@ -186,6 +189,7 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
         // Taken after the Accessibility snapshot so a window listed here was
         // on screen no earlier than the snapshot that may have omitted it.
         let onscreen_snapshot = self.backend.onscreen_window_frames();
+        let mut close_recheck = None;
         for resolved in &visible {
             if !self.scope.manages_selector(&resolved.selector) {
                 continue;
@@ -200,6 +204,7 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
                     onscreen_frames: onscreen_snapshot.as_ref(),
                     cancelled,
                     failed: &mut failed,
+                    close_recheck: &mut close_recheck,
                 },
             )?;
         }
@@ -250,7 +255,9 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
         self.record_window_memory(server_frames);
         self.journal.observation = Some(observation);
         self.persist_workspace_state_if_changed()?;
-        Ok(self.status_for_visible(failed, &visible, &outputs))
+        let mut status = self.status_for_visible(failed, &visible, &outputs);
+        status.close_recheck = close_recheck;
+        Ok(status)
     }
 
     /// A bound window the window server still shows on screen inside this
@@ -293,7 +300,7 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
                         .is_some_and(|frame| output.contains_center(*frame))
                 })
                 .filter(|window| {
-                    let since = *self
+                    let omission = self
                         .omitted_windows
                         .entry((*window).clone())
                         .or_insert_with(|| {
@@ -301,9 +308,9 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
                                 "observation omitted {:?}: window server shows it on screen; keeping its slot",
                                 window
                             );
-                            now
+                            Omission::new(now)
                         });
-                    now.duration_since(since) < OMISSION_SETTLE
+                    omission.is_settling(now)
                 })
                 .count();
             if settling == 0 {
@@ -325,6 +332,7 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
     /// tile. So while another window of this workspace is observed, meaning
     /// the display is not showing another Space, an ordered-out window keeps
     /// its app's slots only until the omission outlasts [`OMISSION_SETTLE`].
+    /// A fresh empty AXWindows list can confirm a last-window close earlier.
     /// Unresolved replacement candidates keep the plain window-server rule.
     fn apps_with_window_server_evidence(
         &mut self,
@@ -332,6 +340,7 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
         observation: &crate::NativeObservation,
         server_frames: Option<&HashMap<u32, crate::Rect>>,
         onscreen_frames: Option<&HashMap<u32, crate::Rect>>,
+        close_recheck: &mut Option<Instant>,
     ) -> HashSet<AppInstanceId> {
         let mut apps = HashSet::new();
         let Some(server_frames) = server_frames else {
@@ -342,10 +351,16 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
             .iter()
             .map(|app| app.app_id().clone())
             .collect();
-        let workspace_observed = live::observed_frames(observation)
+        let observed = live::observed_frames(observation);
+        let mut observed_tiles = observed
             .keys()
-            .any(|window| self.workspaces.workspace_of(window) == Some(workspace));
-        let onscreen_frames = onscreen_frames.filter(|_| workspace_observed);
+            .filter(|window| self.workspaces.workspace_of(window) == Some(workspace))
+            .peekable();
+        let onscreen_frames = onscreen_frames.filter(|_| observed_tiles.peek().is_some());
+        // The newer CG snapshot must still show a sibling. A Space switch
+        // between the AX and CG reads can order out the entire workspace.
+        let sibling_on_screen = onscreen_frames
+            .is_some_and(|frames| observed_tiles.any(|tile| frames.contains_key(&tile.window_id)));
         let windows: Vec<_> = self
             .workspaces
             .engine(workspace)
@@ -381,17 +396,13 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
                 apps.insert(window.app);
                 continue;
             }
-            let since = *self
-                .omitted_windows
-                .entry(window.clone())
-                .or_insert_with(|| {
-                    log_event!(
-                        "observation omitted {:?}: window server lists it off screen; releasing its slot unless it returns",
-                        window
-                    );
-                    now
-                });
-            if now.duration_since(since) < OMISSION_SETTLE {
+            if self.ordered_out_window_is_settling(
+                workspace,
+                &window,
+                sibling_on_screen && !observation.mouse_down,
+                now,
+                close_recheck,
+            ) {
                 apps.insert(window.app);
             }
         }
@@ -426,6 +437,7 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
             onscreen_frames,
             cancelled,
             failed,
+            close_recheck,
         } = context;
         let workspace = resolved.workspace;
         let output = resolved.output;
@@ -486,6 +498,7 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
             &scoped_observation,
             server_frames,
             onscreen_frames,
+            close_recheck,
         );
         live::add_absent_applications_with(
             &mut scoped_observation,

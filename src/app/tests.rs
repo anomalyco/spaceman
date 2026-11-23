@@ -36,6 +36,8 @@ enum BackendCall {
 
 #[derive(Default)]
 struct FakeBackend {
+    apps_confirming_no_windows: HashSet<AppInstanceId>,
+    close_probes: Vec<AppInstanceId>,
     frames: HashMap<crate::PhysicalWindowId, crate::Rect>,
     server_frames: HashMap<crate::PhysicalWindowId, crate::Rect>,
     /// Windows the window server still lists but has ordered out (closed
@@ -69,6 +71,11 @@ struct FakeBackend {
 }
 
 impl WorkspaceBackend for FakeBackend {
+    fn confirms_no_windows(&mut self, app: &AppInstanceId) -> bool {
+        self.close_probes.push(app.clone());
+        self.apps_confirming_no_windows.contains(app)
+    }
+
     fn snapshot(
         &mut self,
         cycle: u64,

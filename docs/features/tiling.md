@@ -9,7 +9,8 @@ navigate, reorder, nest, resize, and balance them from the keyboard or the point
 Automatic tiling                                        // tile.auto
 ├── New managed window -> joins the last focused tile’s split, or the root without a surviving focus
 ├── Window closes -> its slot retires, siblings reflow
-│   └── App keeps the closed window alive off screen -> slot retires after two seconds
+│   ├── Last app window closes but its surface lingers -> siblings reflow when the app confirms closure
+│   └── App keeps its ordered-out window alive -> slot settles for two seconds
 └── Ghostty native tab replaces its window -> same slot, order, weight, nesting
 
 Focus                                                   // tile.focus
@@ -64,6 +65,10 @@ pause, quit, or hotkey loss.
   cross-display drop; `startup.rs` covers gesture classification and `src/app/input.rs` covers
   queued final gestures.
 - Unit (FakeBackend), `src/app/tests/reconciliation.rs`:
+  `confirmed_last_window_close_reflows_the_sibling_in_the_same_cycle`,
+  `uncertain_close_requests_one_early_retry`,
+  `recheck_reflows_when_the_ordered_out_surface_disappears`,
+  `a_possible_tab_replacement_or_incomplete_snapshot_keeps_its_tile`,
   `closed_window_its_app_keeps_ordered_out_gives_up_its_tile` (an app closes its window by ordering it out),
   `workspace_whose_windows_all_leave_the_screen_keeps_its_tiles` (another Space is showing).
 - Unit (FakeBackend), `src/app/tests/minimums.rs`: a window that refuses its tile width gets a wider
@@ -87,8 +92,10 @@ pause, quit, or hotkey loss.
   windows may overlap. A sustained overlap involving a constrained tile appears in `spaceman doctor`
   as `constrained_overlap`.
 - Some apps (many SwiftUI apps) close a window by ordering it out; the window server keeps
-  listing it. Once its app has no window on screen, its tile is released after two seconds instead
-  of staying as an empty gap. Minimizing an app's only window or hiding the app (Command-H) does the
+  listing it. When a sibling stays visible and the app had one tile on this workspace, an empty
+  Accessibility window list can confirm the close immediately. An inconclusive check gets one
+  retry after 75 ms. A surface that stays ordered out then follows the usual two-second settling
+  period. Minimizing an app's only window or hiding the app (Command-H) does the
   same; the window comes back as a new tile at the end of the layout. While nothing on the display
   is observed (another macOS Space is showing), tiles are kept.
 - `balance` has no default hotkey; it is CLI-only.
