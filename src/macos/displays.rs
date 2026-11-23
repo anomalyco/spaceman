@@ -162,7 +162,7 @@ pub fn display_ids() -> HashMap<String, u32> {
     })
 }
 
-fn screen_display_id(screen: &NSScreen) -> Option<u32> {
+pub(super) fn screen_display_id(screen: &NSScreen) -> Option<u32> {
     let description = screen.deviceDescription();
     let number = description.objectForKey(ns_string!("NSScreenNumber"))?;
     number

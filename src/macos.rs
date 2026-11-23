@@ -1,8 +1,10 @@
 mod apply;
 mod ax;
+mod display_link;
 mod displays;
 mod events;
 mod keys;
+mod presenter;
 mod swipes;
 #[cfg(test)]
 mod tests;
@@ -33,9 +35,14 @@ pub use ax::{
     onscreen_window_frames, onscreen_window_order, window_at_point, window_server_frame,
     window_server_frames,
 };
+pub use display_link::{DisplayFrame, DisplayLink, DisplayLinkError};
 pub use displays::{DisplayOutput, DisplayOutputs, display_ids, outputs};
 pub use events::WindowEventMonitor;
 pub use keys::KeyMonitor;
+pub use presenter::{
+    AppSink, AxBackend, EnhancedUi, InteractivePresenter, PresenterBackend, PresenterStats,
+    WriteOutcome,
+};
 pub use swipes::SwipeMonitor;
 
 use apply::{cache_managed_window, evict_managed_app, prune_managed_app};

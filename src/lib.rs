@@ -21,6 +21,7 @@ mod login_item;
 #[allow(unsafe_code)]
 pub mod macos;
 pub mod model;
+pub mod motion;
 pub mod navigation;
 pub mod observation;
 #[cfg(target_os = "macos")]

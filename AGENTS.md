@@ -65,6 +65,12 @@ This file is the current engineering contract. README and `docs/` describe curre
   state-path selection, and deterministic persisted-map serialization.
 - `src/control.rs`, `src/main.rs`: mode-`0600` local Unix control protocol, CLI, dry-run/live probes,
   fixture replay, and HUD.
+- `src/motion.rs`, `src/macos/display_link.rs`, `src/macos/presenter.rs`: the motion engine's
+  foundation, not yet wired in: a closed-form camera spring, gesture velocity history and
+  per-display column bounds (pure, cross-platform); a paused-until-started main-thread
+  `CADisplayLink`; and the interactive presenter, which writes position-only frames through
+  per-app lanes that coalesce to the newest frame and hold `AXEnhancedUserInterface` off for a
+  motion.
 - `src/geometry.rs`, `src/live.rs`: frame math, off-screen target selection, live observation
   completion, placement filtering, and CLI probe helpers.
 - `src/permission_guide.rs`, `native/permission_guide.m`: Accessibility onboarding adapter.
@@ -118,7 +124,9 @@ This file is the current engineering contract. README and `docs/` describe curre
 
 - AppKit/status UI and APIs requiring it stay on the main thread.
 - Accessibility observer run-loop objects stay on the dedicated AX event thread.
-- Window-management work and its thread-local AX handle cache stay on the worker thread.
+- Window-management work and its thread-local AX handle cache stay on the worker thread. The one
+  exception is the interactive presenter's lane threads (`src/macos/presenter.rs`): each lane opens,
+  uses and drops its own apps' AX handles, and only window IDs and points cross into it.
 - Native handles (`AXUIElement`, `AXObserver`, Core Foundation run-loop values, Objective-C objects)
   never enter logical models, persisted state, or cross-thread messages.
 - Native callbacks only invalidate/request observation; they do not mutate the logical model.
