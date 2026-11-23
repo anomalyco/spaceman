@@ -239,7 +239,9 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
     /// stale window Accessibility reports until the target app activates.
     fn current_focus(&mut self) -> Option<crate::PhysicalWindowId> {
         let reported = self.backend.focused_window();
-        let pending = self.pending_focus.take()?;
+        let Some(pending) = self.pending_focus.take() else {
+            return reported;
+        };
         if pending.at.elapsed() < FOCUS_SETTLE && pending.stale.contains(&reported) {
             let target = pending.target.clone();
             self.pending_focus = Some(pending);
