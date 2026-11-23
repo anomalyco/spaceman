@@ -1,7 +1,7 @@
 name: Release
 
 # Builds, signs, notarizes and publishes Spaceman for Apple silicon from one
-# exact commit of main to Anomaly's release service
+# exact commit of dev to Anomaly's release service
 # (https://anoma.ly/release/spaceman), split the way Hex's release is:
 #
 # - build-macos and verify-macos run repository code (cargo, actool, the
@@ -14,15 +14,21 @@ name: Release
 # - every artifact carries a SHA256SUMS whose digest the job that made it
 #   reports; every job that downloads it checks that digest.
 #
-# Channels (.github/release/plan.sh), all dispatched from main:
-# - check: build, sign, notarize and verify; publish nothing, and push and
-#   delete a throwaway v0.0.0-test-<run> tag to prove the run can tag.
-# - dev: the same, published on the dev channel as 0.0.0-dev-<run number>.
-# - stable: Cargo.toml's version on the stable channel, then tag v<version>.
-#   Tags trigger nothing.
+# This file and .github/release/ are the release boundary: CODEOWNERS makes
+# changes to .github/ need Dax.
+#
+# Channels (.github/release/plan.sh):
+# - dev: every push to dev (except docs/website/Markdown-only) publishes
+#   0.0.0-dev-<run number> on the dev channel. A running release finishes and
+#   only the newest push waits behind it.
+# - check: a dispatch from dev builds, signs, notarizes and verifies the same,
+#   publishes nothing, and pushes and deletes a throwaway v0.0.0-test-<run>
+#   tag to prove the run can tag.
+# - stable: a dispatch from dev publishes Cargo.toml's version on the stable
+#   channel, then tags v<version>. Tags trigger nothing.
 #
 # The release service authorizes the publish job by its OIDC token:
-# anomalyco/spaceman, this file, refs/heads/main, environment release
+# anomalyco/spaceman, this file, refs/heads/dev, environment release
 # (anomalyco/release registry/spaceman.json).
 #
 # Sparkle in installed builds still reads the R2 appcast: after a stable run,
@@ -33,16 +39,22 @@ on:
   workflow_dispatch:
     inputs:
       channel:
-        description: Run from main. check (build, sign and verify), dev (dev channel) or stable (public release).
+        description: Run from dev. check (build, sign and verify), dev (dev channel) or stable (public release).
         type: choice
         options: [check, dev, stable]
         default: check
+  push:
+    branches: [dev]
+    # Docs and the website alone cut no dev build.
+    paths-ignore: ["docs/**", "website/**", "**/*.md"]
 
 permissions:
   contents: read
 
 concurrency:
-  group: release-${{ inputs.channel }}
+  group: release-${{ github.event_name == 'workflow_dispatch' && inputs.channel || 'dev' }}
+  # Releases never cancel each other: the running one finishes, and of the
+  # pushes that land meanwhile only the newest waits.
   cancel-in-progress: false
 
 defaults:
@@ -54,7 +66,7 @@ env:
 
 jobs:
   plan:
-    if: github.ref == 'refs/heads/main'
+    if: github.ref == 'refs/heads/dev'
     runs-on: ubuntu-24.04
     outputs:
       version: ${{ steps.plan.outputs.version }}
@@ -79,7 +91,7 @@ jobs:
         env:
           EVENT: ${{ github.event_name }}
           REF_NAME: ${{ github.ref_name }}
-          CHANNEL: ${{ inputs.channel }}
+          CHANNEL: ${{ github.event_name == 'workflow_dispatch' && inputs.channel || 'dev' }}
           GH_TOKEN: ${{ github.token }}
 
   # ---- Build: repository code; no environment, secrets or id-token ----------

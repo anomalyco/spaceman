@@ -3,12 +3,13 @@
 # event, the ref, Cargo.toml and the v* tags alone, and writes the plan to
 # $GITHUB_OUTPUT.
 #
-#   check  build, sign, notarize and verify; publish nothing. The last job
-#          pushes and deletes a throwaway v0.0.0-test-<run> tag to prove it
-#          can tag.
-#   dev    the same, published on the release service's dev channel as
-#          0.0.0-dev-<run number>, the way Hex and OpenCode number dev builds.
-#   stable Cargo.toml's version on the stable channel. Needs
+#   dev    a push to dev (or a dispatch from dev): published on the release
+#          service's dev channel as 0.0.0-dev-<run number>, the way Hex and
+#          OpenCode number dev builds.
+#   check  a dispatch from dev: build, sign, notarize and verify; publish
+#          nothing. The last job pushes and deletes a throwaway
+#          v0.0.0-test-<run> tag to prove it can tag.
+#   stable a dispatch from dev: Cargo.toml's version on the stable channel. Needs
 #          changelog/<version>.md and no v<version> tag yet; the workflow tags
 #          v<version> only after it published.
 #
@@ -24,8 +25,7 @@
 . "$(dirname "$0")/lib.sh"
 
 [ -n "$SHA" ] && [ "$SHA" = "${GITHUB_SHA:-}" ] || die "The checked-out commit $SHA is not this run's commit ${GITHUB_SHA:-}."
-[ "$REF_NAME" = main ] || die "Releases run from main, not $REF_NAME."
-[ "$EVENT" = workflow_dispatch ] || die "Releases are dispatched."
+[ "$REF_NAME" = dev ] || die "Releases run from dev, not $REF_NAME."
 
 crate=$(awk -F ' *= *' '
   /^\[package\]$/ { package = 1; next }
@@ -38,6 +38,7 @@ tag=""
 notes=""
 case "$CHANNEL" in
   stable)
+    [ "$EVENT" = workflow_dispatch ] || die "Stable releases are dispatched."
     version=$crate
     tag="v$version"
     refs=$(gh api "repos/$GITHUB_REPOSITORY/git/matching-refs/tags/$tag" --jq '.[].ref')
@@ -46,6 +47,7 @@ case "$CHANNEL" in
     release_channel=stable
     ;;
   dev | check)
+    [ "$CHANNEL" = dev ] || [ "$EVENT" = workflow_dispatch ] || die "Check runs are dispatched."
     version="0.0.0-dev-$GITHUB_RUN_NUMBER"
     release_channel=dev
     if [ "$CHANNEL" = check ]; then tag="v0.0.0-test-$GITHUB_RUN_NUMBER"; fi

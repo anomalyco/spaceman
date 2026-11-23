@@ -25,13 +25,13 @@ build ─► sign + notarize ─► verify ─► publish   download that zip �
 
 ### 1. The Release workflow
 
-[`.github/workflows/release.yml`](../.github/workflows/release.yml) is dispatched from `main` with a
-channel:
+[`.github/workflows/release.yml`](../.github/workflows/release.yml) runs on `dev`, the default branch:
+every push publishes the dev channel, and a dispatch picks a channel:
 
 | Channel | Publishes |
 | --- | --- |
 | `check` | Nothing. Builds, signs, notarizes and verifies, then pushes and deletes a `v0.0.0-test-<run>` tag. |
-| `dev` | `0.0.0-dev-<run>` on the dev channel (`https://anoma.ly/release/spaceman/desktop/dev.json`). |
+| `dev` (also every push that changes more than docs, the website or Markdown) | `0.0.0-dev-<run>` on the dev channel (`https://anoma.ly/release/spaceman/desktop/dev.json`). |
 | `stable` | `Cargo.toml`'s version on the stable channel, then tags `v<version>`. Needs `changelog/<version>.md` and no existing tag. |
 
 Its jobs:
@@ -51,7 +51,8 @@ Its jobs:
 - **tag**: `v<version>` on the released commit, only after publishing.
 
 `.github/release/` and this workflow are the release boundary: jobs that hold a secret or an OIDC
-token run only those scripts, on artifacts they verify by digest and never execute.
+token run only those scripts, on artifacts they verify by digest and never execute. CODEOWNERS makes
+every change under `.github/` need Dax's review.
 
 ### 2. Sparkle's appcast
 
