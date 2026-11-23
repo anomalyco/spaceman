@@ -1,6 +1,6 @@
 // The film's string score (ElevenLabs Music) and the recorder's play key (ElevenLabs sound effects),
 // into raw/score/. Skips files that already exist. At most two requests at a time (the music API's limit).
-// 2password run --env "ELEVENLABS_API_KEY=op://…" -- bun gen-score.ts
+// 2password run --env "ELEVENLABS_API_KEY=op://…" -- bun music.ts
 import { existsSync, mkdirSync } from "node:fs"
 import { join } from "node:path"
 

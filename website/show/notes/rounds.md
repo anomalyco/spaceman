@@ -443,7 +443,7 @@ Tape K unchanged (take k7, 105.8 s). Commits `a3eb9eb` (controls, opening, clips
 ## Draft 18 (script draft 18, tape L), Nov 22
 
 1. Tape L, take l5 of eight (Sarah as the detective): word-perfect, unhurried, and a clean "great many".
-   113.97 s, −18.0 LUFS. The recorder's play clunk and reel whir (ElevenLabs SFX, `gen-score.ts`) are mixed
+   113.97 s, −18.0 LUFS. The recorder's play clunk and reel whir (ElevenLabs SFX, `music.ts`) are mixed
    into the tape at 0.0 by `score.recorder()`, so seek, pause and export carry them.
 2. The score (`score.py`): three ElevenLabs Music stems (cello at 33 s, dread at 55 s, peak placed so the
    cut lands 21.3 s into it, on its crest), premixed into one `score.mp3` that starts at 30.0 s. Its gain is

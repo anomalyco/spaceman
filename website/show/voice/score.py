@@ -1,4 +1,4 @@
-# The film's two non-voice tracks, built from ElevenLabs takes in raw/score (gen-score.ts):
+# The film's two non-voice tracks, built from ElevenLabs takes in raw/score (music.ts):
 #
 #   recorder(): the interview recorder's play button and its reels settling in, mixed into the tape at 0.0
 #   build():    the string score, one stereo file aligned to show time from SCORE_AT, ducked under every
