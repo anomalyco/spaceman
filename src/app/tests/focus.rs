@@ -158,3 +158,139 @@ fn a_workspace_switch_that_focuses_settles_the_focus_restore() {
 
     assert!(runtime.pending_fullscreen_focus_restore.is_empty());
 }
+
+#[test]
+fn following_focus_to_a_hidden_workspace_keeps_the_window_that_took_it() {
+    // Clicking a notification activates its window on a hidden workspace; the
+    // switch must not hand focus to the tile that workspace last remembered,
+    // whether the window is tiled, floating, or in a Fullscreen Layout.
+    for (fullscreen, floating) in [(false, false), (true, false), (false, true)] {
+        let app_window = |pid, window_id| crate::PhysicalWindowId {
+            app: AppInstanceId {
+                pid,
+                launched_at: 1,
+            },
+            window_id,
+        };
+        let current = window(10);
+        let remembered = app_window(2, 20);
+        let notified = app_window(3, 30);
+        let target = WorkspaceId::new(2).unwrap();
+        let mut backend = FakeBackend {
+            focused: Some(notified.clone()),
+            frontmost: Some(notified.app.clone()),
+            ..FakeBackend::default()
+        };
+        backend.frames.insert(current.clone(), frame(50));
+        let parked = [
+            (remembered.clone(), frame(50)),
+            (notified.clone(), frame(500)),
+        ];
+        for (window, normal) in &parked {
+            backend
+                .frames
+                .insert(window.clone(), main_parked_frame(*normal));
+        }
+        let mut runtime = runtime_with_parked(backend, parked);
+        bind(&mut runtime, WorkspaceId::ONE, &current);
+        bind(&mut runtime, target, &remembered);
+        if floating {
+            runtime.workspaces.own_floating(notified.clone(), target);
+        } else {
+            bind(&mut runtime, target, &notified);
+        }
+        runtime.workspaces.set_fullscreen_layout(target, fullscreen);
+        runtime.workspaces.remember_focus(target, &remembered);
+
+        let status = runtime.cycle(outputs(), &AtomicBool::new(false)).unwrap();
+
+        let case = format!("fullscreen {fullscreen}, floating {floating}");
+        assert_eq!(status.active, vec![target, WorkspaceId::SIX], "{case}");
+        assert_eq!(runtime.backend.focused, Some(notified), "{case}");
+        assert!(
+            !focus_calls(&runtime).contains(&remembered.window_id),
+            "{case}"
+        );
+    }
+}
+
+#[test]
+fn a_follow_cancelled_by_the_activation_it_answers_follows_on_the_next_cycle() {
+    // Accessibility reports the clicked notification's window before AppKit's
+    // activation notice reaches the main thread, which then cancels the cycle
+    // already switching there. The window must not stay suppressed and hidden.
+    let current = window(10);
+    let notified = crate::PhysicalWindowId {
+        app: AppInstanceId {
+            pid: 3,
+            launched_at: 1,
+        },
+        window_id: 30,
+    };
+    let target = WorkspaceId::new(2).unwrap();
+    let cancelled = Arc::new(AtomicBool::new(false));
+    let mut backend = FakeBackend {
+        focused: Some(notified.clone()),
+        frontmost: Some(notified.app.clone()),
+        cancel_on_position: Some(Arc::clone(&cancelled)),
+        ..FakeBackend::default()
+    };
+    backend.frames.insert(current.clone(), frame(50));
+    backend
+        .frames
+        .insert(notified.clone(), main_parked_frame(frame(500)));
+    let mut runtime = runtime_with_parked(backend, [(notified.clone(), frame(500))]);
+    bind(&mut runtime, WorkspaceId::ONE, &current);
+    bind(&mut runtime, target, &notified);
+
+    let error = runtime.cycle(outputs(), &cancelled).err().unwrap();
+    assert!(error.ends_with("cancelled"), "{error}");
+    // The cancelled switch rolled back: the old workspace stays up and the
+    // window keeps its recovery frame.
+    assert_eq!(
+        runtime.workspaces.active_for(&DisplaySelector::Main),
+        Some(WorkspaceId::ONE)
+    );
+    assert_eq!(runtime.parked.get(&notified), Some(&frame(500)));
+    assert_eq!(runtime.suppressed_focus, None);
+
+    let status = runtime.cycle(outputs(), &AtomicBool::new(false)).unwrap();
+    assert_eq!(status.active, vec![target, WorkspaceId::SIX]);
+    assert_eq!(runtime.backend.focused, Some(notified));
+}
+
+#[test]
+fn a_follow_that_fails_while_an_activation_cancels_stays_suppressed() {
+    // Only a cancellation retries; a switch that genuinely failed keeps the
+    // window suppressed even if an activation also raised the cancel flag.
+    let current = window(10);
+    let notified = crate::PhysicalWindowId {
+        app: AppInstanceId {
+            pid: 3,
+            launched_at: 1,
+        },
+        window_id: 30,
+    };
+    let target = WorkspaceId::new(2).unwrap();
+    let cancelled = Arc::new(AtomicBool::new(false));
+    let mut backend = FakeBackend {
+        focused: Some(notified.clone()),
+        frontmost: Some(notified.app.clone()),
+        cancel_on_position: Some(Arc::clone(&cancelled)),
+        position_outcome: Some(macos::ApplyOutcome::Unavailable),
+        ..FakeBackend::default()
+    };
+    backend.frames.insert(current.clone(), frame(50));
+    backend
+        .frames
+        .insert(notified.clone(), main_parked_frame(frame(500)));
+    let mut runtime = runtime_with_parked(backend, [(notified.clone(), frame(500))]);
+    bind(&mut runtime, WorkspaceId::ONE, &current);
+    bind(&mut runtime, target, &notified);
+
+    let error = runtime.cycle(outputs(), &cancelled).err().unwrap();
+
+    assert!(!error.ends_with("cancelled"), "{error}");
+    assert!(cancelled.load(Ordering::Acquire));
+    assert_eq!(runtime.suppressed_focus, Some(notified));
+}
