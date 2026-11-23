@@ -125,8 +125,10 @@ fn unconfigured_named_workspaces_are_not_display_fallbacks() {
     assert_eq!(workspaces.active_for(&DisplaySelector::Main), None);
 }
 
+/// Each display keeps its own previous workspace for moving a workspace off
+/// it and for the HUD; Option+Tab uses the runtime's global focus history.
 #[test]
-fn back_and_forth_history_is_independent_per_display() {
+fn per_display_previous_history_is_independent_for_moves() {
     let mut workspaces = Workspaces::default();
     let main_target = WorkspaceId::new(3).unwrap();
     let secondary_target = WorkspaceId::new(8).unwrap();

@@ -12,7 +12,7 @@ fails after the old registrations are released, it pauses and reports `Hotkeys u
 | Add `Shift` to a workspace key | Move the focused window there without switching |
 | `Option+A` ... `Option+Z` | Switch to that configured named workspace |
 | Add `Shift` to a named workspace key | Move the focused window there without switching |
-| `Option+Tab` | Toggle the focused display's current/previous workspace |
+| `Option+Tab` | Focus the workspace focused before this one, on any display; only a hidden one switches its display |
 | `Option+Shift+Tab` | Move the focused workspace to the next display (wrapping left-to-right) |
 | Option-backtick | Focus the next tiled window, wrapping in stable workspace order |
 | `Option+H/J/K/L` | Focus the nearest tile left/down/up/right, including across displays |

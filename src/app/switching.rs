@@ -34,6 +34,7 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
                     .filter(|focused| self.workspaces.workspace_of(focused) == Some(workspace))
             {
                 self.workspaces.remember_focus(workspace, focused);
+                self.record_focused_workspace(workspace);
                 self.pending_fullscreen_focus_restore.remove(&workspace);
                 self.persist_workspace_state_if_changed()?;
                 let mut status = self.status(0, &outputs);
@@ -42,6 +43,9 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
             }
             let frontmost = self.backend.frontmost_application();
             self.focus_workspace_entry(workspace, &windows, focused, frontmost);
+            // Selecting a workspace that is already up still moves focus there
+            // when it lives on another display, so it belongs in the history.
+            self.record_focused_workspace(workspace);
             let mut status = self.status(0, &outputs);
             status.hud = Some(self.hud_for(workspace, UiHudKind::Workspace, None, &outputs));
             return Ok(status);
@@ -179,6 +183,7 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
             }
         }
         self.workspaces.switch(workspace);
+        self.record_focused_workspace(workspace);
         self.foreground_lanes.insert(display_id, selector);
         self.focus_workspace_entry(workspace, &incoming, focused_before, frontmost_before);
         self.persist_workspace_state_if_changed()?;
@@ -381,25 +386,82 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
         }
     }
 
+    /// Remember the workspace that just took focus. The first record after a
+    /// launch seeds the previous workspace from the focused display's persisted
+    /// lane history, so Option+Tab works straight away as it did before.
+    pub(super) fn record_focused_workspace(&mut self, workspace: WorkspaceId) {
+        if self.last_focused_workspace == Some(workspace) {
+            return;
+        }
+        if self.last_focused_workspace.is_none() {
+            let selector = self.workspaces.assignment(workspace).clone();
+            self.previous_focused_workspace = self
+                .workspaces
+                .previous_for(&selector)
+                .filter(|previous| *previous != workspace);
+        } else {
+            self.previous_focused_workspace = self.last_focused_workspace;
+        }
+        self.last_focused_workspace = Some(workspace);
+    }
+
+    /// Global back-and-forth: move focus to the workspace focused before this
+    /// one, wherever it lives. A workspace already on screen is focused in
+    /// place, so the display the focus came from keeps showing its workspace
+    /// (pressing it again bounces straight back). Only a hidden target switches
+    /// its own display to it.
     pub(super) fn workspace_back_and_forth(
         &mut self,
         outputs: macos::DisplayOutputs,
         cancelled: &AtomicBool,
     ) -> Result<CycleStatus, String> {
-        let focused = self
-            .backend
-            .focused_window()
-            .ok_or("Focused window is unavailable")?;
-        let workspace = self
-            .workspaces
-            .workspace_of_any(&focused)
-            .ok_or("Focused window is not managed")?;
-        let selector = self.workspaces.assignment(workspace);
-        let previous = self
-            .workspaces
-            .previous_for(selector)
-            .ok_or("Focused display has no previous workspace")?;
-        self.switch(previous, outputs, cancelled)
+        self.synchronize_foreground(&outputs);
+        let focused = self.backend.focused_window();
+        // Accessibility can still report the window a switch or a cross-display
+        // focus just left behind; history names the workspace that took focus.
+        let reported = focused
+            .as_ref()
+            .filter(|window| self.suppressed_focus.as_ref() != Some(*window))
+            .and_then(|window| self.workspaces.workspace_of_any(window));
+        if let Some(reported) = reported {
+            // A click on another display is a genuine focus change even before
+            // the next observation cycle records it.
+            self.record_focused_workspace(reported);
+        }
+        let current = reported.or(self.last_focused_workspace);
+        let target = self
+            .previous_focused_workspace
+            .filter(|target| Some(*target) != current && self.workspaces.is_enabled(*target))
+            .ok_or("No previous workspace")?;
+        if self.is_visible(target, &outputs) {
+            return self.focus_visible_workspace(target, current, &outputs);
+        }
+        self.switch(target, outputs, cancelled)
+    }
+
+    /// Focus a workspace that is already on screen instead of switching any
+    /// display. An empty one has nothing to focus, so it only shows its HUD and
+    /// leaves the history pointing where it was.
+    fn focus_visible_workspace(
+        &mut self,
+        workspace: WorkspaceId,
+        from: Option<WorkspaceId>,
+        outputs: &macos::DisplayOutputs,
+    ) -> Result<CycleStatus, String> {
+        let windows = self.workspaces.windows(workspace);
+        if !windows.is_empty() {
+            let focused = self.backend.focused_window();
+            let frontmost = self.backend.frontmost_application();
+            self.focus_workspace_entry(workspace, &windows, focused, frontmost);
+            self.record_focused_workspace(workspace);
+            log_event!(
+                "back-and-forth: focused visible workspace {} without switching",
+                workspace
+            );
+        }
+        let mut status = self.status(0, outputs);
+        status.hud = Some(self.hud_for(workspace, UiHudKind::Workspace, from, outputs));
+        Ok(status)
     }
 
     /// Left goes to the next workspace in the display's menu section, right to

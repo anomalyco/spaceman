@@ -104,6 +104,11 @@ pub(super) struct WorkspaceRuntime<B = MacWorkspaceBackend> {
     pub(super) manual_floating: HashSet<crate::PhysicalWindowId>,
     pub(super) config: Config,
     pub(super) foreground_lanes: HashMap<String, DisplaySelector>,
+    /// Global focus history across displays: the workspace focused now and the
+    /// one focused before it. `Option+Tab` reads it, so it bounces between the
+    /// last two workspaces wherever they live.
+    pub(super) last_focused_workspace: Option<WorkspaceId>,
+    pub(super) previous_focused_workspace: Option<WorkspaceId>,
     /// Focus left behind by a workspace switch or move. Focus follow ignores
     /// it until Accessibility reports a different focused window, so a hidden
     /// window that keeps (or has not yet lost) focus cannot pull the display
@@ -323,6 +328,8 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
             manual_floating,
             config,
             foreground_lanes: HashMap::new(),
+            last_focused_workspace: None,
+            previous_focused_workspace: None,
             suppressed_focus: None,
             suppressed_app: None,
             pending_focus: None,

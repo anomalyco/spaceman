@@ -29,6 +29,11 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
         let source_display_id = source_resolved.display_id;
         let source_output = source_resolved.output;
         let old_selector = self.ensure_managed_workspace(moved_ws)?;
+        // The moved workspace is the focused one, and it keeps focus on the
+        // target display. Record it before assignments change so Option+Tab's
+        // history names the workspace focused before it, never the workspace
+        // this move displaces on the target display.
+        self.record_focused_workspace(moved_ws);
 
         let ordered = outputs.ordered();
         let source_index = ordered

@@ -18,14 +18,19 @@ Swipe                                                      // ws.swipe
     under the pointer (visible + occupied), stops at either end
 
 Back-and-forth                                             // ws.back-and-forth
-└── Option+Tab / ctl back-and-forth -> previous workspace of the focused display's lane
+├── Option+Tab / ctl back-and-forth -> the workspace focused before this one, on any display
+│   (one global focus history; after a restart it starts from the focused display's lane history)
+├── Target already on screen -> focus moves there, no display changes, nothing is parked
+│   └── Press again -> bounces back to the workspace the focus came from
+├── Target on screen but empty -> only shows its HUD; focus history is left alone
+└── Target hidden -> its own display switches to it and focuses its remembered tile
 
 Move workspace to another display                          // ws.move-workspace
 ├── Option+Shift+Tab / ctl move-workspace [next|prev|<display>]
 ├── Orders displays left-to-right; wraps around for next/prev; persists assignment to config.toml
 ├── Reveals & lays out source display's previous workspace -> lays out moved workspace on target
-│   -> parks target's displaced workspace (which becomes target's Option+Tab previous)
-└── Preserves Fullscreen Layout and focus on the moved workspace; shows HUD on both displays
+│   -> parks target's displaced workspace (which is only that display's lane history)
+└── Preserves Fullscreen Layout and focus on the moved workspace (focus history untouched); HUD on both displays
 
 Move window without switching                              // ws.move-window
 ├── Option+Shift+<ws> / ctl move <ws> -> window parked on target, current workspace reflows
@@ -34,6 +39,7 @@ Move window without switching                              // ws.move-window
 Focus follows                                              // ws.focus-follow
 ├── Focusing a window that lives on a hidden workspace (Dock, Cmd+Tab, notification)
 │   -> that workspace becomes active
+├── Focusing a window on another display's visible workspace -> no switch; Option+Tab remembers it
 └── No focused window reported -> follows the frontmost app only when all its windows, tiled
     or floating, are on one workspace
 
@@ -96,7 +102,7 @@ with the original frame persisted to `parked-windows.json` first.
 Keyboard (while tiling is enabled)
 ├── Option+<1..0 | A..Z>        -> switch
 ├── Option+Shift+<1..0 | A..Z>  -> move focused window
-├── Option+Tab                  -> back-and-forth
+├── Option+Tab                  -> back-and-forth (last two workspaces focused, any display)
 └── Option+Shift+Tab            -> move focused workspace to next display
 Trackpad: three-finger swipe left/right -> next/previous workspace (turn macOS's three-finger
           "Swipe between full-screen applications" off or move it to four fingers)
@@ -117,10 +123,14 @@ on the same letter.
   layout, hide), `switch_keeps_outgoing_visible_when_incoming_reveal_never_arrives`
   (`reliability.rs`, rollback), `moving_to_an_inactive_workspace_does_not_switch`,
   `focusing_a_parked_window_activates_its_workspace`,
-  `workspace_back_and_forth_tracks_each_display_lane_independently`,
+  `workspace_back_and_forth_bounces_between_the_last_two_focused_workspaces`,
+  `workspace_back_and_forth_on_one_display_switches_like_before`,
   `switching_to_an_unconfigured_named_workspace_is_rejected`.
 - Unit (FakeBackend), `src/app/tests/move_workspace.rs`:
   `move_workspace_to_occupied_display_promotes_source_previous_and_parks_displaced`,
+  `option_tab_after_moving_the_focused_workspace_never_reveals_the_displaced_one` (issue 76),
+  `workspace_back_and_forth_switches_a_hidden_workspace_on_another_display`,
+  `cycle_records_a_click_on_another_display_for_option_tab`,
   `move_workspace_to_empty_display_and_three_display_wrap_around`,
   `move_workspace_single_display_is_a_noop`,
   `move_workspace_preserves_fullscreen_layout_and_focused_tile`,

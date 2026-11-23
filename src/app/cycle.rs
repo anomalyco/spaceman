@@ -143,23 +143,27 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
         };
         if !suppressed {
             self.clear_suppressed_focus();
-            if let Some(workspace) = focus_workspace
-                && !visible
+            if let Some(workspace) = focus_workspace {
+                if !visible
                     .iter()
                     .any(|resolved| resolved.workspace == workspace)
-            {
-                let input = self
-                    .backend
-                    .recent_input()
-                    .map_or_else(|| "input unknown".into(), |input| input.to_string());
-                log_event!(
-                    "focus follow: {:?} (frontmost {:?}) -> workspace {} ({})",
-                    focused,
-                    frontmost,
-                    workspace,
-                    input
-                );
-                return self.switch(workspace, outputs, cancelled);
+                {
+                    let input = self
+                        .backend
+                        .recent_input()
+                        .map_or_else(|| "input unknown".into(), |input| input.to_string());
+                    log_event!(
+                        "focus follow: {:?} (frontmost {:?}) -> workspace {} ({})",
+                        focused,
+                        frontmost,
+                        workspace,
+                        input
+                    );
+                    return self.switch(workspace, outputs, cancelled);
+                }
+                // Focus moved to a workspace already on screen, such as a click
+                // on another display. Option+Tab goes back from here.
+                self.record_focused_workspace(workspace);
             }
         }
         for resolved in &visible {

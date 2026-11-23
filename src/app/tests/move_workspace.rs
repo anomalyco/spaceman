@@ -79,14 +79,129 @@ fn move_workspace_to_occupied_display_promotes_source_previous_and_parks_displac
     assert_eq!(hud.displays[1].visible, Some(WorkspaceId::ONE));
     assert_eq!(hud.displays[1].from, Some(WorkspaceId::SIX));
 
-    // Option+Tab on the target display brings back the displaced workspace 6.
+    // Option+Tab focuses the workspace focused before workspace 1 (workspace 3
+    // on Main) instead of hiding the moved workspace behind displaced 6.
     runtime
         .workspace_back_and_forth(outputs(), &cancelled)
         .unwrap();
+    assert_eq!(runtime.backend.focused, Some(w3.clone()));
+    assert_eq!(
+        runtime.workspaces.active_for(&DisplaySelector::Main),
+        Some(WorkspaceId::THREE)
+    );
     assert_eq!(
         runtime.workspaces.active_for(&DisplaySelector::Secondary),
-        Some(WorkspaceId::SIX)
+        Some(WorkspaceId::ONE)
     );
+    assert!(runtime.parked.contains_key(&w6));
+    assert!(!runtime.parked.contains_key(&w1));
+
+    // A second press bounces back to the moved workspace on Secondary.
+    runtime
+        .workspace_back_and_forth(outputs(), &cancelled)
+        .unwrap();
+    assert_eq!(runtime.backend.focused, Some(w1.clone()));
+    assert_eq!(
+        runtime.workspaces.active_for(&DisplaySelector::Secondary),
+        Some(WorkspaceId::ONE)
+    );
+    assert!(!runtime.parked.contains_key(&w1));
+}
+
+/// Issue #76: Option+Tab right after Option+Shift+Tab must focus the workspace
+/// focused before the one that moved, not the empty workspace the move
+/// displaced (which would hide the workspace just moved).
+#[test]
+fn option_tab_after_moving_the_focused_workspace_never_reveals_the_displaced_one() {
+    let b = window(10);
+    let c = window(20);
+    let c_normal = frame(100);
+    let mut backend = FakeBackend {
+        focused: Some(b.clone()),
+        ..FakeBackend::default()
+    };
+    backend.frames.insert(b.clone(), frame(50));
+    backend
+        .frames
+        .insert(c.clone(), main_parked_frame(c_normal));
+    let mut runtime = runtime_with_parked(backend, [(c.clone(), c_normal)]);
+    bind(&mut runtime, WorkspaceId::TWO, &b);
+    bind(&mut runtime, WorkspaceId::THREE, &c);
+    let nine = WorkspaceId::new(9).unwrap();
+    let cancelled = AtomicBool::new(false);
+
+    // Main shows workspace 2 (B); Secondary shows empty workspace 9.
+    runtime.switch(nine, outputs(), &cancelled).unwrap();
+    runtime
+        .switch(WorkspaceId::TWO, outputs(), &cancelled)
+        .unwrap();
+    assert_eq!(runtime.backend.focused, Some(b.clone()));
+
+    // Main moves B -> C.
+    runtime
+        .switch(WorkspaceId::THREE, outputs(), &cancelled)
+        .unwrap();
+    assert_eq!(runtime.backend.focused, Some(c.clone()));
+
+    // Option+Shift+Tab moves C to Secondary. C keeps focus, so the focus
+    // history still says B came before it.
+    runtime
+        .move_workspace_to_display(DisplayTarget::Next, outputs(), &cancelled)
+        .unwrap();
+    assert_eq!(
+        runtime.workspaces.active_for(&DisplaySelector::Main),
+        Some(WorkspaceId::TWO)
+    );
+    assert_eq!(
+        runtime.workspaces.active_for(&DisplaySelector::Secondary),
+        Some(WorkspaceId::THREE)
+    );
+    assert_eq!(runtime.backend.focused, Some(c.clone()));
+    assert_eq!(runtime.previous_focused_workspace, Some(WorkspaceId::TWO));
+
+    // Option+Tab focuses B on Main and leaves C on screen: empty workspace 9
+    // never appears and nothing is parked.
+    runtime
+        .workspace_back_and_forth(outputs(), &cancelled)
+        .unwrap();
+    assert_eq!(runtime.backend.focused, Some(b.clone()));
+    assert_eq!(
+        runtime.workspaces.active_for(&DisplaySelector::Main),
+        Some(WorkspaceId::TWO)
+    );
+    assert_eq!(
+        runtime.workspaces.active_for(&DisplaySelector::Secondary),
+        Some(WorkspaceId::THREE)
+    );
+    assert!(!runtime.parked.contains_key(&c));
+    assert!(
+        outputs()
+            .secondary()
+            .unwrap()
+            .frame
+            .contains_center(runtime.backend.frames[&c]),
+        "moved workspace stayed visible on Secondary"
+    );
+    assert_eq!(
+        runtime.workspaces.previous_for(&DisplaySelector::Secondary),
+        Some(nine),
+        "the displaced workspace is only the lane's previous, not Option+Tab's"
+    );
+
+    // A second Option+Tab bounces straight back to C.
+    runtime
+        .workspace_back_and_forth(outputs(), &cancelled)
+        .unwrap();
+    assert_eq!(runtime.backend.focused, Some(c.clone()));
+    assert_eq!(
+        runtime.workspaces.active_for(&DisplaySelector::Main),
+        Some(WorkspaceId::TWO)
+    );
+    assert_eq!(
+        runtime.workspaces.active_for(&DisplaySelector::Secondary),
+        Some(WorkspaceId::THREE)
+    );
+    assert!(!runtime.parked.contains_key(&b));
 }
 
 #[test]
@@ -352,4 +467,99 @@ fn move_workspace_replaces_unplugged_assignment_and_rolls_back_on_error() {
     );
     assert!(!runtime.parked.contains_key(&w6));
     assert_eq!(runtime.parked.get(&w2), Some(&w2_normal));
+}
+
+#[test]
+fn cycle_records_a_click_on_another_display_for_option_tab() {
+    let first = window(10);
+    let clicked = window(11);
+    let secondary = window(20);
+    let mut backend = FakeBackend {
+        focused: Some(first.clone()),
+        observation: Some(observation_for_windows(
+            "com.example.Test",
+            &first,
+            &[
+                (first.clone(), frame(50)),
+                (clicked.clone(), frame(500)),
+                (secondary.clone(), frame(1050)),
+            ],
+        )),
+        ..FakeBackend::default()
+    };
+    backend.frames.insert(first.clone(), frame(50));
+    backend.frames.insert(clicked.clone(), frame(500));
+    backend.frames.insert(secondary.clone(), frame(1050));
+    let mut runtime = runtime(backend);
+    bind(&mut runtime, WorkspaceId::ONE, &first);
+    bind(&mut runtime, WorkspaceId::ONE, &clicked);
+    bind(&mut runtime, WorkspaceId::SIX, &secondary);
+    let cancelled = AtomicBool::new(false);
+
+    runtime
+        .switch(WorkspaceId::SIX, outputs(), &cancelled)
+        .unwrap();
+    // Click workspace 1's other window on Main. No switch happens; the cycle
+    // only watches the focus move.
+    runtime.backend.focused = Some(clicked.clone());
+    runtime.cycle(outputs(), &cancelled).unwrap();
+    assert_eq!(runtime.last_focused_workspace, Some(WorkspaceId::ONE));
+    assert_eq!(runtime.previous_focused_workspace, Some(WorkspaceId::SIX));
+
+    runtime
+        .workspace_back_and_forth(outputs(), &cancelled)
+        .unwrap();
+    assert_eq!(runtime.backend.focused, Some(secondary.clone()));
+    assert_eq!(
+        runtime.workspaces.active_for(&DisplaySelector::Main),
+        Some(WorkspaceId::ONE)
+    );
+    assert_eq!(
+        runtime.workspaces.active_for(&DisplaySelector::Secondary),
+        Some(WorkspaceId::SIX)
+    );
+
+    runtime
+        .workspace_back_and_forth(outputs(), &cancelled)
+        .unwrap();
+    assert_eq!(runtime.backend.focused, Some(first));
+}
+
+#[test]
+fn workspace_back_and_forth_switches_a_hidden_workspace_on_another_display() {
+    let main = window(10);
+    let six = window(20);
+    let mut backend = FakeBackend {
+        focused: Some(main.clone()),
+        ..FakeBackend::default()
+    };
+    backend.frames.insert(main.clone(), frame(50));
+    backend.frames.insert(six.clone(), frame(1050));
+    let mut runtime = runtime(backend);
+    bind(&mut runtime, WorkspaceId::ONE, &main);
+    bind(&mut runtime, WorkspaceId::SIX, &six);
+    let cancelled = AtomicBool::new(false);
+
+    runtime
+        .switch(WorkspaceId::SIX, outputs(), &cancelled)
+        .unwrap();
+    runtime
+        .switch(WorkspaceId::ONE, outputs(), &cancelled)
+        .unwrap();
+    // Secondary leaves workspace 6 without focus moving (a display change or a
+    // lane change recorded elsewhere); workspace 6 is now hidden.
+    runtime
+        .workspaces
+        .move_to_display(WorkspaceId::THREE, DisplaySelector::Secondary, None);
+    assert_eq!(runtime.previous_focused_workspace, Some(WorkspaceId::SIX));
+
+    runtime
+        .workspace_back_and_forth(outputs(), &cancelled)
+        .unwrap();
+
+    assert_eq!(
+        runtime.workspaces.active_for(&DisplaySelector::Secondary),
+        Some(WorkspaceId::SIX)
+    );
+    assert_eq!(runtime.backend.focused, Some(six));
 }
