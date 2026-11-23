@@ -52,7 +52,7 @@ function Hero({ start }: { start: () => void }) {
             className="inline-flex h-11 items-center gap-2.5 rounded-full bg-white/[0.1] pr-5 pl-4 text-[15px] font-medium text-[#f3f4f6] shadow-[inset_0_0_0_1px_rgba(255,255,255,.12)] backdrop-blur-md backdrop-saturate-150 transition-[background-color,transform] duration-150 hover:bg-white/[0.16] active:scale-[0.98] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white/70"
           >
             <svg width="12" height="12" viewBox="0 0 12 12" fill="currentColor" aria-hidden="true"><path d="M2.5 1.4v9.2c0 .5.5.8.9.5l7.2-4.6a.6.6 0 0 0 0-1L3.4.9c-.4-.3-.9 0-.9.5Z" /></svg>
-            Watch the film
+            Watch the demo
             <span className="text-[#9a9ca3] tabular-nums">2 min</span>
           </button>
         </div>
