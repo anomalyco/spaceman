@@ -255,10 +255,20 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
             self.workspaces.remember_focus(workspace, focused);
         }
         self.record_window_memory(server_frames);
+        // Creation can wake the worker before CG orders the window on screen.
+        // Only a recent create/activation on the main thread enables retries.
+        let missing_frontmost_window = frontmost.filter(|app| {
+            let windows = &affinity_policy.windows;
+            match focused.as_ref().filter(|window| &window.app == app) {
+                Some(window) => !windows.contains_key(window),
+                None => !windows.keys().any(|window| &window.app == app),
+            }
+        });
         self.journal.observation = Some(observation);
         self.persist_workspace_state_if_changed()?;
         let mut status = self.status_for_visible(failed, &visible, &outputs);
         status.close_recheck = close_recheck;
+        status.missing_frontmost_window = missing_frontmost_window;
         Ok(status)
     }
 

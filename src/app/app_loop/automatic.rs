@@ -23,6 +23,7 @@ impl MainThreadAgent {
         };
         if frontmost_changed {
             self.last_activity = Instant::now();
+            self.opening_until = Some(Instant::now() + WINDOW_OPENING_SETTLE);
             self.activation_refresh_at = Some(Instant::now() + APPLICATION_ACTIVATION_SETTLE);
             // Background cycles and previews yield to activation changes. Explicit
             // user commands (switch, move, focus) change the frontmost app
@@ -93,6 +94,9 @@ impl MainThreadAgent {
             && self.pending_inputs.is_empty()
             && {
                 let window_created = self.events.take_window_created();
+                if window_created {
+                    self.opening_until = Some(Instant::now() + WINDOW_OPENING_SETTLE);
+                }
                 let event_dirty = (window_created || activation_ready) && self.events.take_dirty();
                 if window_created || event_dirty {
                     self.last_activity = Instant::now();
@@ -102,7 +106,9 @@ impl MainThreadAgent {
                     event_dirty,
                     self.last_refresh.elapsed()
                         >= fallback_refresh_interval(self.last_activity.elapsed())
-                        || self.close_recheck.is_some_and(|at| Instant::now() >= at),
+                        || self
+                            .observation_recheck
+                            .is_some_and(|at| Instant::now() >= at),
                     activation_ready,
                 )
             }
@@ -111,8 +117,11 @@ impl MainThreadAgent {
                 .send_with_outputs(|outputs| WorkerCommand::Action(WorkerAction::Retile, outputs))
         {
             self.last_refresh = Instant::now();
-            if self.close_recheck.is_some_and(|at| self.last_refresh >= at) {
-                self.close_recheck = None;
+            if self
+                .observation_recheck
+                .is_some_and(|at| self.last_refresh >= at)
+            {
+                self.observation_recheck = None;
             }
         }
     }

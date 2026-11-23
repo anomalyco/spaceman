@@ -118,7 +118,8 @@ pub struct MainThreadAgent {
     pending_inputs: InputQueue,
     gesture_tracker: GestureTracker,
     last_refresh: Instant,
-    close_recheck: Option<Instant>,
+    observation_recheck: Option<Instant>,
+    opening_until: Option<Instant>,
     /// Last input, activation, or window event; idle loops retile less often.
     last_activity: Instant,
     last_frontmost_check: Instant,
@@ -212,7 +213,8 @@ impl MainThreadAgent {
             pending_inputs: InputQueue::default(),
             gesture_tracker: GestureTracker::default(),
             last_refresh: initial_refresh,
-            close_recheck: None,
+            observation_recheck: None,
+            opening_until: None,
             last_activity: Instant::now(),
             last_frontmost_check: Instant::now(),
             last_hotkey_refresh: initial_refresh,
@@ -300,10 +302,17 @@ impl MainThreadAgent {
                     }
                     self.last_error = result.as_ref().err().cloned();
                     if let Ok(status) = &result {
-                        if let Some(deadline) = status.close_recheck {
-                            self.close_recheck =
-                                Some(self.close_recheck.map_or(deadline, |old| old.min(deadline)));
-                        }
+                        let opening = opening_recheck(
+                            Instant::now(),
+                            self.opening_until,
+                            self.frontmost_application.as_ref(),
+                            status.missing_frontmost_window.as_ref(),
+                        );
+                        self.observation_recheck =
+                            [self.observation_recheck, status.close_recheck, opening]
+                                .into_iter()
+                                .flatten()
+                                .min();
                         self.active_workspaces.clone_from(&status.active);
                         if self.hud
                             && let Some(hud) = status.hud.clone()

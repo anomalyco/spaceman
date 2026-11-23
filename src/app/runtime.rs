@@ -1,6 +1,7 @@
 use super::*;
 
 pub(super) struct CycleStatus {
+    pub(super) missing_frontmost_window: Option<AppInstanceId>,
     pub(super) close_recheck: Option<Instant>,
     pub(super) active: Vec<WorkspaceId>,
     pub(super) layouts: Vec<status_item::WorkspaceLayout>,
@@ -746,6 +747,7 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
             .map(|resolved| resolved.workspace)
             .collect();
         CycleStatus {
+            missing_frontmost_window: None,
             close_recheck: None,
             layouts: active
                 .iter()

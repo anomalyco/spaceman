@@ -327,6 +327,59 @@ fn app_window(pid: i32, launched_at: u64, window_id: u32) -> crate::PhysicalWind
     }
 }
 
+#[test]
+fn early_open_event_rechecks_until_the_new_window_can_split_its_sibling() {
+    let sibling = app_window(1, 1, 10);
+    let opening = app_window(2, 1, 20);
+    let full = column(0, 2560);
+    let cancelled = AtomicBool::new(false);
+    let mut runtime = runtime(FakeBackend {
+        frames: [(sibling.clone(), full)].into(),
+        observation: Some(apps_observation(&[("com.example.Sibling", &sibling, full)])),
+        frontmost: Some(opening.app.clone()),
+        ..FakeBackend::default()
+    });
+    let start = Instant::now();
+    let until = Some(start + WINDOW_OPENING_SETTLE);
+    let mut now = start;
+    // AX announces creation about 180 ms before CG orders this window in.
+    // No further native event arrives as it becomes observable.
+    while now < start + Duration::from_millis(180) {
+        // Activation can precede AX focus, which itself can precede CG visibility.
+        if now > start {
+            runtime.backend.focused = Some(opening.clone());
+        }
+        let status = runtime.cycle(studio_display(), &cancelled).unwrap();
+        assert_eq!(runtime.workspaces.workspace_of(&opening), None);
+        assert_eq!(runtime.backend.frames[&sibling], full);
+        now = opening_recheck(
+            now,
+            until,
+            Some(&opening.app),
+            status.missing_frontmost_window.as_ref(),
+        )
+        .unwrap();
+    }
+    assert!(now < start + Duration::from_millis(180) + WINDOW_OPENING_RECHECK);
+    runtime.backend.frames.insert(opening.clone(), full);
+    runtime.backend.observation = Some(apps_observation(&[
+        ("com.example.Sibling", &sibling, full),
+        ("com.example.Opening", &opening, full),
+    ]));
+    let status = runtime.cycle(studio_display(), &cancelled).unwrap();
+    assert_eq!(runtime.backend.frames[&sibling].width, 1280);
+    assert_eq!(runtime.backend.frames[&opening].width, 1280);
+    assert!(
+        opening_recheck(
+            now,
+            until,
+            Some(&opening.app),
+            status.missing_frontmost_window.as_ref()
+        )
+        .is_none()
+    );
+}
+
 /// Two apps share a display. The second app disappears from the observation
 /// while Core Graphics still lists its former surface off screen.
 fn ordered_out_pair(

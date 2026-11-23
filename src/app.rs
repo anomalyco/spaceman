@@ -94,6 +94,21 @@ const ACCESSIBILITY_POLL_INTERVAL: Duration = Duration::from_millis(120);
 const RESTORE_RETRY_INTERVAL: Duration = Duration::from_secs(1);
 const APPLICATION_ACTIVATION_SETTLE: Duration = Duration::from_millis(50);
 
+// AX creation and app activation can both precede the first on-screen frame.
+const WINDOW_OPENING_SETTLE: Duration = Duration::from_millis(500);
+const WINDOW_OPENING_RECHECK: Duration = Duration::from_millis(40);
+
+fn opening_recheck(
+    now: Instant,
+    until: Option<Instant>,
+    frontmost: Option<&AppInstanceId>,
+    missing: Option<&AppInstanceId>,
+) -> Option<Instant> {
+    let deadline = until?;
+    let next = now + WINDOW_OPENING_RECHECK;
+    (frontmost? == missing? && next <= deadline).then_some(next)
+}
+
 /// How long since the last refresh a retile without an event waits.
 fn fallback_refresh_interval(since_activity: Duration) -> Duration {
     if since_activity < RECENT_ACTIVITY {

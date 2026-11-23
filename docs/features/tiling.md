@@ -8,6 +8,7 @@ navigate, reorder, nest, resize, and balance them from the keyboard or the point
 ```ts
 Automatic tiling                                        // tile.auto
 ├── New managed window -> joins the last focused tile’s split, or the root without a surviving focus
+│   └── Creation or activation before the first visible frame -> briefly recheck for the foreground window
 ├── Window closes -> its slot retires, siblings reflow
 │   ├── Last app window closes but its surface lingers -> siblings reflow when the app confirms closure
 │   └── App keeps its ordered-out window alive -> slot settles for two seconds
@@ -65,6 +66,7 @@ pause, quit, or hotkey loss.
   cross-display drop; `startup.rs` covers gesture classification and `src/app/input.rs` covers
   queued final gestures.
 - Unit (FakeBackend), `src/app/tests/reconciliation.rs`:
+  `early_open_event_rechecks_until_the_new_window_can_split_its_sibling`,
   `confirmed_last_window_close_reflows_the_sibling_in_the_same_cycle`,
   `uncertain_close_requests_one_early_retry`,
   `recheck_reflows_when_the_ordered_out_surface_disappears`,

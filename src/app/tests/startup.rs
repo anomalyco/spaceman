@@ -86,6 +86,20 @@ fn fallback_retile_backs_off_once_idle() {
 }
 
 #[test]
+fn opening_rechecks_expire_and_ignore_results_from_a_previous_frontmost_app() {
+    let now = Instant::now();
+    let app = window(1).app;
+    let other = AppInstanceId {
+        pid: app.pid,
+        launched_at: app.launched_at + 1,
+    };
+    let until = Some(now + WINDOW_OPENING_SETTLE);
+    assert!(opening_recheck(now, until, Some(&app), Some(&other)).is_none());
+    assert!(opening_recheck(now, None, Some(&app), Some(&app)).is_none());
+    assert!(opening_recheck(now + WINDOW_OPENING_SETTLE, until, Some(&app), Some(&app)).is_none());
+}
+
+#[test]
 fn window_creation_bypasses_activation_settling() {
     assert!(refresh_due(true, true, false, false));
     assert!(!refresh_due(false, true, false, false));
