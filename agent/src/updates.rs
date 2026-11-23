@@ -15,6 +15,20 @@ const CHANNELS: [(&str, UpdateChannel); 2] = [
     ("Dev", UpdateChannel::Dev),
 ];
 
+/// The version this build was released as (the Release workflow's stamp), else Cargo's.
+const VERSION: &str = match option_env!("SPACEMAN_RELEASE_VERSION") {
+    Some(version) => version,
+    None => env!("CARGO_PKG_VERSION"),
+};
+
+/// A channel's name as the picker shows it.
+fn channel_label(channel: &str) -> &str {
+    CHANNELS
+        .iter()
+        .find(|(_, value)| value.as_str() == channel)
+        .map_or(channel, |(label, _)| label)
+}
+
 fn status(ui: &Ui) -> UiUpdateStatus {
     ui.agent
         .as_ref()
@@ -31,12 +45,18 @@ fn describe(status: &UiUpdateStatus) -> String {
         UiUpdateStatus::Ready { version } => {
             format!("Spaceman {version} is ready. Windows are restored before it restarts.")
         }
+        UiUpdateStatus::Switch { channel, version } => format!(
+            "Switching to {} installs Spaceman {version}.",
+            channel_label(channel)
+        ),
+        UiUpdateStatus::Download { version } => format!(
+            "Spaceman {version} is out. This copy can't replace itself, so download it, \
+             or move Spaceman to Applications to update in place."
+        ),
         UiUpdateStatus::Installing => "Installing and restarting…".into(),
         UiUpdateStatus::Failed => "Couldn't check for updates. It tries again soon.".into(),
         UiUpdateStatus::SourceBuild => "Built from source; your checkout updates it.".into(),
-        UiUpdateStatus::Unavailable => {
-            "Updates need Spaceman in a folder you can write to, such as Applications.".into()
-        }
+        UiUpdateStatus::Unavailable => "Updates are off for this copy of Spaceman.".into(),
     }
 }
 
@@ -70,6 +90,8 @@ pub fn sidebar(ui: &Ui, p: Paint) -> El {
         UiUpdateStatus::Checking => "Checking for updates…",
         UiUpdateStatus::UpToDate => "Spaceman is up to date",
         UiUpdateStatus::Downloading => "Downloading update…",
+        UiUpdateStatus::Switch { .. } => "Channel switch ready",
+        UiUpdateStatus::Download { .. } => "Update available",
         UiUpdateStatus::Installing => "Restarting…",
         UiUpdateStatus::Failed => "Update check failed",
         UiUpdateStatus::SourceBuild => "Built from source",
@@ -107,12 +129,30 @@ pub fn sidebar(ui: &Ui, p: Paint) -> El {
 pub fn section(ui: &Ui, p: Paint) -> El {
     let update = status(ui);
     let color = match update {
-        UiUpdateStatus::Ready { .. } => p.accent(),
+        UiUpdateStatus::Ready { .. }
+        | UiUpdateStatus::Switch { .. }
+        | UiUpdateStatus::Download { .. } => p.accent(),
         UiUpdateStatus::Failed => p.k.c.warning.fg,
         _ => p.muted(),
     };
     let control = if update.ready_version().is_some() {
         install_button(p, "install", ButtonKind::Primary)
+    } else if let UiUpdateStatus::Switch { channel, .. } = &update {
+        controls::button(
+            p,
+            "switch",
+            &format!("Switch to {}", channel_label(channel)),
+            ButtonKind::Primary,
+            |ui: &mut Ui, _: &mut Tx| ui.confirm_update_switch(),
+        )
+    } else if matches!(update, UiUpdateStatus::Download { .. }) {
+        controls::button(
+            p,
+            "download",
+            "Download",
+            ButtonKind::Primary,
+            |ui: &mut Ui, _: &mut Tx| ui.download_update(),
+        )
     } else if update.can_check() {
         controls::button(
             p,
@@ -127,7 +167,7 @@ pub fn section(ui: &Ui, p: Paint) -> El {
     let version = controls::setting_row(
         p,
         "version",
-        &format!("Spaceman {}", env!("CARGO_PKG_VERSION")),
+        &format!("Spaceman {VERSION}"),
         Some((describe(&update), color)),
         control,
     );

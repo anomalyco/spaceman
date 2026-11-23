@@ -195,3 +195,165 @@ fn downloads_only_come_from_the_release_services_spaceman_files() {
         assert_eq!(allowed(refused), None, "{refused}");
     }
 }
+
+#[test]
+fn a_stamped_build_names_its_own_channel_and_version() {
+    // A fresh dev zip, before any receipt: its stamp, not Cargo's 0.3.2.
+    let dev = stamp::identity(Some("dev"), Some("0.0.0-dev-12"), None, "0.3.2");
+    assert_eq!(dev.channel.as_deref(), Some("dev"));
+    assert_eq!(dev.version, "0.0.0-dev-12");
+    assert_eq!(
+        transport::user_agent(dev.channel.as_deref().unwrap_or("stable"), &dev.version),
+        "spaceman/dev/0.0.0-dev-12"
+    );
+    let stable = stamp::identity(Some("stable"), Some("0.3.3"), None, "0.3.3");
+    assert_eq!(stable.channel.as_deref(), Some("stable"));
+    // Builds from before the stamp: the receipt's version, and dev for a dev one.
+    let legacy = stamp::identity(None, None, Some("0.0.0-dev-9"), "0.3.2");
+    assert_eq!(legacy.channel.as_deref(), Some("dev"));
+    assert_eq!(legacy.version, "0.0.0-dev-9");
+    let unknown = stamp::identity(None, None, None, "0.3.2");
+    assert_eq!(unknown.channel, None);
+    assert_eq!(unknown.version, "0.3.2");
+    // An unusable stamp is ignored.
+    let odd = stamp::identity(Some("nightly"), Some("../x"), None, "0.3.2");
+    assert_eq!(odd.channel, None);
+    assert_eq!(odd.version, "0.3.2");
+}
+
+#[test]
+fn another_channel_waits_for_the_user_to_switch() {
+    let files = format!("/release/spaceman/files/{}/Spaceman.zip", "c".repeat(64));
+    let stable = manifest("stable", "0.3.3", &files);
+    let mut dev_build = install("0.0.0-dev-12", None);
+    dev_build.channel = Some("dev".into());
+    let decision = protocol::decide(APP, ARTIFACT, "stable", &stable, &dev_build);
+    assert!(matches!(
+        decision,
+        Decision::Install {
+            reason: Reason::Switch,
+            ..
+        }
+    ));
+    let sha = "c".repeat(64);
+    assert_eq!(
+        plan(decision.clone(), Method::Direct, None, None),
+        Plan::Switch {
+            version: "0.3.3".into(),
+            sha256: sha.clone()
+        }
+    );
+    // Once confirmed it stages, and a staged switch stays staged.
+    assert!(matches!(
+        plan(decision.clone(), Method::Direct, Some(&sha), None),
+        Plan::Stage { .. }
+    ));
+    assert_eq!(
+        plan(decision.clone(), Method::Direct, None, Some(&sha)),
+        Plan::Staged
+    );
+    // The same channel never asks.
+    let dev = manifest("dev", "0.0.0-dev-13", &files);
+    assert!(matches!(
+        plan(
+            protocol::decide(APP, ARTIFACT, "dev", &dev, &dev_build),
+            Method::Direct,
+            None,
+            None
+        ),
+        Plan::Stage { .. }
+    ));
+
+    let updater = Updater::with_phase(Phase::Available(Available::Switch {
+        channel: "stable".into(),
+        version: "0.3.3".into(),
+        sha256: sha.clone(),
+    }));
+    assert_eq!(
+        updater.status(),
+        UiUpdateStatus::Switch {
+            channel: "stable".into(),
+            version: "0.3.3".into()
+        }
+    );
+    updater.confirm_switch();
+    let core = updater.shared.lock();
+    assert_eq!(core.confirmed_switch.as_deref(), Some(sha.as_str()));
+    assert!(core.check_requested);
+    assert_eq!(core.phase, Phase::Checking);
+}
+
+#[test]
+fn a_copy_that_cant_replace_itself_offers_the_download() {
+    let files = format!("/release/spaceman/files/{}/Spaceman.zip", "c".repeat(64));
+    let stable = manifest("stable", "0.3.3", &files);
+    let decision = protocol::decide(APP, ARTIFACT, "stable", &stable, &install("0.3.2", None));
+    let Plan::Download { version, target } = plan(decision, Method::DownloadOnly, None, None)
+    else {
+        panic!("a read-only copy must not stage");
+    };
+    assert_eq!(version, "0.3.3");
+    let manifest_url = format!("{ORIGIN}/{APP}/{ARTIFACT}/stable.json");
+    assert_eq!(
+        files_url(&manifest_url, &target).unwrap(),
+        format!("{FILES}{}/Spaceman.zip", "c".repeat(64))
+    );
+    // A switch needs no confirmation there: nothing installs either way.
+    let mut dev_build = install("0.0.0-dev-12", None);
+    dev_build.channel = Some("dev".into());
+    let decision = protocol::decide(APP, ARTIFACT, "stable", &stable, &dev_build);
+    assert!(matches!(
+        plan(decision, Method::DownloadOnly, None, None),
+        Plan::Download { .. }
+    ));
+    let updater = Updater::with_phase(Phase::Available(Available::Download {
+        version: "0.3.3".into(),
+        url: format!("{FILES}x/Spaceman.zip"),
+    }));
+    assert_eq!(
+        updater.status(),
+        UiUpdateStatus::Download {
+            version: "0.3.3".into()
+        }
+    );
+    assert!(!updater.ready());
+    assert!(updater.install_on_quit().is_none());
+    assert!(Updater::with_phase(Phase::Idle).open_download().is_err());
+}
+
+#[test]
+fn quitting_installs_a_ready_update_for_the_next_launch() {
+    // Nothing staged: a quit installs nothing and touches nothing.
+    let updater = Updater::with_phase(Phase::Idle);
+    assert!(updater.install_on_quit().is_none());
+    assert_eq!(updater.status(), UiUpdateStatus::Idle);
+
+    let updates = temporary("quit");
+    let updater = Updater::with_phase(Phase::Checking);
+    assert_eq!(updater.shared.lock().adopt(staged("0.3.3", 'a')), None);
+    let mut installed = Vec::new();
+    let version = updater
+        .apply(Ok(updates.clone()), |staged| {
+            installed.push(staged.update.clone());
+            Ok(())
+        })
+        .unwrap();
+    assert_eq!(version, "0.3.3");
+    assert_eq!(installed.len(), 1);
+    // The receipt names it once it runs, and no later check can stage another.
+    let receipt = receipt_for(&updates, &"e".repeat(64)).unwrap();
+    assert_eq!(receipt.version, "0.3.3");
+    assert_eq!(updater.status(), UiUpdateStatus::Installing);
+    assert!(updater.install_on_quit().is_none());
+    assert!(updater.shared.lock().adopt(staged("0.3.4", 'b')).is_some());
+
+    // A swap that fails leaves Spaceman as it was, and the quit goes on.
+    let updater = Updater::with_phase(Phase::Idle);
+    assert_eq!(updater.shared.lock().adopt(staged("0.3.3", 'a')), None);
+    let error = updater
+        .apply(Ok(updates.clone()), |_| Err("read-only".into()))
+        .unwrap_err();
+    assert_eq!(error, "read-only");
+    assert_eq!(updater.status(), UiUpdateStatus::Failed);
+    drop(std::fs::remove_dir_all(updates));
+}

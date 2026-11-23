@@ -72,12 +72,24 @@ against `app/update-requirement.txt` (Anomaly's Developer ID, notarized) and `Te
 `Install & Restart` (Settings sidebar, `General > Updates`, or the menu) then runs the same exit as
 quit: tiling stops and every parked window is restored, and only once restoration fully succeeds
 does Spaceman check the signature again, swap the bundles in one `renamex_np(RENAME_SWAP)` and open
-the new one after it exits. The next launch removes the old bundle.
+the new one after it exits. Quitting (or restarting, or a macOS logout) with an update ready installs
+it the same way after the restore, without relaunching; the next launch runs it. The next launch
+removes the old bundle.
 
-Versions are never compared. A build this updater installed is identified by
-`updates/installed.json` (the release's SHA-256, tied to the running `spaceman-agent`'s hash); any
-other build by `CARGO_PKG_VERSION`. So a stable install is current when its version matches the
-manifest, and a first dev-channel check always installs the current dev build once.
+Manifest polls send the last response's ETag as `If-None-Match`, so an unchanged channel costs a
+`304 Not Modified`. An interrupted download keeps its `.partial` file and continues with
+`Range: bytes=<have>-` (a `200` starts it over). A copy Spaceman can't replace (a read-only folder or
+an App Translocation copy) still checks, and offers the release's zip (`Download`) instead of
+staging it.
+
+Versions are never compared. Each Release workflow build is stamped with the channel and version it
+publishes (`SPACEMAN_RELEASE_CHANNEL` and `SPACEMAN_RELEASE_VERSION`, passed through
+`scripts/build-app.sh` and compiled in; the bundle's `Info.plist` keeps Cargo's version). A build
+this updater installed is identified by `updates/installed.json` (the release's SHA-256, tied to the
+running `spaceman-agent`'s hash); any other by its stamped version, else the receipt's, else
+`CARGO_PKG_VERSION`. When `update_channel` names a channel other than the build's own, the release is
+offered as a switch (`Switch to Dev` or `Switch to Stable`) and downloads only once chosen. Builds
+from before the stamp count as dev when their version is a dev one, and otherwise never ask.
 
 ### 3. The legacy Sparkle appcast
 

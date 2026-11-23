@@ -94,8 +94,11 @@ Pausing, quitting, and external macOS termination requests restore parked window
 Restoration retries are visible in the menu status. Installing an update uses the same restoration
 gate: Spaceman swaps in the new bundle and relaunches only after every parked window is restored and
 its recovery metadata is durably removed. If the install then fails, Spaceman keeps running and
-resumes tiling. `Settings > General > Updates` shows the running version and the updater's state,
+resumes tiling. Quitting with an update ready installs it the same way, after the restore, for the
+next launch. `Settings > General > Updates` shows the running version and the updater's state,
 and picks the release channel (`Stable` or `Dev`, `[settings] update_channel`, default `Stable`).
+Picking a channel other than the running build's offers `Switch to Dev` (or `Switch to Stable`),
+and a copy Spaceman can't replace offers `Download`.
 
 ## CLI
 

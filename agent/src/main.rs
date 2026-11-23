@@ -149,6 +149,16 @@ impl Ui {
         self.send_action(UiAction::InstallUpdate);
     }
 
+    /// Switches to the update channel's release on offer.
+    pub fn confirm_update_switch(&self) {
+        self.send_action(UiAction::ConfirmUpdateSwitch);
+    }
+
+    /// Opens the release's download, for a copy that can't update itself.
+    pub fn download_update(&self) {
+        self.send_action(UiAction::DownloadUpdate);
+    }
+
     /// Saves the channel, then checks it at once.
     pub fn set_update_channel(&mut self, channel: spaceman::config::UpdateChannel) {
         self.edit(|doc| doc.set_update_channel(channel));

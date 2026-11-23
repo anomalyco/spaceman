@@ -4,8 +4,9 @@
 //! requirement (`app/update-requirement.txt`) and carry team `5NZ4Q7NXJ4`.
 //! After Spaceman has restored every parked window, the two bundles swap in one
 //! step (`renamex_np` with `RENAME_SWAP`) and the new one opens once this process
-//! exits. The old bundle waits in the staging folder until the next launch
-//! removes it. A read-only or translocated location never updates.
+//! exits (or, at a quit, at the next launch). The old bundle waits in the
+//! staging folder until the next launch removes it. A read-only or translocated
+//! location never stages an update; it is offered as a download instead.
 
 use std::ffi::CString;
 use std::fs;
@@ -149,11 +150,15 @@ fn verify_bundle(bundle: &Path, requirement: &str, team: Option<&str>) -> Result
     Ok(())
 }
 
-/// Checks the staged bundle once more, swaps it in, and opens it once this
-/// process has exited. Called only after every parked window is restored.
-pub(super) fn install(staged: &Staged) -> Result<(), String> {
+/// Checks the staged bundle once more and swaps it in; with `relaunch`, opens
+/// it once this process has exited, else it starts at the next launch (a
+/// quit). Called only after every parked window is restored.
+pub(super) fn install(staged: &Staged, relaunch: bool) -> Result<(), String> {
     verify_bundle(&staged.update, REQUIREMENT, Some(TEAM_ID))?;
     swap(staged)?;
+    if !relaunch {
+        return Ok(());
+    }
     Command::new("/bin/sh")
         .args([
             "-c",

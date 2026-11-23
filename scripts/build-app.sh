@@ -3,6 +3,9 @@
 # (SPACEMAN_CODESIGN_IDENTITY, or the first one in the keychain).
 # SPACEMAN_RELEASE_UNSIGNED=1 skips signing: the Release workflow's build job
 # makes the bundle that way and its sign job signs it (.github/release/).
+# With it, SPACEMAN_RELEASE_CHANNEL (stable or dev) and SPACEMAN_RELEASE_VERSION
+# stamp the channel and version the workflow publishes this build as
+# (src/updater/stamp.rs); set both or neither.
 set -eu
 
 root=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
@@ -52,12 +55,37 @@ if [ -z "$unsigned" ]; then
   esac
 fi
 
+release_channel=${SPACEMAN_RELEASE_CHANNEL:-}
+release_version=${SPACEMAN_RELEASE_VERSION:-}
+case "$release_channel" in
+  ''|stable|dev) ;;
+  *)
+    echo "SPACEMAN_RELEASE_CHANNEL must be stable, dev or unset, not '$release_channel'." >&2
+    exit 1
+    ;;
+esac
+case "$release_version" in
+  '') ;;
+  .*|*[!A-Za-z0-9.+_-]*)
+    echo "SPACEMAN_RELEASE_VERSION must be a version name, not '$release_version'." >&2
+    exit 1
+    ;;
+esac
+if { [ -n "$release_channel" ] && [ -z "$release_version" ]; } ||
+  { [ -z "$release_channel" ] && [ -n "$release_version" ]; }; then
+  echo "Set both SPACEMAN_RELEASE_CHANNEL and SPACEMAN_RELEASE_VERSION, or neither." >&2
+  exit 1
+fi
+
 # Only the Release workflow builds unsigned, and only its builds update themselves from
 # anoma.ly/release (src/updater.rs); every other build is a source build that never checks.
 if [ -n "$unsigned" ]; then
   export SPACEMAN_RELEASE_BUILD=1
+  if [ -n "$release_channel" ]; then
+    export SPACEMAN_RELEASE_CHANNEL="$release_channel" SPACEMAN_RELEASE_VERSION="$release_version"
+  fi
 else
-  unset SPACEMAN_RELEASE_BUILD
+  unset SPACEMAN_RELEASE_BUILD SPACEMAN_RELEASE_CHANNEL SPACEMAN_RELEASE_VERSION
 fi
 CARGO_TARGET_DIR="$root/target" \
   "$cargo_bin" build --manifest-path "$root/Cargo.toml" --release --locked --workspace --bins

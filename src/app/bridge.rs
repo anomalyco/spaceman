@@ -23,6 +23,10 @@ pub enum UiAction {
     CheckForUpdates,
     /// Restore every window, then install the staged update and relaunch.
     InstallUpdate,
+    /// Switch to the update channel's release on offer.
+    ConfirmUpdateSwitch,
+    /// Open the release's download, for a copy that can't update itself.
+    DownloadUpdate,
     ToggleLaunchAtLogin,
     SetHud(bool),
     SwitchWorkspace(WorkspaceId),
@@ -39,6 +43,8 @@ impl From<UiAction> for Action {
             UiAction::OpenAccessibility => Self::OpenAccessibility,
             UiAction::CheckForUpdates => Self::CheckForUpdates,
             UiAction::InstallUpdate => Self::InstallUpdate,
+            UiAction::ConfirmUpdateSwitch => Self::ConfirmUpdateSwitch,
+            UiAction::DownloadUpdate => Self::DownloadUpdate,
             UiAction::ToggleLaunchAtLogin => Self::ToggleLaunchAtLogin,
             UiAction::SetHud(enabled) => Self::SetHud(enabled),
             UiAction::SwitchWorkspace(workspace) => {
@@ -157,7 +163,7 @@ impl UiLaunchAtLogin {
 /// What the in-app updater is doing (`crate::updater`).
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
 pub enum UiUpdateStatus {
-    /// Updates are off: turned off, or an install Spaceman can't replace.
+    /// Updates are off for this copy: turned off, or not in a `Spaceman.app`.
     #[default]
     Unavailable,
     /// A build from source, which its checkout updates.
@@ -168,6 +174,17 @@ pub enum UiUpdateStatus {
     Downloading,
     /// A verified update waits for Install & Restart.
     Ready {
+        version: String,
+    },
+    /// The update channel setting names another channel, whose release waits
+    /// for the user to switch to it.
+    Switch {
+        channel: String,
+        version: String,
+    },
+    /// A release this copy can't install itself (a read-only or translocated
+    /// location); the user downloads it.
+    Download {
         version: String,
     },
     /// Windows are restored and the update is swapped in; Spaceman relaunches.
@@ -185,6 +202,8 @@ impl UiUpdateStatus {
             Self::UpToDate => "up-to-date",
             Self::Downloading => "downloading",
             Self::Ready { .. } => "ready",
+            Self::Switch { .. } => "switch-available",
+            Self::Download { .. } => "download-available",
             Self::Installing => "installing",
             Self::Failed => "failed",
         }
@@ -204,7 +223,12 @@ impl UiUpdateStatus {
     pub const fn can_check(&self) -> bool {
         matches!(
             self,
-            Self::Idle | Self::UpToDate | Self::Failed | Self::Ready { .. }
+            Self::Idle
+                | Self::UpToDate
+                | Self::Failed
+                | Self::Ready { .. }
+                | Self::Switch { .. }
+                | Self::Download { .. }
         )
     }
 }

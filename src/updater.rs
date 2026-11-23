@@ -7,17 +7,26 @@
 //! unpacks it beside the installed bundle and checks its code signature
 //! (`bundle`). The update then waits for Install & Restart, which restores every
 //! parked window first (`ExitIntent::Update`) and only then swaps the bundles.
+//! Quitting with an update ready installs it the same way, after the restore,
+//! for the next launch. Manifest polls revalidate with `If-None-Match`, and an
+//! interrupted download resumes (`transport`).
 //!
 //! Versions are display text and never compared: a build installed by this
 //! updater is known by its target's SHA-256 (`installed.json`, tied to the
-//! running executable's hash), any other by its exact version. Manifests are
-//! not signed: HTTPS, the manifest's SHA-256 and the Developer ID signature are
-//! the integrity checks. Builds from source (no `SPACEMAN_RELEASE_BUILD` stamp,
-//! which only the Release workflow's build sets) never check.
+//! running executable's hash), any other by its exact version. Each build
+//! knows the channel and version it was published as (`stamp`); a channel
+//! setting other than the build's own offers a switch the user confirms.
+//! A copy Spaceman can't replace (a read-only or translocated location) still
+//! checks, and offers the release's download instead of installing it.
+//! Manifests are not signed: HTTPS, the manifest's SHA-256 and the Developer ID
+//! signature are the integrity checks. Builds from source (no
+//! `SPACEMAN_RELEASE_BUILD` stamp, which only the Release workflow's build sets)
+//! never check.
 
 #[allow(unsafe_code)]
 mod bundle;
 mod protocol;
+mod stamp;
 mod transport;
 
 use std::path::{Path, PathBuf};
@@ -29,7 +38,7 @@ use std::time::Duration;
 
 use crate::app::UiUpdateStatus;
 use crate::config::{Config, UpdateChannel};
-use protocol::{Decision, Install};
+use protocol::{Decision, Install, Reason, Target};
 
 const APP: &str = "spaceman";
 const ARTIFACT: &str = "desktop";
@@ -43,7 +52,28 @@ const DEV_CHECK_INTERVAL: Duration = Duration::from_secs(15 * 60);
 const RETRY_INTERVAL: Duration = Duration::from_secs(5 * 60);
 const RECEIPT: &str = "installed.json";
 const BUCKET: &str = "bucket";
-const VERSION: &str = env!("CARGO_PKG_VERSION");
+
+/// How this install takes updates.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum Method {
+    /// A `Spaceman.app` this user can replace: updates stage and install.
+    Direct,
+    /// A read-only or translocated copy: updates are offered as a download.
+    DownloadOnly,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+enum Available {
+    /// The channel setting names another channel, whose release waits for
+    /// the user to confirm the switch.
+    Switch {
+        channel: String,
+        version: String,
+        sha256: String,
+    },
+    /// A release this copy can't install itself; `url` is its zip.
+    Download { version: String, url: String },
+}
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 enum Phase {
@@ -52,6 +82,7 @@ enum Phase {
     Checking,
     UpToDate,
     Downloading,
+    Available(Available),
     Failed,
     /// Swapped in; the process is about to exit, so nothing may change it.
     Installed,
@@ -70,6 +101,9 @@ struct StagedUpdate {
 struct Core {
     phase: Phase,
     staged: Option<StagedUpdate>,
+    /// The SHA-256 of the other channel's release the user agreed to switch
+    /// to; the next check takes it.
+    confirmed_switch: Option<String>,
     check_requested: bool,
     stop: bool,
 }
@@ -79,6 +113,20 @@ impl Core {
         match (&self.phase, &self.staged) {
             (Phase::Disabled(status), _) => status.clone(),
             (Phase::Installed, _) => UiUpdateStatus::Installing,
+            (
+                Phase::Available(Available::Switch {
+                    channel, version, ..
+                }),
+                _,
+            ) => UiUpdateStatus::Switch {
+                channel: channel.clone(),
+                version: version.clone(),
+            },
+            (Phase::Available(Available::Download { version, .. }), _) => {
+                UiUpdateStatus::Download {
+                    version: version.clone(),
+                }
+            }
             (_, Some(update)) => UiUpdateStatus::Ready {
                 version: update.version.clone(),
             },
@@ -135,13 +183,14 @@ pub(crate) struct Updater {
 }
 
 impl Updater {
-    /// Starts the worker, unless this build or install can't update itself.
+    /// Starts the worker, unless this build can't update at all. A copy it
+    /// can't replace still checks, to offer the download.
     pub(crate) fn start() -> Self {
         let installed = bundle::installed_bundle();
         let disabled = if option_env!("SPACEMAN_RELEASE_BUILD") != Some("1") {
             Some(UiUpdateStatus::SourceBuild)
         } else if std::env::var_os("SPACEMAN_DISABLE_UPDATES").is_some_and(|value| value == "1")
-            || !installed.as_deref().is_some_and(bundle::replaceable)
+            || installed.is_none()
         {
             Some(UiUpdateStatus::Unavailable)
         } else {
@@ -149,10 +198,15 @@ impl Updater {
         };
         let updater = Self::with_phase(disabled.clone().map_or(Phase::Idle, Phase::Disabled));
         if let (None, Some(installed)) = (disabled, installed) {
+            let method = if bundle::replaceable(&installed) {
+                Method::Direct
+            } else {
+                Method::DownloadOnly
+            };
             let shared = Arc::clone(&updater.shared);
             if let Err(error) = std::thread::Builder::new()
                 .name("updater".into())
-                .spawn(move || run(&shared, &installed))
+                .spawn(move || run(&shared, &installed, method))
             {
                 log(&format!("couldn't start: {error}"));
                 updater.shared.set_phase(Phase::Failed);
@@ -167,6 +221,7 @@ impl Updater {
                 core: Mutex::new(Core {
                     phase,
                     staged: None,
+                    confirmed_switch: None,
                     check_requested: false,
                     stop: false,
                 }),
@@ -197,7 +252,10 @@ impl Updater {
         if !core.live() {
             return;
         }
-        if matches!(core.phase, Phase::Idle | Phase::UpToDate | Phase::Failed) {
+        if matches!(
+            core.phase,
+            Phase::Idle | Phase::UpToDate | Phase::Failed | Phase::Available(_)
+        ) {
             core.phase = Phase::Checking;
         }
         core.check_requested = true;
@@ -206,17 +264,62 @@ impl Updater {
         self.shared.signal.notify_all();
     }
 
+    /// The user agreed to switch to the other channel's release on offer:
+    /// the next check, which starts now, downloads and stages it.
+    pub(crate) fn confirm_switch(&self) {
+        let mut core = self.shared.lock();
+        let Phase::Available(Available::Switch { sha256, .. }) = &core.phase else {
+            return;
+        };
+        core.confirmed_switch = Some(sha256.clone());
+        core.phase = Phase::Checking;
+        core.check_requested = true;
+        drop(core);
+        self.shared.changed();
+        self.shared.signal.notify_all();
+    }
+
+    /// Opens the release's zip, for a copy Spaceman can't replace itself.
+    pub(crate) fn open_download(&self) -> Result<(), String> {
+        let Phase::Available(Available::Download { url, .. }) = &self.shared.lock().phase else {
+            return Err("no download is on offer".into());
+        };
+        let url = url.clone();
+        std::process::Command::new("/usr/bin/open")
+            .arg(&url)
+            .stdin(std::process::Stdio::null())
+            .spawn()
+            .map(drop)
+            .map_err(|error| format!("couldn't open the download: {error}"))
+    }
+
     /// Swaps in the staged update and schedules its launch for when this
     /// process exits. Call only once every parked window has been restored.
     pub(crate) fn install(&self) -> Result<String, String> {
+        self.apply(updates_dir(), |staged| bundle::install(staged, true))
+    }
+
+    /// Quitting with an update ready installs it for the next launch, as
+    /// Install & Restart does but without relaunching. Call only once every
+    /// parked window has been restored. `None` when no update was ready.
+    pub(crate) fn install_on_quit(&self) -> Option<Result<String, String>> {
+        self.ready()
+            .then(|| self.apply(updates_dir(), |staged| bundle::install(staged, false)))
+    }
+
+    fn apply(
+        &self,
+        updates: Result<PathBuf, String>,
+        install: impl FnOnce(&bundle::Staged) -> Result<(), String>,
+    ) -> Result<String, String> {
         let mut core = self.shared.lock();
         if !core.live() {
             return Err("no update is ready".into());
         }
         let update = core.staged.take().ok_or("no update is ready")?;
-        let result = updates_dir()
+        let result = updates
             .and_then(|updates| write_receipt(&updates, &update))
-            .and_then(|()| bundle::install(&update.staged));
+            .and_then(|()| install(&update.staged));
         match &result {
             Ok(()) => {
                 core.phase = Phase::Installed;
@@ -278,12 +381,15 @@ fn channel() -> UpdateChannel {
     Config::load().map_or(UpdateChannel::Stable, |config| config.update_channel())
 }
 
-fn run(shared: &Shared, installed: &Path) {
+fn run(shared: &Shared, installed: &Path, method: Method) {
     // The bundle an update replaced, and any update never installed.
-    bundle::remove_beside(installed, None);
+    if method == Method::Direct {
+        bundle::remove_beside(installed, None);
+    }
     if wait(shared, STARTUP_DELAY) {
         return;
     }
+    let mut cache = transport::ManifestCache::default();
     let mut failures = 0;
     loop {
         shared.set_phase(Phase::Checking);
@@ -292,7 +398,7 @@ fn run(shared: &Shared, installed: &Path) {
             UpdateChannel::Stable => CHECK_INTERVAL,
             UpdateChannel::Dev => DEV_CHECK_INTERVAL,
         };
-        let delay = match check(shared, installed, channel) {
+        let delay = match check(shared, installed, method, &mut cache, channel) {
             Ok(phase) => {
                 failures = 0;
                 shared.set_phase(phase);
@@ -311,50 +417,122 @@ fn run(shared: &Shared, installed: &Path) {
     }
 }
 
-fn check(shared: &Shared, installed: &Path, channel: UpdateChannel) -> Result<Phase, String> {
+/// What a check does with the protocol's decision.
+#[derive(Debug, Eq, PartialEq)]
+enum Plan {
+    Reject(&'static str),
+    /// The channel's release runs (or was switched back to): nothing to stage.
+    Current,
+    /// The staged update is still the channel's release.
+    Staged,
+    /// Another channel's release waits for the user to confirm the switch.
+    Switch {
+        version: String,
+        sha256: String,
+    },
+    /// This copy can't replace itself: offer the release's download.
+    Download {
+        version: String,
+        target: Target,
+    },
+    /// Download, verify and stage the release.
+    Stage {
+        version: String,
+        target: Target,
+    },
+}
+
+/// `confirmed` is the switch the user agreed to; `staged` the SHA-256 of the
+/// update waiting for Install & Restart.
+fn plan(decision: Decision, method: Method, confirmed: Option<&str>, staged: Option<&str>) -> Plan {
+    match decision {
+        Decision::Reject { reason } => Plan::Reject(reason),
+        Decision::None { .. } | Decision::Notify { .. } => Plan::Current,
+        Decision::Install {
+            version, target, ..
+        } if method == Method::DownloadOnly => Plan::Download { version, target },
+        Decision::Install { target, .. } if staged == Some(target.sha256.as_str()) => Plan::Staged,
+        Decision::Install {
+            reason: Reason::Switch,
+            version,
+            target,
+        } if confirmed != Some(target.sha256.as_str()) => Plan::Switch {
+            version,
+            sha256: target.sha256,
+        },
+        Decision::Install {
+            version, target, ..
+        } => Plan::Stage { version, target },
+    }
+}
+
+/// Where `target` downloads from, which must be the release service's own files.
+fn files_url(manifest_url: &str, target: &Target) -> Result<String, String> {
+    protocol::resolve_url(manifest_url, &target.url)
+        .filter(|url| url.starts_with(FILES))
+        .ok_or_else(|| format!("the update URL {} is not the release service's", target.url))
+}
+
+fn discard_staged(shared: &Shared) {
+    let discarded = shared.lock().staged.take();
+    if let Some(update) = discarded {
+        bundle::discard(&update.staged);
+    }
+}
+
+fn check(
+    shared: &Shared,
+    installed: &Path,
+    method: Method,
+    cache: &mut transport::ManifestCache,
+    channel: UpdateChannel,
+) -> Result<Phase, String> {
     let updates = updates_dir()?;
     let receipt = running_receipt(&updates);
-    let version = receipt
-        .as_ref()
-        .map_or(VERSION, |receipt| receipt.version.as_str());
+    let identity = stamp::running(receipt.as_ref().map(|receipt| receipt.version.as_str()));
     let manifest_url = format!("{ORIGIN}/{APP}/{ARTIFACT}/{}.json", channel.as_str());
-    let user_agent = transport::user_agent(channel.as_str(), version);
-    let manifest = transport::fetch_manifest(&manifest_url, &user_agent)?;
+    let user_agent = transport::user_agent(
+        identity.channel.as_deref().unwrap_or(channel.as_str()),
+        &identity.version,
+    );
+    let manifest = cache.fetch(&manifest_url, &user_agent)?;
     let install = Install {
-        version: version.into(),
+        version: identity.version,
         target: TARGET.into(),
         distribution: "direct".into(),
         rollout_bucket: rollout_bucket(&updates)?,
         sha256: receipt.map(|receipt| receipt.sha256),
-        channel: None,
+        channel: identity.channel,
     };
-    match protocol::decide(APP, ARTIFACT, channel.as_str(), &manifest, &install) {
-        Decision::Reject { reason } => Err(format!("the update manifest was rejected: {reason}")),
-        Decision::None { .. } | Decision::Notify { .. } => {
-            // The channel's release is running (or was switched back to).
-            let discarded = shared.lock().staged.take();
-            if let Some(update) = discarded {
-                bundle::discard(&update.staged);
-            }
+    let decision = protocol::decide(APP, ARTIFACT, channel.as_str(), &manifest, &install);
+    let (confirmed, staged) = {
+        let mut core = shared.lock();
+        let staged = core.staged.as_ref().map(|staged| staged.sha256.clone());
+        (core.confirmed_switch.take(), staged)
+    };
+    match plan(decision, method, confirmed.as_deref(), staged.as_deref()) {
+        Plan::Reject(reason) => Err(format!("the update manifest was rejected: {reason}")),
+        Plan::Current => {
+            discard_staged(shared);
             transport::prune(&updates, None);
             Ok(Phase::UpToDate)
         }
-        Decision::Install {
-            version, target, ..
-        } => {
-            if shared
-                .lock()
-                .staged
-                .as_ref()
-                .is_some_and(|staged| staged.sha256 == target.sha256)
-            {
-                return Ok(Phase::Idle);
-            }
-            let url = protocol::resolve_url(&manifest_url, &target.url)
-                .filter(|url| url.starts_with(FILES))
-                .ok_or_else(|| {
-                    format!("the update URL {} is not the release service's", target.url)
-                })?;
+        Plan::Staged => Ok(Phase::Idle),
+        Plan::Switch { version, sha256 } => {
+            // The staged update is the old channel's; the switch replaces it.
+            discard_staged(shared);
+            Ok(Phase::Available(Available::Switch {
+                channel: channel.as_str().into(),
+                version,
+                sha256,
+            }))
+        }
+        Plan::Download { version, target } => Ok(Phase::Available(Available::Download {
+            url: files_url(&manifest_url, &target)?,
+            version,
+        })),
+        Plan::Stage { version, target } => {
+            let url = files_url(&manifest_url, &target)?;
             shared.set_phase(Phase::Downloading);
             transport::prune(&updates, Some(&target.sha256));
             let file = transport::download(&url, &user_agent, &target, &updates)?;

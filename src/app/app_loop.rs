@@ -328,13 +328,17 @@ impl MainThreadAgent {
                         Err(error) => self.update_failed(&error),
                     }
                 }
+                // Every parked window is back: a ready update may now be
+                // swapped in for the next launch.
                 WorkerResult::Restored { failed: 0 }
                     if self.exit_intent == Some(ExitIntent::Terminate) =>
                 {
+                    self.install_update_on_quit();
                     self.worker.stop();
                     return TickOutcome::TerminateAppKit;
                 }
                 WorkerResult::Restored { failed: 0 } if self.exit_intent.is_some() => {
+                    self.install_update_on_quit();
                     self.worker.stop();
                     termination::allow_next();
                     return TickOutcome::Quit;
@@ -420,6 +424,16 @@ impl MainThreadAgent {
         self.last_error = Some("Exit blocked because window restoration is unavailable".into());
         self.ui_dirty = true;
         status_item::set_status("Exit blocked · restoration unavailable");
+    }
+
+    /// Quitting with an update ready installs it for the next launch. Called
+    /// only once every parked window is restored; a failure never holds the quit.
+    fn install_update_on_quit(&self) {
+        match self.updater.install_on_quit() {
+            Some(Ok(version)) => log_event!("update {version} installed; it starts next launch"),
+            Some(Err(error)) => log_event!("update install at quit failed: {error}"),
+            None => {}
+        }
     }
 
     /// The update couldn't be installed after windows were restored: stay

@@ -134,6 +134,15 @@ impl MainThreadAgent {
                 Action::InstallUpdate if !self.updater.ready() => {
                     status_item::set_status("No update is ready to install");
                 }
+                Action::ConfirmUpdateSwitch => {
+                    self.updater.confirm_switch();
+                    self.ui_dirty = true;
+                }
+                Action::DownloadUpdate => {
+                    if let Err(error) = self.updater.open_download() {
+                        status_item::set_status(&format!("Could not open the update: {error}"));
+                    }
+                }
                 Action::ToggleLaunchAtLogin => {
                     let result = login_item::toggle();
                     self.launch_at_login = UiLaunchAtLogin::from_result(result.clone());

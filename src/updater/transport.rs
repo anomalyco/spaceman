@@ -1,7 +1,9 @@
 //! HTTPS to the release service through the system's TLS (Security.framework)
-//! and trusted roots, with no redirects. Requests carry nothing about the
-//! install beyond `User-Agent: spaceman/<channel>/<version>`. A download is
-//! checked against the manifest's size and SHA-256 before any byte is used.
+//! and trusted roots, with no redirects: the polled manifest, revalidated with
+//! `If-None-Match`, and resumable downloads into a `.partial` file that a later
+//! attempt continues with `Range`. Requests carry nothing about the install
+//! beyond `User-Agent: spaceman/<channel>/<version>`. A download is checked
+//! against the manifest's size and SHA-256 before any byte is used.
 
 use std::fs::{self, File, OpenOptions};
 use std::io::{Read, Write};
@@ -17,6 +19,9 @@ use super::protocol::Target;
 const MAX_MANIFEST_BYTES: u64 = 256 * 1024;
 const MANIFEST_TIMEOUT: Duration = Duration::from_secs(60);
 const DOWNLOAD_TIMEOUT: Duration = Duration::from_secs(15 * 60);
+/// Requests one download makes before the check fails; each resumes where the
+/// last one stopped, and the next check resumes again.
+const DOWNLOAD_ATTEMPTS: u32 = 3;
 
 /// What every request names itself to the release service.
 pub(super) fn user_agent(channel: &str, version: &str) -> String {
@@ -41,36 +46,111 @@ fn agent(timeout: Duration) -> ureq::Agent {
         .into()
 }
 
-fn get(
+type Response = ureq::http::Response<ureq::Body>;
+
+fn send(request: ureq::http::Request<()>, timeout: Duration) -> Result<Response, String> {
+    agent(timeout)
+        .run(request)
+        .map_err(|error| format!("couldn't reach the update service: {error}"))
+}
+
+fn request(url: &str, user_agent: &str) -> ureq::http::request::Builder {
+    ureq::http::Request::get(url).header("User-Agent", user_agent)
+}
+
+/// The manifest request, revalidating `etag` when one is cached.
+fn manifest_request(
     url: &str,
     user_agent: &str,
-    timeout: Duration,
-) -> Result<ureq::http::Response<ureq::Body>, String> {
-    let response = agent(timeout)
-        .get(url)
-        .header("User-Agent", user_agent)
-        .call()
-        .map_err(|error| format!("couldn't reach the update service: {error}"))?;
-    match response.status().as_u16() {
-        200 => Ok(response),
-        status => Err(format!("the update service answered HTTP {status}")),
+    etag: Option<&str>,
+) -> Result<ureq::http::Request<()>, String> {
+    let mut builder = request(url, user_agent);
+    if let Some(etag) = etag {
+        builder = builder.header("If-None-Match", etag);
+    }
+    builder.body(()).map_err(|error| error.to_string())
+}
+
+/// What the service answered a manifest request.
+#[derive(Debug, Eq, PartialEq)]
+pub(super) enum Reply {
+    NotModified,
+    Manifest { etag: Option<String>, body: String },
+}
+
+/// The last manifest the service sent, revalidated with its ETag so an
+/// unchanged channel costs a `304 Not Modified` and no body.
+#[derive(Debug, Default)]
+pub(super) struct ManifestCache {
+    /// The manifest the ETag and body belong to; switching channels changes it.
+    url: Option<String>,
+    etag: Option<String>,
+    body: Option<String>,
+}
+
+impl ManifestCache {
+    /// The manifest at `url`, as text: the cached one when the service
+    /// answers 304.
+    pub(super) fn fetch(&mut self, url: &str, user_agent: &str) -> Result<String, String> {
+        self.revalidate(url, |etag| {
+            let mut response = send(manifest_request(url, user_agent, etag)?, MANIFEST_TIMEOUT)?;
+            match response.status().as_u16() {
+                304 => Ok(Reply::NotModified),
+                200 => {
+                    let etag = response
+                        .headers()
+                        .get("etag")
+                        .and_then(|value| value.to_str().ok())
+                        .map(|value| value.trim().to_owned());
+                    let body = response
+                        .body_mut()
+                        .with_config()
+                        .limit(MAX_MANIFEST_BYTES)
+                        .read_to_string()
+                        .map_err(|error| format!("couldn't read the update manifest: {error}"))?;
+                    Ok(Reply::Manifest { etag, body })
+                }
+                status => Err(format!("the update service answered HTTP {status}")),
+            }
+        })
+    }
+
+    /// Asks `send` for `url` with the cached ETag, if any, and keeps what it
+    /// answers.
+    fn revalidate(
+        &mut self,
+        url: &str,
+        send: impl FnOnce(Option<&str>) -> Result<Reply, String>,
+    ) -> Result<String, String> {
+        if self.url.as_deref() != Some(url) {
+            *self = Self {
+                url: Some(url.to_owned()),
+                ..Self::default()
+            };
+        }
+        let etag = self.etag.as_deref().filter(|_| self.body.is_some());
+        match send(etag)? {
+            Reply::NotModified => self
+                .body
+                .clone()
+                .ok_or_else(|| "the update service answered 304 for nothing cached".into()),
+            Reply::Manifest { etag, body } => {
+                self.etag = etag.filter(|etag| valid_etag(etag));
+                self.body = Some(body.clone());
+                Ok(body)
+            }
+        }
     }
 }
 
-/// The manifest at `url`, as text.
-pub(super) fn fetch_manifest(url: &str, user_agent: &str) -> Result<String, String> {
-    let mut response = get(url, user_agent, MANIFEST_TIMEOUT)?;
-    response
-        .body_mut()
-        .with_config()
-        .limit(MAX_MANIFEST_BYTES)
-        .read_to_string()
-        .map_err(|error| format!("couldn't read the update manifest: {error}"))
+fn valid_etag(etag: &str) -> bool {
+    !etag.is_empty() && etag.len() <= 1024 && !etag.chars().any(char::is_control)
 }
 
 /// Downloads `target` from `url` into `directory/<sha256>/<name>` and returns
 /// the file once its size and SHA-256 match the manifest. A finished download
-/// of the same bytes is reused.
+/// of the same bytes is reused, and an interrupted one resumes where it
+/// stopped: its `.partial` file stays until the bytes are whole.
 pub(super) fn download(
     url: &str,
     user_agent: &str,
@@ -89,9 +169,28 @@ pub(super) fn download(
     }
     fs::create_dir_all(&folder).map_err(|error| error.to_string())?;
     let partial = folder.join(format!("{name}.partial"));
-    let result =
-        fetch_into(url, user_agent, target, &partial).and_then(|()| verify(&partial, target));
-    if let Err(error) = result {
+    let length = |path: &Path| fs::metadata(path).map_or(0, |metadata| metadata.len());
+    if length(&partial) > target.size {
+        fs::remove_file(&partial).map_err(|error| error.to_string())?;
+    }
+    let mut failures = 0;
+    while length(&partial) < target.size {
+        let have = length(&partial);
+        let result = fetch_piece(url, user_agent, target.size, &partial, have);
+        // Any progress counts: a dropped connection resumes from there.
+        if length(&partial) > have {
+            failures = 0;
+            continue;
+        }
+        failures += 1;
+        if failures >= DOWNLOAD_ATTEMPTS {
+            return Err(result
+                .err()
+                .unwrap_or_else(|| "the update download stopped making progress".into()));
+        }
+    }
+    if let Err(error) = verify(&partial, target) {
+        // Whole but wrong: resuming can never make these bytes right.
         drop(fs::remove_file(&partial));
         return Err(error);
     }
@@ -99,23 +198,93 @@ pub(super) fn download(
     Ok(file)
 }
 
-fn fetch_into(url: &str, user_agent: &str, target: &Target, path: &Path) -> Result<(), String> {
-    let mut response = get(url, user_agent, DOWNLOAD_TIMEOUT)?;
-    let mut out = OpenOptions::new()
-        .create(true)
-        .write(true)
-        .truncate(true)
-        .mode(0o600)
-        .open(path)
-        .map_err(|error| error.to_string())?;
-    // One byte past the expected size is enough to prove a larger body.
-    let mut body = response
-        .body_mut()
-        .with_config()
-        .limit(target.size.saturating_add(1))
-        .reader();
-    std::io::copy(&mut body, &mut out)
-        .map_err(|error| format!("the update download failed: {error}"))?;
+/// The download request: the whole file, or from byte `have` on.
+fn download_request(
+    url: &str,
+    user_agent: &str,
+    have: u64,
+) -> Result<ureq::http::Request<()>, String> {
+    let mut builder = request(url, user_agent);
+    if have > 0 {
+        builder = builder.header("Range", format!("bytes={have}-"));
+    }
+    builder.body(()).map_err(|error| error.to_string())
+}
+
+fn fetch_piece(
+    url: &str,
+    user_agent: &str,
+    size: u64,
+    partial: &Path,
+    have: u64,
+) -> Result<(), String> {
+    let mut response = send(download_request(url, user_agent, have)?, DOWNLOAD_TIMEOUT)?;
+    let status = response.status().as_u16();
+    let range = response
+        .headers()
+        .get("content-range")
+        .and_then(|value| value.to_str().ok())
+        .map(str::to_owned);
+    let body = response.body_mut().with_config().limit(u64::MAX).reader();
+    write_piece(status, range.as_deref(), body, partial, have, size)
+}
+
+/// Writes one response into `partial`, which holds `have` of `size` bytes:
+/// `206 Partial Content` from `have` appends, `200` (no range support) starts
+/// over, and `416` drops bytes the service won't continue.
+fn write_piece(
+    status: u16,
+    content_range: Option<&str>,
+    mut body: impl Read,
+    partial: &Path,
+    have: u64,
+    size: u64,
+) -> Result<(), String> {
+    let mut options = OpenOptions::new();
+    options.create(true).mode(0o600);
+    let start = match status {
+        206 if have > 0 => {
+            let start = content_range
+                .and_then(|range| range.strip_prefix("bytes "))
+                .and_then(|range| range.split_once('-'))
+                .and_then(|(start, _)| start.trim().parse::<u64>().ok());
+            if start != Some(have) {
+                return Err(
+                    "the update service sent a different part of the file than asked for".into(),
+                );
+            }
+            options.append(true);
+            have
+        }
+        200 => {
+            options.write(true).truncate(true);
+            0
+        }
+        416 => {
+            drop(fs::remove_file(partial));
+            return Err("the update service couldn't resume the download".into());
+        }
+        status => return Err(format!("the update service answered HTTP {status}")),
+    };
+    let mut out = options.open(partial).map_err(|error| error.to_string())?;
+    let mut written = start;
+    let mut buffer = vec![0; 64 * 1024];
+    loop {
+        let read = body
+            .read(&mut buffer)
+            .map_err(|error| format!("the update download failed: {error}"))?;
+        if read == 0 {
+            break;
+        }
+        if written + read as u64 > size {
+            drop(out);
+            drop(fs::remove_file(partial));
+            return Err("the update is larger than the manifest says".into());
+        }
+        out.write_all(&buffer[..read])
+            .map_err(|error| error.to_string())?;
+        written += read as u64;
+    }
     out.flush().map_err(|error| error.to_string())
 }
 
@@ -237,6 +406,21 @@ mod tests {
         )
         .unwrap();
         assert_eq!(fs::read(&file).unwrap(), b"bytes");
+        // A whole `.partial` from an interrupted run needs no request either.
+        fs::remove_file(&file).unwrap();
+        fs::copy(
+            &source,
+            directory.join(&sha256).join("Spaceman.zip.partial"),
+        )
+        .unwrap();
+        let file = download(
+            "https://invalid.invalid/Spaceman.zip",
+            "spaceman/dev/0.0.0-dev-1",
+            &target,
+            &directory,
+        )
+        .unwrap();
+        assert_eq!(fs::read(&file).unwrap(), b"bytes");
         prune(&directory, Some(&sha256));
         assert!(directory.join(&sha256).exists());
         prune(&directory, None);
@@ -244,6 +428,139 @@ mod tests {
         assert!(!valid_file_name("../x"));
         assert!(!valid_file_name(".hidden"));
         assert!(valid_file_name("Spaceman.zip"));
+        drop(fs::remove_dir_all(directory));
+    }
+
+    fn header<'a>(request: &'a ureq::http::Request<()>, name: &str) -> Option<&'a str> {
+        request
+            .headers()
+            .get(name)
+            .and_then(|value| value.to_str().ok())
+    }
+
+    #[test]
+    fn manifest_polls_revalidate_the_cached_etag() {
+        let url = "https://anoma.ly/release/spaceman/desktop/dev.json";
+        let ua = "spaceman/dev/0.0.0-dev-8";
+        let first = manifest_request(url, ua, None).unwrap();
+        assert_eq!(header(&first, "If-None-Match"), None);
+        assert_eq!(header(&first, "User-Agent"), Some(ua));
+        let again = manifest_request(url, ua, Some("\"v1\"")).unwrap();
+        assert_eq!(header(&again, "If-None-Match"), Some("\"v1\""));
+
+        let mut cache = ManifestCache::default();
+        let body = cache
+            .revalidate(url, |etag| {
+                assert_eq!(etag, None);
+                Ok(Reply::Manifest {
+                    etag: Some("\"v1\"".into()),
+                    body: "{}".into(),
+                })
+            })
+            .unwrap();
+        assert_eq!(body, "{}");
+        // An unchanged channel: the saved ETag goes out and 304 reuses the body.
+        let body = cache
+            .revalidate(url, |etag| {
+                assert_eq!(etag, Some("\"v1\""));
+                Ok(Reply::NotModified)
+            })
+            .unwrap();
+        assert_eq!(body, "{}");
+        // A new manifest replaces both; one without an ETag is never revalidated.
+        cache
+            .revalidate(url, |_| {
+                Ok(Reply::Manifest {
+                    etag: None,
+                    body: "{\"v\":2}".into(),
+                })
+            })
+            .unwrap();
+        cache
+            .revalidate(url, |etag| {
+                assert_eq!(etag, None);
+                Ok(Reply::Manifest {
+                    etag: Some("\"v3\"".into()),
+                    body: "3".into(),
+                })
+            })
+            .unwrap();
+        // Another channel's manifest starts over.
+        let stable = "https://anoma.ly/release/spaceman/desktop/stable.json";
+        let error = cache
+            .revalidate(stable, |etag| {
+                assert_eq!(etag, None);
+                Ok(Reply::NotModified)
+            })
+            .unwrap_err();
+        assert!(error.contains("304"), "{error}");
+        assert!(!valid_etag(""));
+        assert!(!valid_etag("\"a\nb\""));
+    }
+
+    #[test]
+    fn resumed_downloads_ask_for_the_rest_and_append_partial_content() {
+        let url = "https://anoma.ly/release/spaceman/files/x/Spaceman.zip";
+        let ua = "spaceman/dev/0.0.0-dev-8";
+        assert_eq!(
+            header(&download_request(url, ua, 0).unwrap(), "Range"),
+            None
+        );
+        assert_eq!(
+            header(&download_request(url, ua, 4).unwrap(), "Range"),
+            Some("bytes=4-")
+        );
+
+        let directory = temporary("resume");
+        let partial = directory.join("Spaceman.zip.partial");
+        fs::write(&partial, b"abcd").unwrap();
+        write_piece(206, Some("bytes 4-7/8"), &b"efgh"[..], &partial, 4, 8).unwrap();
+        assert_eq!(fs::read(&partial).unwrap(), b"abcdefgh");
+
+        // A range that starts elsewhere is refused and leaves the bytes alone.
+        fs::write(&partial, b"abcd").unwrap();
+        assert!(write_piece(206, Some("bytes 0-7/8"), &b"abcdefgh"[..], &partial, 4, 8).is_err());
+        assert_eq!(fs::read(&partial).unwrap(), b"abcd");
+
+        // No range support: the whole file, from the start.
+        write_piece(200, None, &b"ABCDEFGH"[..], &partial, 4, 8).unwrap();
+        assert_eq!(fs::read(&partial).unwrap(), b"ABCDEFGH");
+
+        // More than the manifest's size, or a range the service won't serve,
+        // drops the partial file.
+        fs::write(&partial, b"abcd").unwrap();
+        assert!(write_piece(200, None, &b"123456789"[..], &partial, 4, 8).is_err());
+        assert!(!partial.exists());
+        fs::write(&partial, b"abcd").unwrap();
+        assert!(write_piece(416, None, &b""[..], &partial, 4, 8).is_err());
+        assert!(!partial.exists());
+        drop(fs::remove_dir_all(directory));
+    }
+
+    #[test]
+    fn an_interrupted_download_keeps_its_partial_file() {
+        let directory = temporary("interrupted");
+        let target = Target {
+            url: "files/x/Spaceman.zip".into(),
+            size: 8,
+            sha256: "a".repeat(64),
+        };
+        let folder = directory.join(&target.sha256);
+        fs::create_dir_all(&folder).unwrap();
+        fs::write(folder.join("Spaceman.zip.partial"), b"abcd").unwrap();
+        // Nothing listens on port 1: every attempt fails before a byte arrives.
+        let error = download(
+            "https://127.0.0.1:1/Spaceman.zip",
+            "spaceman/dev/0.0.0-dev-8",
+            &target,
+            &directory,
+        )
+        .unwrap_err();
+        assert!(error.contains("couldn't reach"), "{error}");
+        assert_eq!(
+            fs::read(folder.join("Spaceman.zip.partial")).unwrap(),
+            b"abcd"
+        );
         drop(fs::remove_dir_all(directory));
     }
 }

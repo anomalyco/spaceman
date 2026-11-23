@@ -162,6 +162,8 @@ pub(crate) enum Action {
     SetHud(bool),
     CheckForUpdates,
     InstallUpdate,
+    ConfirmUpdateSwitch,
+    DownloadUpdate,
     Terminate,
     ToggleLaunchAtLogin,
     Restart,

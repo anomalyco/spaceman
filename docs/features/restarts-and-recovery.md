@@ -20,6 +20,10 @@ Install & Restart (in-app update)                          // recover.update
 ├── Only after restoration fully succeeds -> signature re-checked, bundles swapped, relaunch
 └── Install fails after restoration -> Spaceman keeps running, tiling resumes, menu says why
 
+Quit with an update ready                                  // recover.update
+├── Same exit as quit: every parked window restored
+└── Only after restoration fully succeeds -> signature re-checked, bundles swapped, no relaunch
+
 Crash or hard kill                                         // recover.crash
 ├── Next launch, valid state   -> parked windows reveal as their workspaces become visible
 ├── Next launch, invalid/missing state -> every parked window restored first
@@ -54,12 +58,14 @@ Diagnose                                                   // recover.doctor
 ```ts
 Menu bar: workspaces (switch) | Disable Tiling (pause + restore) | Workspace HUD | Settings... (⌘,)
           | Check for Updates... / Install Spaceman <version> and Restart | Quit Spaceman (⌘Q)
-Settings: sidebar foot and General -> Updates (Install & Restart, Check Now, Update channel)
+Settings: sidebar foot and General -> Updates (Install & Restart, Switch to Dev/Stable, Download,
+          Check Now, Update channel)
 Settings: Activity -> Refresh | Mark Issue | journal.jsonl (Show in Finder)
 CLI:      spaceman ctl pause | resume | quit | restart | status | debug
           spaceman doctor [hours]      // reads files directly; works with the agent stopped
           spaceman hud
-Implicit: macOS restart/log out/shutdown, Install & Restart, reopening Spaceman.app after a crash
+Implicit: macOS restart/log out/shutdown, Install & Restart, quitting with an update ready,
+          reopening Spaceman.app after a crash
 Files:    ~/Library/Application Support/Spaceman/
           ├── workspace-state.json   parked-windows.json   window-memory.json
           └── journal.jsonl(.1)      agent.log(.1)
@@ -84,8 +90,11 @@ See [Recovery](../recovery.md) for the safe manual procedure; never delete `park
 - Unit, `src/updater/`: manifest decisions (the release service's shared vectors), download URLs
   confined to `anoma.ly/release/spaceman/files/`, size/SHA-256 checks, bundle identity, signature
   and team checks (ad-hoc bundles must fail Anomaly's requirement), the zip holding exactly
-  `Spaceman.app`, the bundle swap and staging cleanup, the install receipt and staged-update state.
-  The exit path itself (`Restored { failed: 0 }` under `ExitIntent::Update`) has no automated test.
+  `Spaceman.app`, the bundle swap and staging cleanup, the install receipt and staged-update state,
+  `If-None-Match`/304 manifest caching, `Range` resumes (206, 200 and 416), the build stamp in the
+  `User-Agent`, channel-switch confirmation, the download-only plan, and the quit-time install's
+  state and receipt. The exit paths themselves (`Restored { failed: 0 }` under `ExitIntent::Update`
+  or a quit) have no automated test.
 - Live harness (not run): `scripts/live-workspaces.sh` hard-kills the agent with a parked window and
   checks startup recovery.
 - Observed (2026-10-01, two reinstalls via `scripts/install-app.sh`): restoration before exit

@@ -63,7 +63,8 @@ run `shasum -a 256 -c Spaceman.zip.sha256`, then unzip it and move `Spaceman.app
 to `/Applications`.
 
 Spaceman updates itself from Anomaly's release service: when an update is ready, choose
-`Install & Restart` in Settings or the menu. Spaceman restores every window before it restarts.
+`Install & Restart` in Settings or the menu, or just quit and it installs for the next launch.
+Spaceman restores every window first.
 Builds after 0.3.0 are signed by Anomaly with the bundle ID `anomaly.spaceman`, so macOS asks for
 Accessibility access once more after that update; your config, workspaces and parked-window recovery
 carry over. If a manual replacement is necessary, pause and quit the running version and confirm that every parked
