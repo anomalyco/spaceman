@@ -34,7 +34,8 @@ if (import.meta.main) {
 
 // Offline mix of the play log with ffmpeg: every clip delayed to its show time; the room loop
 // follows its logged levels as a stepped volume envelope. cut: where everything stops dead (the
-// film's last cut), with the live player's few milliseconds of ramp.
+// film's last cut), with the live player's few milliseconds of ramp. A fixed gain, not loudnorm: its
+// dynamic mode lifted the quiet opening by 25 dB.
 export async function mixAudio(out: string, log: any[], secs: number, audioDir: string, o: { cut?: number; kbps?: number } = {}) {
   const clips = log.filter((e) => e.kind === "voice" || e.kind === "sfx" || e.kind === "score" || e.kind === "card")
   if (!clips.length) return null
@@ -72,7 +73,7 @@ export async function mixAudio(out: string, log: any[], secs: number, audioDir: 
     labels.push(`[bed${b++}]`)
   }
   const cutOut = card.length ? "[film]" : "[out]"
-  const graph = parts.join(";") + `;${labels.join("")}amix=inputs=${labels.length}:normalize=0,atrim=0:${secs},loudnorm=I=-16:TP=-1.5${o.cut ? `,aresample=48000,volume='clip(1-(t-${o.cut})/0.01\\,0\\,1)':eval=frame` : ""}${cutOut}` +
+  const graph = parts.join(";") + `;${labels.join("")}amix=inputs=${labels.length}:normalize=0,atrim=0:${secs},volume=1.5dB,alimiter=limit=0.89:attack=5:release=60:level=disabled${o.cut ? `,aresample=48000,volume='clip(1-(t-${o.cut})/0.01\\,0\\,1)':eval=frame` : ""}${cutOut}` +
     (card.length ? `;${card.map((l, k) => `${l}aresample=48000[c${k}]`).join(";")};[film]${card.map((_, k) => `[c${k}]`).join("")}amix=inputs=${1 + card.length}:normalize=0:duration=first[out]` : "")
   const file = join(out, "mix.m4a")
   writeFileSync(join(out, "mix-graph.txt"), graph)
