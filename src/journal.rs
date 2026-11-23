@@ -281,6 +281,7 @@ impl AnomalyKind {
             Self::Stranded => "Stranded",
             Self::ParkedVisible => "Parked but visible",
             Self::Unadopted => "Unadopted",
+            Self::ConstrainedOverlap => "Constrained overlap",
             Self::Misplaced => "Misplaced",
             Self::Missing => "Missing",
             Self::ParkingExempt => "Parking exempt",
