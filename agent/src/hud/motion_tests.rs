@@ -22,8 +22,8 @@ const OPACITY_STEP: f32 = 0.15;
 /// One 8-bit step of alpha: below it nothing is drawn.
 const UNSEEN: f32 = 1.0 / 255.0;
 /// The furthest the marker's edges go in one frame, crossing the whole demo row (Icons' 3 to 1
-/// is about 126 pt, peaking near 9.5 pt a frame); a snap would be several times this.
-const MARKER_STEP: f32 = 12.0;
+/// is about 126 pt, peaking near 12.2 pt a frame); a snap would be several times this.
+const MARKER_STEP: f32 = 15.0;
 const STYLES: [HudStyle; 2] = [HudStyle::Icons, HudStyle::Layouts];
 
 struct Hud {

@@ -7,7 +7,7 @@ use std::path::PathBuf;
 use spaceman::{WorkspaceId, config::HudStyle};
 use toml_edit::{ArrayOfTables, DocumentMut, Item, Table, value};
 
-const EMPTY: &str = "# Pane configuration.\nversion = 1\n";
+const EMPTY: &str = "# Spaceman configuration.\nversion = 1\n";
 
 /// Where a rule sends an app's windows.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -37,7 +37,6 @@ pub struct Doc {
 
 impl Doc {
     pub fn load() -> Doc {
-        spaceman::config::ensure_config_migrated();
         let path = spaceman::config::config_path();
         let source = match path.as_ref().map(std::fs::read_to_string) {
             Some(Ok(source)) => source,
@@ -285,7 +284,7 @@ impl Doc {
         self.doc.to_string()
     }
 
-    /// Writes the file once Pane's own parser accepts it; the agent picks it up from there.
+    /// Writes the file once Spaceman's own parser accepts it; the agent picks it up from there.
     pub fn save(&mut self) -> Result<(), String> {
         if let Some(error) = &self.error {
             return Err(format!("config.toml has an error to fix first: {error}"));

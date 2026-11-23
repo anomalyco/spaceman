@@ -1,4 +1,4 @@
-//! Pure state machine and owner-only persistence for Pane's 4-step setup tour.
+//! Pure state machine and owner-only persistence for Spaceman's 4-step setup tour.
 
 use std::{
     fs::{self, OpenOptions},

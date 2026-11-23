@@ -118,7 +118,7 @@ thread_local! {
 pub fn install(sender: Sender<Action>) -> Result<(), String> {
     let marker = MainThreadMarker::new().ok_or("status item requires the main thread")?;
     let target = Target::new(sender, marker);
-    let menu = NSMenu::initWithTitle(NSMenu::alloc(marker), &NSString::from_str("Pane"));
+    let menu = NSMenu::initWithTitle(NSMenu::alloc(marker), &NSString::from_str("Spaceman"));
     let status = plain_item("Starting...", marker);
     status.setEnabled(false);
     status.setHidden(true);
@@ -166,7 +166,13 @@ pub fn install(sender: Sender<Action>) -> Result<(), String> {
         marker,
     ));
     menu.addItem(&NSMenuItem::separatorItem(marker));
-    menu.addItem(&action_item("Quit Pane", &target, sel!(quit:), "q", marker));
+    menu.addItem(&action_item(
+        "Quit Spaceman",
+        &target,
+        sel!(quit:),
+        "q",
+        marker,
+    ));
 
     let item = NSStatusBar::systemStatusBar().statusItemWithLength(NSVariableStatusItemLength);
     let button = item

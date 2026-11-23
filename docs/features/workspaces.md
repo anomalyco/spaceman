@@ -45,12 +45,11 @@ Workspace HUD ([settings] hud, on by default)               // ws.hud
 ├── A switch, a window moved to another workspace, a split-axis or Fullscreen Layout toggle
 │   -> a capsule near the bottom of every display, each with its own row: every workspace on that
 │      display holding windows, plus the visible one, in order; a marker on the visible one
-├── hud_style = "icons" (default) -> each workspace as its tabular number and its apps' icons
-│   │  (one per app, tile order); a concentric pill marker highlights the active group (circular
-│   │  when empty), while inactive groups sit calmly dimmed; nothing changes size
-│   └── "layouts" -> each workspace as its layout with an app icon per tile, the visible one
-│      larger (others .62×, dimmed); an empty one is a dot; Fullscreen Layout is one tile with the
-│      front app's icon and the others smaller beside it
+├── hud_style = "icons" (default) -> each workspace as its number and its apps' icons (one per app,
+│   │  tile order); the visible group bright, the others dimmed; nothing changes size
+│   └── "layouts" -> each workspace as its layout with an app icon per tile, the visible one larger
+│      (others .62×, dimmed); an empty one is a dot; Fullscreen Layout is one tile with the front
+│      app's icon and the others smaller beside it
 ├── No text but workspace numbers, and never a window title; icons are looked up by bundle ID
 ├── Appears: fades in, scales from .96 and rises 6 pt; stays 1.15 s after the last event; leaves
 │   the same way back in about 0.2 s
@@ -80,7 +79,7 @@ Keyboard (while tiling is enabled)
 Trackpad: three-finger swipe left/right -> next/previous workspace (turn macOS's three-finger
           "Swipe between full-screen applications" off or move it to four fingers)
 CLI: spaceman ctl switch | back-and-forth | move | move-app
-Config: ~/.config/pane/config.toml -> [[rules]], [[workspaces]] (reloads on save; legacy Spaceman config copied on first launch)
+Config: ~/Library/Application Support/Spaceman/config.toml -> [[rules]], [[workspaces]] (read at startup only)
 Menu bar: shows the active workspace glyphs; its menu lists each display's visible workspace (checked)
           and occupied ones with their apps' icons and Option shortcut -> choose one to switch
 Mouse: drop a tile on another display -> moves it to that display's active workspace (see tiling.md)

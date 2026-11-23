@@ -241,9 +241,9 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
                 self.cycle(outputs.clone(), cancelled)?;
                 self.workspaces
                     .workspace_of(&window)
-                    .ok_or("Focused window is not managed by Pane")?
+                    .ok_or("Focused window is not managed by Spaceman")?
             }
-            None => return Err("Focused window is not managed by Pane".into()),
+            None => return Err("Focused window is not managed by Spaceman".into()),
         };
         if !self.is_visible(workspace, outputs) {
             return Err("Focused window is not on an active workspace".into());

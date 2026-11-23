@@ -84,12 +84,12 @@ pub fn snapshot(cycle: u64) -> Result<(NativeObservation, Settings), SnapshotErr
     snapshot_in_output(cycle, main_output()?)
 }
 
-/// Pane's own windows (Settings, Onboarding, HUD) are never managed, even when the CLI
-/// observes `Pane.app` from a second process.
+/// Spaceman's own windows (Settings, Onboarding, HUD) are never managed, even when `spaceman` CLI
+/// observes `Spaceman.app` from a second process.
 pub(super) fn is_own_application(application: &NSRunningApplication) -> bool {
-    application.bundleIdentifier().is_some_and(|id| {
-        &*id == ns_string!("anomaly.pane") || &*id == ns_string!("com.kitlangton.spaceman")
-    })
+    application
+        .bundleIdentifier()
+        .is_some_and(|id| &*id == ns_string!("com.kitlangton.spaceman"))
 }
 
 #[must_use]

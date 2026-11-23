@@ -1,7 +1,4 @@
-use std::{
-    ffi::OsString,
-    path::{Path, PathBuf},
-};
+use std::path::{Path, PathBuf};
 
 use serde::Deserialize;
 
@@ -26,11 +23,11 @@ impl Default for AppSettings {
 #[derive(Clone, Copy, Debug, Default, Deserialize, Eq, PartialEq)]
 #[serde(rename_all = "lowercase")]
 pub enum HudStyle {
+    /// Each workspace as its layout, with an app icon in every tile; the current one larger.
+    Layouts,
     /// Each workspace as its number and the icons of its apps.
     #[default]
     Icons,
-    /// Each workspace as its layout, with an app icon in every tile; the current one larger.
-    Layouts,
 }
 
 impl HudStyle {
@@ -206,20 +203,7 @@ impl Config {
         let path = config_path().ok_or("HOME is unavailable")?;
         match std::fs::read_to_string(&path) {
             Ok(source) => parse_path(&path, &source),
-            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
-                if let Some(legacy) = fallback_legacy_config_path(&path) {
-                    if let Ok(Some(_)) = migrate_config_file(&path, std::slice::from_ref(&legacy))
-                        && let Ok(source) = std::fs::read_to_string(&path)
-                    {
-                        return parse_path(&path, &source);
-                    }
-                    let source = std::fs::read_to_string(&legacy).map_err(|read_error| {
-                        format!("failed to read {}: {read_error}", legacy.display())
-                    })?;
-                    return parse_path(&legacy, &source);
-                }
-                Ok(Self::default())
-            }
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(Self::default()),
             Err(error) => Err(format!("failed to read {}: {error}", path.display())),
         }
     }
@@ -303,62 +287,19 @@ pub fn now() -> std::time::Duration {
         .unwrap_or_default()
 }
 
-const MIGRATION_MARKER: &str = ".migrated-from-spaceman";
-
-/// Durable state files copied from `~/Library/Application Support/Spaceman` to
-/// `~/Library/Application Support/Pane` on first launch. Runtime sockets, locks,
-/// and log files are intentionally excluded.
-const MIGRATED_STATE_FILES: &[&str] = &[
-    "parked-windows.json",
-    "workspace-state.json",
-    "window-memory.json",
-    "onboarding-complete",
-    "onboarding-step",
-    "journal.jsonl",
-    "journal.jsonl.1",
-];
-
-/// Presence of any of these files in `~/Library/Application Support/Pane` means
-/// the directory is already initialized and legacy state must not overwrite it.
-const INITIALIZED_SENTINELS: &[&str] = &[
-    MIGRATION_MARKER,
-    "parked-windows.json",
-    "workspace-state.json",
-    "window-memory.json",
-    "onboarding-complete",
-    "journal.jsonl",
-];
-
-/// Summary of files copied from legacy Spaceman paths on first launch.
-#[derive(Clone, Debug, Default, Eq, PartialEq)]
-pub struct MigrationReport {
-    pub copied_state_files: Vec<String>,
-    pub copied_config_from: Option<PathBuf>,
-}
-
-impl MigrationReport {
-    #[must_use]
-    pub fn migrated_anything(&self) -> bool {
-        !self.copied_state_files.is_empty() || self.copied_config_from.is_some()
-    }
-}
-
-/// Optional `PANE_MANAGED_DISPLAY` (or legacy `SPACEMAN_MANAGED_DISPLAY`) override read at startup.
+/// Optional `SPACEMAN_MANAGED_DISPLAY` override read at startup.
 #[expect(
     clippy::disallowed_methods,
     reason = "startup environment variables are read in config.rs"
 )]
 pub fn managed_display_env() -> Result<Option<String>, String> {
-    for variable in ["PANE_MANAGED_DISPLAY", "SPACEMAN_MANAGED_DISPLAY"] {
-        match std::env::var(variable) {
-            Ok(value) => return Ok(Some(value)),
-            Err(std::env::VarError::NotPresent) => continue,
-            Err(std::env::VarError::NotUnicode(_)) => {
-                return Err(format!("{variable} must be valid UTF-8"));
-            }
+    match std::env::var("SPACEMAN_MANAGED_DISPLAY") {
+        Ok(value) => Ok(Some(value)),
+        Err(std::env::VarError::NotPresent) => Ok(None),
+        Err(std::env::VarError::NotUnicode(_)) => {
+            Err("SPACEMAN_MANAGED_DISPLAY must be valid UTF-8".into())
         }
     }
-    Ok(None)
 }
 
 /// When the config file last changed, or `None` while it doesn't exist.
@@ -368,250 +309,20 @@ pub fn modified() -> Option<std::time::SystemTime> {
 }
 
 pub fn config_path() -> Option<PathBuf> {
-    config_path_from(
-        std::env::var_os("PANE_CONFIG"),
-        std::env::var_os("SPACEMAN_CONFIG"),
-        std::env::var_os("PANE_APPLICATION_SUPPORT"),
-        std::env::var_os("SPACEMAN_APPLICATION_SUPPORT"),
-        std::env::var_os("HOME"),
-    )
+    std::env::var_os("SPACEMAN_CONFIG")
+        .map(PathBuf::from)
+        .or_else(|| application_support_path("config.toml"))
 }
 
 pub fn application_support_path(file: &str) -> Option<PathBuf> {
-    application_support_dir_from(
-        std::env::var_os("PANE_APPLICATION_SUPPORT"),
-        std::env::var_os("SPACEMAN_APPLICATION_SUPPORT"),
-        std::env::var_os("HOME"),
-    )
-    .map(|directory| directory.join(file))
-}
-
-fn config_path_from(
-    pane_config: Option<OsString>,
-    spaceman_config: Option<OsString>,
-    pane_support: Option<OsString>,
-    spaceman_support: Option<OsString>,
-    home: Option<OsString>,
-) -> Option<PathBuf> {
-    pane_config
-        .or(spaceman_config)
+    std::env::var_os("SPACEMAN_APPLICATION_SUPPORT")
         .map(PathBuf::from)
         .or_else(|| {
-            pane_support
-                .or(spaceman_support)
+            std::env::var_os("HOME")
                 .map(PathBuf::from)
-                .map(|directory| directory.join("config.toml"))
+                .map(|home| home.join("Library/Application Support/Spaceman"))
         })
-        .or_else(|| {
-            home.map(PathBuf::from)
-                .map(|home| home.join(".config/pane/config.toml"))
-        })
-}
-
-fn application_support_dir_from(
-    pane_support: Option<OsString>,
-    spaceman_support: Option<OsString>,
-    home: Option<OsString>,
-) -> Option<PathBuf> {
-    pane_support
-        .or(spaceman_support)
-        .map(PathBuf::from)
-        .or_else(|| {
-            home.map(PathBuf::from)
-                .map(|home| home.join("Library/Application Support/Pane"))
-        })
-}
-
-fn legacy_config_candidates(home: &Path) -> [PathBuf; 2] {
-    [
-        home.join(".config/spaceman/config.toml"),
-        home.join("Library/Application Support/Spaceman/config.toml"),
-    ]
-}
-
-fn fallback_legacy_config_path(primary: &Path) -> Option<PathBuf> {
-    if std::env::var_os("PANE_CONFIG").is_some()
-        || std::env::var_os("SPACEMAN_CONFIG").is_some()
-        || std::env::var_os("PANE_APPLICATION_SUPPORT").is_some()
-        || std::env::var_os("SPACEMAN_APPLICATION_SUPPORT").is_some()
-    {
-        return None;
-    }
-    let home = PathBuf::from(std::env::var_os("HOME")?);
-    if primary != home.join(".config/pane/config.toml") {
-        return None;
-    }
-    legacy_config_candidates(&home)
-        .into_iter()
-        .find(|candidate| candidate.is_file())
-}
-
-/// Copies legacy Spaceman configuration and recovery/state files into Pane's default
-/// paths when Pane does not have them yet. Never deletes or modifies legacy originals,
-/// and never runs when isolated environment overrides are active.
-pub fn migrate_legacy_data() -> Result<MigrationReport, String> {
-    let Some(home) = std::env::var_os("HOME").map(PathBuf::from) else {
-        return Ok(MigrationReport::default());
-    };
-    let migrate_support = std::env::var_os("PANE_APPLICATION_SUPPORT").is_none()
-        && std::env::var_os("SPACEMAN_APPLICATION_SUPPORT").is_none();
-    let migrate_config = migrate_support
-        && std::env::var_os("PANE_CONFIG").is_none()
-        && std::env::var_os("SPACEMAN_CONFIG").is_none();
-    migrate_legacy_data_in_home(&home, migrate_support, migrate_config)
-}
-
-/// Copies legacy Spaceman config into `~/.config/pane/config.toml` if needed and no
-/// config/support environment override is set.
-pub fn ensure_config_migrated() {
-    let Some(home) = std::env::var_os("HOME").map(PathBuf::from) else {
-        return;
-    };
-    if std::env::var_os("PANE_CONFIG").is_some()
-        || std::env::var_os("SPACEMAN_CONFIG").is_some()
-        || std::env::var_os("PANE_APPLICATION_SUPPORT").is_some()
-        || std::env::var_os("SPACEMAN_APPLICATION_SUPPORT").is_some()
-    {
-        return;
-    }
-    let target = home.join(".config/pane/config.toml");
-    let candidates = legacy_config_candidates(&home);
-    drop(migrate_config_file(&target, &candidates));
-}
-
-pub(crate) fn migrate_legacy_data_in_home(
-    home: &Path,
-    migrate_support: bool,
-    migrate_config: bool,
-) -> Result<MigrationReport, String> {
-    let mut report = MigrationReport::default();
-    if migrate_support {
-        let new_dir = home.join("Library/Application Support/Pane");
-        let legacy_dir = home.join("Library/Application Support/Spaceman");
-        report.copied_state_files = migrate_support_dir(&new_dir, &legacy_dir)?;
-    }
-    if migrate_config {
-        let new_config = home.join(".config/pane/config.toml");
-        let candidates = legacy_config_candidates(home);
-        report.copied_config_from = migrate_config_file(&new_config, &candidates)?;
-    }
-    Ok(report)
-}
-
-fn migrate_support_dir(new_dir: &Path, legacy_dir: &Path) -> Result<Vec<String>, String> {
-    if !legacy_dir.is_dir() {
-        return Ok(Vec::new());
-    }
-    if INITIALIZED_SENTINELS
-        .iter()
-        .any(|name| new_dir.join(name).exists())
-    {
-        return Ok(Vec::new());
-    }
-    let existing: Vec<&str> = MIGRATED_STATE_FILES
-        .iter()
-        .copied()
-        .filter(|name| legacy_dir.join(name).is_file())
-        .collect();
-    if existing.is_empty() {
-        return Ok(Vec::new());
-    }
-    std::fs::create_dir_all(new_dir).map_err(|error| {
-        format!(
-            "failed to create Pane state directory {}: {error}",
-            new_dir.display()
-        )
-    })?;
-    set_dir_owner_only(new_dir)?;
-    let mut copied = Vec::with_capacity(existing.len());
-    for name in existing {
-        let source = legacy_dir.join(name);
-        let destination = new_dir.join(name);
-        if destination.exists() {
-            continue;
-        }
-        // Copy raw bytes verbatim so malformed recovery state (such as parked-windows.json)
-        // is never silently discarded during migration.
-        let bytes = std::fs::read(&source).map_err(|error| {
-            format!("failed to read legacy state {}: {error}", source.display())
-        })?;
-        crate::state_file::write_atomic(&destination, &bytes).map_err(|error| {
-            format!(
-                "failed to migrate {} to {}: {error}",
-                source.display(),
-                destination.display()
-            )
-        })?;
-        set_file_owner_only(&destination)?;
-        copied.push(name.to_owned());
-    }
-    let marker = new_dir.join(MIGRATION_MARKER);
-    crate::state_file::write_atomic(
-        &marker, b"1
-",
-    )
-    .map_err(|error| {
-        format!(
-            "failed to write migration marker {}: {error}",
-            marker.display()
-        )
-    })?;
-    set_file_owner_only(&marker)?;
-    Ok(copied)
-}
-
-fn migrate_config_file(
-    new_config: &Path,
-    legacy_candidates: &[PathBuf],
-) -> Result<Option<PathBuf>, String> {
-    if new_config.exists() {
-        return Ok(None);
-    }
-    let Some(source) = legacy_candidates.iter().find(|path| path.is_file()) else {
-        return Ok(None);
-    };
-    let bytes = std::fs::read(source)
-        .map_err(|error| format!("failed to read legacy config {}: {error}", source.display()))?;
-    crate::state_file::write_atomic(new_config, &bytes).map_err(|error| {
-        format!(
-            "failed to migrate config {} to {}: {error}",
-            source.display(),
-            new_config.display()
-        )
-    })?;
-    Ok(Some(source.clone()))
-}
-
-#[cfg(unix)]
-fn set_dir_owner_only(path: &Path) -> Result<(), String> {
-    use std::os::unix::fs::PermissionsExt;
-    std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o700)).map_err(|error| {
-        format!(
-            "failed to secure Pane state directory {}: {error}",
-            path.display()
-        )
-    })
-}
-
-#[cfg(not(unix))]
-fn set_dir_owner_only(_path: &Path) -> Result<(), String> {
-    Ok(())
-}
-
-#[cfg(unix)]
-fn set_file_owner_only(path: &Path) -> Result<(), String> {
-    use std::os::unix::fs::PermissionsExt;
-    std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o600)).map_err(|error| {
-        format!(
-            "failed to secure migrated state file {}: {error}",
-            path.display()
-        )
-    })
-}
-
-#[cfg(not(unix))]
-fn set_file_owner_only(_path: &Path) -> Result<(), String> {
-    Ok(())
+        .map(|directory| directory.join(file))
 }
 
 pub fn load_path(path: &Path) -> Result<Config, String> {
@@ -751,7 +462,7 @@ monitor = "main"
                 .hud_style(),
             HudStyle::Icons
         );
-        for style in [HudStyle::Icons, HudStyle::Layouts] {
+        for style in [HudStyle::Layouts, HudStyle::Icons] {
             let source = format!(
                 "version = 1\n[settings]\nhud_style = {:?}\n",
                 style.as_str()
@@ -762,221 +473,5 @@ monitor = "main"
         assert!(Config::parse("version = 1\n[settings]\nhud_style = \"grid\"\n").is_err());
         assert!(Config::parse("version = 1\n[settings]\nhud_style = true\n").is_err());
         assert_eq!(HudStyle::parse("Icons"), None);
-    }
-
-    fn temp_home(label: &str) -> PathBuf {
-        use std::sync::atomic::{AtomicUsize, Ordering};
-        static NEXT: AtomicUsize = AtomicUsize::new(0);
-        let id = NEXT.fetch_add(1, Ordering::Relaxed);
-        let dir = std::env::temp_dir().join(format!(
-            "pane-config-test-{label}-{}-{id}",
-            std::process::id()
-        ));
-        std::fs::create_dir_all(&dir).unwrap();
-        dir
-    }
-
-    #[test]
-    fn resolves_pane_default_paths_and_honors_legacy_env_overrides() {
-        let home = Some(OsString::from("/Users/alex"));
-        assert_eq!(
-            application_support_dir_from(None, None, home.clone()),
-            Some(PathBuf::from(
-                "/Users/alex/Library/Application Support/Pane"
-            ))
-        );
-        assert_eq!(
-            config_path_from(None, None, None, None, home.clone()),
-            Some(PathBuf::from("/Users/alex/.config/pane/config.toml"))
-        );
-        // Legacy SPACEMAN_APPLICATION_SUPPORT overrides both state and default config path.
-        let legacy_support = Some(OsString::from("/tmp/legacy-state"));
-        assert_eq!(
-            application_support_dir_from(None, legacy_support.clone(), home.clone()),
-            Some(PathBuf::from("/tmp/legacy-state"))
-        );
-        assert_eq!(
-            config_path_from(None, None, None, legacy_support.clone(), home.clone()),
-            Some(PathBuf::from("/tmp/legacy-state/config.toml"))
-        );
-        // PANE_* overrides win over SPACEMAN_* overrides.
-        assert_eq!(
-            application_support_dir_from(
-                Some(OsString::from("/tmp/pane-state")),
-                legacy_support.clone(),
-                home.clone()
-            ),
-            Some(PathBuf::from("/tmp/pane-state"))
-        );
-        assert_eq!(
-            config_path_from(
-                Some(OsString::from("/tmp/pane.toml")),
-                Some(OsString::from("/tmp/spaceman.toml")),
-                Some(OsString::from("/tmp/pane-state")),
-                legacy_support,
-                home
-            ),
-            Some(PathBuf::from("/tmp/pane.toml"))
-        );
-    }
-
-    #[test]
-    fn migrates_legacy_dot_config_and_preserves_original() {
-        let home = temp_home("dot-config");
-        let legacy = home.join(".config/spaceman/config.toml");
-        std::fs::create_dir_all(legacy.parent().unwrap()).unwrap();
-        let source = "version = 1\n[settings]\nhud_style = \"layouts\"\n";
-        std::fs::write(&legacy, source).unwrap();
-
-        let report = migrate_legacy_data_in_home(&home, true, true).unwrap();
-        let migrated = home.join(".config/pane/config.toml");
-        assert_eq!(report.copied_config_from.as_deref(), Some(legacy.as_path()));
-        assert_eq!(std::fs::read_to_string(&migrated).unwrap(), source);
-        // Legacy original stays intact.
-        assert_eq!(std::fs::read_to_string(&legacy).unwrap(), source);
-        assert_eq!(load_path(&migrated).unwrap().hud_style(), HudStyle::Layouts);
-
-        // Existing Pane config is never overwritten by legacy config.
-        let updated = "version = 1\n[settings]\nhud = false\n";
-        std::fs::write(&migrated, updated).unwrap();
-        let second = migrate_legacy_data_in_home(&home, true, true).unwrap();
-        assert_eq!(second.copied_config_from, None);
-        assert_eq!(std::fs::read_to_string(&migrated).unwrap(), updated);
-
-        std::fs::remove_dir_all(home).unwrap();
-    }
-
-    #[test]
-    fn migrates_legacy_application_support_config_when_dot_config_absent() {
-        let home = temp_home("app-support-config");
-        let legacy = home.join("Library/Application Support/Spaceman/config.toml");
-        std::fs::create_dir_all(legacy.parent().unwrap()).unwrap();
-        let source =
-            "version = 1\n[[rules]]\nbundle_id = \"com.example.App\"\naction = \"float\"\n";
-        std::fs::write(&legacy, source).unwrap();
-
-        let report = migrate_legacy_data_in_home(&home, true, true).unwrap();
-        let migrated = home.join(".config/pane/config.toml");
-        assert_eq!(report.copied_config_from.as_deref(), Some(legacy.as_path()));
-        assert!(load_path(&migrated).unwrap().has_rules());
-        assert!(legacy.is_file());
-
-        std::fs::remove_dir_all(home).unwrap();
-    }
-
-    #[test]
-    fn dot_config_spaceman_takes_precedence_over_app_support_spaceman_config() {
-        let home = temp_home("config-precedence");
-        let dot_legacy = home.join(".config/spaceman/config.toml");
-        let support_legacy = home.join("Library/Application Support/Spaceman/config.toml");
-        std::fs::create_dir_all(dot_legacy.parent().unwrap()).unwrap();
-        std::fs::create_dir_all(support_legacy.parent().unwrap()).unwrap();
-        std::fs::write(&dot_legacy, "version = 1\n[settings]\nhud = false\n").unwrap();
-        std::fs::write(&support_legacy, "version = 1\n[settings]\nhud = true\n").unwrap();
-
-        let report = migrate_legacy_data_in_home(&home, true, true).unwrap();
-        assert_eq!(
-            report.copied_config_from.as_deref(),
-            Some(dot_legacy.as_path())
-        );
-        let migrated = home.join(".config/pane/config.toml");
-        assert!(!load_path(&migrated).unwrap().hud());
-
-        std::fs::remove_dir_all(home).unwrap();
-    }
-
-    #[test]
-    fn migrates_legacy_state_files_without_sockets_or_deleting_originals() {
-        let home = temp_home("state-migration");
-        let legacy_dir = home.join("Library/Application Support/Spaceman");
-        let new_dir = home.join("Library/Application Support/Pane");
-        std::fs::create_dir_all(&legacy_dir).unwrap();
-        std::fs::write(legacy_dir.join("parked-windows.json"), "[]").unwrap();
-        std::fs::write(legacy_dir.join("workspace-state.json"), "{}").unwrap();
-        std::fs::write(legacy_dir.join("window-memory.json"), "{}").unwrap();
-        std::fs::write(legacy_dir.join("onboarding-complete"), "1\n").unwrap();
-        std::fs::write(legacy_dir.join("control.sock"), "ephemeral").unwrap();
-        std::fs::write(legacy_dir.join("control.lock"), "ephemeral").unwrap();
-        // Simulate agent.log existing in Pane/ before migration runs.
-        std::fs::create_dir_all(&new_dir).unwrap();
-        std::fs::write(new_dir.join("agent.log"), "started\n").unwrap();
-
-        let report = migrate_legacy_data_in_home(&home, true, true).unwrap();
-        assert!(
-            report
-                .copied_state_files
-                .contains(&"parked-windows.json".to_owned())
-        );
-        assert!(
-            report
-                .copied_state_files
-                .contains(&"workspace-state.json".to_owned())
-        );
-        assert!(
-            report
-                .copied_state_files
-                .contains(&"window-memory.json".to_owned())
-        );
-        assert!(
-            report
-                .copied_state_files
-                .contains(&"onboarding-complete".to_owned())
-        );
-        assert!(!new_dir.join("control.sock").exists());
-        assert!(!new_dir.join("control.lock").exists());
-        assert!(new_dir.join(MIGRATION_MARKER).is_file());
-        // Legacy originals remain intact.
-        assert!(legacy_dir.join("parked-windows.json").is_file());
-        assert!(legacy_dir.join("workspace-state.json").is_file());
-        #[cfg(unix)]
-        {
-            use std::os::unix::fs::PermissionsExt;
-            assert_eq!(
-                std::fs::metadata(&new_dir).unwrap().permissions().mode() & 0o777,
-                0o700
-            );
-            assert_eq!(
-                std::fs::metadata(new_dir.join("parked-windows.json"))
-                    .unwrap()
-                    .permissions()
-                    .mode()
-                    & 0o777,
-                0o600
-            );
-        }
-
-        // Subsequent runs do not overwrite Pane's updated state.
-        std::fs::write(new_dir.join("parked-windows.json"), "[{\"updated\":true}]").unwrap();
-        let second = migrate_legacy_data_in_home(&home, true, true).unwrap();
-        assert!(second.copied_state_files.is_empty());
-        assert_eq!(
-            std::fs::read_to_string(new_dir.join("parked-windows.json")).unwrap(),
-            "[{\"updated\":true}]"
-        );
-
-        std::fs::remove_dir_all(home).unwrap();
-    }
-
-    #[test]
-    fn migration_preserves_malformed_parked_windows_verbatim() {
-        let home = temp_home("malformed-parked");
-        let legacy_dir = home.join("Library/Application Support/Spaceman");
-        let new_dir = home.join("Library/Application Support/Pane");
-        std::fs::create_dir_all(&legacy_dir).unwrap();
-        let malformed = "{not valid json";
-        std::fs::write(legacy_dir.join("parked-windows.json"), malformed).unwrap();
-
-        let report = migrate_legacy_data_in_home(&home, true, true).unwrap();
-        assert_eq!(report.copied_state_files, vec!["parked-windows.json"]);
-        assert_eq!(
-            std::fs::read_to_string(new_dir.join("parked-windows.json")).unwrap(),
-            malformed
-        );
-        assert_eq!(
-            std::fs::read_to_string(legacy_dir.join("parked-windows.json")).unwrap(),
-            malformed
-        );
-
-        std::fs::remove_dir_all(home).unwrap();
     }
 }

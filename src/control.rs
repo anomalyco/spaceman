@@ -81,11 +81,11 @@ fn listen_at(path: PathBuf, requests: Sender<Request>) -> Result<Server, String>
         .open(&lock_path)
         .map_err(|error| format!("failed to open control socket lock: {error}"))?;
     lock.try_lock()
-        .map_err(|_| "another Pane agent is already starting or running".to_string())?;
+        .map_err(|_| "another Spaceman agent is already starting or running".to_string())?;
     fs::set_permissions(&lock_path, fs::Permissions::from_mode(0o600))
         .map_err(|error| format!("failed to secure control socket lock: {error}"))?;
     if UnixStream::connect(&path).is_ok() {
-        return Err("another Pane agent is already running".into());
+        return Err("another Spaceman agent is already running".into());
     }
     match fs::remove_file(&path) {
         Ok(()) => {}
@@ -111,7 +111,7 @@ pub fn send(arguments: &[String]) -> Result<String, String> {
     parse_line(&command)?;
     let path = socket_path()?;
     let mut stream =
-        UnixStream::connect(&path).map_err(|_| "Pane agent is not running".to_string())?;
+        UnixStream::connect(&path).map_err(|_| "Spaceman agent is not running".to_string())?;
     stream
         .set_write_timeout(Some(CLIENT_TIMEOUT))
         .map_err(|error| format!("failed to configure control command: {error}"))?;
@@ -132,7 +132,7 @@ pub fn send(arguments: &[String]) -> Result<String, String> {
     } else if let Some(error) = response.strip_prefix("error\n") {
         Err(error.trim_end().to_string())
     } else {
-        Err("Pane returned an invalid control response".into())
+        Err("Spaceman returned an invalid control response".into())
     }
 }
 
@@ -148,10 +148,10 @@ fn serve(listener: UnixListener, requests: Sender<Request>) {
             let (response, receiver) = channel();
             requests
                 .send(Request { command, response })
-                .map_err(|_| "Pane agent is stopping".to_string())?;
+                .map_err(|_| "Spaceman agent is stopping".to_string())?;
             receiver
                 .recv_timeout(RESPONSE_TIMEOUT)
-                .map_err(|_| "Pane did not respond to the control command".to_string())?
+                .map_err(|_| "Spaceman did not respond to the control command".to_string())?
         });
         let (prefix, message) = match response {
             Ok(message) => ("ok", message),
