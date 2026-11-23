@@ -20,10 +20,25 @@ const out = resolve(outArg)
 const audioDir = join(dist, "show/audio")
 mkdirSync(out, { recursive: true })
 
+// The opening plate's frames as PNGs, served at /__plate_frames/, so each captured frame composites
+// exactly its own plate frame (a seek in the video can land up to two frames off before a keyframe).
+// From the 10-bit HEVC the site plays; deleted when the capture ends.
+const plateFrames = join(out, "plate-frames")
+rmSync(plateFrames, { recursive: true, force: true })
+mkdirSync(plateFrames)
+process.on("exit", () => rmSync(plateFrames, { recursive: true, force: true }))
+await $`ffmpeg -v error -i ${join(dist, "show/plate/opening-hevc.mp4")} -vf scale=in_color_matrix=bt709:in_range=tv:flags=accurate_rnd+full_chroma_int,format=rgb24 -start_number 0 ${join(plateFrames, "%04d.png")}`
+
 const server = Bun.serve({
   port: 0,
   async fetch(req) {
     let p = decodeURIComponent(new URL(req.url).pathname)
+    // A normal production build uses /spaceman/; static gallery builds use ./ instead.
+    if (p.startsWith("/spaceman/")) p = p.slice(9)
+    if (p.startsWith("/__plate_frames/")) {
+      const f = Bun.file(join(plateFrames, p.slice(16)))
+      return (await f.exists()) ? new Response(f) : new Response("not found", { status: 404 })
+    }
     if (p.endsWith("/")) p += "index.html"
     const f = Bun.file(join(dist, p))
     return (await f.exists()) ? new Response(f) : new Response("not found", { status: 404 })
@@ -57,8 +72,12 @@ async function open(o: Opts = {}) {
   page.on("console", (m) => (m.type() === "error" || m.type() === "warning") && errors.push(m.type() + ": " + m.text()))
   const requests: string[] = []
   page.on("request", (r) => requests.push(r.url().replace(site, "")))
-  await page.goto(`${site}/?capture${o.query ? "&" + o.query : ""}`)
-  await page.waitForFunction(() => "__show" in window)
+  await page.goto(`${site}/?capture&plateFrames${o.query ? "&" + o.query : ""}`)
+  try {
+    await page.waitForFunction(() => "__show" in window)
+  } catch (cause) {
+    throw new Error("show startup failed: " + JSON.stringify({ errors, requests }), { cause })
+  }
   await page.evaluate(() => document.fonts.ready)
   return { page, errors, requests, ctx }
 }
@@ -69,6 +88,8 @@ async function press(page: Page, mobile = false) {
   if (mobile) await page.tap('section [role="button"][aria-label]')
   else await page.keyboard.press("Alt+Digit1")
   await page.waitForFunction(() => document.querySelector("section")?.dataset.phase === "live", null, { timeout: 20000 })
+  // the first frame drawn and finished before anything is shot
+  await page.evaluate(() => (window as any).__show.seek(0))
 }
 const shot = (page: Page, path: string) => page.screenshot({ path, type: "jpeg", quality: 86 })
 
@@ -267,4 +288,3 @@ writeFileSync(join(out, "report.json"), JSON.stringify(report, null, 1))
 console.log(JSON.stringify({ ...report, states: undefined }, null, 1))
 await browser.close()
 server.stop()
-
