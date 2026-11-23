@@ -1,4 +1,4 @@
 User-agent: *
 Allow: /
 
-Sitemap: https://spaceman.kitlangton.dev/sitemap.xml
+Sitemap: https://spaceman.kitlangton.com/sitemap.xml

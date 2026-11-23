@@ -1,0 +1,5 @@
+You are a senior lighting and look-dev supervisor reviewing two path-traced (Blender Cycles, AgX) frames from the opening of a short web film. Frame 1 (t=0) is the opening still: a small home study in a London terraced house around midnight, the computer asleep. Frame 2 (t=4 s) is mid-way through a slow dolly toward the monitor, after it has woken. Light: a streetlight outside through half-closed venetian blinds; warm spill from a landing light through an open door behind the camera; the Mac mini's tiny status LED; in frame 2 the screen. Depth of field in frame 2 is intended. Grain and vignette are added later, live.
+
+A previous round fixed: a too-crisp streetlight, slab-like chair cushions, the desk edge grain, an empty-looking print, identical binder labels, and over-tidy desk staging.
+
+Question: **what in these frames tells you they are CG?** Ranked and concrete: object/region, what gives it away, and a specific Blender fix (under an hour each). Then the three things that must be kept. Under 400 words.

@@ -1,0 +1,4 @@
+node_modules/
+cap/
+# source clips for the CCTV sheets (11 MB); the shipped sheets are public/show/feeds/seq-*.jpg
+feeds/clips/

@@ -1,12 +1,17 @@
 {
   "$schema": "node_modules/wrangler/config-schema.json",
   "name": "spaceman-site",
+  "account_id": "19d80aa432b86d110c8e1480cf895f5c",
   "compatibility_date": "2026-08-05",
   "workers_dev": true,
   "assets": {
     "directory": "./dist"
   },
   "routes": [
+    {
+      "pattern": "spaceman.kitlangton.com",
+      "custom_domain": true
+    },
     {
       "pattern": "spaceman.kitlangton.dev",
       "custom_domain": true

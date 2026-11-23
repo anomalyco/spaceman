@@ -1,0 +1,5 @@
+You are a senior motion designer and compositor reviewing six frames of a short web film, captured from the live page at 1440x900. The film is a man's macOS desktop seen full screen: a window manager tiles his windows, and many of them are camera feeds of his street and house (an invented doorbell/CCTV app called Vigil), photos, Notes, Messages. The desktop is drawn live in WebGPU; the page adds grain, a vignette, restrained bloom and a dither on top. Feed images are meant to look like cheap security cameras: small, compressed, noisy, timestamped.
+
+Frames: 89.2 s, 129.6 s, 141 s, 147.5 s, 153.2 s, 176.5 s (in that order).
+
+Question: **what in each frame tells you it is a fake or CG desktop rather than a screen recording of a real Mac?** Look for: type rendering and hinting, window chrome, shadows and edges that don't match macOS, feed images that read as AI pictures or as too clean, timestamps and overlays, spacing, grain or vignette that sits on top of UI where a screen recording would have none, colour. Ranked across all frames, concrete, with a specific fix for each (name the frame). Then anything that already reads as real. Under 400 words.
