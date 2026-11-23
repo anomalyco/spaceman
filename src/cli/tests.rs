@@ -6,7 +6,7 @@ use std::{
 
 use serde_json::Value;
 use spaceman::{
-    AppInstanceId, ObservedWindow, PhysicalWindowId, Rect, WorkspaceId,
+    AppInstanceId, Gaps, ObservedWindow, PhysicalWindowId, Rect, WorkspaceId,
     config::{Config, HudStyle, WindowDisposition},
 };
 
@@ -266,6 +266,99 @@ fn config_rejects_unknown_keys_invalid_values_and_corrupt_existing_file() {
         temp.read(),
         "version = 2
 "
+    );
+}
+
+#[test]
+fn config_gaps_get_set_show_and_survive_other_edits() {
+    let temp = TempConfig::new("config-gaps");
+    let gaps = |temp: &TempConfig| Config::parse(&temp.read()).unwrap().gaps();
+
+    // No gaps until they are configured.
+    for key in ["gap_inner", "gap_outer", "settings.gap_inner"] {
+        assert_eq!(
+            temp.run(&["config", "get", key]).stdout.as_deref(),
+            Some("0")
+        );
+    }
+
+    let set_inner = temp.run(&["config", "set", "gap_inner", "8"]);
+    assert_eq!(set_inner.exit_code, 0);
+    assert_eq!(set_inner.stdout.as_deref(), Some("set gap_inner = 8"));
+    let set_outer = temp.run(&["config", "set", "settings.gap_outer", "12", "--json"]);
+    assert_eq!(set_outer.exit_code, 0);
+    let set_outer_json: Value = serde_json::from_str(&set_outer.stdout.unwrap()).unwrap();
+    assert_eq!(set_outer_json["key"], "gap_outer");
+    assert_eq!(set_outer_json["value"], 12);
+    let expected = Gaps {
+        inner: 8,
+        outer: 12,
+    };
+    assert_eq!(gaps(&temp), expected);
+
+    assert_eq!(
+        temp.run(&["config", "get", "gap_inner"]).stdout.as_deref(),
+        Some("8")
+    );
+    let get_json: Value = serde_json::from_str(
+        temp.run(&["config", "get", "gap_outer", "--json"])
+            .stdout
+            .as_deref()
+            .unwrap(),
+    )
+    .unwrap();
+    assert_eq!(get_json["value"], 12);
+    let show = temp.run(&["config", "show"]);
+    assert_eq!(
+        Config::parse(&show.stdout.unwrap()).unwrap().gaps(),
+        expected
+    );
+    let show_json: Value = serde_json::from_str(
+        temp.run(&["config", "show", "--json"])
+            .stdout
+            .as_deref()
+            .unwrap(),
+    )
+    .unwrap();
+    assert_eq!(show_json["settings"]["gap_inner"], 8);
+    assert_eq!(show_json["settings"]["gap_outer"], 12);
+
+    // Every other command that rewrites the file keeps them.
+    for args in [
+        &["config", "set", "hud", "false"][..],
+        &["rules", "add", "--app", "com.example.Writer", "--float"][..],
+        &["workspaces", "assign", "3", "secondary"][..],
+    ] {
+        assert_eq!(temp.run(args).exit_code, 0, "args: {args:?}");
+        assert_eq!(gaps(&temp), expected, "args: {args:?}");
+    }
+
+    let written = temp.read();
+    for args in [
+        &["config", "set", "gap_inner", "257"][..],
+        &["config", "set", "gap_inner", "8.5"][..],
+        &["config", "set", "gap_outer", "wide"][..],
+        &["config", "set", "gap_outer", "--", "-1"][..],
+    ] {
+        let refused = temp.run(args);
+        assert_eq!(refused.exit_code, 1, "args: {args:?}");
+        assert!(
+            refused
+                .stderr
+                .unwrap()
+                .contains("expected a whole number of points from 0 to 256"),
+            "args: {args:?}"
+        );
+        assert_eq!(temp.read(), written);
+    }
+
+    assert_eq!(temp.run(&["config", "set", "gap_inner", "0"]).exit_code, 0);
+    assert_eq!(
+        gaps(&temp),
+        Gaps {
+            inner: 0,
+            outer: 12
+        }
     );
 }
 

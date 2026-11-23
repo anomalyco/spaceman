@@ -37,6 +37,14 @@ Size                                                    // tile.size
 
 Axis                                                    // tile.axis
 └── Option+/ / ctl layout -> flip the root split axis (also exits Fullscreen Layout)
+
+Gaps                                                    // tile.gaps
+├── [settings] gap_inner = N -> N points between adjacent tiles, at every level of a nested split
+├── [settings] gap_outer = N -> N points between the tiles and each edge of the usable display frame
+├── Both unset or 0 (default) -> tiles touch, the same frames as before the keys existed
+├── Saved while running -> visible workspaces re-tile at the next refresh, hidden ones when shown
+├── Resize (50 px, pointer), balance, minimum-size fit, drops, focus -> all measure the gapped tiles
+└── Fullscreen Layout, floating windows, HUD and menu-bar previews -> unaffected
 ```
 
 ## How To Get To It (User POV)
@@ -45,6 +53,7 @@ Axis                                                    // tile.axis
 Keyboard: Option+H/J/K/L, Option+Shift+H/J/K/L, Option+`, Option+-, Option+=, Option+/
 Pointer:  drag a managed window (reorder/nest/move display), drag its edge (resize)
 CLI:      spaceman ctl focus | move-direction | resize | balance | layout | retile
+Config:   [settings] gap_inner / gap_outer in config.toml, or spaceman config set gap_inner 8
 ```
 
 Input arriving while the worker is busy queues in order (up to 64); queued input is dropped on
@@ -76,6 +85,21 @@ pause, quit, or hotkey loss.
 - Unit (FakeBackend), `src/app/tests/minimums.rs`: a window that refuses its tile width gets a wider
   tile (middle, last, several at once, and observation-cycle cases); a three-window row that cannot fit stacks two neighbors, and a wider display restores the requested row; Fullscreen Layout ignores minimums. `src/layout_tree.rs`:
   `fitting_minimums_reaches_into_nested_splits_and_leaves_impossible_splits_alone`.
+- Gaps, `src/runtime/gap_tests.rs` (engine, no backend): exact inner and outer gaps in nested mixed
+  splits for odd and even sizes, no-gap frames identical to the layout's own, 50-point keyboard
+  resize, dragging either side of a gap, an untouched tile changing no weight, balance, minimum-size
+  fit and stacking, gap-free previews, outputs or tiles too small for their gaps, and a seeded
+  random run of nestings, resizes, balances, and drags.
+  Unit (FakeBackend), `src/app/tests/gaps.rs`: `saving_gaps_retiles_the_visible_workspace_and_then_settles`,
+  `fullscreen_layout_and_floating_windows_ignore_gaps`,
+  `a_pointer_resize_follows_the_dragged_edge_and_a_click_changes_nothing`,
+  `drops_swap_and_nest_gapped_tiles_and_a_drop_in_the_gap_does_neither`,
+  `a_refused_tile_width_grows_the_tile_and_keeps_the_gaps`,
+  `the_journal_expects_tiles_at_their_gapped_frames`,
+  `a_constrained_window_overlaps_its_neighbor_only_past_the_gap`. Schema, validation, and round trips:
+  `parses_gaps_with_none_by_default` and `save_workspace_monitor_keeps_gap_settings` in
+  `src/config.rs`, `config_gaps_get_set_show_and_survive_other_edits` in `src/cli/tests.rs`, and
+  `settings_edits_keep_the_gap_settings_they_do_not_show` in `agent/src/rules/tests.rs`.
 - Fixture replay: `cargo run -- replay fixtures/ghostty-tab-replacement.json` (reconciliation of a
   native-tab replacement, without the runtime).
 - Live harness (not run): `scripts/live-ghostty-tabs.sh` for native-tab slot preservation.
@@ -101,6 +125,11 @@ pause, quit, or hotkey loss.
   same; the window comes back as a new tile at the end of the layout. While nothing on the display
   is observed (another macOS Space is showing), tiles are kept.
 - `balance` has no default hotkey; it is CLI-only.
+- No live harness covers gaps. Three disposable windows on one display were observed by hand (tiling,
+  live reload, keyboard resize, nesting, Fullscreen Layout). They have no Settings control: edit `config.toml` or use `spaceman config set`. The layout
+  sizes each tile together with one inner gap, so the 50-point resize limit leaves a tile of
+  `50 - gap_inner` points, and a tile squeezed by more gaps than fit shrinks to one point (its window
+  then usually refuses the size and the minimum-size fit takes over).
 - A window that enters macOS native fullscreen (for example browser video) loses its slot after two
   seconds and returns as a new tile at the end of the layout
   ([known defect](fullscreen-layout.md#gotchas)).

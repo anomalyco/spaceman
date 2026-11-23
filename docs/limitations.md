@@ -16,6 +16,8 @@ Spaceman is an experimental public preview, not a broadly qualified release.
   order and may swap workspaces.
 - Configuration supports ordered exact-match `float`/`route`/`ignore` rules and display assignment. It
   intentionally does not support orthogonal named app spaces or regex title matching.
+- Gaps are one inner and one outer value for every workspace and display; there are no per-side,
+  per-display, or per-workspace gaps.
 - Configuration changes to rules, display assignments, and `[settings]` apply automatically; newly
   referenced named workspace letters register their global shortcuts on the next app start. `ctl restart`
   exits safely but does not relaunch.
@@ -26,8 +28,8 @@ Spaceman is an experimental public preview, not a broadly qualified release.
 - Global shortcuts may collide with other applications or fail on keyboard layouts that cannot
   produce required characters.
 - Settings covers Accessibility, Launch at Login, Workspace HUD, app-wide placement rules, workspace
-  display assignments, keyboard shortcuts, and Activity diagnostics; title-specific rules are edited in
-  `config.toml`. There is no telemetry or analytics.
+  display assignments, keyboard shortcuts, and Activity diagnostics; title-specific rules and gaps are
+  edited in `config.toml` (gaps also with `spaceman config set`). There is no telemetry or analytics.
 - The repository still lacks a concise product demo.
 
 Use the isolated live harnesses in [Development](development.md) before changing window-management,

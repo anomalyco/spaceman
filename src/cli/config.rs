@@ -1,7 +1,7 @@
 use std::path::{Path, PathBuf};
 
 use serde::Serialize;
-use spaceman::config::{HudStyle, UpdateChannel, load_path};
+use spaceman::config::{HudStyle, MAX_GAP, UpdateChannel, load_path};
 
 use super::{
     Outcome,
@@ -47,6 +47,8 @@ enum SettingKey {
     Hud,
     HudStyle,
     UpdateChannel,
+    GapInner,
+    GapOuter,
 }
 
 impl SettingKey {
@@ -55,8 +57,10 @@ impl SettingKey {
             "hud" => Ok(Self::Hud),
             "hud_style" => Ok(Self::HudStyle),
             "update_channel" => Ok(Self::UpdateChannel),
+            "gap_inner" => Ok(Self::GapInner),
+            "gap_outer" => Ok(Self::GapOuter),
             _ => Err(format!(
-                "unknown setting {raw:?}; valid keys: hud, hud_style, update_channel"
+                "unknown setting {raw:?}; valid keys: hud, hud_style, update_channel, gap_inner, gap_outer"
             )),
         }
     }
@@ -66,6 +70,8 @@ impl SettingKey {
             Self::Hud => "hud",
             Self::HudStyle => "hud_style",
             Self::UpdateChannel => "update_channel",
+            Self::GapInner => "gap_inner",
+            Self::GapOuter => "gap_outer",
         }
     }
 }
@@ -184,6 +190,15 @@ fn run_get(args: &[&str], path_override: Option<&Path>) -> Result<String, String
                 serde_json::Value::String(channel.to_owned()),
             )
         }
+        SettingKey::GapInner | SettingKey::GapOuter => {
+            let settings = doc.effective_settings();
+            let points = if key == SettingKey::GapInner {
+                settings.gap_inner
+            } else {
+                settings.gap_outer
+            };
+            (points.to_string(), points.into())
+        }
     };
     if json {
         to_json_pretty(&SettingOutput {
@@ -245,6 +260,24 @@ fn run_set(args: &[&str], path_override: Option<&Path>) -> Result<String, String
                 format!("set update_channel = {}", parsed.as_str()),
                 serde_json::Value::String(parsed.as_str().to_owned()),
             )
+        }
+        SettingKey::GapInner | SettingKey::GapOuter => {
+            let name = key.as_str();
+            let parsed = raw_value
+                .parse::<i32>()
+                .ok()
+                .filter(|points| (0..=MAX_GAP).contains(points))
+                .ok_or_else(|| {
+                    format!(
+                        "invalid value for {name}: expected a whole number of points from 0 to {MAX_GAP}, got {raw_value:?}"
+                    )
+                })?;
+            if key == SettingKey::GapInner {
+                doc.settings.gap_inner = Some(parsed);
+            } else {
+                doc.settings.gap_outer = Some(parsed);
+            }
+            (format!("set {name} = {parsed}"), parsed.into())
         }
     };
 

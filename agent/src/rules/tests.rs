@@ -163,6 +163,31 @@ fn hud_style_round_trips_and_leaves_the_default_out() {
 }
 
 #[test]
+fn settings_edits_keep_the_gap_settings_they_do_not_show() {
+    use spaceman::{Gaps, config::Config};
+    let mut doc =
+        Doc::parse("version = 1\n\n[settings]\ngap_inner = 8 # between tiles\ngap_outer = 12\n");
+    assert_eq!(doc.error, None);
+    let gaps = Gaps {
+        inner: 8,
+        outer: 12,
+    };
+
+    doc.set_hud(false);
+    doc.set_hud_style(HudStyle::Layouts);
+    doc.add("com.example.App", Place::Float);
+    doc.set_monitor(ws("3"), Some("secondary"));
+    let edited = doc.source();
+    assert!(edited.contains("gap_inner = 8 # between tiles"), "{edited}");
+    assert_eq!(Config::parse(&edited).unwrap().gaps(), gaps);
+
+    // Back at the defaults the table stays, because the gaps still live in it.
+    doc.set_hud(true);
+    doc.set_hud_style(HudStyle::Icons);
+    assert_eq!(Config::parse(&doc.source()).unwrap().gaps(), gaps);
+}
+
+#[test]
 fn update_channel_round_trips_and_leaves_stable_out() {
     use spaceman::config::{Config, UpdateChannel};
     let mut doc = Doc::parse(SOURCE);

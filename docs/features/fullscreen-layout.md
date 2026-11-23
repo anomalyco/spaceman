@@ -7,7 +7,7 @@ entering macOS native fullscreen; leave the mode to get the exact previous split
 
 ```ts
 Toggle on (focused workspace)                         // fullscreen.toggle
-├── Every tiled window -> frame = whole display
+├── Every tiled window -> frame = whole display ([settings] gaps do not apply)
 ├── Windows stay stacked: focused one raised, the rest full-size underneath (not hidden)
 ├── Leaving the workspace parks them back to front -> nothing underneath is uncovered
 ├── Split tree, order, and weights untouched
@@ -50,7 +50,8 @@ Unit (FakeBackend), `src/app/tests/layout.rs`:
 `selecting_an_active_fullscreen_workspace_preserves_its_current_focus`,
 `opening_a_new_tiled_window_exits_fullscreen_layout_and_splits_side_by_side`,
 `opening_a_floating_window_preserves_fullscreen_layout`, and
-`ghostty_native_tab_replacement_preserves_workspace_and_fullscreen_layout`. They prove frames,
+`ghostty_native_tab_replacement_preserves_workspace_and_fullscreen_layout`; `src/app/tests/gaps.rs`
+adds `fullscreen_layout_and_floating_windows_ignore_gaps`. They prove frames,
 persisted mode, and which window Spaceman asks to focus or raise; none observes real z-order.
 
 ## How To Get To It (User POV)

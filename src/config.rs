@@ -2,13 +2,17 @@ use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
 
-use crate::{DisplaySelector, ObservedWindow, WorkspaceId, Workspaces};
+use crate::{DisplaySelector, Gaps, ObservedWindow, WorkspaceId, Workspaces};
+
+/// The largest `settings.gap_inner` or `settings.gap_outer`, in points.
+pub const MAX_GAP: i32 = 256;
 
 #[derive(Clone, Copy, Debug)]
 struct AppSettings {
     hud: bool,
     hud_style: HudStyle,
     update_channel: UpdateChannel,
+    gaps: Gaps,
 }
 
 impl Default for AppSettings {
@@ -17,6 +21,7 @@ impl Default for AppSettings {
             hud: true,
             hud_style: HudStyle::default(),
             update_channel: UpdateChannel::default(),
+            gaps: Gaps::default(),
         }
     }
 }
@@ -131,6 +136,10 @@ struct RawSettings {
     hud_style: HudStyle,
     #[serde(default)]
     update_channel: UpdateChannel,
+    #[serde(default)]
+    gap_inner: i64,
+    #[serde(default)]
+    gap_outer: i64,
 }
 
 impl Default for RawSettings {
@@ -139,6 +148,8 @@ impl Default for RawSettings {
             hud: true,
             hud_style: HudStyle::default(),
             update_channel: UpdateChannel::default(),
+            gap_inner: 0,
+            gap_outer: 0,
         }
     }
 }
@@ -219,6 +230,10 @@ impl Config {
                 hud: raw.settings.hud,
                 hud_style: raw.settings.hud_style,
                 update_channel: raw.settings.update_channel,
+                gaps: Gaps {
+                    inner: gap("gap_inner", raw.settings.gap_inner)?,
+                    outer: gap("gap_outer", raw.settings.gap_outer)?,
+                },
             },
             rules,
             workspace_monitors,
@@ -238,6 +253,12 @@ impl Config {
     #[must_use]
     pub const fn update_channel(&self) -> UpdateChannel {
         self.settings.update_channel
+    }
+
+    /// Space around and between tiles: `settings.gap_inner` and `settings.gap_outer`.
+    #[must_use]
+    pub const fn gaps(&self) -> Gaps {
+        self.settings.gaps
     }
 
     pub fn load() -> Result<Self, String> {
@@ -288,6 +309,9 @@ impl Config {
             workspaces.enable(workspace);
         }
         for workspace in WorkspaceId::all() {
+            workspaces
+                .engine_mut(workspace)
+                .set_gaps(self.settings.gaps);
             if !workspaces.is_enabled(workspace) {
                 continue;
             }
@@ -440,11 +464,19 @@ struct EditableSettings {
     hud_style: Option<HudStyle>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     update_channel: Option<UpdateChannel>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    gap_inner: Option<i64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    gap_outer: Option<i64>,
 }
 
 impl EditableSettings {
     const fn is_empty(&self) -> bool {
-        self.hud.is_none() && self.hud_style.is_none() && self.update_channel.is_none()
+        self.hud.is_none()
+            && self.hud_style.is_none()
+            && self.update_channel.is_none()
+            && self.gap_inner.is_none()
+            && self.gap_outer.is_none()
     }
 }
 
@@ -516,6 +548,15 @@ pub fn save_workspace_monitor_at(
 
 fn parse_path(path: &Path, source: &str) -> Result<Config, String> {
     Config::parse(source).map_err(|error| format!("{}: {error}", path.display()))
+}
+
+fn gap(key: &str, points: i64) -> Result<i32, String> {
+    i32::try_from(points)
+        .ok()
+        .filter(|points| (0..=MAX_GAP).contains(points))
+        .ok_or_else(|| {
+            format!("settings.{key} must be between 0 and {MAX_GAP} points, got {points}")
+        })
 }
 
 #[cfg(test)]
@@ -674,6 +715,74 @@ monitor = "main"
             assert_eq!(UpdateChannel::parse(channel.as_str()), Some(channel));
         }
         assert!(Config::parse("version = 1\n[settings]\nupdate_channel = \"beta\"\n").is_err());
+    }
+
+    #[test]
+    fn parses_gaps_with_none_by_default() {
+        let gaps = |settings: &str| {
+            Config::parse(&format!("version = 1\n[settings]\n{settings}\n")).map(|c| c.gaps())
+        };
+        assert_eq!(Config::default().gaps(), Gaps::default());
+        assert_eq!(
+            Config::parse("version = 1").unwrap().gaps(),
+            Gaps::default()
+        );
+        assert_eq!(gaps("hud = false"), Ok(Gaps::default()));
+        assert_eq!(gaps("gap_inner = 8"), Ok(Gaps { inner: 8, outer: 0 }));
+        assert_eq!(
+            gaps("gap_outer = 12\ngap_inner = 7"),
+            Ok(Gaps {
+                inner: 7,
+                outer: 12
+            })
+        );
+        assert_eq!(
+            gaps("gap_inner = 0\ngap_outer = 256"),
+            Ok(Gaps {
+                inner: 0,
+                outer: MAX_GAP
+            })
+        );
+
+        assert_eq!(
+            gaps("gap_inner = -1").unwrap_err(),
+            "settings.gap_inner must be between 0 and 256 points, got -1"
+        );
+        assert_eq!(
+            gaps("gap_outer = 257").unwrap_err(),
+            "settings.gap_outer must be between 0 and 256 points, got 257"
+        );
+        assert!(gaps("gap_inner = 4294967304").is_err());
+        assert!(gaps("gap_inner = 8.5").is_err());
+        assert!(gaps("gap_inner = \"8\"").is_err());
+        assert!(gaps("gap = 8").is_err());
+    }
+
+    #[test]
+    fn save_workspace_monitor_keeps_gap_settings() {
+        let dir = std::env::temp_dir().join(format!(
+            "spaceman-config-gaps-{}-{}",
+            std::process::id(),
+            now().as_nanos()
+        ));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("config.toml");
+        std::fs::write(
+            &path,
+            "version = 1\n[settings]\ngap_inner = 8\ngap_outer = 12\n",
+        )
+        .unwrap();
+        let gaps = Gaps {
+            inner: 8,
+            outer: 12,
+        };
+
+        let saved = save_workspace_monitor_at(&path, WorkspaceId::ONE, &DisplaySelector::Secondary)
+            .unwrap();
+
+        assert_eq!(saved.gaps(), gaps);
+        assert_eq!(load_path(&path).unwrap().gaps(), gaps);
+        drop(std::fs::remove_dir_all(dir));
     }
 
     #[test]

@@ -157,6 +157,8 @@ pub(crate) fn config_help(executable: &str) -> String {
         "  hud             true | false      Show the Workspace HUD overlay (default: true)",
         "  hud_style       icons | layouts   Workspace HUD drawing style (default: icons)",
         "  update_channel  stable | dev      In-app updater release channel (default: stable)",
+        "  gap_inner       0 to 256          Points between adjacent tiles (default: 0)",
+        "  gap_outer       0 to 256          Points between tiles and the display edges (default: 0)",
         "",
         "Notes:",
         "  - Respects SPACEMAN_CONFIG and SPACEMAN_APPLICATION_SUPPORT.",

@@ -32,6 +32,8 @@ Spaceman currently:
 - can register its signed app bundle with macOS to launch automatically at login;
 - supports directional focus and movement across displays, drag-to-reorder/nest, mouse and keyboard
   resizing, balancing, and a workspace-wide Fullscreen Layout;
+- optionally leaves gaps between tiles and around each display's usable frame
+  (`[settings] gap_inner` and `gap_outer`, in points; none by default);
 - keeps movable non-resizable and rule-floated windows with their logical workspace without tiling
   or resizing them;
 - exposes a local CLI over a user-only Unix socket.

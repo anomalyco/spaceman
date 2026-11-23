@@ -42,6 +42,84 @@ impl Rect {
     }
 }
 
+/// Space left around and between a workspace's tiles, in points.
+///
+/// The layout itself knows nothing about gaps. It divides a canvas one inner
+/// gap larger than the area the tiles may fill, and each cell it hands out is
+/// then shrunk by one gap into its tile. Neighboring cells touch, so
+/// neighboring tiles sit exactly one gap apart at any nesting depth, and the
+/// outermost tiles land on the edges of the area.
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub struct Gaps {
+    /// Between adjacent tiles.
+    pub inner: i32,
+    /// Between the tiles and each edge of the display's usable frame.
+    pub outer: i32,
+}
+
+impl Gaps {
+    /// The area the tiles fill: `output` without the outer gap on each side.
+    /// An output too small for its outer gaps keeps a point on each axis.
+    fn area(self, output: Rect) -> Rect {
+        let x = self.outer.clamp(0, (output.width - 1).max(0) / 2);
+        let y = self.outer.clamp(0, (output.height - 1).max(0) / 2);
+        Rect {
+            x: output.x + x,
+            y: output.y + y,
+            width: output.width - 2 * x,
+            height: output.height - 2 * y,
+        }
+    }
+
+    /// What the layout divides into cells to tile `output`.
+    pub(crate) fn canvas(self, output: Rect) -> Rect {
+        self.cell(self.area(output))
+    }
+
+    /// The tile inside one of the canvas cells of `output`. A cell with no
+    /// room beyond its gap leaves its tile a single point inside the area.
+    pub(crate) fn tile(self, cell: Rect, output: Rect) -> Rect {
+        let area = self.area(output);
+        let (x, width) = self.shrink((cell.x, cell.width), (area.x, area.width));
+        let (y, height) = self.shrink((cell.y, cell.height), (area.y, area.height));
+        Rect {
+            x,
+            y,
+            width,
+            height,
+        }
+    }
+
+    /// The canvas cell around a tile at `frame`: the inverse of `tile`.
+    pub(crate) fn cell(self, frame: Rect) -> Rect {
+        let (leading, trailing) = self.halves();
+        Rect {
+            x: frame.x - leading,
+            y: frame.y - leading,
+            width: frame.width + leading + trailing,
+            height: frame.height + leading + trailing,
+        }
+    }
+
+    /// The inner gap as the part a cell gives up at its leading edge and the
+    /// part at its trailing edge. An odd gap puts the extra point trailing,
+    /// so the two parts meeting at any boundary still add up to the gap.
+    fn halves(self) -> (i32, i32) {
+        let inner = self.inner.max(0);
+        (inner / 2, inner - inner / 2)
+    }
+
+    /// One axis of `tile`, as `(start, extent)` pairs.
+    fn shrink(self, cell: (i32, i32), area: (i32, i32)) -> (i32, i32) {
+        let (leading, trailing) = self.halves();
+        let (start, extent) = (cell.0 + leading, cell.1 - leading - trailing);
+        if extent > 0 || leading + trailing == 0 {
+            return (start, extent);
+        }
+        (start.clamp(area.0, (area.0 + area.1 - 1).max(area.0)), 1)
+    }
+}
+
 /// Width and height of the intersection of two rectangles; not positive when disjoint.
 fn overlap(a: Rect, b: Rect) -> (i64, i64) {
     let width = (i64::from(a.x) + i64::from(a.width)).min(i64::from(b.x) + i64::from(b.width))

@@ -22,6 +22,9 @@ pub struct Engine {
     // Only the requested layout above is persisted. The fit is shared by
     // placement, navigation and HUD previews until its inputs change.
     fit: Option<DisplayFit>,
+    /// Applied wherever a frame enters or leaves the layout, so placement,
+    /// resizing, balancing and minimum fits all measure the same tiles.
+    gaps: crate::Gaps,
     insertion_focus: Option<crate::SlotId>,
     evidence: ReconciliationEvidence,
     revision: u64,
@@ -77,7 +80,7 @@ impl Engine {
                 .insertion_focus
                 .filter(|&id| result.model.slot(id).is_some());
         }
-        result.placements = placements_for(self.display_layout(), &result.model, settings.output);
+        result.placements = self.tiles(&result.model, settings.output);
         self.evidence.previous_placements = result
             .placements
             .iter()
@@ -108,7 +111,23 @@ impl Engine {
 
     #[must_use]
     pub fn placements(&self, settings: &Settings) -> Vec<Placement> {
-        placements_for(self.display_layout(), &self.model, settings.output)
+        self.tiles(&self.model, settings.output)
+    }
+
+    /// Leave `gaps` around and between the tiles from the next layout on.
+    pub fn set_gaps(&mut self, gaps: crate::Gaps) {
+        if self.gaps != gaps {
+            self.gaps = gaps;
+            self.fit = None;
+        }
+    }
+
+    fn tiles(&self, model: &Model, output: crate::Rect) -> Vec<Placement> {
+        let mut tiles = placements_for(self.display_layout(), model, self.gaps.canvas(output));
+        for tile in &mut tiles {
+            tile.frame = self.gaps.tile(tile.frame, output);
+        }
+        tiles
     }
 
     pub(crate) fn record_placement_target(&mut self, slot: crate::SlotId, frame: crate::Rect) {
@@ -199,7 +218,8 @@ impl Engine {
         current: crate::Rect,
         output: crate::Rect,
     ) -> bool {
-        self.edit_slot(window, |layout, slot| layout.resize(slot, current, output))
+        let (current, canvas) = (self.gaps.cell(current), self.gaps.canvas(output));
+        self.edit_slot(window, |layout, slot| layout.resize(slot, current, canvas))
     }
 
     pub(crate) fn remember_insertion_focus(&mut self, window: &PhysicalWindowId) {
@@ -228,7 +248,16 @@ impl Engine {
             .workspace
             .slots
             .iter()
-            .filter_map(|slot| Some((slot.id, *minimums.get(slot.bound_window()?)?)))
+            .filter_map(|slot| {
+                let (width, height) = *minimums.get(slot.bound_window()?)?;
+                // The layout fits cells, each one gap larger than its window.
+                let cell = self.gaps.cell(crate::Rect {
+                    width,
+                    height,
+                    ..crate::Rect::default()
+                });
+                Some((slot.id, (cell.width, cell.height)))
+            })
             .collect();
         if slots.is_empty() {
             return self.fit.take().is_some_and(|fit| fit.tree.is_some());
@@ -240,7 +269,7 @@ impl Engine {
         {
             return false;
         }
-        let tree = self.layout.fitted(output, &slots);
+        let tree = self.layout.fitted(self.gaps.canvas(output), &slots);
         let changed = self.fit.as_ref().and_then(|fit| fit.tree.as_ref()) != tree.as_ref();
         self.fit = Some(DisplayFit {
             output,
@@ -257,8 +286,9 @@ impl Engine {
         amount: i32,
         output: crate::Rect,
     ) -> bool {
+        let canvas = self.gaps.canvas(output);
         self.edit_slot(window, |layout, slot| {
-            layout.resize_by(slot, direction, amount, output)
+            layout.resize_by(slot, direction, amount, canvas)
         })
     }
 
@@ -267,7 +297,8 @@ impl Engine {
         window: &PhysicalWindowId,
         output: crate::Rect,
     ) -> bool {
-        self.edit_slot(window, |layout, slot| layout.balance(slot, output))
+        let canvas = self.gaps.canvas(output);
+        self.edit_slot(window, |layout, slot| layout.balance(slot, canvas))
     }
 
     pub(crate) fn create_implicit_split(
@@ -303,6 +334,8 @@ impl Engine {
     }
 
     /// Each tile's slot, window and frame in `output`, in layout order.
+    /// Previews are miniatures that draw their own spacing, so this and
+    /// `preview` fill `output` without the configured gaps.
     pub(crate) fn preview_placements(&self, output: crate::Rect) -> Vec<Placement> {
         placements_for(self.display_layout(), &self.model, output)
     }
@@ -380,6 +413,9 @@ fn placements_for(layout: &LayoutTree, model: &Model, output: crate::Rect) -> Ve
         })
         .collect()
 }
+
+#[cfg(test)]
+mod gap_tests;
 
 #[cfg(test)]
 mod tests {

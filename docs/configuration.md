@@ -34,6 +34,8 @@ version = 1
 hud = true                            # optional (default: true); non-activating Workspace HUD
 hud_style = "icons"                   # optional (default: "icons"); or "layouts"
 update_channel = "stable"             # optional (default: "stable"); or "dev", a build of every merge
+gap_inner = 0                         # optional (default: 0); points between adjacent tiles
+gap_outer = 0                         # optional (default: 0); points around the tiles on each display
 
 [[rules]]
 bundle_id = "com.example.Application" # optional exact match
@@ -77,6 +79,34 @@ memory.
 
 Title matching occurs only in memory. Titles are not serialized into persisted state, snapshots,
 `ctl debug`, or the HUD.
+
+## Gaps
+
+By default tiles touch each other and the edges of the display's usable frame (the area macOS leaves
+free of the menu bar and Dock). Two optional `[settings]` values, in whole points from 0 to 256, add
+space:
+
+```toml
+[settings]
+gap_inner = 8   # between adjacent tiles, at every level of a nested split
+gap_outer = 8   # between the tiles and each edge of the display's usable frame
+```
+
+Both apply to every workspace on every display; there are no per-side or per-display values. A key
+left out or set to `0` adds no space, and with both at `0` every tile gets exactly the frame it had
+before these keys existed. Gaps are not part of a saved layout: changing or removing them resizes
+the tiles and leaves their order, nesting, and weights alone.
+
+Everything that measures a tile measures the gapped one: `Option+-`/`Option+=` still move a boundary
+by 50 points, a pointer resize follows the edge being dragged, `balance` equalizes the tiles
+themselves, and a window that refuses its tile size still gets a tile of the size it kept. A drop in
+the gap between two tiles lands on neither. Fullscreen Layout keeps the whole display frame, floating
+windows keep their own frames, and the workspace previews in the HUD and menu bar keep their own
+spacing.
+
+The size limit when resizing is 50 points for a tile together with its gap, so a tile can be made as
+narrow as `50 - gap_inner` points. A tile left no room by its gaps, on a workspace with more tiles
+than the gaps allow, shrinks to a single point.
 
 ## Remembered Placements
 
@@ -145,7 +175,9 @@ normal recovery data.
 ## Applying Changes
 
 Edits saved in Spaceman Settings or in an external editor take effect automatically: rule changes,
-workspace display assignments, `settings.hud`, and `settings.hud_style` reload without restarting;
+workspace display assignments, `settings.hud`, `settings.hud_style`, `settings.gap_inner`, and
+`settings.gap_outer` reload without restarting; visible workspaces are tiled with new gaps at the
+next refresh, within about five seconds, and hidden ones when they are next shown.
 `settings.update_channel` applies at the next update check. Global shortcuts for a
 newly added named workspace letter (`Option+A` ... `Option+Z`) register on the next app start:
 

@@ -4,6 +4,7 @@ mod dispatch;
 mod float;
 mod focus;
 mod fullscreen;
+mod gaps;
 mod gestures;
 mod journal;
 mod layout;

@@ -44,7 +44,7 @@ mod updater;
 pub mod window_memory;
 pub mod workspace;
 
-pub use geometry::{Axis, Rect};
+pub use geometry::{Axis, Gaps, Rect};
 pub use model::{AppInstanceId, BindingState, Model, PhysicalWindowId, Slot, SlotId};
 pub use navigation::{Direction, NavigationTile};
 pub use observation::{AppObservation, NativeObservation, ObservedApplication, ObservedWindow};

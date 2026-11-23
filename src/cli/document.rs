@@ -51,11 +51,19 @@ pub(crate) struct SettingsDoc {
         serialize_with = "serialize_optional_update_channel"
     )]
     pub update_channel: Option<UpdateChannel>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub gap_inner: Option<i32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub gap_outer: Option<i32>,
 }
 
 impl SettingsDoc {
     fn is_empty(&self) -> bool {
-        self.hud.is_none() && self.hud_style.is_none() && self.update_channel.is_none()
+        self.hud.is_none()
+            && self.hud_style.is_none()
+            && self.update_channel.is_none()
+            && self.gap_inner.is_none()
+            && self.gap_outer.is_none()
     }
 
     pub(crate) fn effective_hud(&self) -> bool {
@@ -115,6 +123,8 @@ pub(crate) struct EffectiveSettings {
     pub hud: bool,
     pub hud_style: &'static str,
     pub update_channel: &'static str,
+    pub gap_inner: i32,
+    pub gap_outer: i32,
 }
 
 #[derive(Clone, Debug, Serialize)]
@@ -173,6 +183,8 @@ impl ConfigDoc {
             hud: self.settings.effective_hud(),
             hud_style: self.settings.effective_hud_style().as_str(),
             update_channel: self.settings.effective_update_channel().as_str(),
+            gap_inner: self.settings.gap_inner.unwrap_or(0),
+            gap_outer: self.settings.gap_outer.unwrap_or(0),
         }
     }
 
