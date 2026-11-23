@@ -2,6 +2,7 @@
 // paths like /spacemanx, which aren't ours. /spaceman redirects to /spaceman/ so the page's
 // relative asset URLs resolve under it.
 const BASE = "/spaceman"
+const RELEASE_SERVICE = "https://anoma.ly/release"
 
 type Env = { ASSETS: { fetch(request: Request): Promise<Response> } }
 
@@ -21,6 +22,7 @@ export default {
     }
     const path = stripBase(url.pathname)
     if (path === undefined) return new Response("Not found", { status: 404 })
+    if (path.startsWith("/download/")) return download(request, path.slice("/download/".length))
     const assetUrl = new URL(url)
     assetUrl.pathname = path
     const response = await env.ASSETS.fetch(new Request(assetUrl, request))
@@ -62,4 +64,72 @@ async function ranged(request: Request, response: Response, headers: Headers): P
   headers.set("Content-Range", `bytes ${start}-${end}/${size}`)
   headers.set("Content-Length", String(end - start + 1))
   return new Response(request.method === "HEAD" ? null : body.slice(start, end + 1), { status: 206, headers })
+}
+
+type ReleaseManifest = {
+  release?: { targets?: Record<string, { sha256?: string; url?: string }> }
+}
+
+function secure(headers: Headers) {
+  headers.set("Strict-Transport-Security", "max-age=31536000")
+  headers.set("X-Content-Type-Options", "nosniff")
+  headers.set("Referrer-Policy", "strict-origin-when-cross-origin")
+}
+
+// Redirects /spaceman/download/macos-arm64 to the Anomaly release service's stable alias (or dev
+// until a stable release is published), and serves its live SHA-256 at .../macos-arm64.sha256.
+async function download(request: Request, rest: string): Promise<Response> {
+  if (request.method !== "GET" && request.method !== "HEAD") {
+    return new Response("Method not allowed", { status: 405, headers: { Allow: "GET, HEAD" } })
+  }
+  const dev = rest.startsWith("dev/")
+  const target = dev ? rest.slice("dev/".length) : rest
+  const isSha = target === "macos-arm64.sha256"
+  if (target !== "macos-arm64" && !isSha) return new Response("Not found", { status: 404 })
+
+  let channel: "stable" | "dev" = "dev"
+  let manifest: ReleaseManifest | undefined
+  if (!dev) {
+    try {
+      const res = await fetch(`${RELEASE_SERVICE}/spaceman/desktop/stable.json`, {
+        headers: { "User-Agent": "spaceman-site" },
+        cache: "no-store",
+      })
+      if (res.ok) {
+        channel = "stable"
+        if (isSha) manifest = (await res.json()) as ReleaseManifest
+      }
+    } catch {
+      // Fall through to dev or error visibly below.
+    }
+  }
+
+  if (isSha) {
+    if (!manifest) {
+      const res = await fetch(`${RELEASE_SERVICE}/spaceman/desktop/${channel}.json`, {
+        headers: { "User-Agent": "spaceman-site" },
+        cache: "no-store",
+      })
+      if (!res.ok) return new Response("Release checksum unavailable", { status: 502 })
+      manifest = (await res.json()) as ReleaseManifest
+    }
+    const sha = manifest.release?.targets?.["macos-arm64"]?.sha256
+    if (!sha) return new Response("Checksum not found", { status: 404 })
+    const headers = new Headers({
+      "Content-Type": "text/plain; charset=utf-8",
+      "Cache-Control": "no-store",
+    })
+    secure(headers)
+    return new Response(request.method === "HEAD" ? null : `${sha}  Spaceman.zip\n`, {
+      status: 200,
+      headers,
+    })
+  }
+
+  const headers = new Headers({
+    Location: `${RELEASE_SERVICE}/spaceman/desktop/${channel}/macos-arm64`,
+    "Cache-Control": "no-store",
+  })
+  secure(headers)
+  return new Response(null, { status: 302, headers })
 }
