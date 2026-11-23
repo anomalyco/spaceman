@@ -1,8 +1,7 @@
 #!/usr/bin/env bash
 # sign-macos.sh <unsigned Spaceman.app zip> <out dir>: signs Spaceman.app
 # inside-out with the Developer ID identity (hardened runtime, secure
-# timestamp): Sparkle's XPC services, Autoupdate and Updater.app, the
-# framework, both executables, then the bundle. Notarizes and staples it, and
+# timestamp): both executables, then the bundle. Notarizes and staples it, and
 # writes Spaceman-<version>-macos-arm64.zip (root Spaceman.app) with its
 # .sha256. The app is data here: it is never launched.
 #
@@ -32,11 +31,7 @@ plist="$app/Contents/Info.plist"
 
 # Every Mach-O in the bundle must be one this script signs; anything else would
 # ship unsigned or unnoticed.
-sparkle=Contents/Frameworks/Sparkle.framework/Versions/B
-expected=$(printf '%s\n' Contents/MacOS/spaceman Contents/MacOS/spaceman-agent \
-  "$sparkle/Sparkle" "$sparkle/Autoupdate" "$sparkle/Updater.app/Contents/MacOS/Updater" \
-  "$sparkle/XPCServices/Downloader.xpc/Contents/MacOS/Downloader" \
-  "$sparkle/XPCServices/Installer.xpc/Contents/MacOS/Installer" | LC_ALL=C sort)
+expected=$(printf '%s\n' Contents/MacOS/spaceman Contents/MacOS/spaceman-agent | LC_ALL=C sort)
 found=$(cd "$app" && find . -type f -exec sh -c 'file -b "$1" | grep -q Mach-O && printf "%s\n" "${1#./}"' _ {} \; | LC_ALL=C sort)
 [ "$found" = "$expected" ] || die "Unexpected code in Spaceman.app: $(echo "$found" | tr '\n' ' ')"
 for executable in spaceman spaceman-agent; do
@@ -47,11 +42,6 @@ sign() {
   codesign --force --timestamp --options runtime --keychain "$SPACEMAN_KEYCHAIN" \
     --sign "$SPACEMAN_SIGNING_IDENTITY" "$@"
 }
-sign "$app/$sparkle/XPCServices/Installer.xpc"
-sign --preserve-metadata=entitlements "$app/$sparkle/XPCServices/Downloader.xpc"
-sign "$app/$sparkle/Autoupdate"
-sign "$app/$sparkle/Updater.app"
-sign "$app/Contents/Frameworks/Sparkle.framework"
 sign "$app/Contents/MacOS/spaceman-agent"
 sign "$app/Contents/MacOS/spaceman"
 sign --identifier anomaly.spaceman "$app"

@@ -9,7 +9,6 @@ root=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
 bundle="$root/target/Spaceman.app"
 icon_output="$root/target/AppIcon.assets"
 icon_info="$root/target/AppIcon-info.plist"
-sparkle_dir=$("$root/scripts/setup-sparkle.sh")
 identity=${SPACEMAN_CODESIGN_IDENTITY:-}
 unsigned=${SPACEMAN_RELEASE_UNSIGNED:-}
 deployment_target=$(/usr/bin/plutil -extract LSMinimumSystemVersion raw "$root/app/Info.plist")
@@ -74,7 +73,7 @@ for executable in spaceman-agent spaceman; do
   /bin/mv "$patched" "$path"
 done
 rm -rf "$bundle"
-mkdir -p "$bundle/Contents/MacOS" "$bundle/Contents/Resources" "$bundle/Contents/Frameworks"
+mkdir -p "$bundle/Contents/MacOS" "$bundle/Contents/Resources"
 cp "$root/target/release/spaceman-agent" "$bundle/Contents/MacOS/spaceman-agent"
 cp "$root/target/release/spaceman" "$bundle/Contents/MacOS/spaceman"
 cp "$root/app/Info.plist" "$bundle/Contents/Info.plist"
@@ -91,24 +90,11 @@ xcrun actool "$root/app/AppIcon.icon" \
   --warnings \
   --notices >&2
 cp "$icon_output/AppIcon.icns" "$icon_output/Assets.car" "$bundle/Contents/Resources/"
-# Spaceman no longer loads Sparkle (src/updater.rs updates it), but the Release workflow's
-# sign-macos.sh still expects exactly these Mach-O files, so the framework stays until that
-# script drops it.
-/usr/bin/ditto "$sparkle_dir/Sparkle.framework" "$bundle/Contents/Frameworks/Sparkle.framework"
 plutil -lint "$bundle/Contents/Info.plist" >/dev/null
 if [ -n "$unsigned" ]; then
   printf '%s\n' "$bundle"
   exit 0
 fi
-sparkle="$bundle/Contents/Frameworks/Sparkle.framework/Versions/B"
-codesign --force --timestamp --options runtime --sign "$identity" \
-  "$sparkle/XPCServices/Installer.xpc"
-codesign --force --timestamp --options runtime --preserve-metadata=entitlements --sign "$identity" \
-  "$sparkle/XPCServices/Downloader.xpc"
-codesign --force --timestamp --options runtime --sign "$identity" "$sparkle/Autoupdate"
-codesign --force --timestamp --options runtime --sign "$identity" "$sparkle/Updater.app"
-codesign --force --timestamp --options runtime --sign "$identity" \
-  "$bundle/Contents/Frameworks/Sparkle.framework"
 codesign --force --timestamp --options runtime --sign "$identity" \
   "$bundle/Contents/MacOS/spaceman-agent"
 codesign --force --timestamp --options runtime --sign "$identity" \

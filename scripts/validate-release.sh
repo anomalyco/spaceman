@@ -74,8 +74,6 @@ esac
   fail "built bundle Info.plist differs from source Info.plist"
 [ -s "$bundle/Contents/Resources/AppIcon.icns" ] || fail "built bundle is missing AppIcon.icns"
 [ -s "$bundle/Contents/Resources/Assets.car" ] || fail "built bundle is missing Assets.car"
-[ -s "$bundle/Contents/Frameworks/Sparkle.framework/Versions/B/Sparkle" ] || \
-  fail "built bundle is missing Sparkle.framework"
 
 for executable in $expected_executables; do
   path="$bundle/Contents/MacOS/$executable"
@@ -130,7 +128,6 @@ for required in \
   Spaceman.app/Contents/MacOS/spaceman-agent \
   Spaceman.app/Contents/Resources/AppIcon.icns \
   Spaceman.app/Contents/Resources/Assets.car \
-  Spaceman.app/Contents/Frameworks/Sparkle.framework/Versions/B/Sparkle \
   Spaceman.app/Contents/_CodeSignature/CodeResources
 do
   grep -Fxq "$required" "$actual_contents" || fail "ZIP is missing $required"
@@ -143,7 +140,6 @@ for relative_path in \
   Contents/MacOS/spaceman-agent \
   Contents/Resources/AppIcon.icns \
   Contents/Resources/Assets.car \
-  Contents/Frameworks/Sparkle.framework/Versions/B/Sparkle \
   Contents/_CodeSignature/CodeResources
 do
   /usr/bin/cmp "$bundle/$relative_path" "$extracted/Spaceman.app/$relative_path" || \

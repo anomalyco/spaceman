@@ -1,11 +1,10 @@
 # Releasing
 
 Spaceman is not release-ready merely because `scripts/build-app.sh` produces a signed bundle. The
-script builds locked release binaries, embeds Sparkle 2.9.4 (no longer loaded; the Release
-workflow's `sign-macos.sh` still expects its binaries), assembles `Spaceman.app`, applies
-hardened-runtime Developer ID signing from the innermost Sparkle helpers outward, and verifies the
-signature. It does not notarize, staple, or publish an artifact. With `SPACEMAN_RELEASE_UNSIGNED=1` it
-stops before signing; the Release workflow builds that way and signs in a separate job.
+script builds locked release binaries, assembles `Spaceman.app`, applies hardened-runtime Developer
+ID signing to both executables and the bundle, and verifies the signature. It does not notarize,
+staple, or publish an artifact. With `SPACEMAN_RELEASE_UNSIGNED=1` it stops before signing; the
+Release workflow builds that way and signs in a separate job.
 
 ## Direct Distribution
 
