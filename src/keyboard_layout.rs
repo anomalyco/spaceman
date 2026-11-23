@@ -104,25 +104,85 @@ impl LayoutSnapshot {
         &self.fingerprint
     }
 
+    /// The single best key for `key`. Shortcut planning walks `candidates` instead so a
+    /// taken chord can fall through to another key; tests use this to pin one resolution.
+    #[cfg(test)]
     pub(crate) fn resolve(&self, key: LogicalKey) -> Result<ResolvedKey, ResolveError> {
         match key {
             LogicalKey::Semantic(key) => semantic_key_code(key).map(|key_code| ResolvedKey {
                 key_code,
                 shift: false,
             }),
-            LogicalKey::Character(character) => reverse_lookup(&self.primary, character)
-                .or_else(|error| {
-                    if matches!(error, ResolveError::MissingCharacter(_)) && character.is_ascii() {
-                        reverse_lookup(&self.ascii_fallback, character)
-                    } else {
-                        Err(error)
-                    }
-                })
-                .map(|output| ResolvedKey {
-                    key_code: u32::from(output.key_code),
-                    shift: output.shift,
-                }),
+            LogicalKey::Character(character) => self
+                .character_candidates(character)
+                .into_iter()
+                .next()
+                .ok_or(ResolveError::MissingCharacter(character)),
         }
+    }
+
+    /// Every physical key that could serve `key`, most preferred first. Shortcut planning
+    /// walks this list so one taken chord costs only an alternative key, not the shortcut.
+    pub(crate) fn candidates(&self, key: LogicalKey) -> Result<Vec<ResolvedKey>, ResolveError> {
+        match key {
+            LogicalKey::Semantic(key) => semantic_key_code(key).map(|key_code| {
+                vec![ResolvedKey {
+                    key_code,
+                    shift: false,
+                }]
+            }),
+            LogicalKey::Character(character) => {
+                let candidates = self.character_candidates(character);
+                if candidates.is_empty() {
+                    Err(ResolveError::MissingCharacter(character))
+                } else {
+                    Ok(candidates)
+                }
+            }
+        }
+    }
+
+    /// A character's keys in preference order: a live key on the primary layout, a live key
+    /// on the ASCII-capable fallback, a dead key, then the physical ANSI punctuation key.
+    ///
+    /// A dead key is usable because `RegisterEventHotKey` matches a key code and modifiers
+    /// rather than composed text, and the physical fallback covers layouts (Italian – Pro,
+    /// for one) that cannot type the character at all: the shortcut still fires from the
+    /// standard ANSI position, whatever that key types in the active layout.
+    fn character_candidates(&self, character: char) -> Vec<ResolvedKey> {
+        let mut candidates = Vec::with_capacity(4);
+        let mut push = |candidate: ResolvedKey| {
+            if !candidates.contains(&candidate) {
+                candidates.push(candidate);
+            }
+        };
+        let resolved = |output: KeyOutput| ResolvedKey {
+            key_code: u32::from(output.key_code),
+            shift: output.shift,
+        };
+        if let Ok(output) = reverse_lookup(&self.primary, character) {
+            push(resolved(output));
+        }
+        if character.is_ascii()
+            && let Ok(output) = reverse_lookup(&self.ascii_fallback, character)
+        {
+            push(resolved(output));
+        }
+        if let Ok(output) = reverse_lookup_dead(&self.primary, character) {
+            push(resolved(output));
+        }
+        if character.is_ascii()
+            && let Ok(output) = reverse_lookup_dead(&self.ascii_fallback, character)
+        {
+            push(resolved(output));
+        }
+        if let Some(key_code) = physical_punctuation_key_code(character) {
+            push(ResolvedKey {
+                key_code,
+                shift: false,
+            });
+        }
+        candidates
     }
 
     #[cfg(test)]
@@ -168,10 +228,46 @@ fn semantic_key_code(key: SemanticKey) -> Result<u32, ResolveError> {
     }
 }
 
+/// Physical ANSI positions of the punctuation shortcuts, used only when the active layout
+/// cannot type the character with any key at all. Global hotkeys match the key code, so an
+/// Italian – Pro keyboard still fires Option plus the key above Tab even though that key
+/// types a backslash there.
+const PHYSICAL_PUNCTUATION_KEY_CODES: [(char, u16); 11] = [
+    ('`', 0x32),  // kVK_ANSI_Grave
+    ('/', 0x2c),  // kVK_ANSI_Slash
+    ('-', 0x1b),  // kVK_ANSI_Minus
+    ('=', 0x18),  // kVK_ANSI_Equal
+    ('[', 0x21),  // kVK_ANSI_LeftBracket
+    (']', 0x1e),  // kVK_ANSI_RightBracket
+    (';', 0x29),  // kVK_ANSI_Semicolon
+    ('\'', 0x27), // kVK_ANSI_Quote
+    (',', 0x2b),  // kVK_ANSI_Comma
+    ('.', 0x2f),  // kVK_ANSI_Period
+    ('\\', 0x2a), // kVK_ANSI_Backslash
+];
+
+fn physical_punctuation_key_code(character: char) -> Option<u32> {
+    PHYSICAL_PUNCTUATION_KEY_CODES
+        .iter()
+        .find_map(|(punctuation, key_code)| {
+            (*punctuation == character).then_some(u32::from(*key_code))
+        })
+}
+
 fn reverse_lookup(outputs: &[KeyOutput], character: char) -> Result<KeyOutput, ResolveError> {
+    lookup(outputs, character, false)
+}
+
+/// A dead key still names a real physical key, and Carbon hotkeys match the key code, so a
+/// layout whose only grave (German QWERTZ) is a dead key can still offer the shortcut.
+fn reverse_lookup_dead(outputs: &[KeyOutput], character: char) -> Result<KeyOutput, ResolveError> {
+    lookup(outputs, character, true)
+}
+
+fn lookup(outputs: &[KeyOutput], character: char, dead: bool) -> Result<KeyOutput, ResolveError> {
     outputs
         .iter()
-        .filter(|output| !output.dead && output.character == character)
+        .filter(|output| output.dead == dead && output.character == character)
         .filter(|output| !character.is_alphabetic() || !output.shift)
         // Keep character shortcuts reachable on keyboards without a numeric keypad.
         .min_by_key(|output| (KEYPAD_KEY_CODES.contains(&output.key_code), output.shift))
@@ -586,6 +682,77 @@ mod tests {
         assert_eq!(
             reverse_lookup(&[dead], '='),
             Err(ResolveError::MissingCharacter('='))
+        );
+    }
+
+    #[test]
+    fn candidates_prefer_live_keys_then_dead_then_physical_position() {
+        let layout = LayoutSnapshot::for_test(
+            vec![(0x0a, '°', true, false), (0x0a, '`', false, true)],
+            vec![(0x32, '`', false, false)],
+        );
+        assert_eq!(
+            layout.candidates(LogicalKey::Character('`')),
+            Ok(vec![
+                ResolvedKey {
+                    key_code: 0x32,
+                    shift: false
+                },
+                ResolvedKey {
+                    key_code: 0x0a,
+                    shift: false
+                },
+            ]),
+            "the live ASCII key wins, then the dead key; the physical key is deduplicated"
+        );
+        assert_eq!(
+            layout.resolve(LogicalKey::Character('`')),
+            Ok(ResolvedKey {
+                key_code: 0x32,
+                shift: false
+            })
+        );
+    }
+
+    #[test]
+    fn dead_key_alone_resolves_a_character() {
+        // German QWERTZ has no live grave at all; its only grave is a dead key.
+        let layout = LayoutSnapshot::for_test(vec![(0x0a, '`', false, true)], vec![]);
+        assert_eq!(
+            layout.resolve(LogicalKey::Character('`')),
+            Ok(ResolvedKey {
+                key_code: 0x0a,
+                shift: false
+            })
+        );
+    }
+
+    #[test]
+    fn missing_punctuation_falls_back_to_its_physical_ansi_key() {
+        // Italian – Pro cannot type a plain grave, and a layout may hide `/` behind Shift.
+        let layout = LayoutSnapshot::for_test(vec![], vec![]);
+        for (character, key_code) in [('`', 0x32), ('/', 0x2c), ('-', 0x1b), ('=', 0x18)] {
+            assert_eq!(
+                layout.resolve(LogicalKey::Character(character)),
+                Ok(ResolvedKey {
+                    key_code,
+                    shift: false
+                }),
+                "{character:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn physical_fallback_never_invents_letter_keys() {
+        let layout = LayoutSnapshot::for_test(vec![], vec![]);
+        assert_eq!(
+            layout.resolve(LogicalKey::Character('h')),
+            Err(ResolveError::MissingCharacter('h'))
+        );
+        assert_eq!(
+            layout.candidates(LogicalKey::Character('h')),
+            Err(ResolveError::MissingCharacter('h'))
         );
     }
 

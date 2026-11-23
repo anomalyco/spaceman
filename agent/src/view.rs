@@ -160,9 +160,18 @@ fn pane_header(p: Paint, title: &str, trailing: Option<El>) -> El {
         .children(trailing)
 }
 
-/// A save that failed, or a config file Spaceman can't read.
+/// A save that failed, a config file Spaceman can't read, or an agent error such as
+/// unavailable hotkeys, which used to be visible only through the control socket.
 fn error_banner(ui: &Ui, p: Paint) -> Option<El> {
-    let copy = ui.error.as_deref().or(ui.doc.error.as_deref())?;
+    let agent_error = ui
+        .agent
+        .as_ref()
+        .and_then(|agent| agent.last_error.as_deref());
+    let copy = ui
+        .error
+        .as_deref()
+        .or(ui.doc.error.as_deref())
+        .or(agent_error)?;
     Some(
         row()
             .key("error")

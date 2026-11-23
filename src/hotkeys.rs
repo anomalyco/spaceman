@@ -82,6 +82,9 @@ struct HandlerContext {
 pub(crate) struct HotkeyPlan {
     registrations: Vec<Registration>,
     layout_fingerprint: LayoutFingerprint,
+    /// Shortcuts this keyboard layout could not map. Each one is skipped on its own; the
+    /// rest of the plan, and automatic tiling, keep running.
+    warnings: Vec<String>,
 }
 
 #[derive(Clone, Debug)]
@@ -99,7 +102,7 @@ impl HotkeyPlan {
     }
 
     fn from_layout(enabled: &[WorkspaceId], layout: &LayoutSnapshot) -> Result<Self, String> {
-        let mut registrations = Vec::with_capacity(14 + enabled.len() * 2);
+        let mut plan = PlanBuilder::new(layout, 14 + enabled.len() * 2);
         let claimed_letters = enabled
             .iter()
             .filter_map(|workspace| workspace.letter().map(|letter| letter.to_ascii_lowercase()))
@@ -110,19 +113,18 @@ impl HotkeyPlan {
                 (_, Some(letter)) => LogicalKey::Character(letter.to_ascii_lowercase()),
                 _ => unreachable!("workspace ID is always valid"),
             };
-            let key = layout.resolve(key).map_err(|error| error.to_string())?;
-            registrations.push(registration(
+            plan.push(
                 key,
                 OPTION_KEY,
                 WorkerAction::SwitchWorkspace(workspace),
                 format!("switch workspace {workspace}"),
-            ));
-            registrations.push(registration(
+            );
+            plan.push(
                 key,
                 OPTION_KEY | SHIFT_KEY,
                 WorkerAction::MoveFocused(workspace),
                 format!("move window to workspace {workspace}"),
-            ));
+            );
         }
         for (character, direction, name) in [
             ('h', Direction::Left, "left"),
@@ -133,21 +135,18 @@ impl HotkeyPlan {
             if claimed_letters.contains(&character) {
                 continue;
             }
-            let key = layout
-                .resolve(LogicalKey::Character(character))
-                .map_err(|error| error.to_string())?;
-            registrations.push(registration(
-                key,
+            plan.push(
+                LogicalKey::Character(character),
                 OPTION_KEY,
                 WorkerAction::Focus(direction),
                 format!("focus {name}"),
-            ));
-            registrations.push(registration(
-                key,
+            );
+            plan.push(
+                LogicalKey::Character(character),
                 OPTION_KEY | SHIFT_KEY,
                 WorkerAction::Reorder(direction),
                 format!("move window {name}"),
-            ));
+            );
         }
         for (key, modifiers, action, description) in [
             (
@@ -191,14 +190,19 @@ impl HotkeyPlan {
             {
                 continue;
             }
-            let key = layout.resolve(key).map_err(|error| error.to_string())?;
-            registrations.push(registration(key, modifiers, action, description.into()));
+            plan.push(key, modifiers, action, description);
         }
 
-        reject_collisions(&registrations)?;
+        if plan.registrations.is_empty() {
+            return Err(match plan.warnings.first() {
+                Some(warning) => format!("no shortcut could be planned: {warning}"),
+                None => "no shortcut could be planned".into(),
+            });
+        }
         Ok(Self {
-            registrations,
+            registrations: plan.registrations,
             layout_fingerprint: layout.fingerprint().clone(),
+            warnings: plan.warnings,
         })
     }
 
@@ -207,34 +211,63 @@ impl HotkeyPlan {
     }
 }
 
-fn registration(
-    key: crate::keyboard_layout::ResolvedKey,
-    semantic_modifiers: u32,
-    action: WorkerAction,
-    description: String,
-) -> Registration {
-    Registration {
-        key_code: key.key_code,
-        modifiers: semantic_modifiers | if key.shift { SHIFT_KEY } else { 0 },
-        action,
-        description,
-    }
+/// Builds a plan in priority order, keeping the first shortcut that claims a chord and
+/// skipping later ones that would collide. Unusual layouts (Italian, AZERTY) reset two
+/// characters onto one physical key with different Shift states, and that must cost one
+/// shortcut rather than every shortcut and automatic tiling.
+struct PlanBuilder<'a> {
+    layout: &'a LayoutSnapshot,
+    registrations: Vec<Registration>,
+    occupied: BTreeMap<(u32, u32), String>,
+    /// Shortcuts this layout could not map, kept for diagnosis instead of pausing the agent.
+    warnings: Vec<String>,
 }
 
-fn reject_collisions(registrations: &[Registration]) -> Result<(), String> {
-    let mut occupied = BTreeMap::new();
-    for registration in registrations {
-        if let Some(previous) = occupied.insert(
-            (registration.key_code, registration.modifiers),
-            registration.description.as_str(),
-        ) {
-            return Err(format!(
-                "keyboard layout maps {previous} and {} to virtual key {:#04x} with modifiers {:#06x}",
-                registration.description, registration.key_code, registration.modifiers
-            ));
+impl<'a> PlanBuilder<'a> {
+    fn new(layout: &'a LayoutSnapshot, capacity: usize) -> Self {
+        Self {
+            layout,
+            registrations: Vec::with_capacity(capacity),
+            occupied: BTreeMap::new(),
+            warnings: Vec::new(),
         }
     }
-    Ok(())
+
+    fn push(
+        &mut self,
+        key: LogicalKey,
+        modifiers: u32,
+        action: WorkerAction,
+        description: impl Into<String>,
+    ) {
+        let description = description.into();
+        let candidates = match self.layout.candidates(key) {
+            Ok(candidates) => candidates,
+            Err(error) => {
+                self.warnings
+                    .push(format!("skipped {description}: {error}"));
+                return;
+            }
+        };
+        for candidate in candidates {
+            let modifiers = modifiers | if candidate.shift { SHIFT_KEY } else { 0 };
+            let chord = (candidate.key_code, modifiers);
+            if self.occupied.contains_key(&chord) {
+                continue;
+            }
+            self.occupied.insert(chord, description.clone());
+            self.registrations.push(Registration {
+                key_code: chord.0,
+                modifiers,
+                action,
+                description,
+            });
+            return;
+        }
+        self.warnings.push(format!(
+            "skipped {description}: every key it can use is already taken"
+        ));
+    }
 }
 
 impl Hotkeys {
@@ -262,17 +295,37 @@ impl Hotkeys {
             return Err(format!("failed to install hotkey handler ({status})"));
         }
 
+        let HotkeyPlan {
+            registrations,
+            layout_fingerprint,
+            warnings,
+        } = plan;
         let mut hotkeys = Self {
-            registrations: Vec::with_capacity(plan.registrations.len()),
+            registrations: Vec::with_capacity(registrations.len()),
             handler,
             context: Some(context),
-            layout_fingerprint: plan.layout_fingerprint,
+            layout_fingerprint,
             bindings: Vec::new(),
         };
-        for (id, registration) in (0..).zip(&plan.registrations) {
-            hotkeys.register(registration.key_code, registration.modifiers, id)?;
+        // Shortcuts the layout already skipped are the first reasons a plan can be thin.
+        let mut failures = warnings;
+        for registration in registrations {
+            // A chord another app already owns (or macOS refuses) costs only that shortcut.
+            let id = u32::try_from(hotkeys.bindings.len())
+                .map_err(|_| "too many hotkeys to register".to_owned())?;
+            match hotkeys.register(registration.key_code, registration.modifiers, id) {
+                Ok(()) => hotkeys.bindings.push(registration),
+                Err(error) => {
+                    failures.push(format!("skipped {}: {error}", registration.description))
+                }
+            }
         }
-        hotkeys.bindings = plan.registrations;
+        if hotkeys.bindings.is_empty() {
+            return Err(match failures.first() {
+                Some(failure) => failure.clone(),
+                None => "no shortcut could be registered".into(),
+            });
+        }
         Ok(hotkeys)
     }
 
@@ -489,7 +542,7 @@ mod tests {
     }
 
     #[test]
-    fn duplicate_chords_are_rejected_before_registration() {
+    fn duplicate_chords_skip_only_the_conflicting_shortcut() {
         let layout = LayoutSnapshot::for_test(
             vec![
                 (60, 'h', false, false),
@@ -504,23 +557,145 @@ mod tests {
             ],
             vec![],
         );
-        let error = HotkeyPlan::from_layout(&[], &layout).unwrap_err();
-        assert!(error.contains("focus left and focus down"), "{error}");
+        let plan = HotkeyPlan::from_layout(&[], &layout).unwrap();
+        assert_eq!(
+            action(&plan, "focus left"),
+            Some(&WorkerAction::Focus(Direction::Left))
+        );
+        assert_eq!(action(&plan, "focus down"), None);
+        assert_eq!(
+            action(&plan, "toggle layout"),
+            Some(&WorkerAction::ToggleLayout)
+        );
+        assert!(
+            plan.warnings
+                .iter()
+                .any(|warning| warning.contains("skipped focus down")),
+            "{:?}",
+            plan.warnings
+        );
     }
 
     #[test]
-    fn unsupported_layout_cannot_produce_a_replacement_plan() {
+    fn italian_pro_without_a_grave_keeps_tiling_and_remaps_shifted_punctuation() {
+        // Italian – Pro: no key types a plain grave, `/` is Shift+7 (virtual key 0x1a, the
+        // physical 7 key), and `=` is Shift+0 (0x1d, the physical 0 key).
+        let italian = LayoutSnapshot::for_test(
+            vec![
+                (4, 'h', false, false),
+                (38, 'j', false, false),
+                (40, 'k', false, false),
+                (37, 'l', false, false),
+                (3, 'f', false, false),
+                (0x1a, '/', true, false),
+                (0x1b, '-', false, false),
+                (0x1d, '=', true, false),
+            ],
+            vec![],
+        );
+        let enabled = WorkspaceId::numbered().collect::<Vec<_>>();
+        let plan = HotkeyPlan::from_layout(&enabled, &italian).unwrap();
+        let registration = |description: &str| {
+            plan.registrations
+                .iter()
+                .find(|registration| registration.description == description)
+                .unwrap_or_else(|| panic!("missing {description}: {:?}", plan.warnings))
+        };
+
+        // The semantic number row still owns Option+Shift+7 and Option+Shift+0.
+        assert_eq!(registration("move window to workspace 7").key_code, 0x1a);
+        assert_eq!(registration("move window to workspace 10").key_code, 0x1d);
+
+        // Each shifted punctuation shortcut moves to its plain ANSI physical key instead of
+        // colliding with a workspace chord or disappearing.
+        for (description, key_code, modifiers) in [
+            ("toggle layout", 0x2c, OPTION_KEY),
+            ("grow layout", 0x18, OPTION_KEY),
+            ("shrink layout", 0x1b, OPTION_KEY),
+            // The missing grave falls back to the key above Tab.
+            ("cycle workspace windows", 0x32, OPTION_KEY),
+        ] {
+            let registration = registration(description);
+            assert_eq!(registration.key_code, key_code, "{description}");
+            assert_eq!(registration.modifiers, modifiers, "{description}");
+        }
+        let focus_left = registration("focus left");
+        assert_eq!(focus_left.key_code, 4);
+        assert_eq!(focus_left.modifiers, OPTION_KEY);
+        assert_eq!(focus_left.action, WorkerAction::Focus(Direction::Left));
+        assert_eq!(
+            registration("switch workspace 1").key_code,
+            0x12,
+            "the semantic number row keeps tiling reachable"
+        );
+        assert!(plan.warnings.is_empty(), "{:?}", plan.warnings);
+    }
+
+    #[test]
+    fn german_dead_grave_key_still_plans_the_cycle_shortcut() {
+        // German QWERTZ exposes no live grave; the only one is a dead key on 0x0a.
+        let german = LayoutSnapshot::for_test(
+            vec![
+                (4, 'h', false, false),
+                (38, 'j', false, false),
+                (40, 'k', false, false),
+                (37, 'l', false, false),
+                (3, 'f', false, false),
+                (0x2c, '/', true, false),
+                (0x1b, '-', false, false),
+                (0x18, '=', false, false),
+                (0x0a, '`', false, true),
+            ],
+            vec![],
+        );
+        let plan = HotkeyPlan::from_layout(&[], &german).unwrap();
+        let cycle = plan
+            .registrations
+            .iter()
+            .find(|registration| registration.action == WorkerAction::CycleFocus)
+            .expect("cycle shortcut is planned from the dead key");
+        assert_eq!(cycle.key_code, 0x0a);
+        assert_eq!(cycle.modifiers, OPTION_KEY);
+        assert!(plan.warnings.is_empty(), "{:?}", plan.warnings);
+    }
+
+    #[test]
+    fn layout_without_letters_keeps_semantic_and_punctuation_shortcuts() {
+        // Cyrillic without an ASCII-capable fallback cannot type h, j, k or l at all.
         let non_latin_without_ascii_fallback = LayoutSnapshot::for_test(
             vec![
                 (60, 'ж', false, false),
                 (61, 'д', false, false),
                 (62, 'л', false, false),
                 (63, 'о', false, false),
+                (65, '/', false, false),
+                (66, '-', false, false),
+                (67, '=', false, false),
             ],
             vec![],
         );
 
-        let error = HotkeyPlan::from_layout(&[], &non_latin_without_ascii_fallback).unwrap_err();
-        assert!(error.contains("does not produce 'h'"), "{error}");
+        let plan = HotkeyPlan::from_layout(&[], &non_latin_without_ascii_fallback).unwrap();
+        assert_eq!(action(&plan, "focus left"), None);
+        assert_eq!(
+            action(&plan, "toggle layout"),
+            Some(&WorkerAction::ToggleLayout)
+        );
+        assert_eq!(
+            action(&plan, "workspace back-and-forth"),
+            Some(&WorkerAction::WorkspaceBackAndForth)
+        );
+        assert_eq!(
+            action(&plan, "cycle workspace windows"),
+            Some(&WorkerAction::CycleFocus)
+        );
+        assert!(
+            plan.warnings
+                .iter()
+                .any(|warning| warning.contains("skipped focus left")
+                    && warning.contains("does not produce 'h'")),
+            "{:?}",
+            plan.warnings
+        );
     }
 }
