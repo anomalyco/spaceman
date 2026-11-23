@@ -1461,8 +1461,8 @@ const painters = {
         ctx.restore()
       })
     }
-    // Float, never tiled
-    text(ctx, "Float, never tiled", G.mx, G.floatTop + 14, { size: 13, weight: 600 })
+    // Floating
+    text(ctx, "Floating", G.mx, G.floatTop + 14, { size: 13, weight: 600 })
     const by = G.floatTop + 24
     ctx.fillStyle = "#f7f7f8"
     roundRect(ctx, G.mx, by, G.mapW, 52 * k, 8)

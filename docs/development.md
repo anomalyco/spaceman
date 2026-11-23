@@ -77,7 +77,7 @@ and whitespace:
 
 ```sh
 rg -n '\[[^]]+\]\([^)]+' --glob '*.md'
-rg -n 'Disable Tiling|Enable Tiling|Settings\.\.\.|Quit Spaceman' --glob '*.md'
+rg -n 'Pause Tiling|Resume Tiling|Settings\.\.\.|Quit Spaceman' --glob '*.md'
 rg -n 'Automatic Tiling|Retile Now|starts paused|paused startup' --glob '*.md' --glob '!docs/development.md'
 git diff --check
 ```

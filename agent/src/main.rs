@@ -167,23 +167,23 @@ impl Ui {
         }
     }
 
-    pub fn toggle_hud(&mut self) {
-        let next = !self.doc.hud();
-        self.edit(|doc| doc.set_hud(next));
+    /// Sets the Workspace HUD off (`None`) or on with `style` (`Some(style)`).
+    pub fn set_hud(&mut self, mode: Option<spaceman::config::HudStyle>) {
+        let enabled = mode.is_some();
+        self.edit(|doc| {
+            doc.set_hud(enabled);
+            if let Some(style) = mode {
+                doc.set_hud_style(style);
+            }
+        });
         if self.error.is_none() {
             if let Some(driver) = &self.hud_driver {
-                driver.set_enabled(next);
+                driver.set_enabled(enabled);
+                if let Some(style) = mode {
+                    driver.set_style(style);
+                }
             }
-            self.send_action(UiAction::SetHud(next));
-        }
-    }
-
-    pub fn set_hud_style(&mut self, style: spaceman::config::HudStyle) {
-        self.edit(|doc| doc.set_hud_style(style));
-        if self.error.is_none()
-            && let Some(driver) = &self.hud_driver
-        {
-            driver.set_style(self.doc.hud_style());
+            self.send_action(UiAction::SetHud(enabled));
         }
     }
 

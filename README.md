@@ -111,8 +111,8 @@ Automatic tiling starts when the setup tour finishes. A fresh install holds it w
 open, so granting Accessibility never rearranges your windows behind the setup window. Without
 Accessibility permission, the menu reports the permission error and tiling remains paused. While
 tiling, the menu lists each display's workspaces (the visible one checked, plus any holding windows,
-with their apps' icons); choosing one switches to it. The menu actions are `Run Setup...` (while
-Accessibility is missing), `Disable Tiling` (or `Enable Tiling` while paused), `Workspace HUD`,
+with their apps' icons); choosing one switches to it. The menu actions are `Setup Tour…` (while
+Accessibility is missing), `Pause Tiling` (or `Resume Tiling` while paused), `Workspace HUD`,
 `Launch at Login`, `Settings...` (`⌘,`), `Check for Updates...`, and `Quit Spaceman` (`⌘Q`). Settings
 includes `General`, `Rules`, `Workspaces`, `Shortcuts`, and `Activity` (title-free arrangement
 diagnostics and process vitals). If macOS requires approval, the login item action opens **System

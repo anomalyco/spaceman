@@ -83,13 +83,13 @@ application is responsive. Successful Accessibility writes alone do not confirm 
 
 The menu-bar control shows active workspace/layout glyphs and runtime errors. Its actions are:
 
-- `Run Setup...`, shown while Accessibility permission is missing;
+- `Setup Tour…`, shown while Accessibility permission is missing;
 - while tiling, the workspaces of each display (under the display's name when there are several):
   the visible one checked, plus every workspace holding windows, each with its apps' icons (names on
   hover) and its `Option` shortcut. Choosing one switches to it;
-- `Disable Tiling`, or `Enable Tiling` while paused;
+- `Pause Tiling`, or `Resume Tiling` while paused;
 - `Workspace HUD`, checked while the non-activating workspace capsule (`[settings] hud = true`) is enabled;
-  `Settings > General > HUD style` picks how it draws each workspace (`Icons` or `Layouts`, `[settings] hud_style`, default `Icons`);
+  `Settings > General > Workspace HUD` picks `Off`, `Icons`, or `Layouts` (`[settings] hud` and `hud_style`, default `Icons`);
 - `Launch at Login`, shown checked when macOS has enabled the signed app bundle;
 - `Settings...` (`⌘,`), opening the Rune Settings window (`General`, `Rules`, `Workspaces`, `Shortcuts`, and `Activity`, plus `⇧⌘D` Playground);
 - `Check for Updates...`, which checks and opens Settings (its sidebar and `General > Updates` show

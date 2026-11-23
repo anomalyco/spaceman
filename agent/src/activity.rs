@@ -4,7 +4,7 @@
 #[cfg(test)]
 mod tests;
 
-use std::{path::Path, time::SystemTime};
+use std::time::SystemTime;
 
 use rune::{El, Tx, col, row, text};
 use spaceman::journal::{
@@ -306,11 +306,6 @@ impl ActivityPane {
     }
 }
 
-/// The Activity pane has no header actions; Save Snapshot lives in the Diagnostics card.
-pub fn header_actions(_: &Ui, _: Paint) -> El {
-    row().key("activity-actions")
-}
-
 pub fn pane(ui: &Ui, p: Paint) -> El {
     let report = &ui.activity.report;
     let vitals = ui
@@ -477,8 +472,10 @@ pub fn pane(ui: &Ui, p: Paint) -> El {
         journal_rows,
     ));
 
-    let journal_path = spaceman::journal::default_paths()
-        .map_or_else(|| "journal.jsonl".into(), |(live, _)| home_relative(&live));
+    let journal_path = spaceman::journal::default_paths().map_or_else(
+        || "journal.jsonl".into(),
+        |(live, _)| controls::home_relative(&live),
+    );
     let mut diagnostics = vec![controls::setting_row(
         p,
         "journal-file",
@@ -554,16 +551,6 @@ fn human_restore_reason(reason: &str) -> String {
         "startup without saved workspaces" => "Startup recovery without saved workspaces".into(),
         other => other.into(),
     }
-}
-
-/// `path` with the home directory shortened to `~`.
-fn home_relative(path: &Path) -> String {
-    std::env::var_os("HOME")
-        .and_then(|home| path.strip_prefix(home).ok())
-        .map_or_else(
-            || path.display().to_string(),
-            |rest| format!("~/{}", rest.display()),
-        )
 }
 
 fn capitalized(text: &str) -> String {

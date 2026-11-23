@@ -403,7 +403,7 @@ function RulesStill() {
   );
 }
 
-// Disable Tiling: the parked windows come back to the frames they had before Spaceman moved them
+// Pause Tiling: the parked windows come back to the frames they had before Spaceman moved them
 const PLACED: R[] = [{ x: 0.06, y: 0.18, w: 0.42, h: 0.52 }, { x: 0.36, y: 0.3, w: 0.44, h: 0.5 }, { x: 0.55, y: 0.14, w: 0.38, h: 0.44 }];
 
 function RestoreDemo() {
@@ -414,7 +414,7 @@ function RestoreDemo() {
     <div ref={ref} className="relative size-full bg-[linear-gradient(135deg,#465363,#262c35)]">
       <div className="absolute inset-x-0 top-0 z-10 flex h-[9%] items-center justify-end gap-2 bg-[#eceef1]/85 px-[3%] text-[11px] text-[#24262b]">
         <span className={`rounded-[4px] px-1.5 py-px text-[10px] font-bold transition-colors duration-300 ${on ? "bg-[#24262b] text-[#eceef1]" : "bg-[#24262b]/25 text-[#24262b]"}`}>1</span>
-        <span className="w-[84px] text-right">{on ? "Disable Tiling" : "Enable Tiling"}</span>
+        <span className="w-[84px] text-right">{on ? "Pause Tiling" : "Resume Tiling"}</span>
       </div>
       <div className="absolute inset-x-[3%] top-[12%] bottom-[3%]">
         {PLACED.map((p, k) => {

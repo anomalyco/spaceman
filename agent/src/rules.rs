@@ -302,6 +302,17 @@ impl Doc {
         tables
     }
 
+    /// `config.toml`'s path shortened with `~`, falling back to the default location in fixtures.
+    pub fn display_path(&self) -> String {
+        self.path
+            .clone()
+            .or_else(spaceman::config::config_path)
+            .map_or_else(
+                || "~/Library/Application Support/Spaceman/config.toml".into(),
+                |path| crate::controls::home_relative(&path),
+            )
+    }
+
     pub fn source(&self) -> String {
         self.doc.to_string()
     }

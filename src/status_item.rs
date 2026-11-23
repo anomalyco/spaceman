@@ -132,19 +132,13 @@ pub fn install(sender: Sender<Action>) -> Result<(), String> {
     status.setHidden(true);
     menu.addItem(&status);
     menu.addItem(&NSMenuItem::separatorItem(marker));
-    let setup = action_item("Run Setup...", &target, sel!(openSetup:), "", marker);
+    let setup = action_item("Setup Tour…", &target, sel!(openSetup:), "", marker);
     setup.setHidden(true);
     menu.addItem(&setup);
     let setup_separator = NSMenuItem::separatorItem(marker);
     setup_separator.setHidden(true);
     menu.addItem(&setup_separator);
-    let automatic = action_item(
-        "Disable Tiling",
-        &target,
-        sel!(toggleAutomatic:),
-        "",
-        marker,
-    );
+    let automatic = action_item("Pause Tiling", &target, sel!(toggleAutomatic:), "", marker);
     menu.addItem(&automatic);
     menu.addItem(&NSMenuItem::separatorItem(marker));
     let hud = action_item("Workspace HUD", &target, sel!(toggleHud:), "", marker);
@@ -285,9 +279,9 @@ pub fn set_automatic(enabled: bool) {
             controller
                 .automatic
                 .setTitle(&NSString::from_str(if enabled {
-                    "Disable Tiling"
+                    "Pause Tiling"
                 } else {
-                    "Enable Tiling"
+                    "Resume Tiling"
                 }));
         }
     });

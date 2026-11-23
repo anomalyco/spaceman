@@ -24,7 +24,7 @@ pub fn view(ui: &Ui, cx: &mut Cx<Ui>) -> El {
     let p = Paint::new(cx.system_dark(), cx.env().scale);
     // Menus mount above the page (rune-kit overlays).
     let mut layer = Vec::new();
-    let (trailing, body) = ui.pane.render(ui, p, &mut layer);
+    let body = ui.pane.render(ui, p, &mut layer);
     let panel = col()
         .key("panel")
         .grow(1.0)
@@ -37,7 +37,7 @@ pub fn view(ui: &Ui, cx: &mut Cx<Ui>) -> El {
         .border(p.hair, p.k.c.border_weak)
         .padding(p.hair)
         .clip_soft(0.0)
-        .child(pane_header(p, ui.pane.title(), trailing))
+        .child(pane_header(p, ui.pane.title()))
         .children(error_banner(ui, p))
         .child(body);
     let window = row()
@@ -140,13 +140,12 @@ fn nav_item(p: Paint, pane: Pane, on: bool) -> El {
 }
 
 /// The panel's title bar, which also moves the window.
-fn pane_header(p: Paint, title: &str, trailing: Option<El>) -> El {
+fn pane_header(p: Paint, title: &str) -> El {
     row()
         .window_drag()
         .key("pane-header")
         .h(HEADER_HEIGHT)
         .px(CONTENT_PADDING)
-        .gap(8.0)
         .center_y()
         .child(
             text(title)
@@ -156,8 +155,6 @@ fn pane_header(p: Paint, title: &str, trailing: Option<El>) -> El {
                 .shrink()
                 .truncate(),
         )
-        .child(el().key("header-spacer").grow(1.0))
-        .children(trailing)
 }
 
 /// A save that failed, a config file Spaceman can't read, or an agent error such as

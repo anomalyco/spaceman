@@ -219,6 +219,16 @@ pub fn icon_toggle_row(
         .on_press(flip)
 }
 
+/// `path` with the home directory shortened to `~`.
+pub fn home_relative(path: &std::path::Path) -> String {
+    std::env::var_os("HOME")
+        .and_then(|home| path.strip_prefix(home).ok())
+        .map_or_else(
+            || path.display().to_string(),
+            |rest| format!("~/{}", rest.display()),
+        )
+}
+
 /// Reveals `path` in Finder, or opens its parent folder if the file has not been created yet.
 pub fn reveal_in_finder(path: &std::path::Path) {
     let target = if path.exists() {
