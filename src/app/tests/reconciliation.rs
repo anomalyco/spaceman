@@ -914,3 +914,82 @@ fn varying_constrained_rejections_freeze_and_clear_on_user_gesture() {
     assert!(!runtime.apply_attempts[WorkspaceId::ONE.index()].contains_key(&stubborn));
     assert!(!runtime.constrained[WorkspaceId::ONE.index()].contains_key(&stubborn));
 }
+
+#[test]
+fn delayed_async_bounce_after_matching_ticks_freezes_and_clears_on_target_change() {
+    let (main, mini, settings) = (window(10), window(11), window(12));
+    let initial = [
+        (main.clone(), frame(50)),
+        (mini.clone(), frame(350)),
+        (settings.clone(), frame(650)),
+    ];
+    let mut runtime = runtime(FakeBackend {
+        frames: initial.iter().cloned().collect(),
+        observation: Some(observation_for_windows(
+            "com.example.Electron",
+            &settings,
+            &initial,
+        )),
+        ..FakeBackend::default()
+    });
+    let (outputs, cancelled, ws) = (outputs(), AtomicBool::new(false), WorkspaceId::ONE.index());
+
+    // Cycle 1 applies target; two early matching ticks must keep applied armed.
+    runtime.cycle(outputs.clone(), &cancelled).unwrap();
+    let target = runtime.backend.frames[&mini];
+    for _ in 0..2 {
+        runtime.cycle(outputs.clone(), &cancelled).unwrap();
+        assert_eq!(runtime.backend.observed_apply_count, 1);
+        assert!(runtime.applied[ws].contains_key(&mini));
+    }
+
+    // Fixed-height delayed snap-back settles on the first bounce without re-applying.
+    let clamped = crate::Rect {
+        height: 520,
+        ..target
+    };
+    runtime.backend.frames.insert(mini.clone(), clamped);
+    for _ in 0..2 {
+        runtime.cycle(outputs.clone(), &cancelled).unwrap();
+        assert_eq!(runtime.backend.observed_apply_count, 1);
+        assert_eq!(runtime.constrained[ws].get(&mini), Some(&(target, clamped)));
+        assert_eq!(runtime.apply_attempts[ws].get(&mini), Some(&(target, 1)));
+    }
+
+    // Varying-height delayed bounces (each preceded by matching early ticks)
+    // still increment apply_attempts and freeze cleanly at APPLY_ATTEMPT_LIMIT.
+    for height in [560, 480, 600, 440, 640, 420] {
+        runtime
+            .backend
+            .frames
+            .insert(mini.clone(), crate::Rect { height, ..target });
+        let before = runtime.backend.observed_apply_count;
+        runtime.cycle(outputs.clone(), &cancelled).unwrap();
+        if runtime.backend.observed_apply_count > before {
+            assert_eq!(runtime.backend.frames[&mini], target);
+            runtime.cycle(outputs.clone(), &cancelled).unwrap();
+            runtime.cycle(outputs.clone(), &cancelled).unwrap();
+        }
+    }
+    let limit = usize::from(super::super::cycle::APPLY_ATTEMPT_LIMIT);
+    assert_eq!(runtime.backend.observed_apply_count, limit);
+    assert_eq!(
+        runtime.apply_attempts[ws].get(&mini),
+        Some(&(target, super::super::cycle::APPLY_ATTEMPT_LIMIT))
+    );
+    assert!(runtime.constrained[ws].contains_key(&mini));
+
+    // Closing a sibling changes target, clearing the freeze and re-applying cleanly.
+    runtime.backend.frames.remove(&settings);
+    runtime.cycle(outputs.clone(), &cancelled).unwrap();
+    assert_eq!(runtime.backend.observed_apply_count, limit + 1);
+    assert_eq!(runtime.backend.frames[&mini].width, 500);
+    assert_eq!(runtime.backend.frames[&mini].height, 800);
+    assert!(!runtime.apply_attempts[ws].contains_key(&mini));
+    assert!(!runtime.constrained[ws].contains_key(&mini));
+
+    // Once ASYNC_BOUNCE_SETTLE elapses at the matching frame, applied clears cleanly.
+    runtime.applied[ws].get_mut(&mini).unwrap().at = Instant::now() - cycle::ASYNC_BOUNCE_SETTLE;
+    runtime.cycle(outputs, &cancelled).unwrap();
+    assert!(!runtime.applied[ws].contains_key(&mini));
+}

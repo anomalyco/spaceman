@@ -321,37 +321,186 @@ fn floating_rule_owns_window_without_adding_it_to_layout() {
 }
 
 #[test]
-fn tiled_window_becoming_non_resizable_moves_to_floating_ownership() {
-    let window = window(10);
-    let normal = frame(50);
-    let mut observed = observation(&window, normal);
-    let crate::AppObservation::Complete { windows, .. } = &mut observed.applications[0] else {
-        unreachable!();
-    };
-    windows[0].resizable = false;
+fn tiled_window_keeps_its_tile_through_modal_sheet_non_resizable_state() {
+    let first = window(10);
+    let sibling = window(11);
+    let cancelled = AtomicBool::new(false);
     let mut backend = FakeBackend {
-        observation: Some(observed),
+        focused: Some(first.clone()),
+        frontmost: Some(first.app.clone()),
+        observation: Some(observation_for_windows(
+            "com.example.Test",
+            &first,
+            &[(first.clone(), frame(50)), (sibling.clone(), frame(550))],
+        )),
         ..FakeBackend::default()
     };
-    backend.frames.insert(window.clone(), normal);
+    backend.frames.insert(first.clone(), frame(50));
+    backend.frames.insert(sibling.clone(), frame(550));
     let mut runtime = runtime(backend);
-    bind(&mut runtime, WorkspaceId::ONE, &window);
 
-    runtime.cycle(outputs(), &AtomicBool::new(false)).unwrap();
+    runtime.cycle(outputs(), &cancelled).unwrap();
+    runtime
+        .resize_focused(ResizeDirection::Grow, outputs(), &cancelled)
+        .unwrap();
 
-    assert_eq!(runtime.workspaces.workspace_of(&window), None);
-    assert_eq!(
-        runtime.workspaces.floating_workspace_of(&window),
-        Some(WorkspaceId::ONE)
-    );
-    assert!(
+    let snapshot_slots = |runtime: &WorkspaceRuntime<FakeBackend>| {
         runtime
             .workspaces
             .engine(WorkspaceId::ONE)
             .model()
             .workspace
             .slots
-            .is_empty()
+            .iter()
+            .map(|slot| (slot.id, slot.bound_window().cloned(), slot.weight))
+            .collect::<Vec<_>>()
+    };
+    let slots_before = snapshot_slots(&runtime);
+    let first_frame = runtime.backend.frames[&first];
+    let sibling_frame = runtime.backend.frames[&sibling];
+    assert!(first_frame.width > sibling_frame.width);
+    assert!(sibling_frame.width < outputs().main().frame.width);
+
+    // A window-modal close/save sheet temporarily flips the tiled window non-resizable.
+    let Some(crate::NativeObservation { applications, .. }) = &mut runtime.backend.observation
+    else {
+        unreachable!();
+    };
+    let crate::AppObservation::Complete { windows, .. } = &mut applications[0] else {
+        unreachable!();
+    };
+    windows[0].resizable = false;
+
+    runtime.cycle(outputs(), &cancelled).unwrap();
+
+    assert_eq!(
+        runtime.workspaces.workspace_of(&first),
+        Some(WorkspaceId::ONE)
+    );
+    assert_eq!(runtime.workspaces.floating_workspace_of(&first), None);
+    assert_eq!(snapshot_slots(&runtime), slots_before);
+    assert_eq!(runtime.backend.frames[&first], first_frame);
+    assert_eq!(runtime.backend.frames[&sibling], sibling_frame);
+
+    // When the sheet closes and resizable returns to true, tiling resumes normally.
+    let Some(crate::NativeObservation { applications, .. }) = &mut runtime.backend.observation
+    else {
+        unreachable!();
+    };
+    let crate::AppObservation::Complete { windows, .. } = &mut applications[0] else {
+        unreachable!();
+    };
+    windows[0].resizable = true;
+
+    runtime.cycle(outputs(), &cancelled).unwrap();
+    assert_eq!(snapshot_slots(&runtime), slots_before);
+    assert_eq!(runtime.backend.frames[&first], first_frame);
+    assert_eq!(runtime.backend.frames[&sibling], sibling_frame);
+
+    runtime
+        .resize_focused(ResizeDirection::Grow, outputs(), &cancelled)
+        .unwrap();
+    assert!(runtime.backend.frames[&first].width > first_frame.width);
+}
+
+#[test]
+fn newly_opened_non_resizable_dialog_floats_without_tiling() {
+    let tiled = window(10);
+    let dialog = window(11);
+    let dialog_frame = frame(300);
+    let mut observed = observation_for_windows(
+        "com.example.Test",
+        &dialog,
+        &[(tiled.clone(), frame(50)), (dialog.clone(), dialog_frame)],
+    );
+    let crate::AppObservation::Complete { windows, .. } = &mut observed.applications[0] else {
+        unreachable!();
+    };
+    windows[1].resizable = false;
+    let mut backend = FakeBackend {
+        observation: Some(observed),
+        ..FakeBackend::default()
+    };
+    backend.frames.insert(tiled.clone(), frame(50));
+    backend.frames.insert(dialog.clone(), dialog_frame);
+    let mut runtime = runtime(backend);
+    bind(&mut runtime, WorkspaceId::ONE, &tiled);
+
+    runtime.cycle(outputs(), &AtomicBool::new(false)).unwrap();
+
+    assert_eq!(
+        runtime.workspaces.workspace_of(&tiled),
+        Some(WorkspaceId::ONE)
+    );
+    assert_eq!(runtime.workspaces.workspace_of(&dialog), None);
+    assert_eq!(
+        runtime.workspaces.floating_workspace_of(&dialog),
+        Some(WorkspaceId::ONE)
+    );
+    assert_eq!(runtime.backend.frames[&tiled], outputs().main().frame);
+    assert_eq!(runtime.backend.frames[&dialog], dialog_frame);
+    assert!(
+        !runtime
+            .backend
+            .calls
+            .iter()
+            .any(|call| matches!(call, BackendCall::Apply(window, _) if window == &dialog))
+    );
+}
+
+#[test]
+fn manual_float_and_float_rule_still_release_tiled_windows_immediately() {
+    let first = window(10);
+    let sibling = window(11);
+    let cancelled = AtomicBool::new(false);
+    let mut backend = FakeBackend {
+        focused: Some(first.clone()),
+        frontmost: Some(first.app.clone()),
+        observation: Some(observation_for_windows(
+            "com.example.Test",
+            &first,
+            &[(first.clone(), frame(50)), (sibling.clone(), frame(550))],
+        )),
+        ..FakeBackend::default()
+    };
+    backend.frames.insert(first.clone(), frame(50));
+    backend.frames.insert(sibling.clone(), frame(550));
+    let mut runtime = runtime(backend);
+
+    runtime.cycle(outputs(), &cancelled).unwrap();
+    runtime.toggle_float(outputs(), &cancelled).unwrap();
+
+    assert_eq!(runtime.workspaces.workspace_of(&first), None);
+    assert_eq!(
+        runtime.workspaces.floating_workspace_of(&first),
+        Some(WorkspaceId::ONE)
+    );
+    assert!(runtime.manual_floating.contains(&first));
+    assert_eq!(runtime.backend.frames[&sibling], outputs().main().frame);
+
+    // Subsequent cycles keep the manually floated window floating.
+    runtime.cycle(outputs(), &cancelled).unwrap();
+    assert_eq!(runtime.workspaces.workspace_of(&first), None);
+    assert_eq!(
+        runtime.workspaces.floating_workspace_of(&first),
+        Some(WorkspaceId::ONE)
+    );
+
+    // A float rule also releases the remaining tiled window immediately.
+    let float_config = Config::parse(
+        "version = 1
+[[rules]]
+bundle_id = 'com.example.Test'
+action = 'float'",
+    )
+    .unwrap();
+    runtime.replace_config(float_config);
+    runtime.cycle(outputs(), &cancelled).unwrap();
+
+    assert_eq!(runtime.workspaces.workspace_of(&sibling), None);
+    assert_eq!(
+        runtime.workspaces.floating_workspace_of(&sibling),
+        Some(WorkspaceId::ONE)
     );
 }
 

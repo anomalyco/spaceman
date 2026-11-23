@@ -80,11 +80,14 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
                     affinities.insert(window.id.clone(), FrozenWindowAffinity::Ignored);
                     continue;
                 }
-                // A window the user floated by hand stays floating even though no rule
-                // names it; Toggle Float is the rule, for this window and this session.
-                let floating = !window.resizable
-                    || disposition == WindowDisposition::Floating
-                    || self.manual_floating.contains(&window.id);
+                // A window that already holds a tile keeps it while it temporarily
+                // looks non-resizable (for example while an attached window-modal
+                // close or save sheet disables its fullscreen button or AXSize).
+                // A float rule or Toggle Float still releases the tile immediately.
+                let tiled = self.workspaces.workspace_of(&window.id).is_some();
+                let floating = disposition == WindowDisposition::Floating
+                    || self.manual_floating.contains(&window.id)
+                    || (!window.resizable && !tiled);
                 if floating {
                     if let Some(owner) = self.workspaces.workspace_of(&window.id) {
                         self.forget_window(owner, &window.id);

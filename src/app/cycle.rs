@@ -1,6 +1,10 @@
 mod affinity;
 mod omission;
+mod readback;
 pub(super) use omission::Omission;
+#[cfg(test)]
+pub(super) use readback::ASYNC_BOUNCE_SETTLE;
+pub(super) use readback::{APPLY_ATTEMPT_LIMIT, AppliedFrame, record_apply_attempt};
 
 use affinity::{FrozenAffinityPolicy, FrozenWindowAffinity};
 
@@ -13,30 +17,6 @@ use crate::journal::PlacementSource;
 /// starting a huddle) and briefly report a partial window list; one such
 /// snapshot must not retire a slot.
 pub(super) const OMISSION_SETTLE: Duration = Duration::from_secs(2);
-/// Consecutive bounced or rejected applications for the same target frame
-/// before Spaceman stops retrying that target (even when rejected frames vary
-/// each cycle), preventing infinite resize-fight flicker loops.
-pub(super) const APPLY_ATTEMPT_LIMIT: u8 = 3;
-
-pub(super) fn record_apply_attempt(
-    attempts: &mut HashMap<crate::PhysicalWindowId, (crate::Rect, u8)>,
-    workspace: WorkspaceId,
-    window: &crate::PhysicalWindowId,
-    target: crate::Rect,
-) {
-    let entry = attempts.entry(window.clone()).or_insert((target, 0));
-    if entry.0 != target {
-        *entry = (target, 0);
-    }
-    let previous = entry.1;
-    entry.1 = entry.1.saturating_add(1);
-    if previous < APPLY_ATTEMPT_LIMIT && entry.1 >= APPLY_ATTEMPT_LIMIT {
-        log_event!(
-            "workspace {workspace}: freezing {window:?} after {} bounced/rejected applications for {target:?}",
-            APPLY_ATTEMPT_LIMIT
-        );
-    }
-}
 
 struct ReconcileDisplayContext<'a> {
     outputs: &'a macos::DisplayOutputs,
@@ -622,9 +602,14 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
                 };
                 let target = placement.frame;
                 if observed.approximately_equals(target, settings.frame_tolerance) {
-                    self.applied[workspace.index()].remove(window);
-                    self.constrained[workspace.index()].remove(window);
-                    self.apply_attempts[workspace.index()].remove(window);
+                    let settling = self.applied[workspace.index()]
+                        .get(window)
+                        .is_some_and(|applied| applied.is_settling(target));
+                    if !settling {
+                        self.applied[workspace.index()].remove(window);
+                        self.constrained[workspace.index()].remove(window);
+                        self.apply_attempts[workspace.index()].remove(window);
+                    }
                     continue;
                 }
                 if self.constrained[workspace.index()]
@@ -639,7 +624,10 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
                 {
                     self.apply_attempts[workspace.index()].remove(window);
                 }
-                if self.applied[workspace.index()].remove(window) == Some(target) {
+                if self.applied[workspace.index()]
+                    .remove(window)
+                    .is_some_and(|applied| applied.target == target)
+                {
                     self.constrained[workspace.index()].insert(window.clone(), (target, observed));
                     record_apply_attempt(
                         &mut self.apply_attempts[workspace.index()],

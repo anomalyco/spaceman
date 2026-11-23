@@ -73,7 +73,7 @@ pub(super) struct WorkspaceRuntime<B = MacWorkspaceBackend> {
     /// Target frames reported as `Applied` on the latest layout pass, awaiting
     /// observation readback. Electron apps accept `AXSize` writes synchronously
     /// and clamp to their aspect-ratio or size limits asynchronously afterward.
-    pub(super) applied: [HashMap<crate::PhysicalWindowId, crate::Rect>; WorkspaceId::COUNT],
+    pub(super) applied: [HashMap<crate::PhysicalWindowId, cycle::AppliedFrame>; WorkspaceId::COUNT],
     /// Consecutive bounced or rejected applications per window for the same
     /// target frame; past `APPLY_ATTEMPT_LIMIT` the target is frozen.
     pub(super) apply_attempts:
@@ -675,47 +675,6 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
             self.workspaces
                 .engine_mut(workspace)
                 .record_placement_target(placement.slot, output);
-        }
-    }
-
-    pub(super) fn record_results(
-        &mut self,
-        workspace: WorkspaceId,
-        results: &[macos::ApplyResult],
-    ) {
-        let constrained = &mut self.constrained[workspace.index()];
-        let applied = &mut self.applied[workspace.index()];
-        let attempts = &mut self.apply_attempts[workspace.index()];
-        for result in results {
-            match (result.outcome, result.actual) {
-                (macos::ApplyOutcome::Constrained, Some(actual)) => {
-                    applied.remove(&result.window);
-                    constrained.insert(result.window.clone(), (result.target, actual));
-                    cycle::record_apply_attempt(attempts, workspace, &result.window, result.target);
-                }
-                (macos::ApplyOutcome::Applied, _) => {
-                    constrained.remove(&result.window);
-                    if attempts
-                        .get(&result.window)
-                        .is_some_and(|(target, _)| *target != result.target)
-                    {
-                        attempts.remove(&result.window);
-                    }
-                    applied.insert(result.window.clone(), result.target);
-                }
-                (macos::ApplyOutcome::Gone, _) => {
-                    applied.remove(&result.window);
-                    constrained.remove(&result.window);
-                    attempts.remove(&result.window);
-                }
-                (macos::ApplyOutcome::Deferred, _) => {
-                    applied.remove(&result.window);
-                }
-                _ => {
-                    applied.remove(&result.window);
-                    cycle::record_apply_attempt(attempts, workspace, &result.window, result.target);
-                }
-            }
         }
     }
 
