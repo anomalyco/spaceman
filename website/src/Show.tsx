@@ -412,7 +412,7 @@ export function Show({ header }: { header: React.ReactNode }) {
             </div>
             {exported ? (
               <p data-ui="url" className="rounded-full bg-white/[0.07] px-5 py-2.5 text-[clamp(17px,1.9vw,21px)] font-medium tracking-[-0.01em] text-[#f5f5f7] shadow-[inset_0_0_0_1px_rgba(255,255,255,.08)]">
-                spaceman.kitlangton.dev
+                spaceman.kitlangton.com
               </p>
             ) : (
               <>

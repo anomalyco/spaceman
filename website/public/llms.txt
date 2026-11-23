@@ -6,8 +6,8 @@ Spaceman uses macOS Accessibility APIs with no SIP changes required. It provides
 
 ## Documentation
 
-- [Full documentation](https://spaceman.kitlangton.dev/llms-full.txt): installation, keyboard shortcuts, configuration rules, CLI commands, and recovery guarantees
-- [Website](https://spaceman.kitlangton.dev/): overview and Apple silicon preview download
+- [Full documentation](https://spaceman.kitlangton.com/llms-full.txt): installation, keyboard shortcuts, configuration rules, CLI commands, and recovery guarantees
+- [Website](https://spaceman.kitlangton.com/): overview and Apple silicon preview download
 
 ## Downloads
 

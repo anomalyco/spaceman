@@ -5,7 +5,7 @@ native window, including a selected Ghostty native tab, can change physical Acce
 without creating a new tile. Spaceman keeps the logical slot and replaces its physical binding when
 the evidence is unambiguous.
 
-[Website](https://spaceman.kitlangton.dev) · [Download for Apple silicon](https://pub-6f85d683ffe0419cad0a71508904053a.r2.dev/releases/Spaceman-v0.2.0-macos-arm64.zip)
+[Website](https://spaceman.kitlangton.com) · [Download for Apple silicon](https://pub-6f85d683ffe0419cad0a71508904053a.r2.dev/releases/Spaceman-v0.2.0-macos-arm64.zip)
 
 > [!WARNING]
 > Disable AeroSpace, yabai, Amethyst, and every other window manager before first opening Spaceman
