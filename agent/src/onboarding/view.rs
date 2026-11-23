@@ -346,7 +346,7 @@ fn setup(ui: &Ui, p: Paint, view: &View) -> El {
         p,
         "setup-accessibility",
         &ACCESSIBILITY_ICON,
-        "Accessibility",
+        spaceman::permission_guide::list_name(),
         Some(access_desc),
         controls::permission_control(p, "setup-grant", view.accessibility, access_kind, |ui| {
             input(ui, Input::GrantAccessibility);

@@ -7,7 +7,11 @@
 use std::{cell::RefCell, ptr::NonNull};
 
 use block2::RcBlock;
-use objc2::rc::{Retained, autoreleasepool};
+use objc2::{
+    MainThreadMarker,
+    rc::{Retained, autoreleasepool},
+};
+use objc2_app_kit::NSApplication;
 use objc2_foundation::{NSRunLoop, NSRunLoopCommonModes, NSTimer};
 use spaceman::app::{HostCallbacks, MainThreadAgent, PreparedAgent, TICK_INTERVAL, TickOutcome};
 
@@ -32,6 +36,9 @@ thread_local! {
 
 pub fn bring_window_forward(window: &rune::AppHandle<Ui>) {
     window.set_dock_icon(true);
+    if let Some(mtm) = MainThreadMarker::new() {
+        NSApplication::sharedApplication(mtm).activate();
+    }
     window.open();
 }
 

@@ -140,11 +140,12 @@ fn general(ui: &Ui, p: Paint) -> El {
     let c = &p.k.c;
     let mut sections = Vec::new();
     if let Some(agent) = &ui.agent {
+        let access_name = spaceman::permission_guide::list_name();
         let access = if agent.accessibility {
             controls::setting_row(
                 p,
                 "accessibility",
-                "Accessibility",
+                access_name,
                 Some(("Granted. Spaceman can move windows.".into(), p.muted())),
                 controls::status_dot(c.success.fg),
             )
@@ -152,7 +153,7 @@ fn general(ui: &Ui, p: Paint) -> El {
             controls::setting_row(
                 p,
                 "accessibility",
-                "Accessibility",
+                access_name,
                 Some((
                     "Spaceman needs it to move and resize windows.".into(),
                     c.warning.fg,

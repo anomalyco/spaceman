@@ -68,7 +68,17 @@ impl MainThreadAgent {
                         status_item::set_status(&format!("Could not open Setup: {error}"));
                     }
                 }
-                Action::OpenAccessibility => permission_guide::show(),
+                Action::OpenAccessibility => {
+                    if permission_guide::prompt_accessibility_trust() {
+                        permission_guide::close();
+                        self.accessibility_requested = false;
+                        self.ui_dirty = true;
+                    } else {
+                        self.accessibility_requested = true;
+                        self.last_accessibility_poll = Instant::now();
+                        permission_guide::show();
+                    }
+                }
                 Action::ToggleHud => {
                     let next = !self.hud;
                     match (self.callbacks.save_hud)(next) {
@@ -122,6 +132,7 @@ impl MainThreadAgent {
                         Action::Terminate => ExitIntent::Terminate,
                         _ => ExitIntent::Quit,
                     };
+                    permission_guide::close();
                     self.exit_intent = Some(intent);
                     self.stop_automatic_and_restore();
                     if self.worker.is_busy() {

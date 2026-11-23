@@ -11,6 +11,8 @@ fn main() {
     println!("cargo:rustc-link-lib=framework=AppKit");
     println!("cargo:rustc-link-lib=framework=ApplicationServices");
     println!("cargo:rustc-link-lib=framework=CoreGraphics");
+    println!("cargo:rustc-link-lib=framework=CoreImage");
+    println!("cargo:rustc-link-lib=framework=QuartzCore");
 
     cc::Build::new()
         .file("native/permission_guide.m")

@@ -80,6 +80,7 @@ use worker::spawn_worker;
 pub const TICK_INTERVAL: Duration = Duration::from_millis(25);
 const FALLBACK_REFRESH_INTERVAL: Duration = Duration::from_secs(1);
 const APPLICATION_REFRESH_INTERVAL: Duration = Duration::from_secs(1);
+const ACCESSIBILITY_POLL_INTERVAL: Duration = Duration::from_millis(120);
 const RESTORE_RETRY_INTERVAL: Duration = Duration::from_secs(1);
 const APPLICATION_ACTIVATION_SETTLE: Duration = Duration::from_millis(50);
 
