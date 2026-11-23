@@ -1,5 +1,6 @@
 mod benchmarks;
 mod dispatch;
+mod focus;
 mod gestures;
 mod journal;
 mod layout;

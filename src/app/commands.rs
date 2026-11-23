@@ -2,6 +2,20 @@ use super::*;
 
 const KEYBOARD_RESIZE_INCREMENT: i32 = 50;
 
+/// How long Accessibility may keep reporting the previously focused window
+/// after a focus command. App activation is asynchronous, so a second ⌥L
+/// pressed in that window would otherwise step from the stale window and land
+/// on the same target again.
+pub(super) const FOCUS_SETTLE: Duration = Duration::from_millis(250);
+
+pub(super) struct PendingFocus {
+    pub(super) target: crate::PhysicalWindowId,
+    /// Windows Accessibility may still report while `target` takes focus: the
+    /// one focus left and earlier targets in a run of quick presses.
+    pub(super) stale: Vec<Option<crate::PhysicalWindowId>>,
+    pub(super) at: Instant,
+}
+
 impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
     pub(super) fn reorder_focused(
         &mut self,
@@ -165,21 +179,98 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
         outputs: macos::DisplayOutputs,
         cancelled: &AtomicBool,
     ) -> Result<CycleStatus, String> {
-        let (focused, workspace) = self.focused_active_workspace(&outputs, cancelled, true)?;
-        let Some(target) = self
-            .stacked_target(workspace, &focused, direction)
-            .or_else(|| {
-                self.spatial_target(&focused, direction, &outputs)
-                    .map(|(_, target)| target)
-            })
-        else {
+        let origin = self.current_focus();
+        let managed = match &origin {
+            Some(window) => self
+                .active_workspace_of(window, &outputs, cancelled, true)
+                .ok(),
+            None => None,
+        };
+        let target = match (&origin, managed) {
+            (Some(focused), Some(workspace)) => self
+                .stacked_target(workspace, focused, direction)
+                .or_else(|| {
+                    self.spatial_target(focused, direction, &outputs)
+                        .map(|(_, target)| target)
+                }),
+            // Focus is on a floating window, dialog or popup, or nowhere: the
+            // key brings it back onto the tiles instead of doing nothing.
+            _ => self.rescue_target(origin.as_ref(), direction, &outputs),
+        };
+        let Some(target) = target else {
             return Ok(self.status(0, &outputs));
         };
-        if !self.backend.focus_window(&target) {
+        self.focus_tile(origin, &target)?;
+        Ok(self.status(0, &outputs))
+    }
+
+    fn rescue_target(
+        &mut self,
+        origin: Option<&crate::PhysicalWindowId>,
+        direction: Direction,
+        outputs: &macos::DisplayOutputs,
+    ) -> Option<crate::PhysicalWindowId> {
+        let tiles = self.navigation_tiles(outputs);
+        let frame = origin.and_then(|window| {
+            self.backend
+                .window_server_frame(window)
+                .or_else(|| self.backend.frame(window).ok())
+        });
+        if let Some(frame) = frame {
+            return crate::navigation::rescue(&tiles, frame, direction)
+                .map(|tile| tile.window.clone());
+        }
+        self.visible_workspaces(outputs)
+            .iter()
+            .find_map(|resolved| {
+                self.workspaces
+                    .preferred_focus(resolved.workspace)
+                    .filter(|window| tiles.iter().any(|tile| &tile.window == window))
+                    .or_else(|| {
+                        tiles
+                            .iter()
+                            .find(|tile| tile.workspace == resolved.workspace)
+                            .map(|tile| tile.window.clone())
+                    })
+            })
+    }
+
+    /// The focused window, trusting a focus command still in flight over the
+    /// stale window Accessibility reports until the target app activates.
+    fn current_focus(&mut self) -> Option<crate::PhysicalWindowId> {
+        let reported = self.backend.focused_window();
+        let pending = self.pending_focus.take()?;
+        if pending.at.elapsed() < FOCUS_SETTLE && pending.stale.contains(&reported) {
+            let target = pending.target.clone();
+            self.pending_focus = Some(pending);
+            return Some(target);
+        }
+        reported
+    }
+
+    fn focus_tile(
+        &mut self,
+        origin: Option<crate::PhysicalWindowId>,
+        target: &crate::PhysicalWindowId,
+    ) -> Result<(), String> {
+        let mut stale = self
+            .pending_focus
+            .take()
+            .map(|pending| pending.stale)
+            .unwrap_or_default();
+        if !self.backend.focus_window(target) {
             return Err("Target window could not be focused".into());
         }
-        self.remember_fullscreen_focus(workspace, &target)?;
-        Ok(self.status(0, &outputs))
+        stale.push(origin);
+        self.pending_focus = Some(PendingFocus {
+            target: target.clone(),
+            stale,
+            at: Instant::now(),
+        });
+        if let Some(workspace) = self.workspaces.workspace_of(target) {
+            self.remember_fullscreen_focus(workspace, target)?;
+        }
+        Ok(())
     }
 
     /// Fullscreen Layout tiles share one frame, so spatial navigation cannot
@@ -217,11 +308,8 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
         if windows.len() < 2 {
             return Ok(self.status(0, &outputs));
         }
-        let target = &windows[(index + 1) % windows.len()];
-        if !self.backend.focus_window(target) {
-            return Err("Target window could not be focused".into());
-        }
-        self.remember_fullscreen_focus(workspace, target)?;
+        let target = windows[(index + 1) % windows.len()].clone();
+        self.focus_tile(Some(focused), &target)?;
         Ok(self.status(0, &outputs))
     }
 
@@ -232,15 +320,26 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
         refresh_if_unmanaged: bool,
     ) -> Result<(crate::PhysicalWindowId, WorkspaceId), String> {
         let window = self
-            .backend
-            .focused_window()
+            .current_focus()
             .ok_or("Focused window is unavailable")?;
-        let workspace = match self.workspaces.workspace_of(&window) {
+        let workspace =
+            self.active_workspace_of(&window, outputs, cancelled, refresh_if_unmanaged)?;
+        Ok((window, workspace))
+    }
+
+    fn active_workspace_of(
+        &mut self,
+        window: &crate::PhysicalWindowId,
+        outputs: &macos::DisplayOutputs,
+        cancelled: &AtomicBool,
+        refresh_if_unmanaged: bool,
+    ) -> Result<WorkspaceId, String> {
+        let workspace = match self.workspaces.workspace_of(window) {
             Some(workspace) => workspace,
             None if refresh_if_unmanaged => {
                 self.cycle(outputs.clone(), cancelled)?;
                 self.workspaces
-                    .workspace_of(&window)
+                    .workspace_of(window)
                     .ok_or("Focused window is not managed by Spaceman")?
             }
             None => return Err("Focused window is not managed by Spaceman".into()),
@@ -248,7 +347,7 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
         if !self.is_visible(workspace, outputs) {
             return Err("Focused window is not on an active workspace".into());
         }
-        Ok((window, workspace))
+        Ok(workspace)
     }
 
     fn remember_fullscreen_focus(

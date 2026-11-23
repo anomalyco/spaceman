@@ -97,6 +97,8 @@ pub(super) struct WorkspaceRuntime<B = MacWorkspaceBackend> {
     pub(super) config: Config,
     pub(super) foreground_lanes: HashMap<String, DisplaySelector>,
     pub(super) suppressed_focus: Option<crate::PhysicalWindowId>,
+    /// The window a focus command just focused, until Accessibility reports it.
+    pub(super) pending_focus: Option<super::commands::PendingFocus>,
     pub(super) pending_fullscreen_focus_restore: HashSet<WorkspaceId>,
     pub(super) persisted_workspace_state: crate::workspace::WorkspaceState,
     /// Title-free placements that survive application relaunches and reboots.
@@ -182,6 +184,16 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
         outputs: macos::DisplayOutputs,
         cancelled: &AtomicBool,
     ) -> Result<CycleStatus, String> {
+        if matches!(
+            action,
+            WorkerAction::SwitchWorkspace(_)
+                | WorkerAction::WorkspaceBackAndForth
+                | WorkerAction::Swipe(..)
+                | WorkerAction::MoveFocused(_)
+                | WorkerAction::MoveApp(..)
+        ) {
+            self.pending_focus = None;
+        }
         match action {
             WorkerAction::Retile => self.cycle(outputs, cancelled),
             WorkerAction::SwitchWorkspace(workspace) => self.switch(workspace, outputs, cancelled),
@@ -278,6 +290,7 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
             config,
             foreground_lanes: HashMap::new(),
             suppressed_focus: None,
+            pending_focus: None,
             pending_fullscreen_focus_restore,
             persisted_workspace_state,
             memory: MemoryState::default(),
