@@ -510,3 +510,60 @@ Tape K unchanged (take k7, 105.8 s). Commits `a3eb9eb` (controls, opening, clips
    critically damped, keeping their velocity. A float rises 3 pt with a 1.5% swell and a wider shadow (the
    `lf` spring).
 9. A click on the picture pauses and plays, except a tap on the workspace bar during "your turn".
+
+## Draft 20 (the rename: Pane, at anoma.ly/pane), Nov 22
+
+1. Tape M is tape L with one sentence re-taken: "Then I installed a small program called Pane." Eight
+   takes (q1-q8, `textPane` in `mono.json`) read the passage in context, from "From the start?" to
+   "nothing on top of anything else.", in L's voice and direction. q5 is spliced into l5 by
+   `process.py`'s new `splice` step, cut in the pauses either side of the sentence, with 12 ms fades,
+   −0.6 dB. Scribe hears "…called Pane. It tiles your windows.", its pitch is 85 Hz (as in l5), and the
+   pauses either side keep their length and their room level (−41 dB). The tape is 0.09 s longer (111.06 s).
+2. Kit's beat: on that sentence he clicks Safari's address field in the window in front, types
+   `anoma.ly/pane` (a quick hand, the rhythm at 0.55×), and the page loads (a blue bar along the field):
+   the end card's dark page in miniature (`panepage.js`), with the full address shown. He clicks Download
+   for macOS as he says "Pane"; the button presses in and Safari's download button drops into the
+   toolbar and fills. Then ⌘W sweeps the clutter, Pane's item comes into the menu bar on "It tiles", and
+   the four tile. The workspace bar still only comes up on a switch, so it doesn't appear here.
+3. Everything the film shows says Pane: the app's menu name, its Settings (Version 0.3.0), its icon file
+   (`icons/pane.png`). The card: "Pane" and "For your windows."; the site's Download is
+   `Pane-v0.3.0-macos-arm64.zip`; the export's card reads `anoma.ly/pane`.
+4. The site lives at https://anoma.ly/pane/: Vite `base: "/pane/"`, `worker.ts` (redirects /pane to
+   /pane/, strips the prefix for `ASSETS`, answers Range for media, as Hex's worker does), and
+   `wrangler.jsonc` on Anomaly's account. The gallery and capture builds still pass `--base ./`.
+
+## Draft 21 (the neighbours renamed, and the craft pass), Nov 22
+
+1. The neighbours are Alan (four, No. 10), Juliana (five, No. 16) and Dax (six, No. 14), first names
+   only. Tape M is a new full take of the finalized script (`textN` in `mono.json`, v7 of eight), so
+   the splice step is gone. v7's pauses and pitch (91 Hz) sit closest to L, and Scribe hears every name
+   and full stop. The detective's new question, "Where is Dax now?", is cut from the first of her four
+   repetitions in `dax-2.mp3`; he answers "He's on seven, with the other two." The tape is 116.23 s.
+2. The study: the corkboard holds four cards (4, 5, 6 and a blank 7), small but readable from the door
+   camera; the focus holds on the legal pad in the dark and racks to the monitor as it wakes.
+3. The workspace bar is Pane's Icons style (`agent/src/hud/icons.rs`): each number with its apps'
+   icons, a marker on the current one, and a moved window flies into its icon on the new number.
+4. Details: a hand over the download link and an I-beam over the address field (the cursor hides while
+   he types); camera white balance per camera and a blinking REC; Rules shows each neighbour's chip;
+   the plastic order carries its order number, its delivery (Feb 28, two days before "Juliana → 7")
+   and his other tabs (the HOA bylaws, a cat feeding guide); Mail shows the Cc to the HOA committee; the
+   street's group has one unread when Messages first opens (3, then 11, later, where the list is out of
+   view), and on Juliana's dark house its notification slides in, sits 2.2 s and goes, unclicked. Alan goes on seven on June 11; two nights later the drill is ticked
+   off his list. Every date, weekday and clock agrees.
+
+## Draft 22 (back to Spaceman, and the page around the film), Nov 22
+
+1. The name is Spaceman again, everywhere the film shows it: the line is "Then I installed a small
+   program called Spaceman." (tape M is `textO`, take w8 of eight: 0.36 s pauses, 91 Hz, and Scribe
+   hears it right; the tape is 112.90 s). The app is `spaceman` in `apps.js` with `icons/spaceman.png`;
+   Safari goes to `anoma.ly/spaceman` and its page is `sitepage.js`; the card is "Spaceman" and "For your
+   windows."; the download is `Spaceman-v0.3.0-macos-arm64.zip`. The site is at https://anoma.ly/spaceman/.
+2. The page: over the bottom of the hero still, "For your windows.", one line on what Spaceman is, a
+   platform-aware Download (`src/Download.tsx`, `src/platform.ts`; `?platform=` forces a state) and
+   Watch the film. Below the film: six features with small demos (tiling, workspaces with the Icons
+   bar, rules, native tabs, recovery, privacy), the shortcuts, a download section with the Terminal
+   install, and a footer with the agent files. The release lives in `src/release.ts`; the JSON-LD and
+   `/skill.md` (the repo's setup skill) come from `vite.config.ts`; the stylesheet is inlined.
+3. The og:image is `og/og.html` shot by `show/tools/stills.ts` (the study behind, a crisp frame of the
+   tiled desktop, the icon and the name). `show/tools/serve-site.ts` serves `dist/` through `worker.ts`
+   for `ship-site-check --as https://anoma.ly/spaceman/`.

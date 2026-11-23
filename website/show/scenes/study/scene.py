@@ -588,14 +588,15 @@ def drill(M, N, x, y, top):
 
 def corkboard(M, R):
     """A small corkboard left of the screen: four index cards in a level row, four, five, six, and seven,
-    blank, each pinned at its top."""
-    cx, cz = 1.2, 1.63
-    w, h = 0.56, 0.38
+    blank, each pinned at its top. It hangs clear of the bookcase, so all four read from the door."""
+    cx, cz = 1.42, 1.66
+    w, h = 0.6, 0.36
     R.append(box("corkFrame", (cx, RD - 0.012, cz), (w + 0.04, 0.022, h + 0.04), M["oakFrame"], 0.003))
     R.append(box("cork", (cx, RD - 0.0235, cz), (w, 0.004, h), M["cork"], 0))
     for i, n in enumerate("4567"):
-        x = cx - 0.195 + i * 0.13
-        R.append(decal("card" + n, (x, RD - 0.0262, cz + 0.04), 0.115, 0.069, M["card" + n], rot=(pi / 2, 0, 0)))
+        # 5 × 3 in cards, 14 cm apart, squared to the frame
+        x = cx - 0.21 + i * 0.14
+        R.append(decal("card" + n, (x, RD - 0.0262, cz + 0.035), 0.127, 0.076, M["card" + n], rot=(pi / 2, 0, 0)))
         R.append(cyl("pin" + n, (x, RD - 0.031, cz + 0.064), 0.0045, 0.008, M["pin"], 16, rot=(pi / 2, 0, 0), bevel=0.001))
 
 

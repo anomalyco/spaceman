@@ -1,16 +1,21 @@
 # Spaceman
 
-> Spaceman is a macOS tiling window manager for Apple silicon built around stable logical windows, native tab replacement, workspace routing rules, durable window restoration, and a local CLI.
+> Spaceman is a tiling window manager for macOS on Apple silicon (macOS 14 or later), version 0.3.0. Windows open side by side instead of on top of each other, across ten numbered workspaces you switch with the keyboard, with ordered rules for where apps open, native-tab continuity, durable window restoration and a local CLI.
 
-Spaceman uses macOS Accessibility APIs with no SIP changes required. It provides ten numbered workspaces (`1`–`10`) plus opt-in named workspaces (`A`–`Z`), nested weighted split layouts, drag-to-reorder and resize, and automatic window restoration on pause, quit, or update.
+Spaceman uses macOS Accessibility APIs and needs no System Integrity Protection changes. It provides ten numbered workspaces (`1`–`10`) plus opt-in named workspaces (`A`–`Z`), nested weighted split layouts, drag-to-reorder and resize, and restores every hidden window on pause, quit or update. Window titles never leave memory, and it sends no telemetry.
 
-## Documentation
+## Install
 
-- [Full documentation](https://spaceman.kitlangton.com/llms-full.txt): installation, keyboard shortcuts, configuration rules, CLI commands, and recovery guarantees
-- [Website](https://spaceman.kitlangton.com/): overview and Apple silicon preview download
+- [Download for macOS](https://pub-6f85d683ffe0419cad0a71508904053a.r2.dev/releases/Spaceman-v0.3.0-macos-arm64.zip): version 0.3.0, Apple silicon, macOS 14 or later; Developer ID-signed and notarized.
+- [SHA-256 checksum](https://pub-6f85d683ffe0419cad0a71508904053a.r2.dev/releases/Spaceman-v0.3.0-macos-arm64.zip.sha256): checksum for `Spaceman-v0.3.0-macos-arm64.zip`.
+- Terminal: `curl -fL https://pub-6f85d683ffe0419cad0a71508904053a.r2.dev/releases/Spaceman-latest-macos-arm64.zip -o /tmp/Spaceman.zip && ditto -x -k /tmp/Spaceman.zip /Applications && open /Applications/Spaceman.app`
 
-## Downloads
+## Agents
 
-- [Spaceman 0.2.0 for Apple silicon](https://pub-6f85d683ffe0419cad0a71508904053a.r2.dev/releases/Spaceman-v0.2.0-macos-arm64.zip): Developer ID-signed, notarized macOS 14+ preview archive
-- [SHA-256 checksum](https://pub-6f85d683ffe0419cad0a71508904053a.r2.dev/releases/Spaceman-v0.2.0-macos-arm64.zip.sha256): checksum for `Spaceman-v0.2.0-macos-arm64.zip`
-- [Sparkle appcast](https://pub-6f85d683ffe0419cad0a71508904053a.r2.dev/appcast.xml): signed software update feed
+- [Setup skill](https://anoma.ly/spaceman/skill.md): install, configure, verify, troubleshoot or uninstall Spaceman, including moving over from another window manager and recovering off-screen windows.
+- [Full documentation](https://anoma.ly/spaceman/llms-full.txt): installation, keyboard shortcuts, configuration rules, CLI commands and recovery guarantees in one document.
+
+## Optional
+
+- [Website](https://anoma.ly/spaceman/): the film, features and download.
+- [Sparkle appcast](https://pub-6f85d683ffe0419cad0a71508904053a.r2.dev/appcast.xml): the signed software update feed.

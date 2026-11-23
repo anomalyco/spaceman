@@ -128,6 +128,27 @@ if VER.get("echo"):
         w["t"] += d
         w["end"] += d
     src = echo
+# a sentence re-taken in the same voice and direction ("splice": [{"take": "q5", "src": [a, b],
+# "dst": [a, b], "gain": dB}], seconds, both cut in the silences either side of the sentence): this
+# take up to dst, the other take's src levelled by gain, then this take from dst's end. The new
+# sentence's words come from its own take's alignment.
+splice_wav = None
+for k, sp in enumerate(VER.get("splice", [])):
+    (a1, b1), (a2, b2) = sp["src"], sp["dst"]
+    other = os.path.join(raw, "mono", sp["take"] + ".mp3")
+    nxt = os.path.join(raw, "mono", f"{TAKE}-splice{k}.wav")
+    fade = 0.012
+    subprocess.run(["ffmpeg", "-y", "-v", "error", "-i", src, "-i", other, "-filter_complex",
+                    f"[0:a]aformat=sample_rates=44100:channel_layouts=mono,atrim=0:{a2},asetpts=PTS-STARTPTS,afade=t=out:st={a2 - fade}:d={fade}[p];"
+                    f"[1:a]aformat=sample_rates=44100:channel_layouts=mono,atrim={a1}:{b1},asetpts=PTS-STARTPTS,volume={sp['gain']}dB,afade=t=in:d={fade},afade=t=out:st={b1 - a1 - fade}:d={fade}[e];"
+                    f"[0:a]aformat=sample_rates=44100:channel_layouts=mono,atrim={b2},asetpts=PTS-STARTPTS,afade=t=in:d={fade}[q];[p][e][q]concat=n=3:v=0:a=1",
+                    "-ac", "1", "-ar", "44100", nxt], check=True)
+    d = (b1 - a1) - (b2 - a2)
+    new = [{**w, "t": a2 + w["t"] - a1, "end": min(a2 + b1 - a1, a2 + w["end"] - a1)} for w in words_of(json.load(open(os.path.join(raw, "mono", sp["take"] + ".json")))) if a1 <= w["t"] < b1]
+    words = [w for w in words if w["t"] < a2] + new + [{**w, "t": w["t"] + d, "end": w["end"] + d} for w in words if w["t"] >= b2]
+    if splice_wav:
+        os.remove(splice_wav)
+    src = splice_wav = nxt
 # no dead air ("tighten": {"para": 0.75, "sentence": 0.6, "comma": 0.4}): the take's silences after a
 # paragraph, a sentence or a comma longer than that lose their middles, measured from the waveform, so
 # his speech itself is untouched
@@ -211,7 +232,7 @@ cuts = []
 for g in sorted(GAPS, key=gap_index):
     i = gap_index(g)
     cuts.append({**g, "at": quietest(words[i]["end"] - 0.2, max(words[i]["end"], words[i + 1]["t"] - 0.35) + 0.05), "i": i})
-# a passage left out (a shorter cut, "drop": [{"from": "Alan came over", "to": "the plastic down."}]):
+# a passage left out (a shorter cut, "drop": [{"from": "Dax came over", "to": "the plastic down."}]):
 # the take jumps from the quietest moment before its first word to the quietest after its last, and
 # any pause opened inside it goes with it
 for d in VER.get("drop", []):
@@ -330,8 +351,10 @@ name = "voice-tape.mp3"
 if ALT:
     out = ALT
     name = f"tape-{VERSION}.mp3"
-if VER.get("echo") or tight or head_wav:
+if VER.get("echo") or tight or head_wav or splice_wav:
     os.remove(src)
+if splice_wav and os.path.exists(splice_wav):
+    os.remove(splice_wav)
 if head_wav and os.path.exists(head_wav):
     os.remove(head_wav)
 # the recorder's play key at 0.0 goes in last, after the compressor and the loudness pass, at its own
@@ -400,8 +423,8 @@ def said(phrase, last=False):
     return tw[find(tw, phrase, last)]
 
 
-anchors = {"door": said("front door")["t"], "bought": said("So I bought")["t"], "hedge": said("Alan's hedge")["t"], "bins": said("And Joan and I")["t"],
-           "seven": said("I'd kept seven")["t"], "mark": said("I moved Mark")["t"], "markEnd": tw[find(tw, "I moved Mark in June.") + 4]["end"],
+anchors = {"door": said("front door")["t"], "bought": said("So I bought")["t"], "hedge": said("Dax's hedge")["t"], "bins": said("And Juliana and I")["t"],
+           "seven": said("I'd kept seven")["t"], "mark": said("I moved Alan")["t"], "markEnd": tw[find(tw, "I moved Alan in June.") + 4]["end"],
            "seven7": said("Only the one")["t"] - 0.1}
 score.build(manifest, said_spans, anchors, marks["end"], out)
 # the end card's cheer

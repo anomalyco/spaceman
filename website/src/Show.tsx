@@ -1,8 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { CONFETTI_SECS, drawConfetti } from "./confetti";
-
-export const RELEASE_VERSION = "0.2.0";
-export const DOWNLOAD_URL = `https://pub-6f85d683ffe0419cad0a71508904053a.r2.dev/releases/Spaceman-v${RELEASE_VERSION}-macos-arm64.zip`;
+import { Download } from "./Download";
 
 type Phase = "still" | "loading" | "live" | "ended";
 type Caption = { text: string; high?: boolean } | null;
@@ -210,7 +208,7 @@ function Confetti() {
   return <canvas ref={ref} aria-hidden="true" data-ui="confetti" className="pointer-events-none absolute inset-0 size-full" />;
 }
 
-export function Show({ header }: { header: React.ReactNode }) {
+export function Show({ header, hero }: { header: React.ReactNode; hero: (start: () => void) => React.ReactNode }) {
   const section = useRef<HTMLElement>(null);
   const canvas = useRef<HTMLCanvasElement>(null);
   const show = useRef<ShowApi | null>(null);
@@ -381,6 +379,12 @@ export function Show({ header }: { header: React.ReactNode }) {
         <div className={live || phase === "ended" ? "" : "pointer-events-auto"}>{header}</div>
       </div>
 
+      {/* the title and the two ways in, over a scrim that only darkens the bottom of the still */}
+      <div className={`pointer-events-none absolute inset-x-0 bottom-0 transition-opacity duration-500 ${live || phase === "ended" ? "invisible opacity-0" : "opacity-100"}`}>
+        <div aria-hidden="true" className="hero-scrim absolute inset-x-0 bottom-0 h-[min(70svh,560px)]" />
+        <div className="relative">{hero(start)}</div>
+      </div>
+
       {live && (
         <Controls show={show} shown={awake || paused} paused={paused} muted={muted} captions={captions} onCaptions={() => setCc(!captions)} onMuted={toggleMute} onToggle={toggle} />
       )}
@@ -412,21 +416,11 @@ export function Show({ header }: { header: React.ReactNode }) {
             </div>
             {exported ? (
               <p data-ui="url" className="rounded-full bg-white/[0.07] px-5 py-2.5 text-[clamp(17px,1.9vw,21px)] font-medium tracking-[-0.01em] text-[#f5f5f7] shadow-[inset_0_0_0_1px_rgba(255,255,255,.08)]">
-                spaceman.kitlangton.com
+                anoma.ly/spaceman
               </p>
             ) : (
               <>
-              <div className="flex flex-col items-center gap-3.5">
-                <a
-                  href={DOWNLOAD_URL}
-                  className="rounded-full bg-[#f5f5f7] px-7 py-3 text-[15px] font-medium text-[#1d1d1f] shadow-[0_1px_1px_rgba(0,0,0,.3),0_8px_22px_-8px_rgba(255,255,255,.18)] transition-[background-color,transform] duration-150 hover:bg-white active:scale-[0.98] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#f5f5f7]"
-                >
-                  Download for macOS
-                </a>
-                <p className="rounded-full bg-white/[0.06] px-3 py-1 text-[12.5px] text-[#8e8e93] tabular-nums">
-                  Version {RELEASE_VERSION} · macOS 14 or later · Apple silicon
-                </p>
-              </div>
+              <Download align="center" />
               <button type="button" data-ui="again" onClick={start} className="text-[13px] text-[#8e8e93] underline-offset-4 transition-colors hover:text-[#f5f5f7] hover:underline">
                 Watch again
               </button>

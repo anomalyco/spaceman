@@ -37,7 +37,7 @@ const END = END_ + 0.6
 // keyframes: the middle of every other sentence, and every sentence from seven on
 const sig = word("I'd kept seven", 0)
 const KEYS = LINES.filter((l: any, i: number) => i % 2 === 0 || l[1] >= sig - 0.1).map((l: any) => +((l[1] + l[2]) / 2).toFixed(2))
-const X2 = [1.5, 4.5, ...["It tiles", "numbered workspaces", "front door", "pleasing", "So I bought", "Mark is four", "Joan is five", "Alan's hedge", "for the record", "bins go out", "I'd kept seven", "in March", "her cat", "in June", "other two", "Only the one", "You should try"].map((p) => +(word(p, 0) + 0.9).toFixed(2))]
+const X2 = [1.5, 4.5, ...["It tiles", "numbered workspaces", "front door", "pleasing", "So I bought", "Alan is four", "Juliana is five", "Dax's hedge", "for the record", "bins go out", "I'd kept seven", "in March", "her cat", "in June", "other two", "Only the one", "You should try"].map((p) => +(word(p, 0) + 0.9).toFixed(2))]
 // --probe t1,t2,... : only these moments, 1440×900 WebGPU and Canvas 2D, then stop
 const probeArg = process.argv.find((a) => a.startsWith("--probe="))
 

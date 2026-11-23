@@ -9,8 +9,10 @@ import { feedClock, feedTick } from "./feeds.js"
 export const MENU_H = 26
 const GAP = 8
 const EDGE_PAD = 10
-// The Grow track: { w: 50, ht: 32, small: 0.62, gap: 8, pad: 3 }
-const BAR = { w: 50, ht: 32, small: 0.62, gap: 8, pad: 3, edge: 12, inner: 42 }
+// The HUD's Icons style (agent/src/hud/icons.rs): each workspace as its number and its apps' icons,
+// the one you're on bright and the rest at 0.4, a marker 30 tall reaching 6 past its group
+const BAR = { edge: 14, icon: 16, iconGap: 3, numGap: 5, groupGap: 14, pad: 6, markerH: 30, num: 9, dim: 0.4, inner: 42, maxApps: 12 }
+const groupW = (apps) => (apps ? BAR.num + BAR.numGap + apps * BAR.icon + (apps - 1) * BAR.iconGap : BAR.num)
 // A tiler's moves are short: windows land in about a third of a second, a beat apart.
 // a tile's frame settles in about 0.4 s, critically damped (no overshoot on size: text would shimmer)
 const TILE_D = 0.38
@@ -107,8 +109,8 @@ export class World {
     this.frontApp = "Jot"
     this.menuCanvas = null
     this.menuKey = ""
-    this.bar = { shown: sp(0, 0.42), scale: sp(1, 0.4), cells: [], left: sp(0, 0.3), right: sp(0, 0.3), count: 0, lw: sp(0, 0.35), msg: null, prev: null }
-    // workspaces whose cell in the bar shows nothing of what's in it until you go there
+    this.bar = { shown: sp(0, 0.42), scale: sp(1, 0.4), cells: [], left: sp(0, 0.3), right: sp(0, 0.3), tw: sp(0, 0.35) }
+    // workspaces whose group in the bar shows none of its apps until you go there
     this.veiled = new Set()
     this.cursor = { x: SW * 0.62, y: SH * 0.55, vx: 0, vy: 0, path: null, a: sp(1, 0.3), press: sp(0, 0.09) }
     this.keys = { label: null, a: sp(0, 0.2), until: 0 }
@@ -240,11 +242,11 @@ export class World {
     return made
   }
 
-  // A workspace's place in the bar swells for a moment: something just arrived there.
+  // A workspace's group in the bar swells for a moment: something just arrived there.
   pulse(n) {
     const c = this.bar.cells.find((c) => c.n === n)
     if (!c) return
-    to(c.s, (n === this.active ? 1 : BAR.small) * 1.22, 0.12)
+    to(c.s, 1.18, 0.12)
     to(c.o, 1, 0.12)
     c.pulseEnd = this.time + 0.32
   }
@@ -262,7 +264,7 @@ export class World {
     this.reflow({ delay: 0.06 })
   }
 
-  // Option+Shift+n: the window leaves for workspace n, shrinking into its little layout in the bar.
+  // Option+Shift+n: the window leaves for workspace n, shrinking into its app's icon in the bar.
   move(id, ws) {
     const w = this.wins.get(id)
     const from = this.listOf(w.ws)
@@ -271,8 +273,8 @@ export class World {
     this.ensureCell(ws)
     w.ws = ws
     this.listOf(ws).push(id)
-    this.say("moved", ws, Math.sign(ws - this.active))
-    const c = this.cellRect(ws)
+    w.flying = this.time + 0.42
+    const c = this.iconRect(ws, w.app)
     w.target = null
     if (this.reduced) {
       to(w.a, 0, 0.24)
@@ -281,7 +283,6 @@ export class World {
       for (const k of ["x", "y", "w", "h"]) to(w[k], c[k], 0.34)
       to(w.a, 0, 0.3)
     }
-    w.flying = this.time + 0.42
     if (this.focus === id) {
       const next = [...this.rectsOf(this.active).keys()].pop()
       if (next) this.setFocus(next)
@@ -330,6 +331,13 @@ export class World {
     if (!quiet) this.keyCast(["⌥", String(ws % 10)])
   }
 
+  // A macOS notification banner: in from the right edge, it sits, and goes back the way it came.
+  notify(n) {
+    const x = sp(1.06, 0.45)
+    to(x, 0, 0.45, 0.12)
+    this.note = { ...n, x, out: this.time + 0.45 + (n.hold ?? 2.2) }
+  }
+
   keyCast(label, hold = 1.0) {
     const same = this.keys.label && this.keys.a.t > 0 && this.keys.label.length === label.length
     this.keys.label = label
@@ -343,84 +351,135 @@ export class World {
   ensureCell(ws) {
     while (this.bar.cells.length < ws) {
       const n = this.bar.cells.length + 1
-      this.bar.cells.push({ n, s: sp(0, 0.3), o: sp(0, 0.3) })
-      const c = this.bar.cells[n - 1]
-      to(c.s, n === this.active ? 1 : BAR.small)
-      to(c.o, n === this.active ? 1 : 0.5)
+      // a workspace joins the row in place, fading and scaling up from 0.9
+      this.bar.cells.push({ n, s: sp(0.9, 0.3), o: sp(0, 0.3), x: sp(0, 0.35), w: sp(BAR.num, 0.35), icons: new Map(), fresh: true })
     }
+    this.layoutBar()
   }
 
-  barLayout(active) {
+  // Each app once, in tile order, then the floating ones; nothing of a veiled workspace you're not on.
+  appsOf(n) {
+    if (this.veiled.has(n) && n !== this.active) return []
+    const out = []
+    const add = (w) => {
+      if (!w || w.leaving || w.flying || w.revealAt !== undefined || (n !== this.active && !w.seen)) return
+      if (!out.includes(w.app) && out.length < BAR.maxApps) out.push(w.app)
+    }
+    for (const id of this.rectsOf(n).keys()) add(this.wins.get(id))
+    for (const w of this.wins.values()) if (w.float && w.ws === n && w.a.t > 0) add(w)
+    return out
+  }
+
+  // Where every group, icon and the marker are headed; the springs carry them there.
+  layoutBar() {
+    const b = this.bar
     let x = BAR.edge
-    return this.bar.cells.map((c, i) => {
-      const width = BAR.w * (i + 1 === active ? 1 : BAR.small)
-      const r = { x, width }
-      x += width + BAR.gap
-      return r
-    })
+    for (const c of b.cells) {
+      const apps = this.appsOf(c.n)
+      const gw = groupW(apps.length)
+      if (c.fresh) {
+        jump(c.x, x)
+        jump(c.w, gw)
+        c.fresh = false
+      } else {
+        to(c.x, x)
+        to(c.w, gw)
+      }
+      if (!c.pulseEnd) {
+        to(c.s, 1, 0.3)
+        to(c.o, c.n === this.active ? 1 : BAR.dim, 0.3)
+      }
+      apps.forEach((app, i) => {
+        const ix = BAR.num + BAR.numGap + i * (BAR.icon + BAR.iconGap)
+        let ic = c.icons.get(app)
+        if (!ic) c.icons.set(app, (ic = { x: sp(ix, 0.35), a: sp(0, 0.2), s: sp(0.6, 0.3) }))
+        to(ic.x, ix)
+        to(ic.a, 1, 0.2)
+        to(ic.s, 1, 0.3)
+      })
+      for (const [app, ic] of c.icons) {
+        if (apps.includes(app)) continue
+        to(ic.a, 0, 0.15)
+        to(ic.s, 0.6, 0.2)
+        if (ic.a.x < 0.01) c.icons.delete(app)
+      }
+      if (c.n === this.active) {
+        to(b.left, x - BAR.pad)
+        to(b.right, x + gw + BAR.pad)
+      }
+      x += gw + BAR.groupGap
+    }
+    to(b.tw, b.cells.length ? x - BAR.groupGap + BAR.edge : 2 * BAR.edge)
   }
 
-  // The marker: its leading edge 0.26 s, its trailing edge 0.42 s.
-  // What the capsule says, as hud/pill.rs words it: "Workspace 3 · 2 windows", "Moved to Workspace 2 · …"
-  say(kind, ws, dir = 1) {
-    const m = this.bar.msg
-    if (m && m.kind === kind && m.ws === ws) return
-    this.bar.prev = m
-    this.bar.msg = { kind, ws, at: this.time, dir: dir || 1 }
-  }
-
-  labelOf(m) {
-    const n = this.listOf(m.ws).filter((id) => !this.wins.get(id)?.leaving).length
-    const count = n === 0 ? "Empty" : n === 1 ? "1 window" : n + " windows"
-    return [(m.kind === "moved" ? "Moved to Workspace " : "Workspace ") + m.ws, count]
-  }
-
+  // The marker: its leading edge 0.26 s, its trailing edge 0.42 s; the groups brighten and dim in 0.3 s.
   barGo(from, ws) {
     const dir = Math.sign(ws - from)
-    this.say("ws", ws, dir)
-    this.bar.cells.forEach((c, j) => {
-      to(c.s, j + 1 === ws ? 1 : BAR.small)
-      to(c.o, j + 1 === ws ? 1 : 0.5)
-    })
-    const r = this.barLayout(ws)[ws - 1]
-    to(this.bar.left, r.x - BAR.pad, dir > 0 ? 0.42 : dir < 0 ? 0.26 : 0.3)
-    to(this.bar.right, r.x + r.width + BAR.pad, dir > 0 ? 0.26 : dir < 0 ? 0.42 : 0.3)
+    const b = this.bar
+    to(b.left, b.left.t, dir > 0 ? 0.42 : dir < 0 ? 0.26 : 0.3)
+    to(b.right, b.right.t, dir > 0 ? 0.26 : dir < 0 ? 0.42 : 0.3)
+    this.layoutBar()
   }
 
   showBar() {
     this.ensureCell(Math.max(1, this.active))
+    const b = this.bar
     // it pops in: up from below, a little small, landing with a slight overshoot
-    if (this.bar.shown.t < 1 && !this.reduced) {
-      const s = this.bar.scale.t
-      this.bar.scale.x = s * 0.84
-      to(this.bar.scale, s, 0.42, 0.28)
+    if (b.shown.t < 1 && !this.reduced) {
+      const s = b.scale.t
+      b.scale.x = s * 0.84
+      to(b.scale, s, 0.42, 0.28)
     }
-    to(this.bar.shown, 1, 0.34)
-    if (!this.bar.msg) this.say("ws", this.active)
-    const r = this.barLayout(this.active)[this.active - 1]
-    jump(this.bar.left, r.x - BAR.pad)
-    jump(this.bar.right, r.x + r.width + BAR.pad)
+    const hidden = b.shown.x < 0.01
+    to(b.shown, 1, 0.34)
+    this.layoutBar()
+    // shown from nothing, everything lands as drawn
+    if (hidden) {
+      jump(b.tw, b.tw.t)
+      for (const c of b.cells) {
+        jump(c.x, c.x.t)
+        jump(c.w, c.w.t)
+        for (const ic of c.icons.values()) for (const k of ["x", "a", "s"]) jump(ic[k], ic[k].t)
+      }
+    }
+    jump(b.left, b.left.t)
+    jump(b.right, b.right.t)
   }
 
   barGeom() {
     const sc = this.bar.scale.x
-    let width = BAR.edge * 2 + 2
-    this.bar.cells.forEach((c, i) => (width += BAR.w * c.s.x + (i ? BAR.gap * Math.min(1, c.s.x / BAR.small) : 0)))
-    // the words after the layouts: 12 between, 16 at the end where the cells had 12
-    const cellsW = width - BAR.edge * 2 - 2
-    if (this.bar.lw.x > 1) width += 12 + this.bar.lw.x + 4
     const h = (BAR.inner + 2) * sc
-    const w = width * sc
+    const w = (this.bar.tw.x + 2) * sc
     const x = this.SW / 2 - w / 2
     const y = this.SH - 12 - h + (1 - this.bar.shown.x) * 70
-    return { x, y, w, h, sc, cellsW }
+    return { x, y, w, h, sc }
   }
 
+  // A workspace's group (its number and icons) on screen, for taps.
   cellRect(ws) {
     const g = this.barGeom()
-    const r = this.barLayout(this.active)[ws - 1] || { x: g.w / g.sc - 40, width: BAR.w * BAR.small }
-    const s = ws === this.active ? 1 : BAR.small
-    return { x: g.x + r.x * g.sc, y: g.y + (BAR.inner / 2 - (BAR.ht * s) / 2 + 1) * g.sc, w: r.width * g.sc, h: BAR.ht * s * g.sc }
+    const c = this.bar.cells[ws - 1]
+    const y = g.y + (1 + (BAR.inner - BAR.icon) / 2) * g.sc
+    if (!c) return { x: g.x + g.w - 30 * g.sc, y, w: BAR.icon * g.sc, h: BAR.icon * g.sc }
+    return { x: g.x + (1 + c.x.x) * g.sc, y, w: c.w.x * g.sc, h: BAR.icon * g.sc }
+  }
+
+  // Where an app's icon will sit in workspace ws's group once it lands, for a window flying there.
+  iconRect(ws, app) {
+    const b = this.bar
+    const c = b.cells[ws - 1]
+    const apps = this.appsOf(ws)
+    let i = apps.indexOf(app)
+    let grow = 0
+    if (i < 0) {
+      i = apps.length
+      grow = apps.length ? BAR.icon + BAR.iconGap : BAR.numGap + BAR.icon
+    }
+    const sc = b.scale.t
+    const x0 = this.SW / 2 - ((b.tw.t + grow + 2) * sc) / 2
+    const lx = (c ? c.x.t : 0) + BAR.num + BAR.numGap + i * (BAR.icon + BAR.iconGap)
+    const g = this.barGeom()
+    return { x: x0 + (1 + lx) * sc, y: g.y + (1 + (BAR.inner - BAR.icon) / 2) * sc, w: BAR.icon * sc, h: BAR.icon * sc }
   }
 
   // ─── Simulation ─────────────────────────────────────────────────────────
@@ -462,25 +521,22 @@ export class World {
       if ((!w.float || w.pin) && w.ws !== this.active && w.a.t === 0 && w.a.x < 0.002 && w.off.x !== 0) jump(w.off, 0)
     }
     const b = this.bar
-    for (const c of b.cells)
-      if (c.pulseEnd && this.time >= c.pulseEnd) {
-        c.pulseEnd = 0
-        to(c.s, c.n === this.active ? 1 : BAR.small, 0.4)
-        to(c.o, c.n === this.active ? 1 : 0.5, 0.6)
-      }
-    if (b.msg) {
-      const parts = this.labelOf(b.msg)
-      // no DOM in the headless sim: an estimate keeps the capsule's width honest there
-      const lw = typeof document === "undefined" ? (parts[0].length + parts[1].length) * 7.3 + 18 : labelCanvas(parts, this.res).lw
-      if (Math.abs(b.lw.t - lw) > 0.5) {
-        if (b.lw.t === 0) jump(b.lw, lw)
-        else to(b.lw, lw, 0.35)
+    for (const c of b.cells) if (c.pulseEnd && this.time >= c.pulseEnd) c.pulseEnd = 0
+    if (b.cells.length) this.layoutBar()
+    for (const k of ["shown", "scale", "left", "right", "tw"]) step(b[k], dt)
+    for (const c of b.cells) {
+      for (const k of ["s", "o", "x", "w"]) step(c[k], dt)
+      for (const ic of c.icons.values()) {
+        step(ic.x, dt)
+        step(ic.a, dt)
+        step(ic.s, dt)
       }
     }
-    for (const k of ["shown", "scale", "left", "right", "lw"]) step(b[k], dt)
-    for (const c of b.cells) {
-      step(c.s, dt)
-      step(c.o, dt)
+    const nt = this.note
+    if (nt) {
+      if (this.time >= nt.out && nt.x.t === 0) to(nt.x, 1.06, 0.4)
+      step(nt.x, dt)
+      if (nt.x.t > 1 && nt.x.x > 1.05) this.note = null
     }
     this.stepCursor(dt)
     if (this.keys.label && this.time > this.keys.until) to(this.keys.a, 0)
@@ -554,6 +610,14 @@ export class World {
       c.path = null
       c.vx = c.vy = 0
     }
+  }
+
+  // arrow, hand (over a link) or I-beam (over text); hidden while he types, back when he moves
+  cursorKind(kind) {
+    this.cursor.kind = kind
+  }
+  hideCursor(on) {
+    to(this.cursor.a, on ? 0 : 1, 0.08)
   }
 
   // pressed for a moment, then let go
@@ -777,6 +841,7 @@ export class World {
     this.frost(P, 0, 0, this.SW, MENU_H, { r: 0 })
     P(0, 0, this.SW, MENU_H, { tex: this.menu(), r: 0 })
     this.drawBar(P)
+    this.drawNote(P)
     // key cast, beside the bar, so the keys and what they did are one glance
     if (this.keys.a.x > 0.01 && this.keys.label) {
       const c = this.keyCanvas()
@@ -800,8 +865,26 @@ export class World {
     const cu = this.cursor
     if (cu.a.x > 0.01) {
       const s = 1 - cu.press.x * 0.1
-      P(cu.x - 3 * s, cu.y - 2 * s, 26 * s, 34 * s, { tex: cursorCanvas(), r: 0, a: cu.a.x, cut: 1 })
+      const k = cu.kind || "arrow"
+      const [hx, hy] = HOTSPOT[k]
+      P(cu.x - hx * s, cu.y - hy * s, 26 * s, 34 * s, { tex: cursorCanvas(k), r: 0, a: cu.a.x, cut: 1 })
     }
+  }
+
+  drawNote(P) {
+    const n = this.note
+    if (!n) return
+    const c = noteCanvas(n, this.res)
+    const W = NOTE.w
+    const H = NOTE.h
+    const x = this.SW - W - 12 + n.x.x * (W + 24)
+    const y = MENU_H + 8
+    const a = clamp(1.6 - n.x.x * 1.4)
+    P(x, y, W, H, { shadow: 22, col: [0, 0, 0, 0.22], r: 16, a, g: 0 })
+    this.frost(P, x, y, W, H, { r: 16, a, g: 0 })
+    P(x, y, W, H, { col: [0.965, 0.965, 0.972, 0.72], r: 16, a, g: 0 })
+    if (c) P(x, y, W, H, { tex: c, r: 16, a, g: 0 })
+    P(x, y, W, H, { ring: this.hair, col: [0, 0, 0, 0.12], r: 16, a, g: 0 })
   }
 
   drawBar(P) {
@@ -816,60 +899,28 @@ export class World {
     P(g.x, g.y, g.w, g.h, { shadow: 6, col: [0, 0, 0, 0.3], r: R, a })
     P(g.x, g.y, g.w, g.h, { col: [0.086, 0.086, 0.094, 0.97], r: R, a })
     P(g.x, g.y, g.w, g.h, { ring: this.hair * 1.2, col: [0.188, 0.188, 0.212, 1], r: R, a })
-    // its words, the new ones rolling in the way of travel as the old ones leave
-    if (b.msg && b.lw.x > 1) {
-      const lx = g.x + (BAR.edge + g.cellsW + 12) * sc
-      const u = clamp((this.time - b.msg.at) / 0.2)
-      const e = 1 - (1 - u) ** 3
-      const dir = b.msg.dir
-      const put = (m, al, dy) => {
-        if (al < 0.01) return
-        const c = labelCanvas(this.labelOf(m), this.res)
-        // cropped to the width the capsule has grown to so far
-        const dw = Math.min(c.lw, b.lw.x)
-        P(lx, g.y + dy * sc, dw * sc, g.h, { tex: c, uv: [0, 0, dw / c.lw, 1], r: 0, a: a * al })
-      }
-      if (b.prev && u < 1) put(b.prev, 1 - e, -dir * 7 * e)
-      put(b.msg, b.prev ? e : 1, b.prev ? dir * 7 * (1 - e) : 0)
-    }
-    const mh = (BAR.ht + BAR.pad * 2) * sc
-    const my = g.y + sc + (BAR.inner * sc - mh) / 2
+    // the marker: 30 tall, radius 9, white at 0.1 with a 0.2 hairline
+    const ox = g.x + sc
+    const mh = BAR.markerH * sc
+    const my = g.y + sc + ((BAR.inner - BAR.markerH) / 2) * sc
     const mw = Math.max(0, b.right.x - b.left.x) * sc
-    P(g.x + b.left.x * sc, my, mw, mh, { col: [1, 1, 1, 0.1], r: 9 * sc, a })
-    P(g.x + b.left.x * sc, my, mw, mh, { ring: 0.5 * sc, col: [1, 1, 1, 0.24], r: 9 * sc, a })
-    let x = BAR.edge
+    P(ox + b.left.x * sc, my, mw, mh, { col: [1, 1, 1, 0.1], r: 9 * sc, a })
+    P(ox + b.left.x * sc, my, mw, mh, { ring: this.hair * 1.2, col: [1, 1, 1, 0.2], r: 9 * sc, a })
+    const cy = g.y + sc + (BAR.inner / 2) * sc
     for (const c of b.cells) {
-      const s = c.s.x
-      const cw = BAR.w * s
-      const ch = BAR.ht * s
-      const cx = g.x + x * sc
-      const cy = g.y + sc + ((BAR.inner - ch) / 2) * sc
       const ca = a * c.o.x
-      P(cx, cy, cw * sc, ch * sc, { col: [1, 1, 1, 0.05], r: 5 * s * sc, a: ca })
-      P(cx, cy, cw * sc, ch * sc, { ring: 0.5 * sc, col: [1, 1, 1, 0.22], r: 5 * s * sc, a: ca })
-      const rs = this.veiled.has(c.n) && c.n !== this.active ? new Map() : this.rectsOf(c.n)
-      const inset = 3 * s
-      const iw = cw - 1 - inset * 2
-      const ih = ch - 1 - inset * 2
-      if (!rs.size) P(cx + (cw / 2 - 2 * s) * sc, cy + (ch / 2 - 2 * s) * sc, 4 * s * sc, 4 * s * sc, { col: [1, 1, 1, 0.28], r: 2 * s * sc, a: ca })
-      for (const [id, r] of rs) {
-        const w = this.wins.get(id)
-        if (w.flying) continue
-        const fx = (r.x - this.area.x) / this.area.w
-        const fy = (r.y - this.area.y) / this.area.h
-        const fw = (r.w + GAP) / this.area.w
-        const fh = (r.h + GAP) / this.area.h
-        const tx = cx + (inset + fx * iw + 0.8 * s) * sc
-        const ty = cy + (inset + fy * ih + 0.8 * s) * sc
-        const tw = (fw * iw - 1.6 * s) * sc
-        const th = (fh * ih - 1.6 * s) * sc
-        // a workspace you're not on still shows what's in it; only unopened or closing windows are missing
-        const wa = ca * (c.n === this.active ? clamp(w.a.x * 1.5) : w.leaving || !w.seen ? 0 : 0.85)
-        P(tx, ty, tw, th, { col: [1, 1, 1, 0.11], r: 3 * s * sc, a: wa })
-        const size = Math.min(18 * s * sc, Math.min(tw, th) - 3 * s * sc)
-        if (size > 3) P(tx + tw / 2 - size / 2, ty + th / 2 - size / 2, size, size, { tex: iconCanvas(w.app, 48), r: 0, a: wa })
+      if (ca < 0.005) continue
+      const s = c.s.x
+      const gx = ox + c.x.x * sc
+      const mid = gx + (c.w.x * sc) / 2
+      const X = (lx) => mid + (gx + lx * sc - mid) * s
+      const nc = numCanvas(c.n, this.res)
+      if (nc) P(X(BAR.num / 2) - (nc.lw / 2) * sc * s, cy - 8 * sc * s, nc.lw * sc * s, 16 * sc * s, { tex: nc, r: 0, a: ca })
+      for (const [app, ic] of c.icons) {
+        const z = BAR.icon * sc * s * ic.s.x
+        const ix = X(ic.x.x + BAR.icon / 2)
+        P(ix - z / 2, cy - z / 2, z, z, { tex: iconCanvas(app, 64), r: 0, a: ca * ic.a.x })
       }
-      x += cw + BAR.gap
     }
   }
 
@@ -918,53 +969,82 @@ function battery(ctx, x, y, ink) {
   ctx.fill()
 }
 
-// The capsule's label, in its type: the headline 620, a dot, the count 460, 13 pt, tabular figures.
-const labels = new Map()
-function labelCanvas([head, detail], res) {
-  const r = Math.min(4, Math.max(1, res))
-  const key = head + "|" + detail + "|" + r
-  let c = labels.get(key)
-  if (c) return c
-  if (labels.size > 40) labels.clear()
-  c = document.createElement("canvas")
-  const m = c.getContext("2d")
-  const f1 = `620 13px ${FONT}`
-  const f2 = `500 13px ${FONT}`
-  const f3 = `460 13px ${FONT}`
-  m.font = f1
-  const w1 = m.measureText(head).width
-  m.font = f2
-  const w2 = m.measureText("·").width
-  m.font = f3
-  const w3 = m.measureText(detail).width
-  const W = Math.ceil(w1 + 8 + w2 + 8 + w3 + 2)
-  const H = BAR.inner + 2
-  c.width = Math.ceil(W * r)
-  c.height = Math.ceil(H * r)
+// The banner's face: the app's icon, its title, "now", and the message in two lines at most.
+const NOTE = { w: 356, h: 70 }
+let noteC = null
+function noteCanvas(n, res) {
+  if (typeof document === "undefined") return null
+  const r = Math.min(4, Math.max(2, Math.ceil(res)))
+  if (noteC && noteC.key === n.body + r) return noteC
+  const c = document.createElement("canvas")
+  c.width = NOTE.w * r
+  c.height = NOTE.h * r
   const ctx = c.getContext("2d")
   ctx.setTransform(r, 0, 0, r, 0, 0)
-  ctx.textBaseline = "middle"
+  ctx.drawImage(iconCanvas(n.app, 96), 12, (NOTE.h - 34) / 2, 34, 34)
+  ctx.textBaseline = "alphabetic"
+  ctx.font = `600 13px ${FONT}`
+  ctx.fillStyle = "rgba(0,0,0,.86)"
+  ctx.fillText(n.title, 56, 26)
+  ctx.font = `400 12px ${FONT}`
+  ctx.fillStyle = "rgba(0,0,0,.42)"
+  ctx.textAlign = "right"
+  ctx.fillText("now", NOTE.w - 14, 26)
+  ctx.textAlign = "left"
+  ctx.font = `400 13px ${FONT}`
+  ctx.fillStyle = "rgba(0,0,0,.8)"
+  const max = NOTE.w - 56 - 14
+  const out = []
+  let line = ""
+  for (const word of n.body.split(" ")) {
+    const t = line ? line + " " + word : word
+    if (ctx.measureText(t).width > max && line) {
+      out.push(line)
+      line = word
+    } else line = t
+  }
+  out.push(line)
+  if (out.length > 2) out.splice(2, out.length, out[1].replace(/\s*\S+$/, "") + "…")
+  out.forEach((l, i) => ctx.fillText(l, 56, 44 + i * 16))
+  c.lw = NOTE.w
+  c.key = n.body + r
+  c.version = 1
+  return (noteC = c)
+}
+
+// A workspace's number: 13 pt semibold, tabular figures, #f4f4f6, centred in a 16 pt wide canvas.
+const numbers = new Map()
+function numCanvas(n, res) {
+  if (typeof document === "undefined") return null
+  const r = Math.min(4, Math.max(1, Math.ceil(res * 1.5)))
+  const key = n + "|" + r
+  let c = numbers.get(key)
+  if (c) return c
+  c = document.createElement("canvas")
+  const W = 16
+  c.width = W * r
+  c.height = 16 * r
+  const ctx = c.getContext("2d")
+  ctx.setTransform(r, 0, 0, r, 0, 0)
+  ctx.font = `600 13px ${FONT}`
   ctx.fontVariantNumeric = "tabular-nums"
-  const y = H / 2 + 0.5
-  ctx.font = f1
+  ctx.textAlign = "center"
+  ctx.textBaseline = "middle"
   ctx.fillStyle = "#f4f4f6"
-  ctx.fillText(head, 0, y)
-  ctx.font = f2
-  ctx.fillStyle = "#6c6c76"
-  ctx.fillText("·", w1 + 8, y)
-  ctx.font = f3
-  ctx.fillStyle = "#a4a4ae"
-  ctx.fillText(detail, w1 + 8 + w2 + 8, y)
+  ctx.fillText(String(n % 10), W / 2, 8.5)
   c.lw = W
   c.version = 1
-  labels.set(key, c)
+  numbers.set(key, c)
   return c
 }
 
-let cursorTex = null
-function cursorCanvas() {
-  if (cursorTex) return cursorTex
-  const c = (cursorTex = document.createElement("canvas"))
+// where each cursor's point is, in its 26 × 34 box
+const HOTSPOT = { arrow: [3, 2], hand: [9.5, 3.5], ibeam: [13, 17] }
+const cursorTex = {}
+function cursorCanvas(kind = "arrow") {
+  if (cursorTex[kind]) return cursorTex[kind]
+  const c = (cursorTex[kind] = document.createElement("canvas"))
+  if (kind !== "arrow") return drawCursor(c, kind)
   c.width = 104
   c.height = 136
   const ctx = c.getContext("2d")
@@ -995,6 +1075,74 @@ function cursorCanvas() {
   ctx.closePath()
   ctx.fillStyle = "#111"
   ctx.fill()
+  c.version = 1
+  return c
+}
+
+function drawCursor(c, kind) {
+  c.width = 104
+  c.height = 136
+  const ctx = c.getContext("2d")
+  ctx.scale(4, 4)
+  ctx.lineJoin = ctx.lineCap = "round"
+  if (kind === "ibeam") {
+    // two strokes: a white halo, then the black beam with its curled serifs
+    const beam = () => {
+      ctx.beginPath()
+      ctx.moveTo(10, 8)
+      ctx.quadraticCurveTo(13, 8, 13, 10.5)
+      ctx.quadraticCurveTo(13, 8, 16, 8)
+      ctx.moveTo(13, 10.5)
+      ctx.lineTo(13, 23.5)
+      ctx.moveTo(10, 26)
+      ctx.quadraticCurveTo(13, 26, 13, 23.5)
+      ctx.quadraticCurveTo(13, 26, 16, 26)
+      ctx.moveTo(11, 17)
+      ctx.lineTo(15, 17)
+    }
+    beam()
+    ctx.strokeStyle = "rgba(255,255,255,.95)"
+    ctx.lineWidth = 3.2
+    ctx.stroke()
+    beam()
+    ctx.strokeStyle = "#111"
+    ctx.lineWidth = 1.3
+    ctx.stroke()
+  } else {
+    // the pointing hand: index finger up, three knuckles, the thumb at the side
+    ctx.beginPath()
+    ctx.moveTo(8, 5)
+    ctx.arc(9.5, 5, 1.5, Math.PI, 0)
+    ctx.lineTo(11, 13)
+    ctx.arc(12.5, 13.4, 1.5, Math.PI, 0)
+    ctx.arc(15.5, 14.2, 1.5, Math.PI, 0)
+    ctx.arc(18.5, 15.2, 1.5, Math.PI, 0)
+    ctx.lineTo(20, 22)
+    ctx.quadraticCurveTo(20, 28, 15, 29)
+    ctx.lineTo(11.5, 29)
+    ctx.quadraticCurveTo(9, 29, 7.5, 26)
+    ctx.lineTo(4, 19.5)
+    ctx.quadraticCurveTo(3.4, 17.6, 5, 17.4)
+    ctx.quadraticCurveTo(6.4, 17.4, 8, 20)
+    ctx.closePath()
+    ctx.shadowColor = "rgba(0,0,0,.35)"
+    ctx.shadowBlur = 2
+    ctx.shadowOffsetY = 0.8
+    ctx.fillStyle = "#fff"
+    ctx.fill()
+    ctx.shadowColor = "transparent"
+    ctx.strokeStyle = "#111"
+    ctx.lineWidth = 1.1
+    ctx.stroke()
+    // the creases between the fingers
+    ctx.beginPath()
+    for (const x of [14, 17]) {
+      ctx.moveTo(x, 14.6)
+      ctx.lineTo(x, 18)
+    }
+    ctx.lineWidth = 0.8
+    ctx.stroke()
+  }
   c.version = 1
   return c
 }

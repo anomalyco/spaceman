@@ -14,6 +14,8 @@ FONT = os.path.join(CACHE, "Caveat.ttf")
 if not os.path.exists(FONT):
     urllib.request.urlretrieve("https://github.com/google/fonts/raw/main/ofl/caveat/Caveat%5Bwght%5D.ttf", FONT)
 rng = random.Random(12)
+# the neighbours on four, five and six (the film's names; one place to change them)
+NAMES = dict(zip("456", os.environ.get("NEIGHBOURS", "Alan,Juliana,Dax").split(",")))
 
 
 def hand(size, weight=500):
@@ -83,7 +85,7 @@ def sticky():
     im = paper(W, W, (247, 222, 92), 8)
     d = ImageDraw.Draw(im)
     ink = (20, 20, 24)
-    ink_text(d, (70, 120), "MARK", hand(190, 700), ink, 2)
+    ink_text(d, (70, 120), NAMES["4"].upper(), hand(190 if len(NAMES["4"]) <= 4 else 150, 700), ink, 2)
     ink_text(d, (80, 360), "No. 10", hand(110, 500), ink, 2)
     d.line([(78, 330), (470, 318)], fill=ink, width=7)
     im.save(os.path.join(OUT, "sticky.png"))
@@ -105,8 +107,8 @@ def card(n, lines):
 
 legal_pad()
 sticky()
-card("4", ["Mark", "out 07:42  back 18:15", "gym Tue / Thu"])
-card("5", ["Joan", "lights off 22:31", "cat out 06:50, in 21:05"])
-card("6", ["Alan", "up 06:10", "at his window most nights"])
+card("4", [NAMES["4"], "out 07:42  back 18:15", "gym Tue / Thu"])
+card("5", [NAMES["5"], "lights off 22:31", "cat out 06:50, in 21:05"])
+card("6", [NAMES["6"], "up 06:10", "at his window most nights"])
 card("7", [])
 print(sorted(os.listdir(OUT)))

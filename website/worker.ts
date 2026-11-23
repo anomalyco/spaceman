@@ -1,0 +1,65 @@
+// Serves Spaceman's static site (dist/) under /spaceman on anoma.ly. The route also matches
+// paths like /spacemanx, which aren't ours. /spaceman redirects to /spaceman/ so the page's
+// relative asset URLs resolve under it.
+const BASE = "/spaceman"
+
+type Env = { ASSETS: { fetch(request: Request): Promise<Response> } }
+
+// The path inside dist/ for a path under BASE, or undefined when it isn't ours.
+function stripBase(pathname: string): string | undefined {
+  if (pathname === BASE || pathname === `${BASE}/`) return "/"
+  if (pathname.startsWith(`${BASE}/`)) return pathname.slice(BASE.length)
+  return undefined
+}
+
+export default {
+  async fetch(request: Request, env: Env): Promise<Response> {
+    const url = new URL(request.url)
+    if (url.pathname === BASE) {
+      url.pathname = `${BASE}/`
+      return Response.redirect(url.toString(), 301)
+    }
+    const path = stripBase(url.pathname)
+    if (path === undefined) return new Response("Not found", { status: 404 })
+    const assetUrl = new URL(url)
+    assetUrl.pathname = path
+    const response = await env.ASSETS.fetch(new Request(assetUrl, request))
+    const headers = new Headers(response.headers)
+    // asset redirects (trailing slashes, /index.html) point at paths without the prefix
+    const location = headers.get("Location")
+    if (location?.startsWith("/")) headers.set("Location", BASE + location)
+    // Vite's hashed bundles never change
+    if (path.startsWith("/assets/")) headers.set("Cache-Control", "public, max-age=31536000, immutable")
+    // the page and its unhashed files are checked on every visit, so a deploy shows at once
+    else if (path === "/" || path.endsWith(".html") || /\.(txt|md|xml|webmanifest)$/.test(path)) headers.set("Cache-Control", "public, max-age=0, must-revalidate")
+    // the film's media, icons and the og:image keep their names across deploys: a day, then check
+    else headers.set("Cache-Control", "public, max-age=86400, stale-while-revalidate=604800")
+    headers.set("Strict-Transport-Security", "max-age=31536000")
+    headers.set("X-Content-Type-Options", "nosniff")
+    headers.set("Referrer-Policy", "strict-origin-when-cross-origin")
+    if (path.endsWith(".md")) headers.set("Content-Type", "text/markdown; charset=utf-8")
+    if (/\.(mp4|webm|mp3)$/.test(path)) return ranged(request, response, headers)
+    return new Response(response.body, { status: response.status, statusText: response.statusText, headers })
+  },
+}
+
+// Static assets ignore Range, but Safari and AVFoundation need byte ranges to play video (as in
+// Hex's site worker).
+async function ranged(request: Request, response: Response, headers: Headers): Promise<Response> {
+  headers.set("Accept-Ranges", "bytes")
+  const match = /^bytes=(\d*)-(\d*)$/.exec(request.headers.get("Range") ?? "")
+  if (response.status !== 200 || !match || (!match[1] && !match[2])) {
+    return new Response(request.method === "HEAD" ? null : response.body, { status: response.status, statusText: response.statusText, headers })
+  }
+  const body = await response.arrayBuffer()
+  const size = body.byteLength
+  const start = match[1] ? Number(match[1]) : Math.max(0, size - Number(match[2]))
+  const end = match[1] && match[2] ? Math.min(Number(match[2]), size - 1) : size - 1
+  if (start > end) {
+    headers.set("Content-Range", `bytes */${size}`)
+    return new Response(null, { status: 416, headers })
+  }
+  headers.set("Content-Range", `bytes ${start}-${end}/${size}`)
+  headers.set("Content-Length", String(end - start + 1))
+  return new Response(request.method === "HEAD" ? null : body.slice(start, end + 1), { status: 206, headers })
+}

@@ -19,13 +19,13 @@ def stems(A, end):
     """Where each take sits and how it fades, from the story's anchors (show time, from the tape's words):
     (take, its first sample in show time, fade in (at, secs), fade out (at, secs), lift [(t, dB)]).
     The arc: a brooding cello at the door camera; the neighbours, the hedge, the bins and their pulse and
-    rising violins (dread, then urgent, which climbs to Mark); a held breath under the three questions;
+    rising violins (dread, then urgent, which climbs to Alan); a held breath under the three questions;
     and on the switch to seven a full string stab that keeps climbing, cresting on the cut."""
     return [
         ("cello-1", A["door"] + 1.6, (A["door"] + 1.6, 0.5), (A["hedge"] - 3.0, 4.0), []),
         # dread-1's first bars are faint: lift them so the hedge keeps climbing from the cello
         ("dread-1", A["hedge"] - 2.0, (A["hedge"] - 2.0, 3.0), (A["bins"] + 1.0, 4.0), [(A["hedge"] - 2.0, 6), (A["hedge"] + 12.0, 0)]),
-        # urgent-0 climbs for 18 s: its top lands on "I moved Mark in June"
+        # urgent-0 climbs for 18 s: its top lands on "I moved Alan in June"
         ("urgent-0", A["mark"] - 17.0, (A["mark"] - 17.0, 3.0), (A["markEnd"] + 0.3, 1.4), [(A["mark"] - 17.0, -3), (A["mark"], 1)]),
         # the held breath: a thin high harmonic, gone just before the switch
         ("hush-0", A["markEnd"] + 0.2, (A["markEnd"] + 0.2, 1.0), (A["seven7"] - 1.4, 1.2), [(0, -9), (999, -9)]),

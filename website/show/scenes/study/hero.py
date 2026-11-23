@@ -77,6 +77,19 @@ def opening():
     return p, d, v, (mid - p).dot(d), f
 
 
+PAD = Vector((1.53, 2.66, 0.75))  # the legal pad in the lamp's pool, where the eye starts
+
+
+def rack(t, at_mon):
+    """In the dark the lens rests on the lit pad; as the screen wakes it pulls focus onto the panel."""
+    p, t_, *_ = CANDS[CAM]
+    p = Vector(p)
+    d = (Vector(t_) - p).normalized()
+    pad = (PAD - p).dot(d)
+    k = smooth((t - 0.5) / 0.9)
+    return 1 / ((1 - k) / pad + k / at_mon)
+
+
 def smooth(x):
     x = min(1, max(0, x))
     return x * x * (3 - 2 * x)
@@ -103,7 +116,7 @@ def pose(t):
     vfov = av + (bv - av) * u
     on = 1 / max(0.05, (scr.matrix_world.translation - pos).dot(d))
     k = smooth(u / 0.4)
-    focus = 1 / ((1 - k) / af + k * on)
+    focus = 1 / ((1 - k) / rack(t, af) + k * on)
     return pos, d, vfov, focus, fs, glow
 
 
