@@ -102,7 +102,7 @@ impl HotkeyPlan {
     }
 
     fn from_layout(enabled: &[WorkspaceId], layout: &LayoutSnapshot) -> Result<Self, String> {
-        let mut plan = PlanBuilder::new(layout, 15 + enabled.len() * 2);
+        let mut plan = PlanBuilder::new(layout, 16 + enabled.len() * 2);
         let claimed_letters = enabled
             .iter()
             .filter_map(|workspace| workspace.letter().map(|letter| letter.to_ascii_lowercase()))
@@ -154,6 +154,12 @@ impl HotkeyPlan {
                 OPTION_KEY | SHIFT_KEY,
                 WorkerAction::ToggleFullscreenLayout,
                 "toggle fullscreen layout",
+            ),
+            (
+                LogicalKey::Semantic(SemanticKey::Space),
+                OPTION_KEY | SHIFT_KEY,
+                WorkerAction::ToggleFloat,
+                "toggle floating window",
             ),
             (
                 LogicalKey::Character('/'),
@@ -460,7 +466,7 @@ mod tests {
     }
 
     #[test]
-    fn registrations_carry_switch_move_and_layout_actions_including_zero_key() {
+    fn registrations_carry_switch_move_layout_and_float_actions_including_zero_key() {
         let enabled = WorkspaceId::numbered().collect::<Vec<_>>();
         let plan = HotkeyPlan::from_layout(&enabled, &layout()).unwrap();
         let one = WorkspaceId::new(1).unwrap();
@@ -471,6 +477,7 @@ mod tests {
                 "toggle fullscreen layout",
                 WorkerAction::ToggleFullscreenLayout,
             ),
+            ("toggle floating window", WorkerAction::ToggleFloat),
             ("toggle layout", WorkerAction::ToggleLayout),
             (
                 "workspace back-and-forth",
@@ -501,11 +508,11 @@ mod tests {
     }
 
     #[test]
-    fn full_plan_contains_all_thirty_five_registrations() {
+    fn full_plan_contains_all_thirty_six_registrations() {
         let enabled = WorkspaceId::numbered().collect::<Vec<_>>();
         let plan = HotkeyPlan::from_layout(&enabled, &layout()).unwrap();
-        assert_eq!(plan.registrations.len(), 35);
-        assert!(plan.registrations.capacity() >= 35);
+        assert_eq!(plan.registrations.len(), 36);
+        assert!(plan.registrations.capacity() >= 36);
         let move_ws = plan
             .registrations
             .iter()
@@ -514,6 +521,35 @@ mod tests {
             })
             .unwrap();
         assert_eq!(move_ws.modifiers, OPTION_KEY | SHIFT_KEY);
+    }
+
+    #[test]
+    fn float_shortcut_is_option_shift_space_and_collides_with_nothing() {
+        let enabled = WorkspaceId::numbered().collect::<Vec<_>>();
+        let plan = HotkeyPlan::from_layout(&enabled, &layout()).unwrap();
+        let float = plan
+            .registrations
+            .iter()
+            .filter(|registration| registration.action == WorkerAction::ToggleFloat)
+            .collect::<Vec<_>>();
+        assert_eq!(float.len(), 1);
+        // Physical kVK_Space, so every keyboard layout can press it.
+        assert_eq!(float[0].key_code, 0x31);
+        assert_eq!(float[0].modifiers, OPTION_KEY | SHIFT_KEY);
+        assert_eq!(float[0].description, "toggle floating window");
+
+        let mut chords = plan
+            .registrations
+            .iter()
+            .map(|registration| (registration.key_code, registration.modifiers))
+            .collect::<Vec<_>>();
+        chords.sort_unstable();
+        let mut unique = chords.clone();
+        unique.dedup();
+        assert_eq!(
+            chords, unique,
+            "every planned chord must be registered once"
+        );
     }
 
     #[test]

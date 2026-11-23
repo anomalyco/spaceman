@@ -206,6 +206,8 @@ pub(crate) enum WorkerAction {
     Resize(ResizeDirection),
     Balance,
     ToggleFullscreenLayout,
+    /// Float the focused window above the workspace's tiles, or tile it again.
+    ToggleFloat,
     /// Kit noticed something wrong: mark the journal and snapshot it.
     MarkWrong,
 }
@@ -227,6 +229,7 @@ impl WorkerAction {
             Self::Resize(_) => "resize queued".into(),
             Self::Balance => "balance queued".into(),
             Self::ToggleFullscreenLayout => "fullscreen layout toggle queued".into(),
+            Self::ToggleFloat => "float toggle queued".into(),
             Self::MarkWrong => "marking the journal".into(),
         }
     }

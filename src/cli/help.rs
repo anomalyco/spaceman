@@ -237,6 +237,7 @@ pub(crate) fn ctl_help(executable: &str) -> String {
         "                             Reorder the focused window in a direction",
         "  layout                     Toggle the workspace split axis",
         "  fullscreen                 Toggle Fullscreen Layout on the active workspace",
+        "  float                      Float the focused window above the tiles, or tile it again",
         "  resize <shrink|grow>       Adjust the focused window's layout weight",
         "  balance                    Reset split weights evenly",
         "  retile                     Force a fresh observation and retile",

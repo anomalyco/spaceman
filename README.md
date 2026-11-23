@@ -136,6 +136,7 @@ Core controls:
 | `Option+/` | Toggle the active layout's root split axis |
 | `Option+-`, `Option+=` | Shrink/grow the focused tile by 50 pixels |
 | `Option+Shift+F` | Toggle Fullscreen Layout without native fullscreen |
+| `Option+Shift+Space` | Float the focused window above the tiles, or tile it again |
 | Three-finger swipe left/right | Next/previous occupied workspace on the display under the pointer |
 
 The swipe shares three fingers with macOS's "Swipe between full-screen applications"; set that to
@@ -158,6 +159,7 @@ spaceman ctl status
 spaceman ctl switch 2
 spaceman ctl move 7
 spaceman ctl layout
+spaceman ctl float
 spaceman ctl balance
 spaceman ctl pause
 spaceman ctl resume

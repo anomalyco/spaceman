@@ -98,6 +98,9 @@ pub(super) struct WorkspaceRuntime<B = MacWorkspaceBackend> {
     pub(super) inaccessible_since: HashMap<crate::PhysicalWindowId, Instant>,
     /// Smallest width and height each window has refused to shrink below.
     pub(super) minimum_sizes: HashMap<crate::PhysicalWindowId, (i32, i32)>,
+    /// Windows the user floated with Toggle Float. They stay floating (and
+    /// survive agent restarts) until toggled back, unlike a rule's windows.
+    pub(super) manual_floating: HashSet<crate::PhysicalWindowId>,
     pub(super) config: Config,
     pub(super) foreground_lanes: HashMap<String, DisplaySelector>,
     /// Focus left behind by a workspace switch or move. Focus follow ignores
@@ -237,6 +240,7 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
             WorkerAction::ToggleFullscreenLayout => {
                 self.toggle_fullscreen_layout(outputs, cancelled)
             }
+            WorkerAction::ToggleFloat => self.toggle_float(outputs, cancelled),
             WorkerAction::MarkWrong => {
                 self.mark_wrong();
                 Ok(self.status(0, &outputs))
@@ -293,6 +297,7 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
                 .collect()
         });
         let persisted_workspace_state = workspaces.state();
+        let manual_floating = super::commands::restored_floating(&workspaces);
         Self {
             backend,
             scope,
@@ -309,6 +314,7 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
             omitted_windows: HashMap::new(),
             inaccessible_since: HashMap::new(),
             minimum_sizes: HashMap::new(),
+            manual_floating,
             config,
             foreground_lanes: HashMap::new(),
             suppressed_focus: None,
@@ -631,6 +637,7 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
         self.repark_attempts.remove(window);
         self.inaccessible_since.remove(window);
         self.minimum_sizes.remove(window);
+        self.manual_floating.remove(window);
     }
 
     pub(super) fn clear_fullscreen_restore_if_inactive(&mut self, workspace: WorkspaceId) {

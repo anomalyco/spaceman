@@ -28,6 +28,7 @@ const KEYPAD_KEY_CODES: [u16; 19] = [
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) enum SemanticKey {
     Tab,
+    Space,
     Workspace(u8),
 }
 
@@ -221,6 +222,7 @@ fn semantic_key_code(key: SemanticKey) -> Result<u32, ResolveError> {
 
     match key {
         SemanticKey::Tab => Ok(0x30),
+        SemanticKey::Space => Ok(0x31),
         // Workspace shortcuts intentionally identify physical number-row keys. Their
         // Option+Shift variants therefore remain usable on layouts where digits need Shift.
         SemanticKey::Workspace(number @ 1..=10) => Ok(WORKSPACE_NUMBER_ROW[number as usize - 1]),
@@ -625,6 +627,14 @@ mod tests {
                 .unwrap()
                 .key_code,
             0x30
+        );
+        assert_eq!(
+            snapshot
+                .resolve(LogicalKey::Semantic(SemanticKey::Space))
+                .unwrap()
+                .key_code,
+            0x31,
+            "Space stays physical kVK_Space (0x31) in every layout"
         );
         assert_eq!(
             snapshot

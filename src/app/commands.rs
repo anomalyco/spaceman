@@ -440,6 +440,81 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
         Ok(status)
     }
 
+    /// Float the focused window above its workspace's tiles, or tile it again.
+    ///
+    /// Floating is workspace ownership, not a rule: the window keeps its exact
+    /// frame, follows its workspace across switches, parks and restores with
+    /// it, and reconciliation leaves it alone until the user toggles it back.
+    pub(super) fn toggle_float(
+        &mut self,
+        outputs: macos::DisplayOutputs,
+        cancelled: &AtomicBool,
+    ) -> Result<CycleStatus, String> {
+        let window = self
+            .current_focus()
+            .ok_or("Focused window is unavailable")?;
+        if self.workspaces.workspace_of_any(&window).is_none() {
+            // A window observed for the first time may not be bound yet.
+            self.cycle(outputs.clone(), cancelled)?;
+        }
+        let workspace = self
+            .workspaces
+            .workspace_of_any(&window)
+            .ok_or("Focused window is not managed by Spaceman")?;
+        if !self.is_visible(workspace, &outputs) {
+            return Err("Focused window is not on an active workspace".into());
+        }
+        if self.workspaces.workspace_of(&window).is_some() {
+            self.float_window(window, workspace, outputs, cancelled)
+        } else {
+            self.tile_window(window, workspace, outputs, cancelled)
+        }
+    }
+
+    fn float_window(
+        &mut self,
+        window: crate::PhysicalWindowId,
+        workspace: WorkspaceId,
+        outputs: macos::DisplayOutputs,
+        cancelled: &AtomicBool,
+    ) -> Result<CycleStatus, String> {
+        // Detach from the tiles first so the remaining windows re-fill its
+        // space on the very next layout. Focus and frame stay where they are.
+        self.forget_window(workspace, &window);
+        self.workspaces.own_floating(window.clone(), workspace);
+        self.manual_floating.insert(window);
+        self.relayout_persist(workspace, &outputs, cancelled)
+    }
+
+    fn tile_window(
+        &mut self,
+        window: crate::PhysicalWindowId,
+        workspace: WorkspaceId,
+        outputs: macos::DisplayOutputs,
+        cancelled: &AtomicBool,
+    ) -> Result<CycleStatus, String> {
+        let was_manual = self.manual_floating.remove(&window);
+        self.workspaces.forget_floating(&window);
+        // Reconciliation adopts a window it observes but does not own, which is
+        // exactly how a relaunched or moved window joins the tiles.
+        let result = self.cycle(outputs, cancelled);
+        if self.workspaces.workspace_of(&window).is_some() {
+            return result;
+        }
+        self.workspaces.own_floating(window.clone(), workspace);
+        if was_manual {
+            self.manual_floating.insert(window);
+        }
+        match result {
+            Err(error) => Err(error),
+            Ok(_) => Err(concat!(
+                "Focused window stays floating: a window rule or its ",
+                "application keeps it out of the tiling"
+            )
+            .into()),
+        }
+    }
+
     fn relayout_persist(
         &mut self,
         workspace: WorkspaceId,
@@ -454,6 +529,15 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
         self.persist_workspace_state_if_changed()?;
         Ok(self.status(layout.failed, outputs))
     }
+}
+
+/// Floating windows restored from the last run keep floating until toggled,
+/// so an agent restart does not silently re-tile them.
+pub(super) fn restored_floating(workspaces: &Workspaces) -> HashSet<crate::PhysicalWindowId> {
+    workspaces
+        .floating_entries()
+        .map(|(window, _)| window.clone())
+        .collect()
 }
 
 fn drop_direction(point: (i32, i32), frame: crate::Rect) -> Option<Direction> {

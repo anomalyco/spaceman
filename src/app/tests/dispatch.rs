@@ -42,6 +42,7 @@ fn actions() -> Vec<(WorkerAction, DirectAction)> {
         (WorkerAction::ToggleFullscreenLayout, |r, o, c| {
             r.toggle_fullscreen_layout(o, c)
         }),
+        (WorkerAction::ToggleFloat, |r, o, c| r.toggle_float(o, c)),
     ]
 }
 
@@ -215,6 +216,7 @@ fn control_acknowledgements_name_each_queued_action() {
             "resize queued",
             "balance queued",
             "fullscreen layout toggle queued",
+            "float toggle queued",
         ]
     );
 }

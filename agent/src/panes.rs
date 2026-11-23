@@ -450,6 +450,7 @@ const SHORTCUTS: &[(&str, &[&[&str]])] = &[
     ("Flip the split", &[&["⌥", "/"]]),
     ("Shrink or grow the tile", &[&["⌥", "-"], &["⌥", "="]]),
     ("Fullscreen layout", &[&["⌥", "⇧", "F"]]),
+    ("Toggle floating window", &[&["⌥", "⇧", "Space"]]),
 ];
 
 fn shortcuts(p: Paint) -> El {

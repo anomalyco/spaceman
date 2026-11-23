@@ -80,7 +80,11 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
                     affinities.insert(window.id.clone(), FrozenWindowAffinity::Ignored);
                     continue;
                 }
-                let floating = !window.resizable || disposition == WindowDisposition::Floating;
+                // A window the user floated by hand stays floating even though no rule
+                // names it; Toggle Float is the rule, for this window and this session.
+                let floating = !window.resizable
+                    || disposition == WindowDisposition::Floating
+                    || self.manual_floating.contains(&window.id);
                 if floating {
                     if let Some(owner) = self.workspaces.workspace_of(&window.id) {
                         self.forget_window(owner, &window.id);

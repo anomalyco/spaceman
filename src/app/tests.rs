@@ -1,5 +1,6 @@
 mod benchmarks;
 mod dispatch;
+mod float;
 mod focus;
 mod fullscreen;
 mod gestures;

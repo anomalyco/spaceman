@@ -20,6 +20,7 @@ fails after the old registrations are released, it pauses and reports `Hotkeys u
 | `Option+/` | Toggle the active workspace layout's root horizontal/vertical axis |
 | `Option+-` / `Option+=` | Shrink/grow the focused tile by 50 pixels at its immediate split |
 | `Option+Shift+F` | Toggle the workspace-wide Fullscreen Layout without entering native fullscreen |
+| `Option+Shift+Space` | Float the focused window above the tiles, or tile it again |
 | Three-finger swipe left/right | Next/previous workspace on the display under the pointer |
 
 A three-finger horizontal swipe steps through the workspaces that the display's menu section lists
@@ -51,6 +52,14 @@ restarts. `Option+/` exits Fullscreen Layout, toggles the preserved split axis, 
 the resulting normal layout. Keyboard resize, balance, and tile reordering require leaving Fullscreen
 Layout first. Pointer dragging and resizing are ignored while the mode is active. Floating windows are
 not expanded. Removing or moving away the workspace's final tiled window exits Fullscreen Layout.
+
+`Option+Shift+Space` floats the focused window: it leaves the tiles, keeps its exact frame and
+focus, and the remaining tiles re-fill the space it held. Floating is per window and follows that
+window's workspace, so it parks and restores with a switch and survives an agent restart; it clears
+when the window closes. A floating window moves, resizes, and moves between workspaces like any
+other window. Press `Option+Shift+Space` again to put it back on the tiles, where it joins them in
+stable order. Windows that a `float` rule keeps floating, or that their application will not let
+Spaceman resize, stay floating; toggle them after removing the rule instead.
 
 Dragging a managed tile over a sibling swaps it. Dropping near a tile edge can create a nested split;
 dropping onto another display can move it to that display's active workspace. Resizing a managed
@@ -121,6 +130,7 @@ spaceman ctl focus next
 spaceman ctl move-direction right
 spaceman ctl layout
 spaceman ctl fullscreen
+spaceman ctl float
 spaceman ctl resize shrink
 spaceman ctl resize grow
 spaceman ctl balance
@@ -135,8 +145,9 @@ spaceman doctor
 spaceman doctor 24
 ```
 
-Directions are `left`, `down`, `up`, and `right`. `focus next` is Option-backtick and `fullscreen`
-toggles the focused workspace's Fullscreen Layout, like `Option+Shift+F`. `balance` equalizes the focused tile's immediate
+Directions are `left`, `down`, `up`, and `right`. `focus next` is Option-backtick,
+`fullscreen` toggles the focused workspace's Fullscreen Layout, like `Option+Shift+F`, and `float`
+toggles the focused window's floating, like `Option+Shift+Space`. `balance` equalizes the focused tile's immediate
 split while respecting nested minimum sizes. `hud` repeatedly renders sanitized runtime geometry in
 the terminal until interrupted. `ctl wrong` marks the journal the moment something looks wrong and
 writes a full arrangement snapshot, so `doctor` shows what the screen held then.
