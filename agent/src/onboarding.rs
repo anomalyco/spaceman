@@ -1,4 +1,4 @@
-//! Setup tour orchestration, starter app discovery, and live polling.
+//! Setup tour orchestration and live polling.
 
 mod flow;
 #[cfg(test)]
@@ -16,29 +16,13 @@ use spaceman::app::UiLaunchAtLogin;
 use crate::{
     Pane, Ui, apps,
     playground::{Scene, reset_fixture},
-    rules::Doc,
 };
 
 const ADVANCE_BEAT: Duration = Duration::from_millis(700);
-const STARTER_LIMIT: usize = 4;
-
-const FALLBACK_STARTERS: &[(&str, &str)] = &[
-    ("com.apple.Safari", "Safari"),
-    ("com.apple.MobileSMS", "Messages"),
-    ("com.apple.Terminal", "Terminal"),
-    ("com.apple.systempreferences", "System Settings"),
-];
-
-#[derive(Clone, Debug)]
-pub struct StarterApp {
-    pub bundle_id: String,
-    pub name: String,
-}
 
 pub struct Tour {
     pub flow: Flow,
     pub conflicts: Vec<String>,
-    pub starter_apps: Vec<StarterApp>,
     advance_at: Option<Instant>,
     completed: bool,
 }
@@ -49,11 +33,9 @@ impl Tour {
             accessibility,
             launch_at_login: ui_launch_at_login(ui),
         };
-        let starter_apps = live_starters(ui);
         Self {
             flow: Flow::new(step, status, false),
             conflicts: apps::conflicting_window_managers(),
-            starter_apps,
             advance_at: None,
             completed: false,
         }
@@ -61,11 +43,9 @@ impl Tour {
 
     pub fn manual(ui: &mut Ui) -> Self {
         let status = ui_setup_state(ui);
-        let starter_apps = live_starters(ui);
         Self {
             flow: Flow::new(Step::Welcome, status, true),
             conflicts: apps::conflicting_window_managers(),
-            starter_apps,
             advance_at: None,
             completed: true,
         }
@@ -80,7 +60,8 @@ impl Tour {
     ) -> Self {
         if let Some(agent) = &mut ui.agent {
             agent.accessibility = accessibility;
-            agent.automatic = accessibility;
+            // A first-run tour holds tiling until it finishes.
+            agent.automatic = false;
         }
         let status = SetupState {
             accessibility,
@@ -97,24 +78,9 @@ impl Tour {
         if step == Step::Setup && asked && !accessibility {
             flow.on(Input::GrantAccessibility);
         }
-        let starter_apps = FALLBACK_STARTERS
-            .iter()
-            .map(|&(bundle_id, name)| {
-                let cached = ui.apps.get(bundle_id);
-                StarterApp {
-                    bundle_id: bundle_id.to_owned(),
-                    name: if cached.icon.is_some() {
-                        cached.name
-                    } else {
-                        name.to_owned()
-                    },
-                }
-            })
-            .collect();
         Self {
             flow,
             conflicts,
-            starter_apps,
             advance_at: None,
             completed: false,
         }
@@ -168,6 +134,11 @@ pub fn input(ui: &mut Ui, input: Input) {
     remember_step(ui, step_before);
 }
 
+/// Ends the tour from the window closing or Escape.
+pub fn dismiss(ui: &mut Ui) {
+    input(ui, Input::Dismiss);
+}
+
 fn remember_step(ui: &Ui, before: Step) {
     if !ui.fixture
         && let Some(tour) = &ui.tour
@@ -206,12 +177,21 @@ fn apply(ui: &mut Ui, effect: Effect) {
                 tour.advance_at = Some(Instant::now());
             }
         }
-        Effect::Finish => {
-            if !ui.fixture {
-                flow::record_completion();
-            }
-            ui.tour = None;
-        }
+        Effect::Finish => finish(ui),
+    }
+}
+
+/// Ends the tour. A first-run tour releases the hold it placed on automatic
+/// tiling, so tiling starts only now rather than behind the setup window.
+fn finish(ui: &mut Ui) {
+    let Some(tour) = ui.tour.take() else {
+        return;
+    };
+    if !ui.fixture {
+        flow::record_completion();
+    }
+    if !tour.flow.manual() {
+        ui.finish_setup();
     }
 }
 
@@ -230,65 +210,6 @@ fn ui_launch_at_login(ui: &Ui) -> bool {
             UiLaunchAtLogin::On | UiLaunchAtLogin::NeedsApproval
         )
     })
-}
-
-fn live_starters(ui: &mut Ui) -> Vec<StarterApp> {
-    let mut seen = Vec::new();
-    let mut out = Vec::new();
-
-    for app in apps::running() {
-        if out.len() >= STARTER_LIMIT {
-            break;
-        }
-        if apps::window_manager_name(Some(&app.bundle_id), None).is_some() {
-            continue;
-        }
-        seen.push(app.bundle_id.clone());
-        ui.apps.get(&app.bundle_id);
-        out.push(StarterApp {
-            bundle_id: app.bundle_id,
-            name: app.name,
-        });
-    }
-
-    for rule in ui.doc.rules() {
-        if out.len() >= STARTER_LIMIT {
-            break;
-        }
-        let Some(bundle_id) = rule.bundle_id else {
-            continue;
-        };
-        if rule.title.is_some() || seen.contains(&bundle_id) {
-            continue;
-        }
-        let cached = ui.apps.get(&bundle_id);
-        seen.push(bundle_id.clone());
-        out.push(StarterApp {
-            bundle_id,
-            name: cached.name,
-        });
-    }
-
-    for &(bundle_id, fallback_name) in FALLBACK_STARTERS {
-        if out.len() >= STARTER_LIMIT {
-            break;
-        }
-        if seen.iter().any(|existing| existing == bundle_id) {
-            continue;
-        }
-        let cached = ui.apps.get(bundle_id);
-        seen.push(bundle_id.to_owned());
-        out.push(StarterApp {
-            bundle_id: bundle_id.to_owned(),
-            name: if cached.icon.is_some() {
-                cached.name
-            } else {
-                fallback_name.to_owned()
-            },
-        });
-    }
-
-    out
 }
 
 fn tour_scene(ui: &mut Ui, step: Step, accessibility: bool, asked: bool) {
@@ -318,14 +239,6 @@ pub(crate) const SCENES: &[Scene] = &[
     }),
     ("onboarding-setup-ready", |ui| {
         tour_scene(ui, Step::Setup, true, false)
-    }),
-    ("onboarding-rules", |ui| {
-        reset_fixture(ui, Pane::Rules);
-        ui.doc = Doc::parse(
-            "version = 1\n\n[[rules]]\nbundle_id = \"com.apple.Safari\"\naction = \"route\"\nworkspace = 1\n\n[[rules]]\nbundle_id = \"com.apple.MobileSMS\"\naction = \"route\"\nworkspace = 2\n\n[[rules]]\nbundle_id = \"com.apple.systempreferences\"\naction = \"float\"\n",
-        );
-        ui.look_up_apps();
-        ui.tour = Some(Tour::fixture(Step::Rules, true, false, Vec::new(), ui));
     }),
     ("onboarding-done", |ui| {
         tour_scene(ui, Step::Done, true, false)

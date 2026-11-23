@@ -11,6 +11,53 @@ mod probe;
 
 pub(super) use dispatch::WorkerDispatch;
 
+/// Whether automatic tiling may start without the user asking for it.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(super) enum TilingStart {
+    /// Start now: Accessibility is granted and nothing is holding tiling.
+    Now,
+    /// Hold: the first-run setup tour is still open.
+    AfterSetup,
+}
+
+/// Automatic tiling's first start, held while a first-run setup tour is open.
+///
+/// The tour grants Accessibility while the user is still reading it, and the
+/// grant is noticed on the next tick. Starting tiling then rearranges every
+/// window behind the setup window, so the tour finishes first.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(super) struct TilingStartup {
+    setup_tour_open: bool,
+}
+
+impl TilingStartup {
+    pub(super) const fn new(setup_tour_open: bool) -> Self {
+        Self { setup_tour_open }
+    }
+
+    /// Accessibility became available, or the loop noticed it now.
+    pub(super) fn accessibility_granted(&mut self) -> TilingStart {
+        if self.setup_tour_open {
+            TilingStart::AfterSetup
+        } else {
+            TilingStart::Now
+        }
+    }
+
+    /// Whether a first-run tour still holds tiling.
+    pub(super) const fn held(&self) -> bool {
+        self.setup_tour_open
+    }
+
+    /// The first-run tour finished, was dismissed, or the user asked for tiling
+    /// directly. A manual re-open of the tour never holds tiling, so this is only
+    /// ever called for a first-run tour or an explicit start.
+    pub(super) fn setup_finished(&mut self) -> TilingStart {
+        self.setup_tour_open = false;
+        TilingStart::Now
+    }
+}
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum TickOutcome {
     Continue,
@@ -31,6 +78,8 @@ pub(super) struct AppLoopInit {
     pub(super) hotkey_workspaces: Vec<WorkspaceId>,
     pub(super) hud: bool,
     pub(super) trusted: bool,
+    /// A first-run setup tour is open and holds automatic tiling until it ends.
+    pub(super) setup_tour_open: bool,
     pub(super) controls: Receiver<ControlRequest>,
     pub(super) control_server: control::Server,
     pub(super) bridge: UiBridge,
@@ -57,6 +106,7 @@ pub struct MainThreadAgent {
     automatic: bool,
     hud: bool,
     awaiting_accessibility: bool,
+    startup_tiling: TilingStartup,
     accessibility_requested: bool,
     last_accessibility_poll: Instant,
     return_from_settings: permission_guide::ReturnFromSettings,
@@ -104,7 +154,7 @@ impl MainThreadAgent {
         } else {
             (None, Some("Accessibility permission is required".into()))
         };
-        let automatic = hotkeys.is_some();
+        let automatic = hotkeys.is_some() && !init.setup_tour_open;
         let mut worker = WorkerDispatch::new(init.commands);
 
         status_item::set_automatic(automatic);
@@ -113,7 +163,11 @@ impl MainThreadAgent {
             worker
                 .send_with_outputs(|outputs| WorkerCommand::Action(WorkerAction::Retile, outputs));
         } else {
-            status_item::set_status(hotkey_error.as_deref().unwrap_or("Paused"));
+            status_item::set_status(match hotkey_error.as_deref() {
+                Some(error) => error,
+                None if init.setup_tour_open => "Setup in progress · tiling starts when you finish",
+                None => "Paused",
+            });
             worker.send_restore();
         }
 
@@ -138,6 +192,7 @@ impl MainThreadAgent {
             automatic,
             hud: init.hud,
             awaiting_accessibility: !trusted,
+            startup_tiling: TilingStartup::new(init.setup_tour_open),
             accessibility_requested: false,
             last_accessibility_poll: initial_refresh,
             return_from_settings: permission_guide::ReturnFromSettings::default(),
@@ -278,7 +333,7 @@ impl MainThreadAgent {
                 }
                 WorkerResult::Restored { failed: 0 } => {
                     self.worker.finish_restore();
-                    status_item::set_status(self.last_error.as_deref().unwrap_or("Paused"));
+                    status_item::set_status(self.paused_status());
                 }
                 WorkerResult::Restored { failed } => {
                     self.worker.defer_restore_retry();
@@ -319,6 +374,17 @@ impl MainThreadAgent {
 
         self.maybe_publish_ui();
         TickOutcome::Continue
+    }
+
+    /// What the menu reports while tiling has not started.
+    fn paused_status(&self) -> &str {
+        match self.last_error.as_deref() {
+            Some(error) => error,
+            None if self.startup_tiling.held() => {
+                "Setup in progress · tiling starts when you finish"
+            }
+            None => "Paused",
+        }
     }
 
     fn stop_automatic_and_restore(&mut self) {
@@ -397,8 +463,15 @@ impl MainThreadAgent {
             && !self.worker.is_restoring_or_pending()
             && self.exit_intent.is_none()
         {
-            self.awaiting_accessibility = false;
-            drop(self.actions_sender.send(Action::ToggleAutomatic));
+            match self.startup_tiling.accessibility_granted() {
+                TilingStart::Now => {
+                    self.awaiting_accessibility = false;
+                    drop(self.actions_sender.send(Action::ToggleAutomatic));
+                }
+                TilingStart::AfterSetup => {
+                    status_item::set_status("Setup in progress · tiling starts when you finish");
+                }
+            }
         }
         self.publish_ui(config_changed);
         self.poll_return_from_settings();

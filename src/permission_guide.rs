@@ -14,6 +14,7 @@ unsafe extern "C" {
     fn spaceman_close_accessibility_guide();
     fn spaceman_accessibility_guide_active() -> bool;
     fn spaceman_accessibility_list_name() -> *const c_char;
+    fn spaceman_accessibility_drag_supported() -> bool;
     fn spaceman_permission_settings_state() -> i32;
     fn spaceman_prompt_accessibility_trust() -> bool;
 }
@@ -93,13 +94,42 @@ pub fn active() -> bool {
     MainThreadMarker::new().is_some() && unsafe { spaceman_accessibility_guide_active() }
 }
 
-/// The name System Settings gives the Accessibility list (`"Accessibility"`
-/// through macOS 26; `"Device Control and Data Access"` on macOS 27+).
+/// The name System Settings gives the Accessibility list: `"Accessibility"`
+/// through macOS 26, `"Device Control and Data Access"` on macOS 27.0 through
+/// 27.2, and `"System & App Protection Override"` on macOS 27.3 and later.
 #[must_use]
 pub fn list_name() -> &'static str {
     // SAFETY: Returns a static NUL-terminated ASCII string literal from Objective-C.
     let name = unsafe { CStr::from_ptr(spaceman_accessibility_list_name()) };
     name.to_str().unwrap_or("Accessibility")
+}
+
+/// Whether System Settings accepts dragging Spaceman's tile into its list.
+///
+/// macOS 27.3's System & App Protection Override rejects dropped tiles: it asks
+/// for a click on the Privacy & Security notification instead, and apps are
+/// added with the pane's own controls. macOS 27.0 through 27.2 only renamed the
+/// list and still takes the dragged tile.
+#[must_use]
+pub fn drag_supported() -> bool {
+    // SAFETY: Pure operating-system version check in Objective-C; no shared state.
+    unsafe { spaceman_accessibility_drag_supported() }
+}
+
+/// What to do in System Settings while Accessibility is still missing. The
+/// first-run tour shows this, and it never tells anyone to drag on a pane that
+/// refuses drops.
+#[must_use]
+pub fn add_instructions() -> String {
+    instructions(list_name(), drag_supported())
+}
+
+fn instructions(list: &str, drag: bool) -> String {
+    if drag {
+        format!("Drag Spaceman into the {list} list, or switch it on in System Settings.")
+    } else {
+        format!("Click the Privacy & Security notification, or add Spaceman in {list}.")
+    }
 }
 
 /// Registers the running binary in Accessibility and triggers macOS's prompt
@@ -182,8 +212,39 @@ mod tests {
     fn accessibility_list_name_is_recognized() {
         let name = list_name();
         assert!(
-            matches!(name, "Accessibility" | "Device Control and Data Access"),
+            matches!(
+                name,
+                "Accessibility"
+                    | "Device Control and Data Access"
+                    | "System & App Protection Override"
+            ),
             "unexpected Accessibility list name: {name}"
         );
+        // Only macOS 27.3+ stopped accepting the dragged tile.
+        assert_eq!(drag_supported(), name != "System & App Protection Override");
+    }
+
+    #[test]
+    fn instructions_follow_each_macos_tier() {
+        // macOS 14 through 26.
+        let legacy = instructions("Accessibility", true);
+        assert!(legacy.contains("Drag Spaceman into the Accessibility list"));
+
+        // macOS 27.0 through 27.2: renamed, still draggable.
+        let renamed = instructions("Device Control and Data Access", true);
+        assert!(renamed.contains("Drag Spaceman into the Device Control and Data Access list"));
+
+        // macOS 27.3: no drag, so the copy points at the notification instead.
+        let protected = instructions("System & App Protection Override", false);
+        assert!(!protected.contains("Drag"), "misleading copy: {protected}");
+        assert!(protected.contains("Privacy & Security notification"));
+        assert!(protected.contains("System & App Protection Override"));
+    }
+
+    #[test]
+    fn the_running_system_gets_matching_copy() {
+        let copy = add_instructions();
+        assert!(copy.contains(list_name()));
+        assert_eq!(copy.contains("Drag"), drag_supported());
     }
 }

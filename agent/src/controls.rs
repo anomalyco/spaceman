@@ -136,18 +136,6 @@ pub fn icon_row(
     leading_row(p, key, Some(lead), title, description, control)
 }
 
-/// A setting row led by a custom element (such as an app icon).
-pub fn badge_row(
-    p: Paint,
-    key: &str,
-    lead: El,
-    title: &str,
-    description: Option<(String, Color)>,
-    control: El,
-) -> El {
-    leading_row(p, key, Some(lead), title, description, control)
-}
-
 fn leading_row(
     p: Paint,
     key: &str,

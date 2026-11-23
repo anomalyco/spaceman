@@ -20,6 +20,7 @@ use crate::Ui;
 struct Launch {
     prepared: PreparedAgent,
     window: rune::AppHandle<Ui>,
+    setup_tour_open: bool,
 }
 
 struct PumpState {
@@ -63,6 +64,7 @@ pub fn run() -> Result<(), String> {
         *slot.borrow_mut() = Some(Launch {
             prepared,
             window: window.clone(),
+            setup_tour_open: initial_tour.is_some(),
         });
     });
     window.update_if(|_, _| {
@@ -80,7 +82,12 @@ pub fn run() -> Result<(), String> {
 }
 
 fn start_main_thread() {
-    let Some(Launch { prepared, window }) = LAUNCH.with(|slot| slot.borrow_mut().take()) else {
+    let Some(Launch {
+        prepared,
+        window,
+        setup_tour_open,
+    }) = LAUNCH.with(|slot| slot.borrow_mut().take())
+    else {
         return;
     };
     let settings_window = window.clone();
@@ -104,7 +111,7 @@ fn start_main_thread() {
             doc.save()
         }),
     };
-    let agent = match prepared.start_main_thread(callbacks) {
+    let agent = match prepared.start_main_thread(callbacks, setup_tour_open) {
         Ok(agent) => agent,
         Err(error) => {
             STARTUP_ERROR.with(|slot| *slot.borrow_mut() = Some(error));

@@ -53,7 +53,7 @@ experimental; read [Known limitations](docs/limitations.md) before installing it
      && ditto -x -k /tmp/Spaceman.zip /Applications && open /Applications/Spaceman.app
    ```
 
-3. Follow the setup tour, which walks through granting Accessibility access.
+3. Follow the setup tour: grant Accessibility access, then press `Start Tiling`.
 4. Optionally link the bundled CLI: `mkdir -p "$HOME/.local/bin" && ln -sf "/Applications/Spaceman.app/Contents/MacOS/spaceman" "$HOME/.local/bin/spaceman"`.
 
 To check the download first, get
@@ -99,16 +99,17 @@ maintainer workflow.
 
 1. Disable every other window manager. For AeroSpace: `aerospace enable off`.
 2. Open Spaceman: `open "/Applications/Spaceman.app"`.
-3. On a fresh install, Spaceman opens its four-step setup tour when Accessibility access is missing.
-   Choose `Allow`, enable Spaceman under **System Settings > Privacy & Security > Accessibility**,
-   optionally enable `Launch at Login`, and pick starter app rules.
+3. On a fresh install, Spaceman opens its three-step setup tour when Accessibility access is missing.
+   Choose `Allow` and grant Spaceman access in **System Settings > Privacy & Security** (the
+   Accessibility list, named System & App Protection Override on macOS 27.3 and later), optionally
+   enable `Launch at Login`, then press `Start Tiling`.
 4. Confirm operation with `spaceman ctl status`.
 
-When Accessibility permission is granted and hotkeys register successfully, Spaceman starts automatic
-tiling; it does not otherwise start paused intentionally. Without Accessibility permission, the menu
-reports the permission error and tiling remains paused. While tiling, the menu lists each display's
-workspaces (the visible one checked, plus any holding windows, with their apps' icons); choosing one
-switches to it. The menu actions are `Run Setup...` (while
+Automatic tiling starts when the setup tour finishes. A fresh install holds it while the tour is
+open, so granting Accessibility never rearranges your windows behind the setup window. Without
+Accessibility permission, the menu reports the permission error and tiling remains paused. While
+tiling, the menu lists each display's workspaces (the visible one checked, plus any holding windows,
+with their apps' icons); choosing one switches to it. The menu actions are `Run Setup...` (while
 Accessibility is missing), `Disable Tiling` (or `Enable Tiling` while paused), `Workspace HUD`,
 `Launch at Login`, `Settings...` (`⌘,`), `Check for Updates...`, and `Quit Spaceman` (`⌘Q`). Settings
 includes `General`, `Rules`, `Workspaces`, `Shortcuts`, and `Activity` (title-free arrangement

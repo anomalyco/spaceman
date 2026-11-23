@@ -31,11 +31,13 @@ fn fresh_untrusted_launch_opens_welcome_and_blocks_continue_until_granted() {
         false,
     );
     assert_eq!(flow.view().step, Step::Welcome);
+    assert_eq!(flow.view().count, 3);
     assert!(!flow.view().can_go_back);
 
     assert_eq!(flow.on(Input::Continue), Effect::None);
     assert_eq!(flow.view().step, Step::Setup);
     assert_eq!(flow.view().direction, 1);
+    assert_eq!(flow.view().index, 1);
     assert_eq!(flow.view().accessibility, PermissionControl::Allow);
     assert!(!flow.view().ready);
 
@@ -64,12 +66,11 @@ fn fresh_untrusted_launch_opens_welcome_and_blocks_continue_until_granted() {
     );
     assert!(flow.view().ready);
 
-    assert_eq!(flow.on(Input::Continue), Effect::None);
-    assert_eq!(flow.view().step, Step::Rules);
-    assert_eq!(flow.view().index, 2);
-
+    // The tour is three steps: Welcome, Setup, Done. Choosing app rules lives in
+    // Settings > Rules rather than in the first-run tour.
     assert_eq!(flow.on(Input::Continue), Effect::None);
     assert_eq!(flow.view().step, Step::Done);
+    assert_eq!(flow.view().index, 2);
 
     assert_eq!(flow.on(Input::Continue), Effect::Finish);
     drop(std::fs::remove_dir_all(dir));
@@ -86,7 +87,7 @@ fn existing_trusted_install_records_completion_without_opening_window() {
 }
 
 #[test]
-fn saved_setup_step_resumes_at_rules_after_accessibility_grant_relaunch() {
+fn saved_setup_step_resumes_at_done_after_accessibility_grant_relaunch() {
     let dir = temp_dir("resume");
     record_step_at(&dir, Step::Setup).unwrap();
     assert_eq!(saved_step_at(&dir), Some(Step::Setup));
@@ -100,12 +101,45 @@ fn saved_setup_step_resumes_at_rules_after_accessibility_grant_relaunch() {
         },
         false,
     );
-    assert_eq!(flow.step(), Step::Rules);
+    assert_eq!(flow.step(), Step::Done);
 
     record_completion_at(&dir).unwrap();
     assert!(completion_recorded_at(&dir));
     assert_eq!(saved_step_at(&dir), None);
     drop(std::fs::remove_dir_all(dir));
+}
+
+#[test]
+fn an_in_progress_tour_saved_on_the_removed_rules_step_resumes_at_done() {
+    let dir = temp_dir("rules-migration");
+    std::fs::write(dir.join("onboarding-step"), "rules").unwrap();
+    assert_eq!(saved_step_at(&dir), Some(Step::Done));
+    assert_eq!(launch_step_at(&dir, true), Some(Step::Done));
+    drop(std::fs::remove_dir_all(dir));
+}
+
+#[test]
+fn first_run_tour_can_be_dismissed_and_only_a_manual_one_is_complete() {
+    let mut first_run = Flow::new(
+        Step::Welcome,
+        SetupState {
+            accessibility: false,
+            launch_at_login: false,
+        },
+        false,
+    );
+    assert!(!first_run.view().manual);
+    assert_eq!(first_run.on(Input::Dismiss), Effect::Finish);
+
+    let manual = Flow::new(
+        Step::Welcome,
+        SetupState {
+            accessibility: true,
+            launch_at_login: true,
+        },
+        true,
+    );
+    assert!(manual.view().manual);
 }
 
 #[test]
@@ -121,8 +155,10 @@ fn manual_tour_walks_all_steps_and_allows_dismiss() {
     assert_eq!(flow.on(Input::Continue), Effect::None);
     assert_eq!(flow.step(), Step::Setup);
     assert!(flow.view().ready);
+    assert_eq!(flow.on(Input::Continue), Effect::None);
+    assert_eq!(flow.step(), Step::Done);
     assert_eq!(flow.on(Input::Back), Effect::None);
-    assert_eq!(flow.step(), Step::Welcome);
+    assert_eq!(flow.step(), Step::Setup);
     assert_eq!(flow.view().direction, -1);
     assert_eq!(flow.on(Input::Dismiss), Effect::Finish);
 }

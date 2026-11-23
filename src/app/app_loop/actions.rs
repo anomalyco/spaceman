@@ -1,6 +1,50 @@
 use super::*;
 
 impl MainThreadAgent {
+    /// Starts automatic tiling once Accessibility and the hotkeys are available.
+    ///
+    /// Hotkeys may already be registered while a first-run setup tour holds
+    /// tiling, so an installed set is kept rather than registered twice.
+    fn start_automatic(&mut self) {
+        let trusted = macos::accessibility_trusted();
+        self.accessibility = trusted;
+        if !trusted {
+            self.awaiting_accessibility = true;
+            self.last_error = Some("Accessibility permission is required".into());
+            self.ui_dirty = true;
+            status_item::set_status("Paused · Accessibility required");
+            return;
+        }
+        self.awaiting_accessibility = false;
+        if self.hotkeys.is_none() {
+            match HotkeyPlan::current(&self.hotkey_workspaces)
+                .and_then(|plan| Hotkeys::install(self.actions_sender.clone(), plan))
+            {
+                Ok(registered) => {
+                    log_event!("hotkeys: registered {} shortcuts", registered.len());
+                    self.hotkeys = Some(registered);
+                    self.hotkey_delivery.clear();
+                }
+                Err(error) => {
+                    let error = format!("Hotkeys unavailable: {error}");
+                    self.last_error = Some(error.clone());
+                    self.ui_dirty = true;
+                    self.worker.request_restore();
+                    status_item::set_status(&error);
+                    return;
+                }
+            }
+        }
+        self.listen_for_input();
+        self.automatic = true;
+        self.last_error = None;
+        self.cancelled.store(false, Ordering::Release);
+        self.events.invalidate();
+        self.ui_dirty = true;
+        status_item::set_automatic(true);
+        status_item::set_status(self.scope.automatic_status());
+    }
+
     pub(super) fn drain_actions(&mut self) {
         while let Ok(action) = self.actions.try_recv() {
             if self.exit_intent.is_some() {
@@ -23,40 +67,22 @@ impl MainThreadAgent {
                     status_item::set_status("Restoring windows...");
                 }
                 Action::ToggleAutomatic => {
-                    let trusted = macos::accessibility_trusted();
-                    self.accessibility = trusted;
-                    if !trusted {
-                        self.awaiting_accessibility = true;
-                        self.last_error = Some("Accessibility permission is required".into());
-                        self.ui_dirty = true;
-                        status_item::set_status("Paused · Accessibility required");
-                        continue;
-                    }
-                    self.awaiting_accessibility = false;
-                    match HotkeyPlan::current(&self.hotkey_workspaces)
-                        .and_then(|plan| Hotkeys::install(self.actions_sender.clone(), plan))
-                    {
-                        Ok(registered) => {
-                            log_event!("hotkeys: registered {} shortcuts", registered.len());
-                            self.hotkeys = Some(registered);
-                            self.hotkey_delivery.clear();
-                            self.listen_for_input();
-                            self.automatic = true;
-                            self.last_error = None;
-                            self.cancelled.store(false, Ordering::Release);
-                            self.events.invalidate();
+                    // An explicit start also ends a first-run tour's hold.
+                    self.startup_tiling.setup_finished();
+                    self.start_automatic();
+                }
+                Action::FinishSetup => {
+                    self.startup_tiling.setup_finished();
+                    if !self.automatic {
+                        if self.worker.is_restoring_or_pending() {
+                            // The normal gate starts tiling once restoration ends.
+                            self.awaiting_accessibility = true;
                             self.ui_dirty = true;
-                            status_item::set_automatic(true);
-                            status_item::set_status(self.scope.automatic_status());
-                        }
-                        Err(error) => {
-                            let error = format!("Hotkeys unavailable: {error}");
-                            self.last_error = Some(error.clone());
-                            self.ui_dirty = true;
-                            self.worker.request_restore();
-                            status_item::set_status(&error);
+                        } else {
+                            self.start_automatic();
                         }
                     }
+                    self.ui_dirty = true;
                 }
                 Action::OpenSettings => {
                     if let Err(error) = (self.callbacks.open_settings)() {

@@ -130,7 +130,6 @@ mod tests {
             "Onboarding/onboarding-welcome",
             "Onboarding/onboarding-conflict",
             "Onboarding/onboarding-setup",
-            "Onboarding/onboarding-rules",
             "Onboarding/onboarding-done",
             "General/general",
             "General/general-setup",

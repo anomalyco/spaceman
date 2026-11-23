@@ -1,4 +1,4 @@
-//! Pure state machine and owner-only persistence for Spaceman's 4-step setup tour.
+//! Pure state machine and owner-only persistence for Spaceman's 3-step setup tour.
 
 use std::{
     fs::{self, OpenOptions},
@@ -12,12 +12,11 @@ use crate::controls::PermissionControl;
 pub enum Step {
     Welcome,
     Setup,
-    Rules,
     Done,
 }
 
 impl Step {
-    pub const TOUR: [Self; 4] = [Self::Welcome, Self::Setup, Self::Rules, Self::Done];
+    pub const TOUR: [Self; 3] = [Self::Welcome, Self::Setup, Self::Done];
 
     pub fn position(self) -> usize {
         Self::TOUR
@@ -30,7 +29,6 @@ impl Step {
         match self {
             Self::Welcome => "welcome",
             Self::Setup => "setup",
-            Self::Rules => "rules",
             Self::Done => "done",
         }
     }
@@ -67,7 +65,7 @@ pub struct View {
     pub step: Step,
     /// `1` when moving forward, `-1` when going back, `0` on initial paint.
     pub direction: i8,
-    /// Position among the dotted steps (`Welcome`, `Setup`, `Rules`).
+    /// Position among the dotted steps (`Welcome`, `Setup`, `Done`).
     pub index: usize,
     pub count: usize,
     pub accessibility: PermissionControl,
@@ -90,8 +88,8 @@ pub struct Flow {
 impl Flow {
     pub fn new(start: Step, status: SetupState, manual: bool) -> Self {
         let step = if !manual && start == Step::Setup && status.accessibility {
-            // Resuming after macOS Quit & Reopen once Accessibility is granted lands on Rules.
-            Step::Rules
+            // Resuming after macOS Quit & Reopen once Accessibility is granted lands on Done.
+            Step::Done
         } else if start.position() > Step::Setup.position() && !status.accessibility {
             Step::Setup
         } else {
@@ -128,8 +126,8 @@ impl Flow {
         View {
             step: self.step,
             direction: self.direction,
-            index: self.step.position().min(2),
-            count: 3,
+            index: self.step.position(),
+            count: Step::TOUR.len(),
             accessibility,
             launch_at_login: self.status.launch_at_login,
             ready: self.status.accessibility,
@@ -183,13 +181,9 @@ impl Flow {
                     Effect::None
                 }
             }
-            Input::Dismiss => {
-                if self.manual {
-                    Effect::Finish
-                } else {
-                    Effect::None
-                }
-            }
+            // Dismissing ends the tour whether it was the first-run setup or a
+            // manual re-open; finishing a first-run tour is what starts tiling.
+            Input::Dismiss => Effect::Finish,
         }
     }
 }
@@ -241,7 +235,9 @@ pub(crate) fn saved_step_at(directory: &Path) -> Option<Step> {
         .trim()
     {
         "setup" => Some(Step::Setup),
-        "rules" => Some(Step::Rules),
+        // Step::Rules was removed in 0.3.2; an in-progress tour from before then
+        // has already granted Accessibility, so it resumes at Done.
+        "rules" => Some(Step::Done),
         "done" => Some(Step::Done),
         _ => None,
     }

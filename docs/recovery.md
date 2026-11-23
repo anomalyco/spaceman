@@ -88,5 +88,6 @@ Only after restoration is confirmed may you remove configuration and state:
 rm -rf "$HOME/Library/Application Support/Spaceman"
 ```
 
-Remove Spaceman from **System Settings > Privacy & Security > Accessibility** if desired. Spaceman
+Remove Spaceman from **System Settings > Privacy & Security > Accessibility** (System & App Protection
+Override on macOS 27.3 and later) if desired. Spaceman
 does not install a daemon, kernel extension, system extension, or network service.

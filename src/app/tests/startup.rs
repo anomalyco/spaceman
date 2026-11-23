@@ -1,6 +1,29 @@
 use super::*;
 
 #[test]
+fn first_run_setup_tour_holds_tiling_until_it_finishes() {
+    // A fresh install opens the setup tour before Accessibility is granted.
+    let mut startup = TilingStartup::new(true);
+
+    // The grant is noticed while the user is still reading the tour: hold, and
+    // keep holding on every later tick, so nothing retiles behind the window.
+    assert_eq!(startup.accessibility_granted(), TilingStart::AfterSetup);
+    assert_eq!(startup.accessibility_granted(), TilingStart::AfterSetup);
+
+    // Finishing or dismissing the tour starts tiling, and it stays started.
+    assert_eq!(startup.setup_finished(), TilingStart::Now);
+    assert_eq!(startup.accessibility_granted(), TilingStart::Now);
+}
+
+#[test]
+fn manual_tour_reopen_does_not_hold_tiling() {
+    // Re-running the tour from Settings never pauses a running install.
+    let mut startup = TilingStartup::new(false);
+    assert_eq!(startup.accessibility_granted(), TilingStart::Now);
+    assert_eq!(startup.setup_finished(), TilingStart::Now);
+}
+
+#[test]
 fn mouse_gesture_requires_position_change_without_resize() {
     let start = crate::Rect {
         x: 100,

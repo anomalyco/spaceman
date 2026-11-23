@@ -49,15 +49,31 @@ static NSString *spacemanAppName(NSURL *bundleURL) {
     return name.length > 0 ? name : @"Spaceman";
 }
 
-/// macOS 27 renamed the Accessibility list.
+/// macOS 27 renamed the Accessibility list to Device Control and Data Access.
 static BOOL accessibilityRenamed(void) {
     NSOperatingSystemVersion version = {27, 0, 0};
     return [NSProcessInfo.processInfo isOperatingSystemAtLeastVersion:version];
 }
 
+/// macOS 27.3 renamed the list again to System & App Protection Override and
+/// stopped accepting tiles dragged into it; the pane adds apps with its own +
+/// control instead. macOS 27.0 through 27.2 still takes the dragged tile.
+static BOOL accessibilityProtected(void) {
+    NSOperatingSystemVersion version = {27, 3, 0};
+    return [NSProcessInfo.processInfo isOperatingSystemAtLeastVersion:version];
+}
+
 /// The name of the Privacy & Security list Accessibility lives in.
 const char *spaceman_accessibility_list_name(void) {
+    if (accessibilityProtected()) {
+        return "System & App Protection Override";
+    }
     return accessibilityRenamed() ? "Device Control and Data Access" : "Accessibility";
+}
+
+/// Whether System Settings still accepts Spaceman's tile dragged into its list.
+bool spaceman_accessibility_drag_supported(void) {
+    return !accessibilityProtected();
 }
 
 /// Asks macOS to register this running binary in Accessibility and show its
@@ -538,11 +554,25 @@ static void updateGuidePosition(void) {
         screen = NSScreen.mainScreen;
     }
     NSRect visible = screen != nil ? screen.visibleFrame : settings;
-    CGFloat x = NSMaxX(settings) - size.width - 16;
-    CGFloat y = NSMinY(settings) + 16;
-    x = MIN(MAX(x, NSMinX(visible) + 8), NSMaxX(visible) - size.width - 8);
-    y = MIN(MAX(y, NSMinY(visible) + 8), NSMaxY(visible) - size.height - 8);
-    [guidePanel setFrameOrigin:NSMakePoint(x, y)];
+    if (accessibilityProtected()) {
+        // macOS 27.3's System & App Protection Override keeps its own controls
+        // at the bottom of the window, so the bar sits outside the window: below
+        // it when there is room, above it when there is not, never over its list.
+        CGFloat x = NSMidX(settings) - size.width / 2;
+        x = MIN(MAX(x, NSMinX(visible) + 8), NSMaxX(visible) - size.width - 8);
+        CGFloat y = NSMinY(settings) - size.height - 16;
+        if (y < NSMinY(visible) + 8) {
+            CGFloat above = NSMaxY(settings) + 16;
+            y = above <= NSMaxY(visible) - size.height - 8 ? above : NSMinY(visible) + 8;
+        }
+        [guidePanel setFrameOrigin:NSMakePoint(x, y)];
+    } else {
+        CGFloat x = NSMaxX(settings) - size.width - 16;
+        CGFloat y = NSMinY(settings) + 16;
+        x = MIN(MAX(x, NSMinX(visible) + 8), NSMaxX(visible) - size.width - 8);
+        y = MIN(MAX(y, NSMinY(visible) + 8), NSMaxY(visible) - size.height - 8);
+        [guidePanel setFrameOrigin:NSMakePoint(x, y)];
+    }
     if (flightPanel != nil && flightStartedAt == 0) {
         flightStartedAt = CACurrentMediaTime();
     }
@@ -555,7 +585,11 @@ static void updateGuidePosition(void) {
 void spaceman_show_accessibility_guide(void) {
     NSCAssert(NSThread.isMainThread, @"permission guide must run on the main thread");
     NSPoint click = NSEvent.mouseLocation;
-    BOOL fly = clickInSpacemanWindow(click) &&
+    // macOS 27.3 rejects dragged tiles, so it gets a bar with click instructions
+    // instead of the drag tile and its flight. macOS 27.0 through 27.2 keeps the
+    // drag guide and its old list name.
+    BOOL renamed = accessibilityProtected();
+    BOOL fly = !renamed && clickInSpacemanWindow(click) &&
                !NSWorkspace.sharedWorkspace.accessibilityDisplayShouldReduceMotion;
     closeGuide();
     guideReopens = 0;
@@ -572,7 +606,23 @@ void spaceman_show_accessibility_guide(void) {
         return;
     }
 
-    NSSize panelSize = NSMakeSize(480, 116);
+    NSFont *instructionFont = [NSFont systemFontOfSize:13 weight:NSFontWeightMedium];
+    NSString *text;
+    NSSize panelSize;
+    if (renamed) {
+        text = [NSString stringWithFormat:
+            @"Click the Privacy & Security notification, or add %@ in %@",
+            appName, listName];
+        CGFloat width = ceil([text sizeWithAttributes:@{ NSFontAttributeName: instructionFont }].width) + 36;
+        NSScreen *mainScreen = NSScreen.mainScreen;
+        if (mainScreen != nil) {
+            width = MIN(width, mainScreen.visibleFrame.size.width - 32);
+        }
+        panelSize = NSMakeSize(MAX(width, 320), 52);
+    } else {
+        text = [NSString stringWithFormat:@"↑  Drag %@ into the %@ list above", appName, listName];
+        panelSize = NSMakeSize(480, 116);
+    }
     guidePanel = [[NSPanel alloc]
         initWithContentRect:NSMakeRect(0, 0, panelSize.width, panelSize.height)
                   styleMask:NSWindowStyleMaskBorderless |
@@ -593,22 +643,25 @@ void spaceman_show_accessibility_guide(void) {
     NSView *content = [[NSView alloc] initWithFrame:NSMakeRect(0, 0, panelSize.width, panelSize.height)];
     content.wantsLayer = YES;
     content.layer.backgroundColor = NSColor.controlBackgroundColor.CGColor;
-    content.layer.cornerRadius = 20;
+    content.layer.cornerRadius = renamed ? 14 : 20;
     content.layer.borderWidth = 1;
     content.layer.borderColor = [NSColor colorWithWhite:0 alpha:0.10].CGColor;
 
-    NSString *text = [NSString stringWithFormat:@"↑  Drag %@ into the %@ list above", appName, listName];
     NSTextField *instruction = [NSTextField labelWithString:text];
-    instruction.frame = NSMakeRect(18, 73, panelSize.width - 36, 24);
-    instruction.font = [NSFont systemFontOfSize:13 weight:NSFontWeightMedium];
+    instruction.frame = renamed
+        ? NSMakeRect(18, (panelSize.height - 24) / 2, panelSize.width - 36, 24)
+        : NSMakeRect(18, 73, panelSize.width - 36, 24);
+    instruction.font = instructionFont;
     instruction.textColor = NSColor.labelColor;
     [content addSubview:instruction];
 
-    SpacemanDragView *dragView = [[SpacemanDragView alloc]
-        initWithFrame:NSMakeRect(18, 17, panelSize.width - 36, 44)
-             bundleURL:bundleURL];
-    [content addSubview:dragView];
-    guideTile = dragView;
+    if (!renamed) {
+        SpacemanDragView *dragView = [[SpacemanDragView alloc]
+            initWithFrame:NSMakeRect(18, 17, panelSize.width - 36, 44)
+                 bundleURL:bundleURL];
+        [content addSubview:dragView];
+        guideTile = dragView;
+    }
     guidePanel.contentView = content;
 
     if (fly) {

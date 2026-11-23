@@ -248,10 +248,7 @@ fn general(ui: &Ui, p: Paint) -> El {
             p,
             "setup-tour",
             "Setup tour",
-            Some((
-                "Walk through permissions, app rules, and shortcuts.".into(),
-                p.muted(),
-            )),
+            Some(("Walk through permissions and shortcuts.".into(), p.muted())),
             controls::button(
                 p,
                 "run-tour",

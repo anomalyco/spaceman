@@ -16,6 +16,8 @@ pub const HUD_PREVIEW_RECT: Rect = Rect {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum UiAction {
     ToggleAutomatic,
+    /// The first-run setup tour finished: automatic tiling may start.
+    FinishSetup,
     OpenAccessibility,
     CheckForUpdates,
     ToggleLaunchAtLogin,
@@ -27,6 +29,7 @@ impl From<UiAction> for Action {
     fn from(action: UiAction) -> Self {
         match action {
             UiAction::ToggleAutomatic => Self::ToggleAutomatic,
+            UiAction::FinishSetup => Self::FinishSetup,
             UiAction::OpenAccessibility => Self::OpenAccessibility,
             UiAction::CheckForUpdates => Self::CheckForUpdates,
             UiAction::ToggleLaunchAtLogin => Self::ToggleLaunchAtLogin,

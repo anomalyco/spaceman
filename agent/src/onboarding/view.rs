@@ -1,19 +1,15 @@
-//! The 4-step Rune setup tour view: Welcome, Permissions, Starter Rules, and Done.
+//! The 3-step Rune setup tour view: Welcome, Permissions, and Done.
 
 use rune::{
-    Color, El, Icon, Shadow, Spring, SpringPair, TextStyle, Transition, Tx, col, el, icon, row,
-    text,
+    Color, El, Icon, Shadow, Spring, SpringPair, TextStyle, Transition, col, el, icon, row, text,
 };
-use rune_kit::{
-    Button, ButtonVariant, ControlSize, IconButton, IconButtonVariant, SegmentedControl, glyphs,
-};
-use spaceman::{WorkspaceId, app::UiLaunchAtLogin};
+use rune_kit::{Button, ButtonVariant, ControlSize, IconButton, IconButtonVariant, glyphs};
+use spaceman::app::UiLaunchAtLogin;
 
-use super::{Input, StarterApp, Step, flow::View, input};
+use super::{Input, Step, flow::View, input};
 use crate::{
     Ui,
     controls::{self, ButtonKind, DESCRIPTION, Paint},
-    rules::Place,
 };
 
 const WIDTH: f32 = 520.0;
@@ -28,6 +24,13 @@ static ACCESSIBILITY_ICON: Icon = Icon {
     body: include_str!("../../assets/workspaces.svg"),
 };
 
+/// Two overlapping windows, for the calm "another window manager is running" card.
+static WINDOW_CONFLICT_ICON: Icon = Icon {
+    name: "spaceman-window-conflict",
+    view: 16.0,
+    body: r#"<rect x="1.5" y="4.5" width="8" height="6.5" rx="1.5" stroke="currentColor"/><rect x="6.5" y="1.5" width="8" height="6.5" rx="1.5" stroke="currentColor"/>"#,
+};
+
 fn title_style(dark: bool) -> TextStyle {
     TextStyle::new(26.0, if dark { 540.0 } else { 600.0 })
         .lh(32.0)
@@ -37,11 +40,11 @@ fn title_style(dark: bool) -> TextStyle {
 pub fn overlay(ui: &Ui, p: Paint) -> Option<El> {
     let tour = ui.tour.as_ref()?;
     let view = tour.flow.view();
+    let tiling = ui.agent.as_ref().is_some_and(|agent| agent.automatic);
     let step_body = match view.step {
         Step::Welcome => welcome(p, &tour.conflicts),
         Step::Setup => setup(ui, p, &view),
-        Step::Rules => rules_step(ui, p, &tour.starter_apps),
-        Step::Done => done(p),
+        Step::Done => done(p, !view.manual && !tiling),
     };
     let page = col()
         .key(format!("step-{}", view.step.key()))
@@ -56,15 +59,15 @@ pub fn overlay(ui: &Ui, p: Paint) -> Option<El> {
         .px(20.0)
         .center_y()
         .justify_end()
-        .children(view.manual.then(|| {
+        .child(
             IconButton::new(&rune_theme_opencode::icons::CLOSE)
                 .variant(IconButtonVariant::Ghost)
                 .control_size(ControlSize::Large)
                 .label("Close setup tour")
                 .on_press(|ui: &mut Ui| input(ui, Input::Dismiss))
                 .build(p.k)
-                .key("tour-close")
-        }));
+                .key("tour-close"),
+        );
     Some(
         col()
             .key("tour")
@@ -92,7 +95,7 @@ pub fn overlay(ui: &Ui, p: Paint) -> Option<El> {
                     .pt(12.0)
                     .pb(28.0)
                     .center()
-                    .child(footer(p, &view)),
+                    .child(footer(p, &view, tiling)),
             ),
     )
 }
@@ -107,12 +110,13 @@ fn step_transition(direction: i8) -> Transition {
     Transition::asymmetric(enter, exit).springs(SpringPair::new(STEP_ENTER, STEP_EXIT))
 }
 
-fn footer(p: Paint, view: &View) -> El {
+fn footer(p: Paint, view: &View, tiling: bool) -> El {
     let (label, enabled, forward) = match view.step {
         Step::Welcome => ("Get started", true, true),
         Step::Setup => ("Continue", view.ready, true),
-        Step::Rules => ("Continue", true, true),
-        Step::Done => ("Start using Spaceman", true, false),
+        // A first-run tour holds automatic tiling, so its last button starts it.
+        Step::Done if !view.manual && !tiling => ("Start Tiling", true, false),
+        Step::Done => ("Done", true, false),
     };
     let mut btn = Button::new(label)
         .variant(ButtonVariant::Contrast)
@@ -215,8 +219,8 @@ fn welcome(p: Paint, conflicts: &[String]) -> El {
                 "Fast macOS workspaces and automatic tiling, with every window restored if you pause or quit.",
             ),
         ));
-    if let Some(banner) = conflict_banner(p, conflicts) {
-        column = column.child(banner);
+    if let Some(notice) = conflict_notice(p, conflicts) {
+        column = column.child(notice);
     }
     column
 }
@@ -278,7 +282,8 @@ fn welcome_hero(p: Paint) -> El {
     )
 }
 
-fn conflict_banner(p: Paint, conflicts: &[String]) -> Option<El> {
+/// A calm surface card: another window manager is running, said quietly.
+fn conflict_notice(p: Paint, conflicts: &[String]) -> Option<El> {
     if conflicts.is_empty() {
         return None;
     }
@@ -288,34 +293,41 @@ fn conflict_banner(p: Paint, conflicts: &[String]) -> Option<El> {
         [first, rest @ ..] => format!("{first} and {} others are running", rest.len()),
         [] => unreachable!(),
     };
-    let w = &p.k.c.warning;
+    let c = &p.k.c;
     Some(
-        col()
-            .key("conflict-banner")
-            .px(14.0)
-            .py(11.0)
-            .gap(3.0)
-            .radius(p.k.radius.lg)
-            .fill(w.bg)
-            .border(p.hair, w.border)
-            .child(
-                row()
-                    .key("title-row")
-                    .gap(8.0)
-                    .center_y()
-                    .child(controls::status_dot(w.fg))
-                    .child(text(names).key("title").font(p.k.ty.ui_medium).color(w.fg)),
-            )
-            .child(
-                text(
-                    "Quit other window managers so they don't compete over window positions or Option shortcuts.",
+        controls::surface(
+            p,
+            row()
+                .key("conflict-notice")
+                .w_full()
+                .gap(12.0)
+                .px(14.0)
+                .py(12.0)
+                .center_y()
+                .child(
+                    icon(&WINDOW_CONFLICT_ICON, 16.0)
+                        .key("icon")
+                        .color(c.icon_muted),
                 )
-                .key("detail")
-                .font(DESCRIPTION)
-                .color(p.muted())
-                .pl(16.0)
-                .wrap(),
-            ),
+                .child(
+                    col()
+                        .key("copy")
+                        .grow(1.0)
+                        .shrink()
+                        .gap(2.0)
+                        .child(text(names).key("title").font(p.k.ty.ui_medium).color(p.text()))
+                        .child(
+                            text(
+                                "Two window managers fight over the same windows and shortcuts. Quit the other one before you start tiling.",
+                            )
+                            .key("detail")
+                            .font(DESCRIPTION)
+                            .color(p.muted())
+                            .wrap(),
+                        ),
+                ),
+        )
+        .border(p.hair, c.border_base.alpha(0.7)),
     )
 }
 
@@ -327,10 +339,7 @@ fn setup(ui: &Ui, p: Paint, view: &View) -> El {
             p.muted(),
         )
     } else if waiting {
-        (
-            "Drag Spaceman into the list, or switch it on in System Settings.".to_owned(),
-            p.warning(),
-        )
+        (spaceman::permission_guide::add_instructions(), p.warning())
     } else {
         (
             "Needed to move windows and register Option shortcuts.".to_owned(),
@@ -381,83 +390,6 @@ fn setup(ui: &Ui, p: Paint, view: &View) -> El {
         .child(controls::card(p, "setup-card", vec![access_row, login_row]))
 }
 
-fn rules_step(ui: &Ui, p: Paint, starter_apps: &[StarterApp]) -> El {
-    let rows = starter_apps
-        .iter()
-        .enumerate()
-        .map(|(index, app)| starter_rule_row(ui, p, index, app))
-        .collect();
-    col()
-        .key("rules-step")
-        .gap(20.0)
-        .child(title_block(
-            p,
-            "Choose how apps open",
-            Some("Windows tile automatically unless you pin an app to a workspace or float it."),
-        ))
-        .child(
-            col()
-                .key("rules-group")
-                .gap(8.0)
-                .child(controls::card(p, "rules-card", rows))
-                .child(
-                    text("Drag apps across all 36 workspaces anytime in Settings › Rules.")
-                        .key("hint")
-                        .font(DESCRIPTION)
-                        .color(p.faint())
-                        .px(16.0),
-                ),
-        )
-}
-
-fn starter_rule_row(ui: &Ui, p: Paint, index: usize, starter: &StarterApp) -> El {
-    let current = ui.doc.app_place(&starter.bundle_id);
-
-    let mut choices: Vec<(String, Option<Place>)> = vec![("Tile".into(), None)];
-    for ws in (1..=3).filter_map(|n| WorkspaceId::new(n).ok()) {
-        choices.push((ws.to_string(), Some(Place::Workspace(ws))));
-    }
-    if let Some(Place::Workspace(other)) = current
-        && !matches!(other.number(), Some(1..=3))
-    {
-        choices[3] = (other.to_string(), Some(Place::Workspace(other)));
-    }
-    choices.push(("Float".into(), Some(Place::Float)));
-
-    let selected = choices
-        .iter()
-        .position(|(_, place)| match (current, *place) {
-            (Some(Place::Ignore), Some(Place::Float)) => true,
-            (a, b) => a == b,
-        })
-        .unwrap_or(0);
-    let labels: Vec<String> = choices.iter().map(|(label, _)| label.clone()).collect();
-    let places: Vec<Option<Place>> = choices.into_iter().map(|(_, place)| place).collect();
-    let bundle_id = starter.bundle_id.clone();
-
-    let picker = SegmentedControl::new(&labels, Some(selected))
-        .fit()
-        .on_pick(move |ui: &mut Ui, picked, _: &mut Tx| {
-            if let Some(&place) = places.get(picked) {
-                let id = bundle_id.clone();
-                ui.edit(move |doc| doc.set_app_place(&id, place));
-            }
-        })
-        .build(p.k)
-        .key("place");
-
-    let cached = ui.apps.cached(&starter.bundle_id);
-    let badge = controls::icon_or_initial(p, cached, &starter.name, 24.0);
-    controls::badge_row(
-        p,
-        &format!("starter-{index}"),
-        badge,
-        &starter.name,
-        None,
-        picker,
-    )
-}
-
 const DONE_SHORTCUTS: &[(&str, &[&[&str]])] = &[
     ("Switch workspace", &[&["⌥", "1…0"]]),
     ("Move window to workspace", &[&["⌥", "⇧", "1…0"]]),
@@ -468,7 +400,7 @@ const DONE_SHORTCUTS: &[(&str, &[&[&str]])] = &[
     ("Flip split or fullscreen", &[&["⌥", "/"], &["⌥", "⇧", "F"]]),
 ];
 
-fn done(p: Paint) -> El {
+fn done(p: Paint, starting: bool) -> El {
     let c = &p.k.c;
     let art = row().key("done-art").w_full().h(96.0).center().child(
         row()
@@ -490,15 +422,16 @@ fn done(p: Paint) -> El {
                     ),
             ),
     );
+    let body = if starting {
+        "Your windows tile as soon as you start. Spaceman stays in the menu bar."
+    } else {
+        "Spaceman stays in the menu bar, ready for your shortcuts."
+    };
     let rows = controls::shortcut_rows(p, "done-shortcut", DONE_SHORTCUTS);
     col()
         .key("done")
         .gap(20.0)
         .child(art)
-        .child(title_block(
-            p,
-            "You're all set",
-            Some("Spaceman stays in the menu bar, ready for your shortcuts."),
-        ))
+        .child(title_block(p, "You're all set", Some(body)))
         .child(controls::card(p, "done-shortcuts", rows))
 }

@@ -153,6 +153,8 @@ pub(crate) enum Action {
     /// The keyboard tap saw an Option key press (virtual key, Carbon modifiers).
     OptionKeyDown(u32, u32),
     ToggleAutomatic,
+    /// The first-run setup tour finished, so its hold on tiling ends.
+    FinishSetup,
     OpenSettings,
     OpenSetup,
     OpenAccessibility,
@@ -359,9 +361,12 @@ pub fn prepare() -> Result<(PreparedAgent, UiBridge), String> {
 impl PreparedAgent {
     /// Installs main-thread AppKit hooks (termination gate, status item, Sparkle,
     /// AX event monitor) once winit's `NSApplication` delegate is active.
+    /// `setup_tour_open` holds automatic tiling until the first-run setup tour
+    /// finishes, so a new install is never retiled behind the setup window.
     pub fn start_main_thread(
         self,
         mut callbacks: HostCallbacks,
+        setup_tour_open: bool,
     ) -> Result<MainThreadAgent, String> {
         if let Err(error) = termination::install(self.actions_sender.clone()) {
             log_event!("failed to install application termination gate: {error}");
@@ -407,6 +412,7 @@ impl PreparedAgent {
                 hotkey_workspaces: self.hotkey_workspaces,
                 hud: self.hud,
                 trusted,
+                setup_tour_open,
                 controls: self.controls,
                 control_server: self.control_server,
                 bridge: self.bridge,

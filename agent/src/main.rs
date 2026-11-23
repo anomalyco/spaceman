@@ -99,6 +99,11 @@ impl Ui {
     pub fn start_tour(&mut self) {
         self.menu = None;
         self.drag = None;
+        // Re-running setup from Settings replaces a first-run tour, and that
+        // tour's hold on automatic tiling ends with it.
+        if self.tour.as_ref().is_some_and(|tour| !tour.flow.manual()) {
+            onboarding::dismiss(self);
+        }
         self.tour = Some(onboarding::Tour::manual(self));
     }
 
@@ -107,6 +112,11 @@ impl Ui {
         self.navigated = true;
         self.menu = None;
         self.drag = None;
+    }
+
+    /// Releases the first-run setup tour's hold on automatic tiling.
+    pub fn finish_setup(&self) {
+        self.send_action(UiAction::FinishSetup);
     }
 
     fn send_action(&self, action: UiAction) {
@@ -259,8 +269,8 @@ fn on_key(ui: &mut Ui, event: &KeyEvent, _tx: &mut Tx) -> bool {
             ui.menu = None;
             return true;
         }
-        if ui.tour.as_ref().is_some_and(|tour| tour.flow.manual()) {
-            onboarding::input(ui, onboarding::Input::Dismiss);
+        if ui.tour.is_some() {
+            onboarding::dismiss(ui);
             return true;
         }
     }
@@ -280,6 +290,9 @@ fn on_key(ui: &mut Ui, event: &KeyEvent, _tx: &mut Tx) -> bool {
 fn on_close(ui: &mut Ui, _tx: &mut Tx) {
     ui.drag = None;
     ui.menu = None;
+    // Closing the setup window dismisses the tour, so a first-run tour starts
+    // tiling now rather than holding it behind a window nobody can see.
+    onboarding::dismiss(ui);
     if let Some(window) = &ui.window {
         window.set_dock_icon(false);
     }
