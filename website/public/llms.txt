@@ -20,4 +20,4 @@ Spaceman uses macOS Accessibility APIs and needs no System Integrity Protection 
 ## Optional
 
 - [Website](https://anoma.ly/spaceman/): the film, features and download.
-- [Sparkle appcast](https://pub-6f85d683ffe0419cad0a71508904053a.r2.dev/appcast.xml): the signed software update feed.
+- [Legacy Sparkle appcast](https://pub-6f85d683ffe0419cad0a71508904053a.r2.dev/appcast.xml): the signed feed older installs still read; current builds update in-app from Anomaly's release service.

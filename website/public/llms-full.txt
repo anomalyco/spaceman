@@ -21,7 +21,7 @@ Spaceman treats a logical tile slot as product identity rather than tying layout
 
   The permission list is named **Accessibility** through macOS 26, **Device Control and Data Access** on macOS 27.0 through 27.2, and **System & App Protection Override** on macOS 27.3 and later. On 27.3 and later System Settings refuses dragged app tiles: click the Privacy & Security notification, or use the list's `+` button. Optionally link `/Applications/Spaceman.app/Contents/MacOS/spaceman` to `~/.local/bin/spaceman`.
 
-- **Updates:** Sparkle delivers signed updates. Use `Check for Updates...` in the menu bar or Spaceman Settings; installing an update restores every parked window first.
+- **Updates:** Release builds check Anomaly's release service (`https://anoma.ly/release/spaceman/desktop/<channel>.json`), verify the zip's size, SHA-256, bundle ID and Developer ID, and offer `Install & Restart` in the menu bar and Spaceman Settings. Installing restores every parked window first, then swaps the bundle and relaunches.
 
 ## Keyboard Shortcuts
 
@@ -96,7 +96,7 @@ The bundled `spaceman` CLI communicates with the running agent over an owner-onl
 
 ## Recovery and Privacy Guarantees
 
-- **Durable restoration:** Spaceman persists each window's original on-screen frame to `parked-windows.json` before parking it for an inactive workspace, and restores parked windows before pausing, quitting, or installing a Sparkle update.
+- **Durable restoration:** Spaceman persists each window's original on-screen frame to `parked-windows.json` before parking it for an inactive workspace, and restores parked windows before pausing, quitting, or installing an update.
 - **Relaunch recall:** Per-bundle window placements are remembered across app restarts and reboots without storing window titles.
 - **Privacy:** Window titles are used only in memory for optional `title` rule matching and never enter persisted state, logs, journals, debug snapshots, or CLI output. Spaceman sends no telemetry.
 - **Recovery:** Preserve `parked-windows.json` until pause or quit restoration is confirmed. Reopen the same installed app after a crash and let it restore before deleting or editing state.
