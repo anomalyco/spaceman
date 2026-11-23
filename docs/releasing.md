@@ -35,12 +35,13 @@ every push publishes the dev channel, and a dispatch picks a channel:
 | --- | --- |
 | `check` | Nothing. Builds, signs, notarizes and verifies, then pushes and deletes a `v0.0.0-test-<run>` tag. |
 | `dev` (also every push that changes more than docs, the website or Markdown) | `0.0.0-dev-<run>` on the dev channel (`https://anoma.ly/release/spaceman/desktop/dev.json`). |
-| `stable` | `Cargo.toml`'s version on the stable channel, then tags `v<version>`. Needs `changelog/<version>.md` and no existing tag. |
+| `stable` | `Cargo.toml`'s version on the stable channel, updates Homebrew (`anomalyco/tap/spaceman`), and tags `v<version>`. Needs `changelog/<version>.md` and no existing tag. |
 
 Its jobs:
 
-- **build-macos** (`macos-26`, no secrets): `SPACEMAN_RELEASE_UNSIGNED=1 scripts/build-app.sh`, zipped
-  and uploaded with a `SHA256SUMS` whose digest the job reports. Building unsigned also stamps
+- **build-macos** (`macos-26`, no secrets): `SPACEMAN_RELEASE_UNSIGNED=1 scripts/build-app.sh`
+  with `SPACEMAN_RELEASE_CHANNEL` and `SPACEMAN_RELEASE_VERSION`, zipped and uploaded with a
+  `SHA256SUMS` whose digest the job reports. Building unsigned also stamps
   `SPACEMAN_RELEASE_BUILD=1` into the binaries, which turns the in-app updater on; every other build
   is a source build that never checks.
 - **sign-macos** (environment `release`): checks out only `.github/release/`, assumes
@@ -54,6 +55,14 @@ Its jobs:
 - **publish** (environment `release`): publishes the zip as target `macos-arm64` (file
   `Spaceman.zip`) through the vendored release client, which checks the served bytes.
 - **tag**: `v<version>` on the released commit, only after publishing.
+- **homebrew-stage** (`macos-26`, no secrets, `stable` only): fetches the published stable
+  manifest, renders `packaging/homebrew/spaceman.rb` via `scripts/release-homebrew.sh`, verifies it
+  with `brew style` and `brew audit --cask --strict --online`, and uploads the cask with a digest.
+- **homebrew** (environment `release`, `stable` only): checks out only `.github/release/`, verifies
+  the staged cask digest, reads `shared/HOMEBREW_TAP_DEPLOY_KEY` via `role/github/spaceman-release`,
+  and pushes `Casks/spaceman.rb` to `anomalyco/homebrew-tap` via `.github/release/push-homebrew.sh`.
+- **record-brew** (environment `release`, `stable` only): records the `brew` distribution version
+  on `anoma.ly/release` via `.github/release/release-service.sh distribution brew <version>`.
 
 `.github/release/` and this workflow are the release boundary: jobs that hold a secret or an OIDC
 token run only those scripts, on artifacts they verify by digest and never execute. CODEOWNERS makes

@@ -4,13 +4,15 @@ name: Release
 # exact commit of dev to Anomaly's release service
 # (https://anoma.ly/release/spaceman), split the way Hex's release is:
 #
-# - build-macos and verify-macos run repository code (cargo, actool, the
-#   app's CLI). They have no environment, no secrets and no id-token.
-# - sign-macos and publish run in the release environment. They check out only
-#   .github/release/ and run only those scripts and SHA-pinned actions, on
-#   artifacts they treat as data. Apple credentials come from AWS Secrets
-#   Manager (role/github/spaceman-release) through GitHub OIDC and live only
-#   in the one step that reads them (.github/release/with-secrets.sh).
+# - build-macos, verify-macos and homebrew-stage run repository code (cargo,
+#   actool, the app's CLI, brew). They have no environment, no secrets and no
+#   id-token.
+# - sign-macos, publish, homebrew and record-brew run in the release
+#   environment. They check out only .github/release/ and run only those
+#   scripts and SHA-pinned actions, on artifacts they treat as data. Apple
+#   credentials and the Homebrew tap deploy key come from AWS Secrets Manager
+#   (role/github/spaceman-release) through GitHub OIDC and live only in the
+#   one step that reads them (.github/release/with-secrets.sh).
 # - every artifact carries a SHA256SUMS whose digest the job that made it
 #   reports; every job that downloads it checks that digest.
 #
@@ -25,7 +27,8 @@ name: Release
 #   publishes nothing, and pushes and deletes a throwaway v0.0.0-test-<run>
 #   tag to prove the run can tag.
 # - stable: a dispatch from dev publishes Cargo.toml's version on the stable
-#   channel, then tags v<version>. Tags trigger nothing.
+#   channel, updates Homebrew (anomalyco/tap/spaceman), and tags v<version>.
+#   Tags trigger nothing.
 #
 # The release service authorizes the publish job by its OIDC token:
 # anomalyco/spaceman, this file, refs/heads/dev, environment release
@@ -115,6 +118,8 @@ jobs:
       - name: Build Spaceman.app
         env:
           SPACEMAN_RELEASE_UNSIGNED: "1"
+          SPACEMAN_RELEASE_CHANNEL: ${{ needs.plan.outputs.release-channel }}
+          SPACEMAN_RELEASE_VERSION: ${{ needs.plan.outputs.version }}
         run: |
           bundle=$(scripts/build-app.sh | tail -n 1)
           [ "$bundle" = "$PWD/target/Spaceman.app" ] || { echo "::error::build-app.sh made $bundle."; exit 1; }
@@ -165,7 +170,8 @@ jobs:
           digests: build-macos-arm64=${{ needs.build-macos.outputs.digest }}
       # AWS credentials only as this action's step outputs (never in the job's
       # environment), for the one step below that reads the secrets.
-      - id: aws
+      - &aws-credentials
+        id: aws
         name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd # v6.3.0
         with:
@@ -176,7 +182,7 @@ jobs:
           output-env-credentials: false
           output-credentials: true
       - name: Import the certificate and notary key
-        env:
+        env: &aws-env
           AWS_ACCESS_KEY_ID: ${{ steps.aws.outputs.aws-access-key-id }}
           AWS_SECRET_ACCESS_KEY: ${{ steps.aws.outputs.aws-secret-access-key }}
           AWS_SESSION_TOKEN: ${{ steps.aws.outputs.aws-session-token }}
@@ -250,7 +256,7 @@ jobs:
     permissions:
       contents: read
       id-token: write
-    env:
+    env: &publish-env
       RELEASE: ${{ needs.plan.outputs.service }}
       SPACEMAN_VERSION: ${{ needs.plan.outputs.version }}
       SPACEMAN_RELEASE_CHANNEL: ${{ needs.plan.outputs.release-channel }}
@@ -296,3 +302,99 @@ jobs:
         env:
           SPACEMAN_RELEASE_TAG_TEST: ${{ needs.plan.outputs.channel == 'check' && '1' || '' }}
         run: bash .github/release/tag-release.sh
+
+  # Renders the cask from the published zip and checks it with brew, without
+  # secrets.
+  homebrew-stage:
+    name: Homebrew cask
+    needs: [plan, publish]
+    if: ${{ !cancelled() && needs.publish.result == 'success' && needs.plan.outputs.channel == 'stable' }}
+    runs-on: macos-26
+    timeout-minutes: 20
+    env:
+      RELEASE: ${{ needs.plan.outputs.service }}
+      SPACEMAN_VERSION: ${{ needs.plan.outputs.version }}
+      RELEASE_CHANNEL: ${{ needs.plan.outputs.release-channel }}
+    outputs:
+      digest: ${{ steps.upload.outputs.digest }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - name: Render the cask from the published zip
+        run: |
+          curl -fsS "$RELEASE/spaceman/desktop/$RELEASE_CHANNEL.json" -o "$RUNNER_TEMP/manifest.json"
+          version=$(jq -er .release.version "$RUNNER_TEMP/manifest.json")
+          test "$version" = "$SPACEMAN_VERSION"
+          zip=$(jq -ec '.release.targets["macos-arm64"]' "$RUNNER_TEMP/manifest.json") || {
+            echo "::error::Spaceman $version has no macos-arm64 build."
+            exit 1
+          }
+          url="${RELEASE%/release}$(printf '%s' "$zip" | jq -r .url)"
+          sha256=$(printf '%s' "$zip" | jq -r .sha256)
+          mkdir -p "$RUNNER_TEMP/cask"
+          scripts/release-homebrew.sh render "$version" "$url" "$sha256" "$RUNNER_TEMP/cask/spaceman.rb"
+          { echo '### Casks/spaceman.rb'; echo '```ruby'; cat "$RUNNER_TEMP/cask/spaceman.rb"; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+      - name: Check it with brew
+        env:
+          HOMEBREW_NO_AUTO_UPDATE: "1"
+          HOMEBREW_NO_INSTALL_FROM_API: "1"
+        run: |
+          brew tap anomalyco/tap
+          cp "$RUNNER_TEMP/cask/spaceman.rb" "$(brew --repo anomalyco/tap)/Casks/spaceman.rb"
+          # Homebrew 6 refuses to load casks from third-party taps until they
+          # are trusted; this runner trusts our own tap. Older Homebrew has no
+          # `brew trust` and no such check.
+          if brew trust --help > /dev/null 2>&1; then brew trust anomalyco/tap; fi
+          brew style --cask anomalyco/tap/spaceman
+          # Skipped audits: the zip URL names its own SHA-256 rather than the
+          # version, so a pinned sha256 is right; and the token "spaceman"
+          # belongs to this tap's cask, not any unrelated upstream formula/cask.
+          brew audit --cask --strict --online \
+            --except=sha256_no_check_if_unversioned,token_conflicts anomalyco/tap/spaceman
+      - id: upload
+        uses: ./.github/release/upload
+        with:
+          name: build-homebrew
+          path: ${{ runner.temp }}/cask
+
+  homebrew:
+    name: Homebrew
+    needs: [plan, homebrew-stage]
+    if: ${{ !cancelled() && needs.homebrew-stage.result == 'success' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    environment: release
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      SPACEMAN_VERSION: ${{ needs.plan.outputs.version }}
+    steps:
+      - *checkout-release
+      - uses: ./.github/release/download
+        with:
+          pattern: build-homebrew
+          digests: build-homebrew=${{ needs.homebrew-stage.outputs.digest }}
+      - *aws-credentials
+      - name: Push to anomalyco/homebrew-tap
+        env: *aws-env
+        run: |
+          bash .github/release/with-secrets.sh HOMEBREW_TAP_DEPLOY_KEY=shared/HOMEBREW_TAP_DEPLOY_KEY \
+            -- bash .github/release/push-homebrew.sh "$RUNNER_TEMP/in/build-homebrew/spaceman.rb" "$SPACEMAN_VERSION"
+
+  # Tells Homebrew installs about the version only once the tap serves it.
+  record-brew:
+    needs: [plan, homebrew]
+    if: ${{ !cancelled() && needs.homebrew.result == 'success' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    environment: release
+    permissions:
+      contents: read
+      id-token: write
+    env: *publish-env
+    steps:
+      - *checkout-release
+      - run: bash .github/release/release-service.sh distribution brew "$SPACEMAN_VERSION"
