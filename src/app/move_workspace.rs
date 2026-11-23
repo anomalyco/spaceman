@@ -495,7 +495,7 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
     }
 }
 
-fn translate_frame_to_output(
+pub(super) fn translate_frame_to_output(
     frame: crate::Rect,
     source_output: crate::Rect,
     target_output: crate::Rect,

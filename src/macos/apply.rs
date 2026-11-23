@@ -365,9 +365,7 @@ fn apply_element(
             outcome: ApplyOutcome::Applied,
         };
     }
-    let wrote = set_size(window, target) == AXError::Success
-        && set_position(window, target) == AXError::Success
-        && set_size(window, target) == AXError::Success;
+    let wrote = write_frame(|| set_size(window, target), || set_position(window, target));
     let actual = window_frame(window);
     let outcome = match (wrote, actual) {
         (_, Some(actual)) if actual.approximately_equals(target, settings.frame_tolerance) => {
@@ -382,6 +380,21 @@ fn apply_element(
         actual,
         outcome,
     }
+}
+
+/// Size, move, then size again. The first size write only helps a window
+/// that is leaving a smaller display fit where it lands, so it is best effort:
+/// a window that refuses it on its old display (a clamped or slow app) must
+/// still move. Whether the frame was written rests on the move and the final
+/// size alone.
+fn write_frame(
+    mut set_size: impl FnMut() -> AXError,
+    set_position: impl FnOnce() -> AXError,
+) -> bool {
+    let _: AXError = set_size();
+    let moved = set_position() == AXError::Success;
+    let sized = set_size() == AXError::Success;
+    moved && sized
 }
 
 fn without_window_animations<T>(app: &AppInstanceId, operation: impl FnOnce() -> T) -> T {
@@ -487,4 +500,46 @@ pub(super) fn prune_managed_app(app: &AppInstanceId, current: &HashSet<PhysicalW
             .borrow_mut()
             .retain(|window, _| &window.app != app || current.contains(window));
     });
+}
+
+#[cfg(test)]
+mod tests {
+    use std::cell::RefCell;
+
+    use objc2_application_services::AXError;
+
+    use super::write_frame;
+
+    #[test]
+    fn a_refused_size_before_the_move_still_moves_the_window() {
+        let calls = RefCell::new(Vec::new());
+        let sizes = RefCell::new(vec![AXError::Success, AXError::CannotComplete]);
+
+        let wrote = write_frame(
+            || {
+                calls.borrow_mut().push("size");
+                sizes.borrow_mut().pop().unwrap()
+            },
+            || {
+                calls.borrow_mut().push("position");
+                AXError::Success
+            },
+        );
+
+        assert!(wrote);
+        assert_eq!(*calls.borrow(), ["size", "position", "size"]);
+    }
+
+    #[test]
+    fn a_refused_move_or_final_size_is_not_written() {
+        assert!(!write_frame(
+            || AXError::Success,
+            || AXError::CannotComplete
+        ));
+        let sizes = RefCell::new(vec![AXError::CannotComplete, AXError::Success]);
+        assert!(!write_frame(
+            || sizes.borrow_mut().pop().unwrap(),
+            || AXError::Success
+        ));
+    }
 }

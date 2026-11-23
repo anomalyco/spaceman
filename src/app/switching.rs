@@ -564,13 +564,15 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
         let source_output = output_for(&self.workspaces, source, &outputs);
         let target_output = output_for(&self.workspaces, target, &outputs);
         let target_is_active = self.is_visible(target, &outputs);
-        if !target_is_active
-            && !matches!(
-                self.park_window(&window, target_output, &outputs),
-                macos::ApplyOutcome::Applied
-            )
-        {
-            return Err("Window could not be parked in the target workspace".into());
+        if !target_is_active {
+            let parked = if source_output == target_output {
+                self.park_window(&window, target_output, &outputs)
+            } else {
+                self.park_window_across(&window, source_output, target_output, &outputs)
+            };
+            if !matches!(parked, macos::ApplyOutcome::Applied) {
+                return Err("Window could not be parked in the target workspace".into());
+            }
         }
         if is_floating {
             self.workspaces.own_floating(window.clone(), target);
@@ -604,8 +606,16 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
             if !is_floating {
                 let layout = self.layout_workspace(target, target_output, cancelled);
                 failed += layout.failed;
+            } else if source_output != target_output
+                && !self.carry_floating_window(&window, source_output, target_output)
+            {
+                failed += 1;
             }
-            if !self.backend.focus_window(&window) {
+            if self.backend.focus_window(&window) {
+                // Focus followed the window to the workspace on screen
+                // elsewhere; Option+Tab goes back to where it came from.
+                self.record_focused_workspace(target);
+            } else {
                 log_event!("move focus follow failed for {:?}", window);
             }
         }
@@ -613,5 +623,36 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
         let mut status = self.status(failed, &outputs);
         status.hud = Some(self.hud_for(target, UiHudKind::Moved, None, &outputs));
         Ok(status)
+    }
+
+    /// A floating window has no tile to carry it, so moving it to a workspace
+    /// on screen on another display moves it there directly, keeping its size
+    /// and its place relative to the display. A window already there stays.
+    fn carry_floating_window(
+        &mut self,
+        window: &crate::PhysicalWindowId,
+        from: crate::Rect,
+        to: crate::Rect,
+    ) -> bool {
+        let frame = match self.backend.frame(window) {
+            Ok(frame) => self.backend.window_server_frame(window).unwrap_or(frame),
+            Err(macos::WindowAccessError::Gone) => return true,
+            Err(macos::WindowAccessError::Unavailable) => return false,
+        };
+        if to.contains_center(frame) {
+            return true;
+        }
+        let target = super::move_workspace::translate_frame_to_output(frame, from, to);
+        let outcome = self.backend.set_position(window, target);
+        log_event!(
+            "move floating: {:?} to {:?} ({:?})",
+            window,
+            target,
+            outcome
+        );
+        matches!(
+            outcome,
+            macos::ApplyOutcome::Applied | macos::ApplyOutcome::Gone
+        )
     }
 }

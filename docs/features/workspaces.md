@@ -34,6 +34,10 @@ Move workspace to another display                          // ws.move-workspace
 
 Move window without switching                              // ws.move-window
 ├── Option+Shift+<ws> / ctl move <ws> -> window parked on target, current workspace reflows
+├── Target on screen on another display -> tiled there (a floating window is carried over, same
+│   size and relative place); focus follows it and Option+Tab goes back
+├── Target hidden on another display -> parked off the edge of the display it is on; its recovery
+│   frame moves onto the target's display, so showing the workspace brings it up there
 └── ctl move-app <bundle-id> <ws>     -> every current window of that app
 
 Focus follows                                              // ws.focus-follow
@@ -127,6 +131,11 @@ on the same letter.
   `workspace_back_and_forth_bounces_between_the_last_two_focused_workspaces`,
   `workspace_back_and_forth_on_one_display_switches_like_before`,
   `switching_to_an_unconfigured_named_workspace_is_rejected`.
+- Unit (FakeBackend), `src/app/tests/cross_display.rs`: moving a window to a workspace on
+  another display, on screen (tiled, floating, focus history) or hidden (parked on its own display
+  even when a write off the other display's edge is refused, shown on the target display later,
+  left where it was when it cannot be parked). Unit, `src/macos/apply.rs`: a refused size write
+  before a move no longer stops the move.
 - Unit (FakeBackend), `src/app/tests/move_workspace.rs`:
   `move_workspace_to_occupied_display_promotes_source_previous_and_parks_displaced`,
   `option_tab_after_moving_the_focused_workspace_never_reveals_the_displaced_one` (issue 76),

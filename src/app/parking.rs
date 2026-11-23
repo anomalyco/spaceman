@@ -452,9 +452,21 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
         if self.parked.contains_key(&window) {
             return true;
         }
-        self.parked.insert(window.clone(), frame);
+        self.record_recovery(&window, frame)
+    }
+
+    /// Durably record `frame` as the window's recovery frame, replacing any
+    /// earlier one; memory rolls back when persistence fails.
+    fn record_recovery(&mut self, window: &crate::PhysicalWindowId, frame: crate::Rect) -> bool {
+        let previous = self.parked.insert(window.clone(), frame);
+        if previous == Some(frame) {
+            return true;
+        }
         if let Err(error) = self.backend.persist_parked(&self.parked) {
-            self.parked.remove(&window);
+            match previous {
+                Some(previous) => self.parked.insert(window.clone(), previous),
+                None => self.parked.remove(window),
+            };
             log_event!("failed to persist parked window: {error}");
             return false;
         }
@@ -465,6 +477,33 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
         &mut self,
         window: &crate::PhysicalWindowId,
         output: crate::Rect,
+        outputs: &macos::DisplayOutputs,
+    ) -> macos::ApplyOutcome {
+        self.park_window_toward(window, output, None, outputs)
+    }
+
+    /// Park a window that is moving to a hidden workspace on another display.
+    /// It parks off the edge of `from`, the display it is on now: macOS can
+    /// clamp a write off another display's edge back onto the window's own
+    /// display, which used to fail the whole move. Its recovery frame moves
+    /// onto `to` (same size, same place relative to the display), so showing
+    /// the workspace, or recovering after a crash, brings it back on the
+    /// display its workspace lives on.
+    pub(super) fn park_window_across(
+        &mut self,
+        window: &crate::PhysicalWindowId,
+        from: crate::Rect,
+        to: crate::Rect,
+        outputs: &macos::DisplayOutputs,
+    ) -> macos::ApplyOutcome {
+        self.park_window_toward(window, from, Some((from, to)), outputs)
+    }
+
+    fn park_window_toward(
+        &mut self,
+        window: &crate::PhysicalWindowId,
+        output: crate::Rect,
+        relocate: Option<(crate::Rect, crate::Rect)>,
         outputs: &macos::DisplayOutputs,
     ) -> macos::ApplyOutcome {
         if self.parking_exempt.contains(window) {
@@ -489,8 +528,14 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
             log_event!("park skip: {:?} already off-screen at {:?}", window, frame);
             return macos::ApplyOutcome::Applied;
         }
-        let recovery = self.parked.get(window).copied().unwrap_or(frame);
-        if !self.mark_parked(window.clone(), recovery) {
+        let original = self.parked.get(window).copied().unwrap_or(frame);
+        let recovery = match relocate {
+            Some((from, to)) if from.contains_center(original) => {
+                super::move_workspace::translate_frame_to_output(original, from, to)
+            }
+            _ => original,
+        };
+        if !self.record_recovery(window, recovery) {
             return macos::ApplyOutcome::Unavailable;
         }
         // Park by the window's current size: once a layout (or the app) resized
@@ -500,8 +545,14 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
         log_event!("park: {:?} from {:?} ({:?})", window, recovery, outcome);
         if matches!(outcome, macos::ApplyOutcome::Applied) {
             self.recently_parked.insert(window.clone(), Instant::now());
-        } else if !was_parked {
-            let _: macos::ApplyOutcome = self.restore_window(window);
+        } else {
+            // Undo onto the frame it had, not the display it was heading to.
+            if recovery != original && !self.record_recovery(window, original) {
+                self.parked.insert(window.clone(), original);
+            }
+            if !was_parked {
+                let _: macos::ApplyOutcome = self.restore_window(window);
+            }
         }
         outcome
     }
