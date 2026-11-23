@@ -15,7 +15,7 @@ Each install restores every window, swaps `/Applications/Spaceman.app`, and resu
 workspaces and layouts come back. `scripts/install-app.sh --bundle PATH --wait-idle SECS` installs a
 built bundle once the keyboard and mouse have been idle; the updater
 (`scripts/spaceman-updater`, set up with `scripts/install-updater`) uses it to keep the installed
-app on `main`.
+app on `dev`.
 
 ## Verify
 

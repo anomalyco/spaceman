@@ -9,9 +9,9 @@ label=dev.kit.spaceman-updater
 plist=$HOME/Library/LaunchAgents/$label.plist
 log=$HOME/.local/share/spaceman/updater.log
 mkdir -p "$(dirname "$log")" "$(dirname "$wt")"
-git -C "$root" fetch -q origin main
-[ -d "$wt" ] || git -C "$root" worktree add -q --detach "$wt" origin/main
-git -C "$wt" checkout -q -f --detach origin/main
+git -C "$root" fetch -q origin dev
+[ -d "$wt" ] || git -C "$root" worktree add -q --detach "$wt" origin/dev
+git -C "$wt" checkout -q -f --detach origin/dev
 # Treat what is installed now as current, so the first build waits for the next push.
 [ -f "$HOME/.local/share/spaceman/installed-rev" ] || git -C "$wt" rev-parse HEAD >"$HOME/.local/share/spaceman/installed-rev"
 cat >"$plist" <<EOF

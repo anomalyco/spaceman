@@ -3,7 +3,7 @@ set -eu
 
 root=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
 plist="$root/app/Info.plist"
-expected_bundle_id=com.kitlangton.spaceman
+expected_bundle_id=anomaly.spaceman
 expected_executables="spaceman spaceman-agent"
 expected_feed_url=https://pub-6f85d683ffe0419cad0a71508904053a.r2.dev/appcast.xml
 expected_sparkle_key=mIek27lttJe8cIBqVZFhh6reRKjpTx1h9ZY9OKWPtuM=

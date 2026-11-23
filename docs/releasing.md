@@ -3,70 +3,84 @@
 Spaceman is not release-ready merely because `scripts/build-app.sh` produces a signed bundle. The
 script builds locked release binaries, embeds Sparkle 2.9.4, assembles `Spaceman.app`, applies
 hardened-runtime Developer ID signing from the innermost Sparkle helpers outward, and verifies the
-signature. It does not notarize, staple, or publish an artifact.
+signature. It does not notarize, staple, or publish an artifact. With `SPACEMAN_RELEASE_UNSIGNED=1` it
+stops before signing; the Release workflow builds that way and signs in a separate job.
 
 ## Direct Distribution
 
-Spaceman's release path is direct distribution outside the Mac App Store. Release artifacts use
-Developer ID signing and Apple's notarization service so Gatekeeper can verify them. App Store
-Connect upload and TestFlight tooling are not part of this release path.
+Spaceman ships outside the Mac App Store as `anomaly.spaceman`, signed with Anomaly's Developer ID
+(team `5NZ4Q7NXJ4`) and notarized so Gatekeeper accepts it. App Store Connect and TestFlight are not
+part of this path. Releases up to 0.3.0 were `com.kitlangton.spaceman` under a personal Developer ID;
+the first update to `anomaly.spaceman` keeps config, workspace state and parked-window recovery (the
+paths don't depend on the bundle ID) but macOS asks for Accessibility access again, because that
+grant belongs to the old identity.
 
-Release preparation requires Xcode command-line tools, Rust 1.100.0, a Developer ID Application
-identity, Sparkle's Ed25519 key in Keychain, and the notarization profile below. Publication also
-requires an authenticated `wrangler` CLI. `notarytool` prompts securely for an app-specific password
-and stores the validated credential in Keychain; no secret enters the repository:
+A release has two halves:
 
-```sh
-xcrun notarytool store-credentials spaceman-notary \
-  --apple-id "YOUR_APPLE_ID" \
-  --team-id "YOUR_TEAM_ID"
+```text
+Release workflow (GitHub Actions)              scripts/release-app.sh (release Mac)
+build ─► sign + notarize ─► verify ─► publish   download that zip ─► validate ─► Sparkle appcast ─► R2
+         (Apple keys from AWS)       anoma.ly/release/spaceman            (Sparkle key, wrangler)
 ```
 
-Update the package version in `Cargo.toml`/`Cargo.lock`, `CFBundleShortVersionString`, the monotonically
-increasing `CFBundleVersion`, release notes, and versioned download references in README, the setup
-skill, and website. Commit and push a clean release revision, then prepare the exact artifact:
+### 1. The Release workflow
+
+[`.github/workflows/release.yml`](../.github/workflows/release.yml) runs on `dev`, the default branch:
+every push publishes the dev channel, and a dispatch picks a channel:
+
+| Channel | Publishes |
+| --- | --- |
+| `check` | Nothing. Builds, signs, notarizes and verifies, then pushes and deletes a `v0.0.0-test-<run>` tag. |
+| `dev` (also every push that changes more than docs, the website or Markdown) | `0.0.0-dev-<run>` on the dev channel (`https://anoma.ly/release/spaceman/desktop/dev.json`). |
+| `stable` | `Cargo.toml`'s version on the stable channel, then tags `v<version>`. Needs `changelog/<version>.md` and no existing tag. |
+
+Its jobs:
+
+- **build-macos** (`macos-26`, no secrets): `SPACEMAN_RELEASE_UNSIGNED=1 scripts/build-app.sh`, zipped
+  and uploaded with a `SHA256SUMS` whose digest the job reports.
+- **sign-macos** (environment `release`): checks out only `.github/release/`, assumes
+  `role/github/spaceman-release` through GitHub OIDC, reads `shared/APPLE_SIGNING_CERTIFICATE` and
+  `shared/APPLE_NOTARY_KEY` from AWS Secrets Manager in one step, and with the environment's
+  `APPLE_NOTARY_KEY_ID` and `APPLE_NOTARY_ISSUER_ID` signs inside-out, notarizes, staples and writes
+  `Spaceman-<version>-macos-arm64.zip` and its `.sha256`. Every Mach-O in the bundle must be one it
+  signs.
+- **verify-macos** (no secrets): `scripts/validate-release.sh` on the signed app and zip, the team ID
+  and designated requirement, Gatekeeper's `Notarized Developer ID`, and a run of the signed CLI.
+- **publish** (environment `release`): publishes the zip as target `macos-arm64` (file
+  `Spaceman.zip`) through the vendored release client, which checks the served bytes.
+- **tag**: `v<version>` on the released commit, only after publishing.
+
+`.github/release/` and this workflow are the release boundary: jobs that hold a secret or an OIDC
+token run only those scripts, on artifacts they verify by digest and never execute. CODEOWNERS makes
+every change under `.github/` need Dax's review.
+
+### 2. Sparkle's appcast
+
+Installed builds update through Sparkle, which reads the signed `appcast.xml` at `SUFeedURL` on R2
+(bucket `spaceman-releases`); Sparkle doesn't read the release service. After a stable run, on the
+MacBook Pro (`ssh pro`, which has the Sparkle key and `wrangler` auth), in a clean worktree of the
+released commit:
 
 ```sh
-./scripts/release-app.sh
-```
-
-The script auto-detects the first `Developer ID Application` identity and uses the
-`spaceman-notary` Keychain profile. Override those choices with `SPACEMAN_CODESIGN_IDENTITY` and
-`SPACEMAN_NOTARY_KEYCHAIN_PROFILE`. Preparation requires release notes at
-`changelog/<version>.md` (frontmatter `date` and `summary`, then `## Major`, `## Improvements` and
-`## Fixes`); set `SPACEMAN_RELEASE_NOTES` to use another file.
-`SPACEMAN_RELEASE_ARCH` defaults to the host architecture, must be `arm64` or `x86_64`, and cannot
-request a cross-architecture build. Preparation builds, signs, notarizes, staples, validates,
-archives, checksums, and signs a local Sparkle appcast. Artifacts are written to `dist/` but are not
-uploaded.
-
-After testing the prepared archive, publish it and its appcast:
-
-```sh
+./scripts/release-app.sh          # prepare
 ./scripts/release-app.sh publish
 ```
 
-Publishing uploads the versioned ZIP, checksum, and latest alias before replacing `appcast.xml`.
-Published version names must never be reused. The script downloads and compares each public object
-before publishing the feed, then
-compares the public feed byte-for-byte. This artifact-first/feed-last order prevents clients from
-seeing an update whose download is not available. The bucket is `spaceman-releases`; the public URL
-is the `SUFeedURL` baked into `Info.plist`. A missing feed is accepted only when
-`SPACEMAN_FIRST_RELEASE=1` explicitly confirms initial publication; other fetch failures abort.
+`prepare` requires the stable channel's current release to be this version, downloads its
+`macos-arm64` zip, checks its size and SHA-256 against the manifest, runs
+`scripts/validate-release.sh` and the team check, and signs a local appcast with the Ed25519 key in
+Keychain (service `https://sparkle-project.org`, account `ed25519`). It refuses a `CFBundleVersion`
+that isn't newer than the published feed's. It never builds or signs the app, so R2 serves the exact
+bytes the release service does. Generating the appcast needs the login keychain, so run it from a
+LaunchAgent or a logged-in terminal rather than a plain `ssh` session. Test the zip in `dist/`, then
+`publish` uploads the versioned zip, checksum and latest alias, compares each public object, and
+only then replaces and compares `appcast.xml`. A missing feed is accepted only with
+`SPACEMAN_FIRST_RELEASE=1`. Then deploy the website (`bun run deploy` in `website/`).
 
-Sparkle update archives and the appcast are signed with the Ed25519 private key stored in Keychain
-under service `https://sparkle-project.org`, account `ed25519`. Only its public key is embedded in
-`Info.plist`; release preparation derives the Keychain key's public half and refuses to continue if it
-does not match. Installed builds require a valid signed feed as well as a valid signed archive.
-
-## Where Releases Run
-
-Only the MacBook Pro (`ssh pro`) has the Developer ID identity, the `spaceman-notary` profile, the
-Sparkle key and `wrangler` auth. Push the release commit from any Mac, then on the Pro, in a fresh
-worktree of that commit, run `./scripts/release-app.sh`, test, run `./scripts/release-app.sh publish`
-and `bun run deploy` in `website/`. Notarization needs the login keychain, so run those from a
-LaunchAgent (or a logged-in terminal) rather than a plain `ssh` session. Tag the release `vX.Y.Z`
-after publishing.
+Before a release, update the version in `Cargo.toml`/`Cargo.lock` and `CFBundleShortVersionString`,
+raise `CFBundleVersion`, add `changelog/<version>.md` (frontmatter `date` and `summary`, then
+`## Major`, `## Improvements` and `## Fixes`), and update the versioned download links in README,
+the setup skill and the website. Published version names are never reused.
 
 ## Source Build
 

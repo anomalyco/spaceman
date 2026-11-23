@@ -1,9 +1,17 @@
 #!/bin/sh
+# release-app.sh [prepare|publish]: puts the stable release that the Release workflow
+# (.github/workflows/release.yml) built, signed, notarized and published to
+# https://anoma.ly/release/spaceman into Sparkle's appcast on R2. It never builds or signs
+# the app: `prepare` downloads that exact zip, checks it against the release service's
+# manifest and scripts/validate-release.sh, and signs a local appcast for it with the
+# Sparkle key; `publish` uploads the zip, its checksum and the latest alias to R2, then
+# the appcast. Run it from the released commit (docs/releasing.md).
 set -eu
 
 root=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
 mode=${1:-prepare}
-notary_profile=${SPACEMAN_NOTARY_KEYCHAIN_PROFILE:-spaceman-notary}
+service=https://anoma.ly/release
+team_id=5NZ4Q7NXJ4
 bucket=spaceman-releases
 feed_url=$(/usr/bin/plutil -extract SUFeedURL raw "$root/app/Info.plist")
 base_url=${feed_url%/appcast.xml}
@@ -11,14 +19,12 @@ version=$(/usr/bin/plutil -extract CFBundleShortVersionString raw "$root/app/Inf
 build_number=$(/usr/bin/plutil -extract CFBundleVersion raw "$root/app/Info.plist")
 release_notes=${SPACEMAN_RELEASE_NOTES:-$root/changelog/$version.md}
 expected_sparkle_key=$(/usr/bin/plutil -extract SUPublicEDKey raw "$root/app/Info.plist")
-host_arch=$(uname -m)
-arch=${SPACEMAN_RELEASE_ARCH:-$host_arch}
+arch=arm64
 dist="$root/dist"
 updates="$dist/updates"
 artifact="Spaceman-v$version-macos-$arch.zip"
 latest_artifact="Spaceman-latest-macos-$arch.zip"
 checksum="$artifact.sha256"
-submission="$dist/.Spaceman-v$version-macos-$arch-notarization.zip"
 
 verify_prepared_appcast() {
   grep -Fq "$base_url/releases/$artifact" "$updates/appcast.xml" || {
@@ -39,17 +45,6 @@ if [ "$mode" != prepare ] && [ "$mode" != publish ]; then
   echo "usage: $0 [prepare|publish]" >&2
   exit 2
 fi
-case "$arch" in
-  arm64|x86_64) ;;
-  *)
-    echo "SPACEMAN_RELEASE_ARCH must be arm64 or x86_64, not '$arch'." >&2
-    exit 1
-    ;;
-esac
-[ "$arch" = "$host_arch" ] || {
-  echo "Cross-architecture release builds are not supported: requested '$arch' on '$host_arch'." >&2
-  exit 1
-}
 case "$build_number" in
   ''|*[!0-9]*|0)
     echo "CFBundleVersion must be a positive integer." >&2
@@ -57,7 +52,7 @@ case "$build_number" in
     ;;
 esac
 [ -z "$(git -C "$root" status --porcelain)" ] || {
-  echo "Release builds require a clean, reviewed Git worktree." >&2
+  echo "Release from a clean worktree of the released commit." >&2
   exit 1
 }
 upstream=$(git -C "$root" rev-parse --abbrev-ref '@{upstream}' 2>/dev/null || true)
@@ -65,10 +60,16 @@ if [ -z "$upstream" ] || [ "$(git -C "$root" rev-parse HEAD)" != "$(git -C "$roo
   echo "Push the release commit to its upstream branch before releasing." >&2
   exit 1
 fi
+command -v jq >/dev/null 2>&1 || {
+  echo "Releasing needs jq." >&2
+  exit 1
+}
 
 published_appcast=$(mktemp)
 downloaded=$(mktemp)
-trap 'rm -f "$published_appcast" "$downloaded" "$submission"' EXIT HUP INT TERM
+manifest=$(mktemp)
+extracted=$(mktemp -d)
+trap 'rm -f "$published_appcast" "$downloaded" "$manifest"; rm -rf "$extracted"' EXIT HUP INT TERM
 if ! feed_status=$(curl --silent --show-error --location --output "$published_appcast" \
   --write-out '%{http_code}' "$feed_url"); then
   echo "Could not fetch the published appcast; refusing to replace release history." >&2
@@ -126,10 +127,6 @@ fi
   echo "Add release notes at $release_notes or set SPACEMAN_RELEASE_NOTES." >&2
   exit 1
 }
-xcrun notarytool history --keychain-profile "$notary_profile" >/dev/null || {
-  echo "The notarytool keychain profile '$notary_profile' is missing or unusable." >&2
-  exit 1
-}
 sparkle_dir=$("$root/scripts/setup-sparkle.sh")
 actual_sparkle_key=$("$sparkle_dir/bin/generate_keys" --account ed25519 -p)
 [ "$actual_sparkle_key" = "$expected_sparkle_key" ] || {
@@ -137,24 +134,46 @@ actual_sparkle_key=$("$sparkle_dir/bin/generate_keys" --account ed25519 -p)
   exit 1
 }
 
-mkdir -p "$dist"
-rm -rf "$updates"
-rm -f "$dist/$artifact" "$dist/$checksum" "$submission"
-mkdir -p "$updates"
-
-bundle=$("$root/scripts/build-app.sh")
-(cd "$(dirname "$bundle")" && /usr/bin/zip -qry --symlinks "$submission" "$(basename "$bundle")")
-notary_result=$(xcrun notarytool submit "$submission" \
-  --keychain-profile "$notary_profile" --wait --output-format plist)
-notary_status=$(printf '%s' "$notary_result" | /usr/bin/plutil -extract status raw -)
-[ "$notary_status" = Accepted ] || {
-  echo "Apple notarization finished with status '$notary_status', not Accepted." >&2
+# The stable channel's current release must be this version; take its macOS zip by the
+# size and SHA-256 the manifest names.
+curl --fail --silent --show-error --location "$service/spaceman/desktop/stable.json" -o "$manifest"
+jq -e --arg version "$version" \
+  '.app == "spaceman" and .artifact == "desktop" and .channel == "stable" and .release.version == $version' \
+  "$manifest" >/dev/null || {
+  echo "The release service's stable Spaceman is not $version; run the Release workflow (stable) first." >&2
   exit 1
 }
-xcrun stapler staple "$bundle"
+url=$(jq -er '.release.targets["macos-arm64"].url' "$manifest")
+size=$(jq -er '.release.targets["macos-arm64"].size' "$manifest")
+sha256=$(jq -er '.release.targets["macos-arm64"].sha256' "$manifest")
+case "$url" in
+  "/release/spaceman/files/$sha256/Spaceman.zip") ;;
+  *)
+    echo "The release service names an unexpected file: $url" >&2
+    exit 1
+    ;;
+esac
 
-(cd "$(dirname "$bundle")" && /usr/bin/zip -qry --symlinks "$dist/$artifact" "$(basename "$bundle")")
-SPACEMAN_RELEASE_ARCH="$arch" "$root/scripts/validate-release.sh" "$bundle" "$dist/$artifact"
+mkdir -p "$dist"
+rm -rf "$updates"
+rm -f "$dist/$artifact" "$dist/$checksum"
+mkdir -p "$updates"
+curl --fail --silent --show-error --location --retry 3 "${service%/release}$url" -o "$dist/$artifact"
+[ "$(wc -c <"$dist/$artifact" | tr -d ' ')" = "$size" ] || {
+  echo "The downloaded zip is not $size bytes." >&2
+  exit 1
+}
+printf '%s  %s\n' "$sha256" "$dist/$artifact" | /usr/bin/shasum -a 256 -c - >/dev/null || {
+  echo "The downloaded zip does not have SHA-256 $sha256." >&2
+  exit 1
+}
+
+/usr/bin/ditto -x -k "$dist/$artifact" "$extracted"
+SPACEMAN_RELEASE_ARCH="$arch" "$root/scripts/validate-release.sh" "$extracted/Spaceman.app" "$dist/$artifact"
+/usr/bin/codesign --display --verbose=4 "$extracted/Spaceman.app" 2>&1 | grep -qx "TeamIdentifier=$team_id" || {
+  echo "Spaceman.app is not signed by Anomaly's team $team_id." >&2
+  exit 1
+}
 (cd "$dist" && /usr/bin/shasum -a 256 "$artifact" >"$checksum")
 (cd "$dist" && /usr/bin/shasum -a 256 -c "$checksum")
 
@@ -178,8 +197,6 @@ security find-generic-password -s 'https://sparkle-project.org' -a ed25519 -w \
     "$updates"
 verify_prepared_appcast
 
-rm -f "$submission"
-trap 'rm -f "$published_appcast" "$downloaded"' EXIT HUP INT TERM
 echo "$dist/$artifact"
 echo "$dist/$checksum"
-echo "Prepared but not published. Run $0 publish after validation." >&2
+echo "Prepared but not published. Run $0 publish after testing the zip." >&2

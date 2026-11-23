@@ -62,8 +62,10 @@ and its [SHA-256 checksum](https://pub-6f85d683ffe0419cad0a71508904053a.r2.dev/r
 run `shasum -a 256 -c Spaceman-v0.3.0-macos-arm64.zip.sha256`, then unzip it and move `Spaceman.app`
 to `/Applications`.
 
-Later preview updates are signed and delivered through Sparkle. Use Spaceman Settings for upgrades. If
-a manual replacement is necessary, pause and quit the running version and confirm that every parked
+Later preview updates are signed and delivered through Sparkle. Use Spaceman Settings for upgrades.
+Builds after 0.3.0 are signed by Anomaly with the bundle ID `anomaly.spaceman`, so macOS asks for
+Accessibility access once more after that update; your config, workspaces and parked-window recovery
+carry over. If a manual replacement is necessary, pause and quit the running version and confirm that every parked
 window has returned before replacing its bundle.
 
 ## Install From Source
