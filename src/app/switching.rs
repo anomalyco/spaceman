@@ -42,7 +42,7 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
                 return Ok(status);
             }
             let frontmost = self.backend.frontmost_application();
-            self.focus_workspace_entry(workspace, &windows, focused, frontmost);
+            self.focus_workspace_entry(workspace, &windows, focused, frontmost, false);
             // Selecting a workspace that is already up still moves focus there
             // when it lives on another display, so it belongs in the history.
             self.record_focused_workspace(workspace);
@@ -185,7 +185,7 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
         self.workspaces.switch(workspace);
         self.record_focused_workspace(workspace);
         self.foreground_lanes.insert(display_id, selector);
-        self.focus_workspace_entry(workspace, &incoming, focused_before, frontmost_before);
+        self.focus_workspace_entry(workspace, &incoming, focused_before, frontmost_before, true);
         self.persist_workspace_state_if_changed()?;
         log_event!(
             "switch complete: workspace {} in {}ms",
@@ -204,23 +204,32 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
     /// it would snap the display straight back. Suppression keeps the earlier
     /// stale focus when Accessibility reports none, so switching on through
     /// empty workspaces keeps it too.
+    ///
+    /// With `keep_reported`, a window of the workspace that already has focus
+    /// is the entry window: a hidden workspace revealed because one of its
+    /// windows took focus (a notification click, the Dock, Cmd+Tab) must not
+    /// hand focus to its remembered tile instead.
     pub(super) fn focus_workspace_entry(
         &mut self,
         workspace: WorkspaceId,
         windows: &[crate::PhysicalWindowId],
         focused: Option<crate::PhysicalWindowId>,
         frontmost: Option<crate::AppInstanceId>,
+        keep_reported: bool,
     ) {
-        let reported_inside = focused
-            .as_ref()
-            .is_some_and(|window| windows.contains(window));
+        let reported_window = focused.as_ref().filter(|window| windows.contains(window));
+        let reported_inside = reported_window.is_some();
+        let workspace_focus = reported_window
+            .filter(|_| keep_reported)
+            .cloned()
+            .or_else(|| {
+                self.workspaces
+                    .preferred_focus(workspace)
+                    .filter(|window| windows.contains(window))
+            })
+            .or_else(|| windows.first().cloned());
         let stale_window = focused.or_else(|| self.suppressed_focus.clone());
         let stale_app = frontmost.or_else(|| self.suppressed_app.clone());
-        let workspace_focus = self
-            .workspaces
-            .preferred_focus(workspace)
-            .filter(|window| windows.contains(window))
-            .or_else(|| windows.first().cloned());
         if let Some(window) = workspace_focus {
             if self.backend.focus_window(&window) {
                 self.pending_fullscreen_focus_restore.remove(&workspace);
@@ -460,7 +469,7 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
         if !windows.is_empty() {
             let focused = self.backend.focused_window();
             let frontmost = self.backend.frontmost_application();
-            self.focus_workspace_entry(workspace, &windows, focused, frontmost);
+            self.focus_workspace_entry(workspace, &windows, focused, frontmost, false);
             self.record_focused_workspace(workspace);
             log_event!(
                 "back-and-forth: focused visible workspace {} without switching",

@@ -63,6 +63,9 @@ struct FakeBackend {
     /// Widths windows refuse to shrink below, clamped synchronously like AppKit.
     minimum_widths: HashMap<crate::PhysicalWindowId, i32>,
     focus_outcome: Option<bool>,
+    /// Raised by the next position write: an activation cancelling the worker
+    /// in the middle of a switch.
+    cancel_on_position: Option<Arc<AtomicBool>>,
     server_snapshot_unavailable: bool,
     running_apps: Option<HashSet<AppInstanceId>>,
     snapshot_count: usize,
@@ -182,6 +185,9 @@ impl WorkspaceBackend for FakeBackend {
     ) -> macos::ApplyOutcome {
         self.calls
             .push(BackendCall::SetPosition(window.clone(), target));
+        if let Some(cancelled) = self.cancel_on_position.take() {
+            cancelled.store(true, Ordering::Release);
+        }
         if let Some(outcome) = self.position_outcome {
             return outcome;
         }

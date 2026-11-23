@@ -11,7 +11,8 @@ Switch workspace                                           // ws.switch
 ├── Incoming parked windows revealed -> laid out -> outgoing windows parked off-screen
 │   └── Reveal not confirmed by the window server in time -> switch rolled back, old workspace stays
 ├── Focus -> last-focused tile of the incoming workspace, keyboard focus included
-│   (that window raised and made main, then its app brought forward with `AXFrontmost`)
+│   (that window raised and made main, then its app brought forward with `AXFrontmost`), unless
+│   one of its windows already has focus (e.g. focus follow): that window keeps it
 └── Already active -> stays, re-focuses its remembered tile (keeps current focus if it is there)
 
 Swipe                                                      // ws.swipe
@@ -43,7 +44,8 @@ Move window without switching                              // ws.move-window
 
 Focus follows                                              // ws.focus-follow
 ├── Focusing a window that lives on a hidden workspace (Dock, Cmd+Tab, notification)
-│   -> that workspace becomes active
+│   -> that workspace becomes active, with focus on that window (not its remembered tile)
+│   └── Switch interrupted by that same activation -> the next cycle follows it again
 ├── Focusing a window on another display's visible workspace -> no switch; Option+Tab remembers it
 └── No focused window reported -> follows the frontmost app only when all its windows, tiled
     or floating, are on one workspace
@@ -129,6 +131,10 @@ on the same letter.
   layout, hide), `switch_keeps_outgoing_visible_when_incoming_reveal_never_arrives`
   (`reliability.rs`, rollback), `moving_to_an_inactive_workspace_does_not_switch`,
   `focusing_a_parked_window_activates_its_workspace`,
+  `following_focus_to_a_hidden_workspace_keeps_the_window_that_took_it`,
+  `a_follow_cancelled_by_the_activation_it_answers_follows_on_the_next_cycle` and
+  `a_follow_that_fails_while_an_activation_cancels_stays_suppressed` (`focus.rs`, notification
+  clicks),
   `workspace_back_and_forth_bounces_between_the_last_two_focused_workspaces`,
   `workspace_back_and_forth_on_one_display_switches_like_before`,
   `switching_to_an_unconfigured_named_workspace_is_rejected`.

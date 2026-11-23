@@ -139,7 +139,16 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
                         workspace,
                         input
                     );
-                    return self.switch(workspace, outputs, cancelled);
+                    let followed = self.switch(workspace, outputs, cancelled);
+                    // An activation (or a finished drag) cancels background
+                    // cycles, often the very one this follow answers (a
+                    // notification click). A cancelled follow lets the next cycle
+                    // follow again; a switch that fails for any other reason keeps
+                    // focus suppressed so it can't loop.
+                    if matches!(&followed, Err(error) if error.ends_with("cancelled")) {
+                        self.clear_suppressed_focus();
+                    }
+                    return followed;
                 }
                 // Focus moved to a workspace already on screen, such as a click
                 // on another display. Option+Tab goes back from here.
