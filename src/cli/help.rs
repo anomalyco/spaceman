@@ -1,0 +1,251 @@
+pub(crate) fn version() -> String {
+    format!("spaceman {}", env!("CARGO_PKG_VERSION"))
+}
+
+pub(crate) fn is_help_flag(arg: &str) -> bool {
+    matches!(arg, "-h" | "--help")
+}
+
+pub(crate) fn root_usage(executable: &str) -> String {
+    let mut lines = vec![
+        format!("usage: {executable} <command> [args...]"),
+        format!("       {executable} --help | --version"),
+        String::new(),
+        "Configuration commands:".into(),
+        format!("  {executable} config <path|show|get|set|check> ..."),
+        format!("  {executable} rules <list|add|remove> ..."),
+        format!("  {executable} workspaces <list|assign|clear> ..."),
+        format!("  {executable} config-check <config.toml>"),
+    ];
+    #[cfg(target_os = "macos")]
+    {
+        lines.extend([
+            String::new(),
+            "Runtime control & diagnostics:".into(),
+            format!("  {executable} ctl <command> [args...]"),
+            format!("  {executable} displays"),
+            format!("  {executable} snapshot"),
+            format!("  {executable} hud"),
+            format!("  {executable} retile [--apply]"),
+            format!("  {executable} watch <cycles> [--apply]"),
+            format!("  {executable} watch-window <window-id> <cycles> [--apply]"),
+            format!("  {executable} run [--apply]"),
+        ]);
+    }
+    lines.extend([
+        String::new(),
+        "Inspection & fixtures:".into(),
+        format!("  {executable} doctor [hours]"),
+        format!("  {executable} replay <fixture.json>"),
+    ]);
+    lines.join("\n")
+}
+
+pub(crate) fn root(executable: &str) -> String {
+    let mut sections = vec![
+        format!(
+            "Spaceman {} — macOS tiling window manager",
+            env!("CARGO_PKG_VERSION")
+        ),
+        String::new(),
+        format!("Usage: {executable} <command> [args...]"),
+        String::new(),
+        "Options:".into(),
+        "  -h, --help                 Show help for spaceman or a subcommand".into(),
+        "  -V, --version              Print the spaceman version".into(),
+        String::new(),
+        "Configuration:".into(),
+        "  config <subcommand>        Inspect, validate, and edit config.toml atomically".into(),
+        "  rules <subcommand>         List, add, and remove ordered window rules".into(),
+        "  workspaces <subcommand>    List, assign, and clear workspace monitor routes".into(),
+        "  config-check <path>        Validate a config.toml file".into(),
+    ];
+    #[cfg(target_os = "macos")]
+    {
+        sections.extend([
+            String::new(),
+            "Live Agent Control:".into(),
+            "  ctl <command> [args...]    Send a command to the running Spaceman agent".into(),
+            "  displays                   List connected displays as JSON".into(),
+            "  snapshot                   Capture a dry-run window observation as JSON".into(),
+            "  hud                        Stream live workspace state in the terminal".into(),
+            "  retile [--apply]           Run one reconciliation cycle (dry-run by default)".into(),
+            "  watch <cycles> [--apply]   Run N reconciliation cycles".into(),
+            "  watch-window <id> <cycles> [--apply]".into(),
+            "                             Watch a single window ID for N cycles".into(),
+            "  run [--apply]              Run the foreground reconciliation loop".into(),
+        ]);
+    }
+    sections.extend([
+        String::new(),
+        "Diagnostics & Testing:".into(),
+        "  doctor [hours]             Summarize the arrangement journal".into(),
+        "  replay <fixture.json>      Replay a recorded observation fixture".into(),
+        "  help [command]             Show help for spaceman or a command".into(),
+        String::new(),
+        "Environment:".into(),
+        "  SPACEMAN_CONFIG            Override the path to config.toml".into(),
+        "  SPACEMAN_APPLICATION_SUPPORT".into(),
+        "                             Override the Application Support directory".into(),
+        String::new(),
+        format!("Run '{executable} <command> --help' for command details."),
+    ]);
+    sections.join("\n")
+}
+
+pub(crate) fn subcommand(executable: &str, name: &str) -> Option<String> {
+    let text = match name {
+        "config" => config_help(executable),
+        "rules" => rules_help(executable),
+        "workspaces" => workspaces_help(executable),
+        #[cfg(target_os = "macos")]
+        "ctl" => ctl_help(executable),
+        "config-check" => format!(
+            "Validate a Spaceman configuration file.\n\nUsage:\n  {executable} config-check <config.toml>"
+        ),
+        "doctor" => format!(
+            "Summarize the arrangement journal written by the running agent.\n\nUsage:\n  {executable} doctor [hours]\n\nArguments:\n  [hours]    Optional lookback window in hours (positive integer)"
+        ),
+        "replay" => format!(
+            "Replay a recorded observation fixture through the reconciler.\n\nUsage:\n  {executable} replay <fixture.json>"
+        ),
+        #[cfg(target_os = "macos")]
+        "snapshot" => format!(
+            "Capture a dry-run window observation and reconciliation as JSON.\n\nUsage:\n  {executable} snapshot"
+        ),
+        #[cfg(target_os = "macos")]
+        "displays" => format!(
+            "List connected displays and their IDs, names, and frames as JSON.\n\nUsage:\n  {executable} displays"
+        ),
+        #[cfg(target_os = "macos")]
+        "hud" => format!(
+            "Render a live terminal HUD of displays, workspaces, and tiles.\n\nUsage:\n  {executable} hud"
+        ),
+        #[cfg(target_os = "macos")]
+        "retile" => format!(
+            "Run one observation and reconciliation cycle.\n\nUsage:\n  {executable} retile [--apply]\n\nOptions:\n  --apply    Apply computed frames to live windows (dry-run by default)"
+        ),
+        #[cfg(target_os = "macos")]
+        "watch" => format!(
+            "Run N observation and reconciliation cycles.\n\nUsage:\n  {executable} watch <cycles> [--apply]"
+        ),
+        #[cfg(target_os = "macos")]
+        "watch-window" => format!(
+            "Run N cycles scoped to a single window ID.\n\nUsage:\n  {executable} watch-window <window-id> <cycles> [--apply]"
+        ),
+        #[cfg(target_os = "macos")]
+        "run" => format!(
+            "Run the persistent reconciliation loop in the foreground.\n\nUsage:\n  {executable} run [--apply]"
+        ),
+        _ => return None,
+    };
+    Some(text)
+}
+
+pub(crate) fn config_help(executable: &str) -> String {
+    [
+        "Inspect, validate, and edit Spaceman's config.toml atomically.",
+        "",
+        "Usage:",
+        &format!("  {executable} config path [--json]"),
+        &format!("  {executable} config show [--json]"),
+        &format!("  {executable} config get <key> [--json]"),
+        &format!("  {executable} config set <key> <value> [--json]"),
+        &format!("  {executable} config check [path] [--json]"),
+        "",
+        "Settings keys:",
+        "  hud          true | false          Show the Workspace HUD overlay (default: true)",
+        "  hud_style    icons | layouts       Workspace HUD drawing style (default: icons)",
+        "",
+        "Notes:",
+        "  - Respects SPACEMAN_CONFIG and SPACEMAN_APPLICATION_SUPPORT.",
+        "  - Every write is validated against version-1 schema and replaced atomically.",
+    ]
+    .join("\n")
+}
+
+pub(crate) fn rules_help(executable: &str) -> String {
+    [
+        "Manage ordered, first-match window rules in config.toml.",
+        "",
+        "Usage:",
+        &format!("  {executable} rules list [--json]"),
+        &format!(
+            "  {executable} rules add --app <bundle-id> (--workspace <ws> | --float | --ignore)"
+        ),
+        "                         [--title <title>] [--position <index>] [--json]",
+        &format!("  {executable} rules remove <index-or-bundle-id> [--json]"),
+        &format!("  {executable} rules remove --app <bundle-id> [--json]"),
+        "",
+        "Options for 'add':",
+        "  --app <bundle-id>          Match windows by macOS bundle identifier (alias: --bundle-id)",
+        "  --title <title>            Require an exact window title match",
+        "  --workspace <ws>           Route matching windows to workspace 1-10 or A-Z",
+        "  --float                    Float matching windows without tiling",
+        "  --ignore                   Ignore matching windows completely",
+        "  --position <index>         Insert at 1-based rule index (default: append)",
+        "  --json                     Emit machine-readable JSON output",
+    ]
+    .join("\n")
+}
+
+pub(crate) fn workspaces_help(executable: &str) -> String {
+    [
+        "Manage workspace-to-display monitor assignments in config.toml.",
+        "",
+        "Usage:",
+        &format!("  {executable} workspaces list [--json]"),
+        &format!(
+            "  {executable} workspaces assign <ws> <main|secondary|display-name-or-uuid> [--json]"
+        ),
+        &format!("  {executable} workspaces clear <ws> [--json]"),
+        "",
+        "Notes:",
+        "  - Workspaces 1-5 default to 'main'; workspaces 6-10 default to 'secondary'.",
+        "  - Named workspaces A-Z are opt-in and default to 'main'.",
+        "  - Use 'spaceman displays' to inspect display names and UUIDs.",
+    ]
+    .join("\n")
+}
+
+#[cfg(target_os = "macos")]
+pub(crate) fn ctl_help(executable: &str) -> String {
+    [
+        "Send a live control command to the running Spaceman agent over control.sock.",
+        "",
+        "Usage:",
+        &format!("  {executable} ctl <command> [args...]"),
+        "",
+        "Inspect:",
+        "  status                     Print agent status JSON",
+        "  debug                      Print live displays, tiles, focus, and targets JSON",
+        "  settings                   Print agent-only settings state JSON",
+        "",
+        "Workspaces:",
+        "  switch <workspace>         Switch to workspace 1-10 or A-Z",
+        "  back-and-forth             Toggle between the current and previous workspace",
+        "  move <workspace>           Move the focused window to a workspace",
+        "  move-app <bundle-id> <ws>  Move an application's windows to a workspace",
+        "",
+        "Windows & layout:",
+        "  focus <left|down|up|right|next>",
+        "                             Move focus by direction or cycle to next window",
+        "  move-direction <left|down|up|right>",
+        "                             Reorder the focused window in a direction",
+        "  layout                     Toggle the workspace split axis",
+        "  fullscreen                 Toggle Fullscreen Layout on the active workspace",
+        "  resize <shrink|grow>       Adjust the focused window's layout weight",
+        "  balance                    Reset split weights evenly",
+        "  retile                     Force a fresh observation and retile",
+        "",
+        "Agent & UI:",
+        "  pause | resume             Pause (and restore windows) or resume tiling",
+        "  wrong                      Record an anomaly marker in the arrangement journal",
+        "  open-settings              Open the Spaceman Settings window",
+        "  open-accessibility         Open Accessibility onboarding / System Settings",
+        "  check-for-updates          Trigger a Sparkle update check",
+        "  toggle-launch-at-login     Toggle Launch at Login registration",
+        "  restart | quit             Restore windows and restart or quit the agent",
+    ]
+    .join("\n")
+}

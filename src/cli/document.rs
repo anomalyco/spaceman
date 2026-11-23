@@ -1,0 +1,253 @@
+use std::{
+    collections::BTreeSet,
+    fs,
+    path::{Path, PathBuf},
+};
+
+use serde::{Deserialize, Serialize};
+use spaceman::{
+    DisplaySelector, WorkspaceId, Workspaces,
+    config::{Config, HudStyle, config_path},
+    state_file::write_atomic,
+};
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(deny_unknown_fields)]
+pub(crate) struct ConfigDoc {
+    pub version: u32,
+    #[serde(default, skip_serializing_if = "SettingsDoc::is_empty")]
+    pub settings: SettingsDoc,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub rules: Vec<RuleDoc>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub workspaces: Vec<WorkspaceDoc>,
+}
+
+impl Default for ConfigDoc {
+    fn default() -> Self {
+        Self {
+            version: 1,
+            settings: SettingsDoc::default(),
+            rules: Vec::new(),
+            workspaces: Vec::new(),
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(deny_unknown_fields)]
+pub(crate) struct SettingsDoc {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub hud: Option<bool>,
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        serialize_with = "serialize_optional_hud_style"
+    )]
+    pub hud_style: Option<HudStyle>,
+}
+
+impl SettingsDoc {
+    fn is_empty(&self) -> bool {
+        self.hud.is_none() && self.hud_style.is_none()
+    }
+
+    pub(crate) fn effective_hud(&self) -> bool {
+        self.hud.unwrap_or(true)
+    }
+
+    pub(crate) fn effective_hud_style(&self) -> HudStyle {
+        self.hud_style.unwrap_or_default()
+    }
+}
+
+fn serialize_optional_hud_style<S: serde::Serializer>(
+    style: &Option<HudStyle>,
+    serializer: S,
+) -> Result<S::Ok, S::Error> {
+    match style {
+        Some(style) => serializer.serialize_str(style.as_str()),
+        None => serializer.serialize_none(),
+    }
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(deny_unknown_fields)]
+pub(crate) struct RuleDoc {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub bundle_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub title: Option<String>,
+    pub action: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub workspace: Option<WorkspaceId>,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(deny_unknown_fields)]
+pub(crate) struct WorkspaceDoc {
+    pub workspace: WorkspaceId,
+    pub monitor: String,
+}
+
+#[derive(Clone, Debug, Serialize)]
+pub(crate) struct EffectiveSettings {
+    pub hud: bool,
+    pub hud_style: &'static str,
+}
+
+#[derive(Clone, Debug, Serialize)]
+pub(crate) struct RuleView {
+    pub index: usize,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub bundle_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub title: Option<String>,
+    pub action: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub workspace: Option<WorkspaceId>,
+}
+
+impl RuleView {
+    pub(crate) fn from_doc(index: usize, rule: &RuleDoc) -> Self {
+        Self {
+            index,
+            bundle_id: rule.bundle_id.clone(),
+            title: rule.title.clone(),
+            action: rule.action.clone(),
+            workspace: rule.workspace,
+        }
+    }
+}
+
+#[derive(Serialize)]
+struct EffectiveConfigToml<'a> {
+    version: u32,
+    settings: EffectiveSettings,
+    #[serde(skip_serializing_if = "<[RuleDoc]>::is_empty")]
+    rules: &'a [RuleDoc],
+    #[serde(skip_serializing_if = "<[WorkspaceDoc]>::is_empty")]
+    workspaces: &'a [WorkspaceDoc],
+}
+
+impl ConfigDoc {
+    pub(crate) fn load_or_default(path: &Path) -> Result<(Self, bool), String> {
+        let source = match fs::read_to_string(path) {
+            Ok(source) => source,
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+                return Ok((Self::default(), false));
+            }
+            Err(error) => {
+                return Err(format!("failed to read {}: {error}", path.display()));
+            }
+        };
+        Config::parse(&source).map_err(|error| format!("{}: {error}", path.display()))?;
+        let doc: Self =
+            toml::from_str(&source).map_err(|error| format!("{}: {error}", path.display()))?;
+        Ok((doc, true))
+    }
+
+    pub(crate) fn effective_settings(&self) -> EffectiveSettings {
+        EffectiveSettings {
+            hud: self.settings.effective_hud(),
+            hud_style: self.settings.effective_hud_style().as_str(),
+        }
+    }
+
+    pub(crate) fn render_toml(&self) -> Result<String, String> {
+        let rendered = toml::to_string_pretty(self)
+            .map_err(|error| format!("failed to format config.toml: {error}"))?;
+        Config::parse(&rendered)
+            .map_err(|error| format!("refusing to write invalid config.toml: {error}"))?;
+        Ok(rendered)
+    }
+
+    pub(crate) fn render_effective_toml(&self) -> Result<String, String> {
+        let view = EffectiveConfigToml {
+            version: self.version,
+            settings: self.effective_settings(),
+            rules: &self.rules,
+            workspaces: &self.workspaces,
+        };
+        let rendered = toml::to_string_pretty(&view)
+            .map_err(|error| format!("failed to format config.toml: {error}"))?;
+        Config::parse(&rendered)
+            .map_err(|error| format!("config.toml failed validation: {error}"))?;
+        Ok(rendered)
+    }
+
+    pub(crate) fn save_atomic(&self, path: &Path) -> Result<(), String> {
+        let rendered = self.render_toml()?;
+        write_atomic(path, rendered.as_bytes())
+            .map_err(|error| format!("failed to write {}: {error}", path.display()))
+    }
+
+    pub(crate) fn rule_views(&self) -> Vec<RuleView> {
+        self.rules
+            .iter()
+            .enumerate()
+            .map(|(index, rule)| RuleView::from_doc(index + 1, rule))
+            .collect()
+    }
+
+    pub(crate) fn workspace_monitor(&self, workspace: WorkspaceId) -> Option<&str> {
+        self.workspaces
+            .iter()
+            .find(|entry| entry.workspace == workspace)
+            .map(|entry| entry.monitor.as_str())
+    }
+
+    pub(crate) fn active_workspaces(&self) -> Vec<WorkspaceId> {
+        let mut out: Vec<WorkspaceId> = WorkspaceId::numbered().collect();
+        let mut named = BTreeSet::new();
+        for entry in &self.workspaces {
+            if entry.workspace.letter().is_some() {
+                named.insert(entry.workspace);
+            }
+        }
+        for rule in &self.rules {
+            if let Some(workspace) = rule.workspace
+                && workspace.letter().is_some()
+            {
+                named.insert(workspace);
+            }
+        }
+        out.extend(named);
+        out
+    }
+}
+
+pub(crate) fn resolve_config_path(override_path: Option<&Path>) -> Result<PathBuf, String> {
+    if let Some(path) = override_path {
+        return Ok(path.to_path_buf());
+    }
+    config_path().ok_or_else(|| "HOME is unavailable".into())
+}
+
+pub(crate) fn default_monitor_for(workspace: WorkspaceId) -> &'static str {
+    match Workspaces::default().assignment(workspace) {
+        DisplaySelector::Main => "main",
+        DisplaySelector::Secondary => "secondary",
+        DisplaySelector::Preferred(_) => "main",
+    }
+}
+
+pub(crate) fn format_rule_summary(rule: &RuleDoc) -> String {
+    let mut matchers = Vec::new();
+    if let Some(bundle_id) = &rule.bundle_id {
+        matchers.push(format!("bundle_id={bundle_id}"));
+    }
+    if let Some(title) = &rule.title {
+        matchers.push(format!("title={title:?}"));
+    }
+    let target = match (rule.action.as_str(), rule.workspace) {
+        ("route", Some(workspace)) => format!("workspace {workspace}"),
+        (action, _) => action.to_owned(),
+    };
+    format!("{} -> {target}", matchers.join(" "))
+}
+
+pub(crate) fn to_json_pretty(value: &impl Serialize) -> Result<String, String> {
+    serde_json::to_string_pretty(value)
+        .map_err(|error| format!("failed to encode JSON output: {error}"))
+}

@@ -11,6 +11,8 @@ use std::{
     time::Duration,
 };
 
+mod cli;
+
 use serde::{Deserialize, Serialize};
 use spaceman::{
     Engine, Model, NativeObservation, Reconciliation, ReconciliationEvidence, Settings, reconcile,
@@ -55,6 +57,9 @@ fn main() -> ExitCode {
     };
     let arguments = args.collect::<Vec<_>>();
     let rest = arguments.iter().map(String::as_str).collect::<Vec<_>>();
+    if let Some(outcome) = cli::try_run(&executable, &command, &rest) {
+        return outcome.into_exit_code();
+    }
     #[cfg(target_os = "macos")]
     let apply = rest.last() == Some(&"--apply");
 
@@ -142,28 +147,7 @@ const KNOWN_COMMANDS: &[&str] = &[
 ];
 
 fn print_usage(executable: &str) {
-    eprintln!("usage: {executable} replay <fixture.json>");
-    eprintln!("       {executable} config-check <config.toml>");
-    eprintln!("       {executable} doctor [hours]");
-    #[cfg(target_os = "macos")]
-    eprintln!("       {executable} snapshot");
-    #[cfg(target_os = "macos")]
-    eprintln!("       {executable} displays");
-    #[cfg(target_os = "macos")]
-    eprintln!(
-        "       {executable} ctl <{}>",
-        spaceman::control::COMMAND_USAGE
-    );
-    #[cfg(target_os = "macos")]
-    eprintln!("       {executable} hud");
-    #[cfg(target_os = "macos")]
-    eprintln!("       {executable} retile [--apply]");
-    #[cfg(target_os = "macos")]
-    eprintln!("       {executable} watch <cycles> [--apply]");
-    #[cfg(target_os = "macos")]
-    eprintln!("       {executable} watch-window <window-id> <cycles> [--apply]");
-    #[cfg(target_os = "macos")]
-    eprintln!("       {executable} run [--apply]");
+    eprintln!("{}", cli::help::root_usage(executable));
 }
 
 fn run_doctor(hours: Option<u64>) -> Result<String, String> {
