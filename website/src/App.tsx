@@ -1,6 +1,7 @@
 import { motion } from "motion/react";
 import { useEffect, useRef, useState } from "react";
 import { Download, downloadNote, HeaderDownload } from "./Download";
+import signature from "./footer-signature.svg";
 import { usePlatform } from "./platform";
 import { CHECKSUM_URL, INSTALL, RELEASE_VERSION } from "./release";
 import { Show } from "./Show";
@@ -139,20 +140,44 @@ function Product() {
 
 function Footer() {
   return (
-    <footer className="mx-auto flex max-w-[1080px] flex-col gap-5 border-t border-white/[0.07] px-5 pt-8 pb-12 text-[13px] text-[#6b6e76] sm:flex-row sm:items-center sm:justify-between sm:px-10">
-      <p className="flex items-center gap-2.5">
-        <img src="icon-192.png" alt="" width={20} height={20} className="size-5 rounded-[23%] ring-1 ring-white/10" />
-        <span className="text-[#c4c6cc]">Spaceman {RELEASE_VERSION}</span>
-        <span aria-hidden="true">·</span>
-        <span>
-          by <a href="https://anoma.ly" className="transition-colors hover:text-[#f3f4f6]">Anomaly</a>
-        </span>
-      </p>
-      <nav aria-label="Documentation" className="flex flex-wrap gap-x-6 gap-y-2">
-        <a href="llms-full.txt" className="transition-colors hover:text-[#f3f4f6]">Documentation</a>
-        <a href="skill.md" className="transition-colors hover:text-[#f3f4f6]">Setup skill for agents</a>
-        <a href="llms.txt" className="transition-colors hover:text-[#f3f4f6]">llms.txt</a>
-      </nav>
+    <footer className="mx-auto flex max-w-[1080px] flex-col gap-10 border-t border-white/[0.07] px-5 pt-8 pb-16 text-[13px] text-[#6b6e76] sm:px-10">
+      <div className="flex flex-col gap-5 sm:flex-row sm:items-center sm:justify-between">
+        <p className="flex items-center gap-2.5">
+          <img src="icon-192.png" alt="" width={20} height={20} className="size-5 rounded-[23%] ring-1 ring-white/10" />
+          <span className="text-[#c4c6cc]">Spaceman {RELEASE_VERSION}</span>
+          <span aria-hidden="true">·</span>
+          <span>
+            Built with{" "}
+            <a href="https://opencode.ai" className="text-[#9a9ca3] underline decoration-white/20 underline-offset-2 transition-colors hover:text-[#f3f4f6]">
+              OpenCode
+            </a>
+          </span>
+        </p>
+        <nav aria-label="Documentation" className="flex flex-wrap gap-x-6 gap-y-2">
+          <a href="llms-full.txt" className="transition-colors hover:text-[#f3f4f6]">Documentation</a>
+          <a href="skill.md" className="transition-colors hover:text-[#f3f4f6]">Setup skill for agents</a>
+          <a href="llms.txt" className="transition-colors hover:text-[#f3f4f6]">llms.txt</a>
+        </nav>
+      </div>
+      <div className="flex justify-center py-6">
+        <div className="relative text-[13px] leading-6 text-[#909090]">
+          <img
+            src={signature}
+            alt=""
+            aria-hidden="true"
+            width={163}
+            height={64}
+            className="pointer-events-none absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2"
+          />
+          <p className="relative m-0">
+            ©2026{" "}
+            <a href="https://anoma.ly" className="text-inherit underline decoration-white/20 underline-offset-2 transition-colors hover:text-[#f2f2ef]">
+              Anomaly
+            </a>
+            . All rights reserved.
+          </p>
+        </div>
+      </div>
     </footer>
   );
 }
