@@ -57,6 +57,9 @@ pub struct MainThreadAgent {
     automatic: bool,
     hud: bool,
     awaiting_accessibility: bool,
+    accessibility_requested: bool,
+    last_accessibility_poll: Instant,
+    return_from_settings: permission_guide::ReturnFromSettings,
     exit_intent: Option<ExitIntent>,
     next_restore_retry: Option<Instant>,
     active_workspaces: Vec<WorkspaceId>,
@@ -135,6 +138,9 @@ impl MainThreadAgent {
             automatic,
             hud: init.hud,
             awaiting_accessibility: !trusted,
+            accessibility_requested: false,
+            last_accessibility_poll: initial_refresh,
+            return_from_settings: permission_guide::ReturnFromSettings::default(),
             exit_intent: None,
             next_restore_retry: None,
             active_workspaces: init.scope.initial_workspaces().to_vec(),
@@ -347,7 +353,11 @@ impl MainThreadAgent {
 
     fn maybe_publish_ui(&mut self) {
         let periodic = self.last_ui_refresh.elapsed() >= APPLICATION_REFRESH_INTERVAL;
-        if !self.ui_dirty && !periodic {
+        let accessibility_poll = !self.accessibility
+            && (self.accessibility_requested || permission_guide::active())
+            && self.last_accessibility_poll.elapsed() >= ACCESSIBILITY_POLL_INTERVAL;
+        if !self.ui_dirty && !periodic && !accessibility_poll {
+            self.poll_return_from_settings();
             return;
         }
         let mut config_changed = false;
@@ -365,10 +375,22 @@ impl MainThreadAgent {
                 }
             }
         }
+        if accessibility_poll {
+            self.last_accessibility_poll = Instant::now();
+        }
         self.ui_dirty = false;
+        let was_trusted = self.accessibility;
         let trusted = macos::accessibility_trusted();
         self.accessibility = trusted;
         status_item::set_accessibility(trusted);
+        if trusted && !was_trusted {
+            let guide_was_active = permission_guide::active();
+            permission_guide::close();
+            if self.accessibility_requested || guide_was_active {
+                self.accessibility_requested = false;
+                self.return_from_settings.note_granted(Instant::now());
+            }
+        }
         if self.awaiting_accessibility
             && trusted
             && !self.automatic
@@ -379,6 +401,20 @@ impl MainThreadAgent {
             drop(self.actions_sender.send(Action::ToggleAutomatic));
         }
         self.publish_ui(config_changed);
+        self.poll_return_from_settings();
+    }
+
+    fn poll_return_from_settings(&mut self) {
+        if !self.return_from_settings.is_pending() {
+            return;
+        }
+        let focus = permission_guide::settings_focus();
+        if self.return_from_settings.poll(Instant::now(), focus) {
+            log_event!("accessibility granted in System Settings; bringing Spaceman forward");
+            if let Err(error) = (self.callbacks.open_settings)() {
+                status_item::set_status(&format!("Could not open Settings: {error}"));
+            }
+        }
     }
 
     pub(super) fn publish_ui(&self, config_changed: bool) {
