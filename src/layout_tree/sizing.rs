@@ -15,11 +15,26 @@ impl LayoutTree {
         else {
             return false;
         };
-        let Some(candidate) =
-            resize_candidate(&self.root, slot, current, expected, output, Vec::new())
-        else {
-            return false;
-        };
+        // A corner drag can cross one boundary on each axis. The two edits
+        // affect independent coordinates, even when one split contains the other.
+        let mut changed = false;
+        for axis in [Axis::Horizontal, Axis::Vertical] {
+            if let Some(candidate) = resize_candidate(
+                &self.root,
+                slot,
+                current,
+                expected,
+                output,
+                Vec::new(),
+                axis,
+            ) {
+                changed |= self.apply_resize(candidate, output);
+            }
+        }
+        changed
+    }
+
+    fn apply_resize(&mut self, candidate: ResizeCandidate, output: Rect) -> bool {
         if candidate.delta.abs() <= 2 {
             return false;
         }
@@ -189,6 +204,7 @@ fn resize_candidate(
     expected: Rect,
     frame: Rect,
     path: Vec<usize>,
+    drag_axis: Axis,
 ) -> Option<ResizeCandidate> {
     let Node::Split { axis, children } = node else {
         return None;
@@ -199,7 +215,7 @@ fn resize_candidate(
         .position(|child| child.node.contains(slot))?;
     let child_frame = frames[index];
     let mut candidates = Vec::new();
-    if index > 0 && leading(expected, *axis) == leading(child_frame, *axis) {
+    if *axis == drag_axis && index > 0 && leading(expected, *axis) == leading(child_frame, *axis) {
         let coordinate = leading(current, *axis);
         candidates.push(ResizeCandidate {
             path: path.clone(),
@@ -208,7 +224,10 @@ fn resize_candidate(
             delta: coordinate - leading(child_frame, *axis),
         });
     }
-    if index + 1 < children.len() && trailing(expected, *axis) == trailing(child_frame, *axis) {
+    if *axis == drag_axis
+        && index + 1 < children.len()
+        && trailing(expected, *axis) == trailing(child_frame, *axis)
+    {
         let coordinate = trailing(current, *axis);
         candidates.push(ResizeCandidate {
             path: path.clone(),
@@ -226,6 +245,7 @@ fn resize_candidate(
         expected,
         child_frame,
         child_path,
+        drag_axis,
     ) {
         candidates.push(nested);
     }
@@ -338,7 +358,11 @@ fn fit_node(node: &mut Node, frame: Rect, minimums: &HashMap<SlotId, (i32, i32)>
     changed
 }
 
-fn required_extent(node: &Node, axis: Axis, minimums: &HashMap<SlotId, (i32, i32)>) -> i32 {
+pub(super) fn required_extent(
+    node: &Node,
+    axis: Axis,
+    minimums: &HashMap<SlotId, (i32, i32)>,
+) -> i32 {
     match node {
         Node::Leaf(slot) => {
             let known = minimums.get(slot).map_or(0, |&(width, height)| match axis {

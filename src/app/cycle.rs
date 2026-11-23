@@ -231,6 +231,14 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
         if focused_is_frontmost
             && let Some(focused) = focused.as_ref()
             && let Some(workspace) = self.workspaces.workspace_of(focused)
+        {
+            self.workspaces
+                .engine_mut(workspace)
+                .remember_insertion_focus(focused);
+        }
+        if focused_is_frontmost
+            && let Some(focused) = focused.as_ref()
+            && let Some(workspace) = self.workspaces.workspace_of(focused)
             && self.workspaces.uses_fullscreen_layout(workspace)
             && !attempted_focus_restore.contains(&workspace)
             && visible
@@ -578,11 +586,12 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
             .retain(|window, _| workspaces.workspace_of(window).is_some());
         let observed_frames = live::observed_frames(&scoped_observation);
         let filter_unchanged = routes.is_empty();
-        let mut placements = if filter_unchanged {
-            reconciliation.placements
-        } else {
-            self.workspaces.engine(workspace).placements(&settings)
-        };
+        let engine = self.workspaces.engine_mut(workspace);
+        engine.fit_minimums(output, &self.minimum_sizes);
+        let mut placements = engine.placements(&settings);
+        for placement in &placements {
+            engine.record_placement_target(placement.slot, placement.frame);
+        }
         self.apply_fullscreen_layout(workspace, &mut placements, output);
         if !scoped_observation.mouse_down {
             for placement in &placements {

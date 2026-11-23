@@ -398,3 +398,36 @@ fn test_window(window_id: u32) -> crate::PhysicalWindowId {
         window_id,
     }
 }
+
+#[test]
+fn corner_drag_moves_both_nested_boundaries() {
+    let output = Rect {
+        width: 1200,
+        height: 800,
+        ..Rect::default()
+    };
+    let mut layout = LayoutTree::flat(Axis::Horizontal, [SlotId(1), SlotId(2), SlotId(3)]);
+    assert!(layout.move_relative(SlotId(1), SlotId(2), Direction::Up));
+    let dragged = Rect {
+        width: 700,
+        height: 460,
+        ..Rect::default()
+    };
+    assert!(layout.resize(SlotId(1), dragged, output));
+    let tiles = layout.placements(output);
+    assert_eq!(tiles[0].1, dragged);
+    assert_eq!(tiles[1].1.y, 460);
+    assert_eq!(tiles[2].1.x, 700);
+}
+
+#[test]
+fn stacking_is_rejected_when_the_other_dimension_cannot_fit() {
+    let tree = LayoutTree::flat(Axis::Horizontal, [SlotId(1), SlotId(2)]);
+    let output = Rect {
+        width: 1000,
+        height: 800,
+        ..Rect::default()
+    };
+    let minimums = HashMap::from([(SlotId(1), (600, 450)), (SlotId(2), (600, 450))]);
+    assert!(tree.fitted(output, &minimums).is_none());
+}

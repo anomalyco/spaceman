@@ -240,14 +240,27 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
             }
         }
         for tile in self.navigation_tiles_for(visible_workspaces) {
-            if self.parked.contains_key(&tile.window)
-                || self.constrained[tile.workspace.index()].contains_key(&tile.window)
-            {
+            if self.parked.contains_key(&tile.window) {
                 continue;
             }
             let Some(frame) = server_frames.get(&tile.window.window_id).copied() else {
                 continue;
             };
+            if self.constrained[tile.workspace.index()].contains_key(&tile.window) {
+                if !self.workspaces.uses_fullscreen_layout(tile.workspace)
+                    && let Some((_, arranged)) = windows.iter().find(|(id, _)| id == &tile.window)
+                    && windows.iter().any(|(other, entry)| {
+                        other != &tile.window
+                            && entry.owner == Some(tile.workspace)
+                            && entry.role == WindowRole::Tiled
+                            && !entry.parked
+                            && entry.frame.is_some_and(|rect| overlaps(frame, rect))
+                    })
+                {
+                    report(AnomalyKind::ConstrainedOverlap, arranged, Some(tile.frame));
+                }
+                continue;
+            }
             if !frame.approximately_equals(tile.frame, MISPLACED_TOLERANCE)
                 && let Some((_, arranged)) = windows.iter().find(|(id, _)| id == &tile.window)
             {
@@ -256,4 +269,13 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
         }
         anomalies
     }
+}
+
+/// Ignore tiny edge differences from rounding and native readback.
+fn overlaps(a: crate::Rect, b: crate::Rect) -> bool {
+    let span = |a: i32, length: i32, b: i32, other: i32| {
+        (i64::from(a) + i64::from(length)).min(i64::from(b) + i64::from(other))
+            - i64::from(a.max(b))
+    };
+    span(a.x, a.width, b.x, b.width) > 2 && span(a.y, a.height, b.y, b.height) > 2
 }

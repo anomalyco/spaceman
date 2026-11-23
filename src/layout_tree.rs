@@ -1,3 +1,4 @@
+mod fitting;
 mod sizing;
 #[cfg(test)]
 mod tests;
@@ -75,10 +76,19 @@ impl LayoutTree {
     }
 
     pub(crate) fn sync(&mut self, fallback_axis: Axis, slots: &[crate::Slot]) {
+        self.sync_near(fallback_axis, slots, None);
+    }
+
+    pub(crate) fn sync_near(
+        &mut self,
+        fallback_axis: Axis,
+        slots: &[crate::Slot],
+        mut anchor: Option<SlotId>,
+    ) -> bool {
         let retained = slots.iter().map(|slot| slot.id).collect::<HashSet<_>>();
         let existing = self.slots().into_iter().collect::<HashSet<_>>();
         if existing == retained && existing.len() == slots.len() {
-            return;
+            return false;
         }
         let root = std::mem::replace(
             &mut self.root,
@@ -98,8 +108,15 @@ impl LayoutTree {
             }),
         };
         for slot in slots.iter().filter(|slot| !existing.contains(&slot.id)) {
-            self.append(fallback_axis, slot.id, slot.weight);
+            if let Some(previous) = anchor
+                && insert_sibling(&mut self.root, previous, slot.id)
+            {
+                anchor = Some(slot.id);
+            } else {
+                self.append(fallback_axis, slot.id, slot.weight);
+            }
         }
+        true
     }
 
     pub(crate) fn slots(&self) -> Vec<SlotId> {
@@ -213,6 +230,26 @@ impl LayoutTree {
             }
         }
     }
+}
+
+/// Insert in the same container without changing its share of the parent.
+fn insert_sibling(node: &mut Node, anchor: SlotId, slot: SlotId) -> bool {
+    let Node::Split { children, .. } = node else {
+        return false;
+    };
+    if let Some(i) = children.iter().position(|c| c.node == Node::Leaf(anchor)) {
+        children.insert(
+            i + 1,
+            Child {
+                weight: average_weight(children),
+                node: Node::Leaf(slot),
+            },
+        );
+        return true;
+    }
+    children
+        .iter_mut()
+        .any(|child| insert_sibling(&mut child.node, anchor, slot))
 }
 
 fn validate_node(node: &Node, root: bool, leaves: &mut HashSet<SlotId>) -> Result<(), String> {

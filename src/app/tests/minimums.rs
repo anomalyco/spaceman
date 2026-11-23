@@ -83,17 +83,31 @@ fn the_last_tile_grows_toward_its_leading_neighbor() {
 }
 
 #[test]
-fn neighbors_whose_minimums_cannot_both_fit_keep_their_tiles() {
+fn wide_neighbors_stack_temporarily_then_return_to_the_requested_row() {
     let (left, right) = (window(10), window(11));
     let mut runtime = tiled(&[(left.clone(), 600), (right.clone(), 600)]);
     let output = outputs().main().frame;
     let cancelled = AtomicBool::new(false);
-    let before = tile_frames(&runtime);
+    let before = runtime.workspaces.state();
 
     runtime.layout_workspace(WorkspaceId::ONE, output, &cancelled);
     runtime.layout_workspace(WorkspaceId::ONE, output, &cancelled);
 
-    assert_eq!(tile_frames(&runtime), before);
+    let a = runtime.backend.frames[&left];
+    let b = runtime.backend.frames[&right];
+    assert_eq!(
+        (a.width, b.width, b.y),
+        (output.width, output.width, a.y + a.height)
+    );
+    assert_eq!(runtime.workspaces.state(), before);
+
+    let larger = crate::Rect {
+        width: 1400,
+        ..output
+    };
+    runtime.layout_workspace(WorkspaceId::ONE, larger, &cancelled);
+    assert_eq!(runtime.backend.frames[&left].width, 700);
+    assert_eq!(runtime.backend.frames[&right].x, larger.x + 700);
 }
 
 #[test]
@@ -162,7 +176,9 @@ fn a_sibling_minimum_revealed_by_refitting_is_fitted_too() {
         .iter()
         .map(|frame| frame.width)
         .collect::<Vec<_>>();
-    assert_eq!(widths, [500, 400, 100]);
+    // Recompute from the requested [350, 450, 200] split with both
+    // minimums known. The two donors contribute in proportion to their slack.
+    assert_eq!(widths, [500, 412, 88]);
     assert!(runtime.constrained[WorkspaceId::ONE.index()].is_empty());
 }
 
@@ -182,4 +198,29 @@ fn fullscreen_layout_ignores_minimum_widths() {
     );
 
     assert_eq!(tile_frames(&runtime), before);
+}
+
+#[test]
+fn three_chat_windows_fit_the_laptop_without_changing_the_saved_split() {
+    let ids = [window(10), window(11), window(12)];
+    let mut runtime = tiled(&[
+        (ids[0].clone(), 660),
+        (ids[1].clone(), 300),
+        (ids[2].clone(), 800),
+    ]);
+    let output = crate::Rect {
+        x: 0,
+        y: 32,
+        width: 1728,
+        height: 1085,
+    };
+    let before = runtime.workspaces.state();
+    runtime.layout_workspace(WorkspaceId::ONE, output, &AtomicBool::new(false));
+    let [a, b, c] = ids.each_ref().map(|w| runtime.backend.frames[w]);
+    assert_eq!((a.x, a.y, a.height), (0, 32, 1085));
+    assert_eq!((b.x, c.x), (a.width, a.width));
+    assert_eq!((b.y + b.height, c.y + c.height), (c.y, 1117));
+    assert_eq!((b.x + b.width, c.x + c.width), (1728, 1728));
+    assert!(a.width >= 660 && b.width >= 300 && c.width >= 800);
+    assert_eq!(before, runtime.workspaces.state());
 }

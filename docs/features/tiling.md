@@ -7,7 +7,7 @@ navigate, reorder, nest, resize, and balance them from the keyboard or the point
 
 ```ts
 Automatic tiling                                        // tile.auto
-├── New managed window -> inserted into the workspace's split tree, everything reflows
+├── New managed window -> joins the last focused tile’s split, or the root without a surviving focus
 ├── Window closes -> its slot retires, siblings reflow
 │   └── App keeps the closed window alive off screen -> slot retires after two seconds
 └── Ghostty native tab replaces its window -> same slot, order, weight, nesting
@@ -28,10 +28,10 @@ Reorder                                                 // tile.reorder
 
 Size                                                    // tile.size
 ├── Option+- / Option+= / ctl resize shrink|grow -> 50 px at the immediate split
-├── Pointer resize       -> split weights follow the new frame, preview during the gesture
+├── Pointer resize       -> split weights follow both edges of a corner drag, preview during the gesture
 ├── ctl balance          -> equalize the focused tile's immediate split (no default hotkey)
 └── Window refuses its tile size (app minimum) -> its tile grows to fit and siblings give up
-    the space, unless the split cannot hold every known minimum
+    the space; if necessary, try stacking an adjacent pair
 
 Axis                                                    // tile.axis
 └── Option+/ / ctl layout -> flip the root split axis (also exits Fullscreen Layout)
@@ -58,6 +58,8 @@ pause, quit, or hotkey loss.
   `reorder_moves_to_the_adjacent_display_at_a_tile_boundary`,
   `perpendicular_reorder_creates_a_mixed_split_for_three_windows`,
   `layout_toggle_repartitions_and_persists_the_focused_workspace`.
+- Engine and layout tree: `new_window_joins_the_focused_nested_split` and
+  `corner_drag_moves_both_nested_boundaries` cover insertion and diagonal resizing.
 - Unit (FakeBackend), `src/app/tests/gestures.rs`: drag swap preview, edge-nesting preview,
   cross-display drop; `startup.rs` covers gesture classification and `src/app/input.rs` covers
   queued final gestures.
@@ -65,8 +67,7 @@ pause, quit, or hotkey loss.
   `closed_window_its_app_keeps_ordered_out_gives_up_its_tile` (an app closes its window by ordering it out),
   `workspace_whose_windows_all_leave_the_screen_keeps_its_tiles` (another Space is showing).
 - Unit (FakeBackend), `src/app/tests/minimums.rs`: a window that refuses its tile width gets a wider
-  tile (middle, last, several at once, and observation-cycle cases); neighbors whose minimums cannot
-  both fit keep their tiles; Fullscreen Layout ignores minimums. `src/layout_tree.rs`:
+  tile (middle, last, several at once, and observation-cycle cases); a three-window row that cannot fit stacks two neighbors, and a wider display restores the requested row; Fullscreen Layout ignores minimums. `src/layout_tree.rs`:
   `fitting_minimums_reaches_into_nested_splits_and_leaves_impossible_splits_alone`.
 - Fixture replay: `cargo run -- replay fixtures/ghostty-tab-replacement.json` (reconciliation of a
   native-tab replacement, without the runtime).
@@ -80,7 +81,11 @@ pause, quit, or hotkey loss.
   from refusals visible right after the write, and kept until the window closes or Spaceman
   restarts. Apps that clamp
   later (Electron aspect ratios) are still recorded as constrained instead of fought every cycle.
-  When minimums cannot all fit, the window keeps overlapping its neighbor.
+  If the requested split cannot fit, Spaceman tries grouping one adjacent pair of root children
+  on the other axis. It checks both width and height and keeps window order. Automatic fits
+  are temporary; the requested layout returns when it fits again. If no pair solves the shortage,
+  windows may overlap. A sustained overlap involving a constrained tile appears in `spaceman doctor`
+  as `constrained_overlap`.
 - Some apps (many SwiftUI apps) close a window by ordering it out; the window server keeps
   listing it. Once its app has no window on screen, its tile is released after two seconds instead
   of staying as an empty gap. Minimizing an app's only window or hiding the app (Command-H) does the

@@ -132,3 +132,39 @@ fn journal_lines_never_contain_window_titles() {
         assert!(!json.contains("title"), "{json}");
     }
 }
+
+#[test]
+fn constrained_tile_only_reports_overlap_with_a_visible_tiled_neighbor() {
+    let first = window(10);
+    let second = window(11);
+    let mut runtime = runtime(FakeBackend::default());
+    for id in [&first, &second] {
+        bind(&mut runtime, WorkspaceId::ONE, id);
+    }
+    let left = crate::Rect {
+        width: 530,
+        height: 800,
+        ..crate::Rect::default()
+    };
+    runtime.backend.frames.insert(first.clone(), left);
+    let right = crate::Rect {
+        x: 500,
+        width: 500,
+        ..left
+    };
+    runtime.backend.frames.insert(second.clone(), right);
+    runtime.constrained[WorkspaceId::ONE.index()]
+        .insert(first.clone(), (crate::Rect { width: 500, ..left }, left));
+    assert!(
+        anomaly_kinds(&mut runtime).contains(&(AnomalyKind::ConstrainedOverlap, first.window_id))
+    );
+    runtime
+        .backend
+        .frames
+        .insert(first.clone(), crate::Rect { width: 490, ..left });
+    assert!(
+        !anomaly_kinds(&mut runtime)
+            .iter()
+            .any(|(kind, _)| *kind == AnomalyKind::ConstrainedOverlap)
+    );
+}

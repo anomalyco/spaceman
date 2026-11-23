@@ -144,6 +144,9 @@ Character shortcuts follow the active macOS keyboard layout. Workspace digits re
 ANSI number row, and Tab remains physical Tab. See [Controls](docs/controls.md) for drag, resize,
 balance, CLI, and socket behavior.
 
+New windows join the most recently focused tile’s split. When apps refuse to fit side by side,
+Spaceman can temporarily stack adjacent tiles and restore the requested split when space allows.
+
 Commands and completed gestures wait in arrival order when the worker is busy; repeated resize or
 focus commands are not collapsed into one. Workspace switches keep the outgoing windows visible if
 incoming parked windows cannot finish restoring. Parking targets are checked against every attached

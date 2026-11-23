@@ -19,10 +19,21 @@ pub struct StaleCycle {
 pub struct Engine {
     model: Model,
     layout: LayoutTree,
+    // Only the requested layout above is persisted. The fit is shared by
+    // placement, navigation and HUD previews until its inputs change.
+    fit: Option<DisplayFit>,
+    insertion_focus: Option<crate::SlotId>,
     evidence: ReconciliationEvidence,
     revision: u64,
     next_cycle: u64,
     pending: Option<CycleTicket>,
+}
+
+#[derive(Clone, Debug)]
+struct DisplayFit {
+    output: crate::Rect,
+    minimums: std::collections::HashMap<crate::SlotId, (i32, i32)>,
+    tree: Option<LayoutTree>,
 }
 
 impl Engine {
@@ -56,9 +67,17 @@ impl Engine {
         self.pending = None;
 
         let mut result = reconcile(&self.model, observation, &self.evidence, settings);
-        self.layout
-            .sync(result.model.workspace.axis, &result.model.workspace.slots);
-        result.placements = placements_for(&self.layout, &result.model, settings.output);
+        if self.layout.sync_near(
+            result.model.workspace.axis,
+            &result.model.workspace.slots,
+            self.insertion_focus,
+        ) {
+            self.fit = None;
+            self.insertion_focus = self
+                .insertion_focus
+                .filter(|&id| result.model.slot(id).is_some());
+        }
+        result.placements = placements_for(self.display_layout(), &result.model, settings.output);
         self.evidence.previous_placements = result
             .placements
             .iter()
@@ -89,7 +108,7 @@ impl Engine {
 
     #[must_use]
     pub fn placements(&self, settings: &Settings) -> Vec<Placement> {
-        placements_for(&self.layout, &self.model, settings.output)
+        placements_for(self.display_layout(), &self.model, settings.output)
     }
 
     pub(crate) fn record_placement_target(&mut self, slot: crate::SlotId, frame: crate::Rect) {
@@ -112,7 +131,7 @@ impl Engine {
         self.layout
             .sync(self.model.workspace.axis, &self.model.workspace.slots);
         self.evidence.previous_placements.remove(&slot.id);
-        self.invalidate();
+        self.invalidate_layout();
         Some(slot)
     }
 
@@ -133,7 +152,7 @@ impl Engine {
             .retain(|id, _| slots.iter().any(|slot| slot.id == *id));
         self.layout
             .sync(self.model.workspace.axis, &self.model.workspace.slots);
-        self.invalidate();
+        self.invalidate_layout();
         true
     }
 
@@ -151,7 +170,7 @@ impl Engine {
         self.model.workspace.slots.push(slot);
         self.layout
             .sync(self.model.workspace.axis, &self.model.workspace.slots);
-        self.invalidate();
+        self.invalidate_layout();
     }
 
     pub(crate) fn swap_windows(
@@ -165,10 +184,12 @@ impl Engine {
         else {
             return false;
         };
-        if !self.layout.swap(first, second) {
+        let mut layout = self.display_layout().clone();
+        if !layout.swap(first, second) {
             return false;
         }
-        self.invalidate();
+        self.layout = layout;
+        self.commit_layout();
         true
     }
 
@@ -181,23 +202,52 @@ impl Engine {
         self.edit_slot(window, |layout, slot| layout.resize(slot, current, output))
     }
 
+    pub(crate) fn remember_insertion_focus(&mut self, window: &PhysicalWindowId) {
+        self.insertion_focus = self.slot_for_window(window);
+    }
+
+    fn display_layout(&self) -> &LayoutTree {
+        self.fit
+            .as_ref()
+            .and_then(|fit| fit.tree.as_ref())
+            .unwrap_or(&self.layout)
+    }
+
+    /// Re-evaluate even without a new refusal: a removed sibling or a larger
+    /// display can make the original split usable again.
     pub(crate) fn fit_minimums(
         &mut self,
         output: crate::Rect,
         minimums: &std::collections::HashMap<PhysicalWindowId, (i32, i32)>,
     ) -> bool {
-        let slots = self
+        if minimums.is_empty() {
+            return self.fit.take().is_some_and(|fit| fit.tree.is_some());
+        }
+        let slots: std::collections::HashMap<_, _> = self
             .model
             .workspace
             .slots
             .iter()
             .filter_map(|slot| Some((slot.id, *minimums.get(slot.bound_window()?)?)))
             .collect();
-        if !self.layout.fit_minimums(output, &slots) {
+        if slots.is_empty() {
+            return self.fit.take().is_some_and(|fit| fit.tree.is_some());
+        }
+        if self
+            .fit
+            .as_ref()
+            .is_some_and(|fit| fit.output == output && fit.minimums == slots)
+        {
             return false;
         }
-        self.commit_layout();
-        true
+        let tree = self.layout.fitted(output, &slots);
+        let changed = self.fit.as_ref().and_then(|fit| fit.tree.as_ref()) != tree.as_ref();
+        self.fit = Some(DisplayFit {
+            output,
+            minimums: slots,
+            tree,
+        });
+        changed
     }
 
     pub(crate) fn resize_focused_tile(
@@ -248,17 +298,17 @@ impl Engine {
         &self.layout
     }
 
-    pub(crate) const fn root_axis(&self) -> crate::Axis {
-        self.layout.root_axis()
+    pub(crate) fn root_axis(&self) -> crate::Axis {
+        self.display_layout().root_axis()
     }
 
     /// Each tile's slot, window and frame in `output`, in layout order.
     pub(crate) fn preview_placements(&self, output: crate::Rect) -> Vec<Placement> {
-        placements_for(&self.layout, &self.model, output)
+        placements_for(self.display_layout(), &self.model, output)
     }
 
     pub(crate) fn preview(&self, output: crate::Rect) -> Vec<crate::Rect> {
-        self.layout
+        self.display_layout()
             .placements(output)
             .into_iter()
             .map(|(_, frame)| frame)
@@ -288,11 +338,21 @@ impl Engine {
         let Some(slot) = self.slot_for_window(window) else {
             return false;
         };
-        if !op(&mut self.layout, slot) {
+        let mut layout = self.display_layout().clone();
+        if !op(&mut layout, slot) {
             return false;
         }
+        self.layout = layout;
         self.commit_layout();
         true
+    }
+
+    fn invalidate_layout(&mut self) {
+        self.fit = None;
+        self.insertion_focus = self
+            .insertion_focus
+            .filter(|&id| self.model.slot(id).is_some());
+        self.invalidate();
     }
 
     fn commit_layout(&mut self) {
@@ -302,7 +362,7 @@ impl Engine {
                 slot.weight = weight;
             }
         }
-        self.invalidate();
+        self.invalidate_layout();
     }
 }
 
@@ -342,6 +402,39 @@ mod tests {
                 window_id: id as u32,
             }),
         }
+    }
+
+    #[test]
+    fn new_window_joins_the_focused_nested_split() {
+        let mut engine = Engine::default();
+        for i in 1..=3 {
+            engine.insert_slot(slot(i, 1));
+        }
+        let windows = engine.bound_windows();
+        assert!(engine.move_window_relative(&windows[0], &windows[1], crate::Direction::Up));
+        engine.remember_insertion_focus(&windows[0]);
+        let ticket = engine.begin_cycle();
+        engine
+            .accept(ticket, &observation(ticket.cycle, 4), &settings())
+            .unwrap();
+        let output = crate::Rect {
+            width: 1200,
+            height: 800,
+            ..crate::Rect::default()
+        };
+        let tiles = engine.layout.placements(output);
+        assert_eq!(
+            tiles.iter().map(|(s, _)| s.0).collect::<Vec<_>>(),
+            [1, 4, 2, 3]
+        );
+        assert_eq!(
+            tiles[3].1,
+            crate::Rect {
+                x: 600,
+                width: 600,
+                ..output
+            }
+        );
     }
 
     #[test]

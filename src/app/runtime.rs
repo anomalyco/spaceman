@@ -572,7 +572,9 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
         cancelled: &AtomicBool,
     ) -> (LayoutStatus, Vec<macos::ApplyResult>) {
         let settings = Settings::for_output(output);
-        let mut placements = self.workspaces.engine(workspace).placements(&settings);
+        let engine = self.workspaces.engine_mut(workspace);
+        engine.fit_minimums(output, &self.minimum_sizes);
+        let mut placements = engine.placements(&settings);
         self.apply_fullscreen_layout(workspace, &mut placements, output);
         let attempts = &mut self.apply_attempts[workspace.index()];
         for placement in &placements {

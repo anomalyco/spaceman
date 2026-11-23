@@ -156,6 +156,7 @@ arrangement. It reads files directly and works while the agent is stopped. The j
 | `stranded` | owned by a visible workspace and not parked, yet off every display |
 | `parked_visible` | recorded as parked, yet on a display |
 | `unadopted` | managed by configuration and on a display, but owned by no workspace |
+| `constrained_overlap` | a tile that resisted resizing overlaps another visible tile on its workspace |
 | `misplaced` | tiled on a visible workspace more than 16 pixels from its layout target |
 | `missing` | owned, but the window server no longer lists it |
 | `parking_exempt` | left visible across switches after repeatedly un-parking itself |

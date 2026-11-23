@@ -250,6 +250,8 @@ pub enum AnomalyKind {
     Unadopted,
     /// Tiled on a visible workspace but away from its layout target.
     Misplaced,
+    /// An app-constrained tile overlaps a sibling on its visible workspace.
+    ConstrainedOverlap,
     /// Owned, but the window server no longer lists it.
     Missing,
     /// Left visible across switches because it repeatedly rejects parking.
@@ -264,6 +266,7 @@ impl AnomalyKind {
             Self::Stranded => "stranded",
             Self::ParkedVisible => "parked_visible",
             Self::Unadopted => "unadopted",
+            Self::ConstrainedOverlap => "constrained_overlap",
             Self::Misplaced => "misplaced",
             Self::Missing => "missing",
             Self::ParkingExempt => "parking_exempt",
@@ -277,6 +280,7 @@ impl AnomalyKind {
             Self::Stranded => "off screen although its workspace is visible",
             Self::ParkedVisible => "marked hidden but on screen",
             Self::Unadopted => "on screen but owned by no workspace",
+            Self::ConstrainedOverlap => "constrained_overlap",
             Self::Misplaced => "not where its layout puts it",
             Self::Missing => "owned but gone from the window server",
             Self::ParkingExempt => "stopped hiding after repeatedly un-parking itself",
