@@ -1,7 +1,7 @@
 # Releasing
 
-Pane is not release-ready merely because `scripts/build-app.sh` produces a signed bundle. The
-script builds locked release binaries, embeds Sparkle 2.9.4, assembles `Pane.app`, applies
+Spaceman is not release-ready merely because `scripts/build-app.sh` produces a signed bundle. The
+script builds locked release binaries, embeds Sparkle 2.9.4, assembles `Spaceman.app`, applies
 hardened-runtime Developer ID signing from the innermost Sparkle helpers outward, and verifies the
 signature. It does not notarize, staple, or publish an artifact.
 
@@ -31,11 +31,11 @@ skill, and website. Commit and push a clean release revision, then prepare the e
 ```
 
 The script auto-detects the first `Developer ID Application` identity and uses the
-`spaceman-notary` Keychain profile. Override those choices with `PANE_CODESIGN_IDENTITY` and
-`PANE_NOTARY_KEYCHAIN_PROFILE` (legacy `SPACEMAN_*` names are also accepted). Preparation requires
-release notes at `changelog/<version>.md` (frontmatter `date` and `summary`, then `## Major`,
-`## Improvements` and `## Fixes`); set `PANE_RELEASE_NOTES` to use another file.
-`PANE_RELEASE_ARCH` defaults to the host architecture, must be `arm64` or `x86_64`, and cannot
+`spaceman-notary` Keychain profile. Override those choices with `SPACEMAN_CODESIGN_IDENTITY` and
+`SPACEMAN_NOTARY_KEYCHAIN_PROFILE`. Preparation requires release notes at
+`changelog/<version>.md` (frontmatter `date` and `summary`, then `## Major`, `## Improvements` and
+`## Fixes`); set `SPACEMAN_RELEASE_NOTES` to use another file.
+`SPACEMAN_RELEASE_ARCH` defaults to the host architecture, must be `arm64` or `x86_64`, and cannot
 request a cross-architecture build. Preparation builds, signs, notarizes, staples, validates,
 archives, checksums, and signs a local Sparkle appcast. Artifacts are written to `dist/` but are not
 uploaded.
@@ -71,12 +71,12 @@ after publishing.
 ## Source Build
 
 ```sh
-PANE_CODESIGN_IDENTITY="Developer ID Application: Example (TEAMID)" \
+SPACEMAN_CODESIGN_IDENTITY="Developer ID Application: Example (TEAMID)" \
   ./scripts/build-app.sh
-codesign --verify --deep --strict target/Pane.app
+codesign --verify --deep --strict target/Spaceman.app
 ```
 
-Do not publish `target/Pane.app` as a release based only on those commands.
+Do not publish `target/Spaceman.app` as a release based only on those commands.
 
 ## Remaining Qualification Gaps
 

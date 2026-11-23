@@ -35,10 +35,9 @@ The Workspace HUD shows each workspace's app icons. The runtime sends the agent 
 identifier and its layout rectangle, never a title, and the agent reads the icons from the installed
 apps on the Mac. Nothing about the HUD is written to disk or logged.
 
-User-authored configuration lives at `~/.config/pane/config.toml` (copied on first launch from
-`~/.config/spaceman/config.toml` or `~/Library/Application Support/Spaceman/config.toml` if
-present). Local runtime state lives under `~/Library/Application Support/Pane/` (with durable
-state files copied from `~/Library/Application Support/Spaceman/` on first launch):
+Local files live under `~/Library/Application Support/Spaceman/`:
+
+- `config.toml`: user-authored configuration;
 - `workspace-state.json`: active workspace selectors, previous-workspace history, logical slots,
   last-focused tile intent, Fullscreen Layout state, floating-window ownership, and layout trees;
 - `parked-windows.json`: physical process/window identifiers and original frames needed for recovery;

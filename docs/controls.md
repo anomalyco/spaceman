@@ -83,7 +83,7 @@ The menu-bar control shows active workspace/layout glyphs and runtime errors. It
 - `Launch at Login`, shown checked when macOS has enabled the signed app bundle;
 - `Settings...` (`⌘,`), opening the Rune Settings window (`General`, `Rules`, `Workspaces`, `Shortcuts`, and `Activity`, plus `⇧⌘D` Playground);
 - `Check for Updates...`;
-- `Quit Pane` (`⌘Q`).
+- `Quit Spaceman` (`⌘Q`).
 
 If macOS reports that the login item requires approval, the menu label says
 `Launch at Login (Approval Required...)`; choosing it opens Login Items settings. Registration does
@@ -96,7 +96,7 @@ parked windows are restored and their recovery metadata is durably removed.
 
 ## CLI
 
-The installed CLI is `~/.local/bin/pane` (also linked as `~/.local/bin/spaceman`). Add `~/.local/bin` to `PATH`, or invoke that absolute
+The installed CLI is `~/.local/bin/spaceman`. Add `~/.local/bin` to `PATH`, or invoke that absolute
 path. Commands that alter layouts require automatic tiling to be enabled.
 
 ```sh
@@ -154,6 +154,6 @@ arrangement. It reads files directly and works while the agent is stopped. The j
 | `missing` | owned, but the window server no longer lists it |
 | `parking_exempt` | left visible across switches after repeatedly un-parking itself |
 
-The agent listens at `~/Library/Application Support/Pane/control.sock`; both socket and lock file
+The agent listens at `~/Library/Application Support/Spaceman/control.sock`; both socket and lock file
 are mode `0600`. Requests are newline-delimited, limited to 4 KiB, and served locally over a Unix
 socket. The lock prevents two agents from running at once.

@@ -129,7 +129,7 @@ impl ManagementScope {
             "secondary" => Ok(Self::Secondary),
             "both" => Ok(Self::Both),
             _ => Err(format!(
-                "PANE_MANAGED_DISPLAY must be main, secondary, or both; got {value:?}"
+                "SPACEMAN_MANAGED_DISPLAY must be main, secondary, or both; got {value:?}"
             )),
         }
     }
@@ -289,20 +289,12 @@ pub struct PreparedAgent {
 }
 
 pub fn prepare() -> Result<(PreparedAgent, UiBridge), String> {
-    let migration = crate::config::migrate_legacy_data()?;
     macos::redirect_stderr_to_log();
     log_event!(
         "agent started (pid {}, version {})",
         std::process::id(),
         env!("CARGO_PKG_VERSION")
     );
-    if migration.migrated_anything() {
-        log_event!(
-            "migrated legacy Spaceman data ({} state files, config migrated: {})",
-            migration.copied_state_files.len(),
-            migration.copied_config_from.is_some()
-        );
-    }
     let scope = ManagementScope::from_environment()?;
     let parked = load_parked()?;
     let (config, workspace_state) =
@@ -377,9 +369,9 @@ impl PreparedAgent {
             ));
         }
         if let Err(error) = status_item::install(self.actions_sender.clone()) {
-            log_event!("failed to install Pane status item: {error}");
+            log_event!("failed to install Spaceman status item: {error}");
             termination::allow_next();
-            return Err(format!("failed to install Pane status item: {error}"));
+            return Err(format!("failed to install Spaceman status item: {error}"));
         }
         status_item::set_hud(self.hud);
         if let Err(error) = sparkle::start(self.actions_sender.clone()) {

@@ -2,11 +2,11 @@
 set -eu
 
 root=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
-bundle="$root/target/Pane.app"
+bundle="$root/target/Spaceman.app"
 icon_output="$root/target/AppIcon.assets"
 icon_info="$root/target/AppIcon-info.plist"
 sparkle_dir=$("$root/scripts/setup-sparkle.sh")
-identity=${PANE_CODESIGN_IDENTITY:-${SPACEMAN_CODESIGN_IDENTITY:-}}
+identity=${SPACEMAN_CODESIGN_IDENTITY:-}
 deployment_target=$(/usr/bin/plutil -extract LSMinimumSystemVersion raw "$root/app/Info.plist")
 sdk_version=$(/usr/bin/xcrun --sdk macosx --show-sdk-version)
 cargo_bin=${CARGO:-}
@@ -28,13 +28,13 @@ if [ -z "$identity" ]; then
     | head -1)
 fi
 if [ -z "$identity" ]; then
-  echo "No Developer ID Application identity found; set PANE_CODESIGN_IDENTITY." >&2
+  echo "No Developer ID Application identity found; set SPACEMAN_CODESIGN_IDENTITY." >&2
   exit 1
 fi
 case "$identity" in
   "Developer ID Application:"*) ;;
   *)
-    echo "PANE_CODESIGN_IDENTITY must be a Developer ID Application identity, not '$identity'." >&2
+    echo "SPACEMAN_CODESIGN_IDENTITY must be a Developer ID Application identity, not '$identity'." >&2
     exit 1
     ;;
 esac
@@ -86,7 +86,7 @@ codesign --force --timestamp --options runtime --sign "$identity" \
 codesign --force --timestamp --options runtime --sign "$identity" \
   "$bundle/Contents/MacOS/spaceman"
 codesign --force --timestamp --options runtime --sign "$identity" \
-  --identifier anomaly.pane \
+  --identifier com.kitlangton.spaceman \
   "$bundle"
 codesign --verify --deep --strict "$bundle"
 

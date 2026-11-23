@@ -4,7 +4,7 @@ version = "0.3.0"
 edition = "2024"
 rust-version = "1.100"
 license = "MIT"
-description = "Pane's macOS menu-bar and Rune host"
+description = "Spaceman's macOS menu-bar and Rune host"
 publish = false
 
 [dependencies]

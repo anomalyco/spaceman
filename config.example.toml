@@ -1,4 +1,4 @@
-# Pane configuration schema version. Only version 1 is accepted.
+# Spaceman configuration schema version. Only version 1 is accepted.
 version = 1
 
 # Optional UI preferences. The non-activating Workspace HUD capsule is on by default.
@@ -38,7 +38,7 @@ action = "route"
 workspace = "D"
 
 # Workspace assignments are optional. monitor accepts "main", "secondary", a
-# display UUID, or an exact display name from `pane displays`.
+# display UUID, or an exact display name from `spaceman displays`.
 [[workspaces]]
 workspace = 9
 monitor = "main"

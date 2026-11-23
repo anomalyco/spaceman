@@ -3,22 +3,22 @@ set -eu
 
 root=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
 mode=${1:-prepare}
-notary_profile=${PANE_NOTARY_KEYCHAIN_PROFILE:-${SPACEMAN_NOTARY_KEYCHAIN_PROFILE:-spaceman-notary}}
+notary_profile=${SPACEMAN_NOTARY_KEYCHAIN_PROFILE:-spaceman-notary}
 bucket=spaceman-releases
 feed_url=$(/usr/bin/plutil -extract SUFeedURL raw "$root/app/Info.plist")
 base_url=${feed_url%/appcast.xml}
 version=$(/usr/bin/plutil -extract CFBundleShortVersionString raw "$root/app/Info.plist")
 build_number=$(/usr/bin/plutil -extract CFBundleVersion raw "$root/app/Info.plist")
-release_notes=${PANE_RELEASE_NOTES:-${SPACEMAN_RELEASE_NOTES:-$root/changelog/$version.md}}
+release_notes=${SPACEMAN_RELEASE_NOTES:-$root/changelog/$version.md}
 expected_sparkle_key=$(/usr/bin/plutil -extract SUPublicEDKey raw "$root/app/Info.plist")
 host_arch=$(uname -m)
-arch=${PANE_RELEASE_ARCH:-${SPACEMAN_RELEASE_ARCH:-$host_arch}}
+arch=${SPACEMAN_RELEASE_ARCH:-$host_arch}
 dist="$root/dist"
 updates="$dist/updates"
-artifact="Pane-v$version-macos-$arch.zip"
-latest_artifact="Pane-latest-macos-$arch.zip"
+artifact="Spaceman-v$version-macos-$arch.zip"
+latest_artifact="Spaceman-latest-macos-$arch.zip"
 checksum="$artifact.sha256"
-submission="$dist/.Pane-v$version-macos-$arch-notarization.zip"
+submission="$dist/.Spaceman-v$version-macos-$arch-notarization.zip"
 
 verify_prepared_appcast() {
   grep -Fq "$base_url/releases/$artifact" "$updates/appcast.xml" || {
@@ -42,7 +42,7 @@ fi
 case "$arch" in
   arm64|x86_64) ;;
   *)
-    echo "PANE_RELEASE_ARCH must be arm64 or x86_64, not '$arch'." >&2
+    echo "SPACEMAN_RELEASE_ARCH must be arm64 or x86_64, not '$arch'." >&2
     exit 1
     ;;
 esac
@@ -83,8 +83,8 @@ case "$feed_status" in
     fi
     ;;
   404)
-    [ "${PANE_FIRST_RELEASE:-${SPACEMAN_FIRST_RELEASE:-}}" = 1 ] || {
-      echo "No appcast exists. Set PANE_FIRST_RELEASE=1 only for the initial release." >&2
+    [ "${SPACEMAN_FIRST_RELEASE:-}" = 1 ] || {
+      echo "No appcast exists. Set SPACEMAN_FIRST_RELEASE=1 only for the initial release." >&2
       exit 1
     }
     rm -f "$published_appcast"
@@ -123,7 +123,7 @@ if [ "$mode" = publish ]; then
 fi
 
 [ -f "$release_notes" ] || {
-  echo "Add release notes at $release_notes or set PANE_RELEASE_NOTES." >&2
+  echo "Add release notes at $release_notes or set SPACEMAN_RELEASE_NOTES." >&2
   exit 1
 }
 xcrun notarytool history --keychain-profile "$notary_profile" >/dev/null || {
@@ -154,14 +154,14 @@ notary_status=$(printf '%s' "$notary_result" | /usr/bin/plutil -extract status r
 xcrun stapler staple "$bundle"
 
 (cd "$(dirname "$bundle")" && /usr/bin/zip -qry --symlinks "$dist/$artifact" "$(basename "$bundle")")
-PANE_RELEASE_ARCH="$arch" "$root/scripts/validate-release.sh" "$bundle" "$dist/$artifact"
+SPACEMAN_RELEASE_ARCH="$arch" "$root/scripts/validate-release.sh" "$bundle" "$dist/$artifact"
 (cd "$dist" && /usr/bin/shasum -a 256 "$artifact" >"$checksum")
 (cd "$dist" && /usr/bin/shasum -a 256 -c "$checksum")
 
 cp "$dist/$artifact" "$updates/$artifact"
 # The update prompt shows the changelog entry without its frontmatter or icon and link lines.
 {
-  printf '# Pane %s\n\n' "$version"
+  printf '# Spaceman %s\n\n' "$version"
   awk 'NR == 1 && $0 == "---" { front = 1; next } front && $0 == "---" { front = 0; next } !front' \
     "$release_notes" | grep -v -E '^(Icon|Media|Links):'
 } >"$updates/${artifact%.zip}.md"

@@ -5,11 +5,11 @@
     <key>CFBundleDevelopmentRegion</key>
     <string>en</string>
     <key>CFBundleDisplayName</key>
-    <string>Pane</string>
+    <string>Spaceman</string>
     <key>CFBundleExecutable</key>
     <string>spaceman-agent</string>
     <key>CFBundleIdentifier</key>
-    <string>anomaly.pane</string>
+    <string>com.kitlangton.spaceman</string>
     <key>CFBundleIconFile</key>
     <string>AppIcon</string>
     <key>CFBundleIconName</key>
@@ -17,7 +17,7 @@
     <key>CFBundleInfoDictionaryVersion</key>
     <string>6.0</string>
     <key>CFBundleName</key>
-    <string>Pane</string>
+    <string>Spaceman</string>
     <key>CFBundlePackageType</key>
     <string>APPL</string>
     <key>CFBundleShortVersionString</key>
@@ -29,7 +29,7 @@
     <key>LSUIElement</key>
     <true/>
     <key>NSAccessibilityUsageDescription</key>
-    <string>Pane uses Accessibility access to observe and tile application windows.</string>
+    <string>Spaceman uses Accessibility access to observe and tile application windows.</string>
     <key>SUEnableAutomaticChecks</key>
     <true/>
     <key>SUAutomaticallyUpdate</key>

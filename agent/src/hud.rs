@@ -55,7 +55,12 @@ const OVERLAY_SIZE: (f32, f32) = (860.0, pill::PILL_HEIGHT + 2.0 * pill::SHADOW_
 /// Keeps the capsule 60 pt above the bottom of the display.
 const OVERLAY_MARGIN: f32 = 60.0 - pill::SHADOW_REACH;
 /// One panel per display, up to this many displays.
-const PANEL_NAMES: [&str; 4] = ["Pane HUD", "Pane HUD 2", "Pane HUD 3", "Pane HUD 4"];
+const PANEL_NAMES: [&str; 4] = [
+    "Spaceman HUD",
+    "Spaceman HUD 2",
+    "Spaceman HUD 3",
+    "Spaceman HUD 4",
+];
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum HudTransition {

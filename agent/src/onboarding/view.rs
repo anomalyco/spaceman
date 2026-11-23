@@ -69,7 +69,7 @@ pub fn overlay(ui: &Ui, p: Paint) -> Option<El> {
         col()
             .key("tour")
             .role("dialog")
-            .label("Pane setup")
+            .label("Spaceman setup")
             .absolute(0.0, 0.0)
             .w_full()
             .h_full()
@@ -112,7 +112,7 @@ fn footer(p: Paint, view: &View) -> El {
         Step::Welcome => ("Get started", true, true),
         Step::Setup => ("Continue", view.ready, true),
         Step::Rules => ("Continue", true, true),
-        Step::Done => ("Start using Pane", true, false),
+        Step::Done => ("Start using Spaceman", true, false),
     };
     let mut btn = Button::new(label)
         .variant(ButtonVariant::Contrast)
@@ -210,7 +210,7 @@ fn welcome(p: Paint, conflicts: &[String]) -> El {
         .child(welcome_hero(p))
         .child(title_block(
             p,
-            "Welcome to Pane",
+            "Welcome to Spaceman",
             Some(
                 "Fast macOS workspaces and automatic tiling, with every window restored if you pause or quit.",
             ),
@@ -221,7 +221,7 @@ fn welcome(p: Paint, conflicts: &[String]) -> El {
     column
 }
 
-/// Pane's split-tile mark inside a concentric halo ring.
+/// Spaceman's split-tile mark inside a concentric halo ring.
 fn welcome_hero(p: Paint) -> El {
     let c = &p.k.c;
     let badge_ink = rune::oklch(0.21, 0.012, 265.0);
@@ -328,7 +328,7 @@ fn setup(ui: &Ui, p: Paint, view: &View) -> El {
         )
     } else if waiting {
         (
-            "Drag Pane into the list, or switch it on in System Settings.".to_owned(),
+            "Drag Spaceman into the list, or switch it on in System Settings.".to_owned(),
             p.warning(),
         )
     } else {
@@ -355,7 +355,7 @@ fn setup(ui: &Ui, p: Paint, view: &View) -> El {
 
     let login_desc = match ui.agent.as_ref().map(|agent| &agent.launch_at_login) {
         Some(UiLaunchAtLogin::NeedsApproval) => (
-            "Approve Pane in System Settings › General › Login Items.".to_owned(),
+            "Approve Spaceman in System Settings › General › Login Items.".to_owned(),
             p.warning(),
         ),
         Some(UiLaunchAtLogin::Failed(error)) => (error.clone(), p.danger()),
@@ -377,7 +377,7 @@ fn setup(ui: &Ui, p: Paint, view: &View) -> El {
     col()
         .key("setup")
         .gap(24.0)
-        .child(title_block(p, "Give Pane window access", None))
+        .child(title_block(p, "Give Spaceman window access", None))
         .child(controls::card(p, "setup-card", vec![access_row, login_row]))
 }
 
@@ -498,7 +498,7 @@ fn done(p: Paint) -> El {
         .child(title_block(
             p,
             "You're all set",
-            Some("Pane stays in the menu bar, ready for your shortcuts."),
+            Some("Spaceman stays in the menu bar, ready for your shortcuts."),
         ))
         .child(controls::card(p, "done-shortcuts", rows))
 }

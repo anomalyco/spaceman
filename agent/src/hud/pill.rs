@@ -5,17 +5,17 @@
 //!
 //! | What changes                     | What moves                                            | Spring (duration / bounce) |
 //! | -------------------------------- | ----------------------------------------------------- | -------------------------- |
-//! | The HUD appears                  | fades in, scales from .96 and rises 6 pt              | .2 / 0                     |
-//! | The HUD leaves                   | the same path back                                    | .15 / 0                    |
-//! | Another workspace                | the marker's leading edge, then its trailing edge     | .26 / 0, .42 / 0           |
-//! |                                  | Layouts: the cells grow and shrink, neighbours slide  | .35 / 0                    |
-//! |                                  | Icons: the groups brighten and dim                    | .3 / 0                     |
+//! | The HUD appears                  | fades in, scales from .96 and rises 6 pt              | .20 / 0                    |
+//! | The HUD leaves                   | the same path back                                    | .14 / 0                    |
+//! | Another workspace                | the marker's leading edge, then its trailing edge     | .18 / 0, .27 / 0           |
+//! |                                  | Layouts: the cells grow and shrink, neighbours slide  | .25 / 0                    |
+//! |                                  | Icons: the groups brighten and dim                    | .20 / 0                    |
 //! | Shown again after hiding         | the marker starts on the workspace you left and       | as above                   |
 //! |                                  | travels while the capsule fades in                    |                            |
 //! | A workspace joins or leaves      | it fades and scales in or out in place                | settle                     |
-//! | A layout changes                 | each tile springs to its new frame                    | .35 / 0                    |
+//! | A layout changes                 | each tile springs to its new frame                    | .25 / 0                    |
 //! | A window moves                   | its icon leaves one workspace for the other           | settle                     |
-//! | More workspaces than fit         | the row scrolls to keep yours in view, edges fade     | .35 / 0                    |
+//! | More workspaces than fit         | the row scrolls to keep yours in view, edges fade     | .25 / 0                    |
 //!
 //! Under Reduce Motion nothing travels or scales; the row cross-fades instead.
 
@@ -39,18 +39,18 @@ pub const SHADOW_REACH: f32 = 48.0;
 /// Room each side of the capsule for its shadow's widest blur.
 pub const SHADOW_SIDE: f32 = 32.0;
 
-/// The capsule answering a shortcut: quick in, a quarter faster out.
+/// The capsule answering a shortcut: snappy in, faster out.
 const ENTER: Spring = Spring::new(0.2, 0.0);
-const EXIT: Spring = Spring::new(0.15, 0.0);
+const EXIT: Spring = Spring::new(0.14, 0.0);
 const REST_SCALE: f32 = 0.96;
 const DROP: f32 = 6.0;
 /// The marker's leading edge, quicker so it stretches toward where it is going, and its
 /// trailing edge catching up; with nowhere to go, one spring for both.
-const MARKER_LEAD: Spring = Spring::new(0.26, 0.0);
-const MARKER_TRAIL: Spring = Spring::new(0.42, 0.0);
-const MARKER: Spring = Spring::new(0.3, 0.0);
+const MARKER_LEAD: Spring = Spring::new(0.18, 0.0);
+const MARKER_TRAIL: Spring = Spring::new(0.27, 0.0);
+const MARKER: Spring = Spring::new(0.2, 0.0);
 /// The row's own layout: scrolling, and the capsule's width.
-pub const ROW: Spring = Spring::new(0.35, 0.0);
+pub const ROW: Spring = Spring::new(0.25, 0.0);
 /// The fade at an edge the row is cut at, and at an edge it fits inside.
 const CLIPPED_FADE: f32 = 24.0;
 const EDGE_FADE: f32 = 6.0;

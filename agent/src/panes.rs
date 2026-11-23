@@ -145,7 +145,7 @@ fn general(ui: &Ui, p: Paint) -> El {
                 p,
                 "accessibility",
                 "Accessibility",
-                Some(("Granted. Pane can move windows.".into(), p.muted())),
+                Some(("Granted. Spaceman can move windows.".into(), p.muted())),
                 controls::status_dot(c.success.fg),
             )
         } else {
@@ -154,7 +154,7 @@ fn general(ui: &Ui, p: Paint) -> El {
                 "accessibility",
                 "Accessibility",
                 Some((
-                    "Pane needs it to move and resize windows.".into(),
+                    "Spaceman needs it to move and resize windows.".into(),
                     c.warning.fg,
                 )),
                 controls::button(
@@ -262,7 +262,7 @@ fn general(ui: &Ui, p: Paint) -> El {
         sections.push(controls::section(
             p,
             "agent",
-            "Pane",
+            "Spaceman",
             vec![access, tiling, hud, hud_style, login, setup_tour],
         ));
     }
