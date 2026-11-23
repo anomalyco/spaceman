@@ -28,6 +28,16 @@ function Header() {
       <nav aria-label="Site" className="flex items-center gap-6 text-[13px] text-[#dfe1e5] [text-shadow:0_1px_8px_rgb(0_0_0/0.6)]">
         <a href="#features" className="hidden transition-colors hover:text-white sm:inline">Features</a>
         <a href="#shortcuts" className="hidden transition-colors hover:text-white sm:inline">Shortcuts</a>
+        <a
+          href="https://github.com/anomalyco/spaceman"
+          aria-label="Spaceman on GitHub"
+          className="inline-flex items-center gap-1.5 transition-colors hover:text-white"
+        >
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+            <path d="M12 .5a12 12 0 0 0-3.79 23.39c.6.11.82-.26.82-.58v-2.03c-3.34.73-4.04-1.61-4.04-1.61a3.18 3.18 0 0 0-1.33-1.76c-1.09-.74.08-.73.08-.73a2.52 2.52 0 0 1 1.84 1.24 2.56 2.56 0 0 0 3.5 1 2.56 2.56 0 0 1 .76-1.6c-2.67-.3-5.47-1.33-5.47-5.93a4.64 4.64 0 0 1 1.24-3.22 4.3 4.3 0 0 1 .12-3.18s1.01-.32 3.3 1.23a11.38 11.38 0 0 1 6 0c2.29-1.55 3.3-1.23 3.3-1.23a4.3 4.3 0 0 1 .12 3.18 4.64 4.64 0 0 1 1.24 3.22c0 4.61-2.81 5.63-5.48 5.92a2.86 2.86 0 0 1 .82 2.22v3.29c0 .32.21.7.82.58A12 12 0 0 0 12 .5Z" />
+          </svg>
+          <span className="hidden sm:inline">GitHub</span>
+        </a>
         <HeaderDownload />
       </nav>
     </header>
@@ -154,6 +164,7 @@ function Footer() {
           </span>
         </p>
         <nav aria-label="Documentation" className="flex flex-wrap gap-x-6 gap-y-2">
+          <a href="https://github.com/anomalyco/spaceman" className="transition-colors hover:text-[#f3f4f6]">GitHub</a>
           <a href="llms-full.txt" className="transition-colors hover:text-[#f3f4f6]">Documentation</a>
           <a href="skill.md" className="transition-colors hover:text-[#f3f4f6]">Setup skill for agents</a>
           <a href="llms.txt" className="transition-colors hover:text-[#f3f4f6]">llms.txt</a>
