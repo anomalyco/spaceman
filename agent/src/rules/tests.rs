@@ -138,3 +138,23 @@ fn hud_setting_round_trips_and_cleans_up_default_table() {
     assert!(spaceman::config::Config::parse(&enabled).unwrap().hud());
     assert!(!enabled.contains("[settings]"));
 }
+
+#[test]
+fn hud_style_round_trips_and_leaves_the_default_out() {
+    use spaceman::config::{Config, HudStyle};
+    let mut doc = Doc::parse(SOURCE);
+    assert_eq!(doc.hud_style(), HudStyle::Layouts);
+    doc.set_hud_style(HudStyle::Icons);
+    assert_eq!(doc.hud_style(), HudStyle::Icons);
+    let icons = doc.source();
+    assert_eq!(Config::parse(&icons).unwrap().hud_style(), HudStyle::Icons);
+    assert!(icons.contains("hud_style = \"icons\""));
+
+    doc.set_hud(false);
+    doc.set_hud_style(HudStyle::Layouts);
+    let layouts = doc.source();
+    assert!(!layouts.contains("hud_style"));
+    assert!(!Config::parse(&layouts).unwrap().hud());
+    doc.set_hud(true);
+    assert!(!doc.source().contains("[settings]"));
+}

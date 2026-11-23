@@ -1,99 +1,118 @@
-//! The HUD capsule and how it moves. Everything springs from where it is drawn, so a second
-//! switch mid-flight turns the motion around instead of restarting it.
+//! The HUD capsule and how it moves: one row of workspaces with a marker on the one you are on.
+//! Everything springs from where it is drawn, so a second switch mid-flight turns the motion
+//! around instead of restarting it. The two styles differ only in their cells
+//! (`grow.rs`, `icons.rs`); the capsule, marker, overflow and pose are shared here.
 //!
-//! | What changes                   | What moves                                              | Spring (duration / bounce) |
-//! | ------------------------------ | ------------------------------------------------------- | -------------------------- |
-//! | The HUD appears                | fades in, scales from .96 and rises 6 pt                | .2 / 0                     |
-//! | The HUD leaves                 | the same path back                                      | .15 / 0                    |
-//! | Another workspace              | changed characters roll, up going forward and down back | .45 / 0, width .35 / 0     |
-//! |                                | old tiles slide out 10 pt and new ones in, the way of   | settle: .3 / 0, .24 / 0    |
-//! |                                | travel                                                  |                            |
-//! | Another kind of message        | the phrase blurs out as the new one blurs in, in place  | settle                     |
-//! | The same workspace's layout    | each tile springs to its new frame                      | settle                     |
+//! | What changes                     | What moves                                            | Spring (duration / bounce) |
+//! | -------------------------------- | ----------------------------------------------------- | -------------------------- |
+//! | The HUD appears                  | fades in, scales from .96 and rises 6 pt              | .2 / 0                     |
+//! | The HUD leaves                   | the same path back                                    | .15 / 0                    |
+//! | Another workspace                | the marker's leading edge, then its trailing edge     | .26 / 0, .42 / 0           |
+//! |                                  | Layouts: the cells grow and shrink, neighbours slide  | .35 / 0                    |
+//! |                                  | Icons: the groups brighten and dim                    | .3 / 0                     |
+//! | Shown again after hiding         | the marker starts on the workspace you left and       | as above                   |
+//! |                                  | travels while the capsule fades in                    |                            |
+//! | A workspace joins or leaves      | it fades and scales in or out in place                | settle                     |
+//! | A layout changes                 | each tile springs to its new frame                    | .35 / 0                    |
+//! | A window moves                   | its icon leaves one workspace for the other           | settle                     |
+//! | More workspaces than fit         | the row scrolls to keep yours in view, edges fade     | .35 / 0                    |
 //!
-//! Under Reduce Motion nothing travels or scales; the same changes take a short fade.
+//! Under Reduce Motion nothing travels or scales; the row cross-fades instead.
 
-use rune::{
-    Color, Edge, El, Spring, TextStyle, Transition, el, row, text, tok::motion::pair::SETTLE,
-};
-use rune_kit::RollingText;
+use std::collections::HashMap;
+
+use rune::{Color, El, Pixels, Spring, Transition, el, row, text, tok::motion::pair::SETTLE};
 use spaceman::{
-    Axis, Rect,
-    app::{HUD_PREVIEW_RECT, UiHudEvent, UiHudKind, UiHudLayout},
+    WorkspaceId,
+    app::{UiHudDisplay, UiHudWorkspace},
+    config::HudStyle,
 };
 
-use super::Travel;
+use super::{grow, icons};
 use crate::controls::Paint;
 
 pub const PILL_HEIGHT: f32 = 44.0;
+/// The capsule inside its border, where the row is laid out.
+pub const INNER: f32 = PILL_HEIGHT - 2.0;
 /// How far the capsule's shadow reaches below it: the lowest layer's offset plus its blur.
 pub const SHADOW_REACH: f32 = 48.0;
+/// Room each side of the capsule for its shadow's widest blur.
+pub const SHADOW_SIDE: f32 = 32.0;
 
 /// The capsule answering a shortcut: quick in, a quarter faster out.
 const ENTER: Spring = Spring::new(0.2, 0.0);
 const EXIT: Spring = Spring::new(0.15, 0.0);
 const REST_SCALE: f32 = 0.96;
 const DROP: f32 = 6.0;
-/// Labels roll to the next word; the capsule's width leads at 0.78 of this.
-const ROLL: Spring = Spring::new(0.45, 0.0);
-/// How far a workspace's tiles slide in the mini layout.
-const SLIDE: f32 = 10.0;
+/// The marker's leading edge, quicker so it stretches toward where it is going, and its
+/// trailing edge catching up; with nowhere to go, one spring for both.
+const MARKER_LEAD: Spring = Spring::new(0.26, 0.0);
+const MARKER_TRAIL: Spring = Spring::new(0.42, 0.0);
+const MARKER: Spring = Spring::new(0.3, 0.0);
+/// The row's own layout: scrolling, and the capsule's width.
+pub const ROW: Spring = Spring::new(0.35, 0.0);
+/// The fade at an edge the row is cut at, and at an edge it fits inside.
+const CLIPPED_FADE: f32 = 24.0;
+const EDGE_FADE: f32 = 6.0;
+
+/// App icons by bundle ID, looked up before the view runs.
+pub type Icons = HashMap<String, Pixels>;
 
 /// One build of the capsule: what it shows and how it got here.
 #[derive(Clone, Copy, Debug)]
 pub struct HudView<'a> {
-    pub event: &'a UiHudEvent,
+    pub row: &'a UiHudDisplay,
     /// Up, or on its way out.
     pub shown: bool,
-    /// It was hidden when this event arrived, so its content lands at rest inside the entrance.
+    /// Just shown: everything lands where it is drawn, with the marker on `focus`.
     pub fresh: bool,
-    pub travel: Travel,
+    /// Where the marker sits: the visible workspace, or while fresh the one a switch left.
+    pub focus: Option<WorkspaceId>,
     /// Reduce Motion: it fades where it rests, with no scale or drop to land in one frame.
     pub still: bool,
-    /// Names its rolling labels, which remember their last text per key: the overlay and the
-    /// Playground stage each keep their own.
-    pub scope: &'static str,
 }
 
-#[must_use]
-pub fn labels(event: &UiHudEvent) -> (String, String) {
-    let ws = event.workspace;
-    let count_label = match event.windows {
-        0 => "Empty".to_owned(),
-        1 => "1 window".to_owned(),
-        n => format!("{n} windows"),
-    };
-    match event.kind {
-        UiHudKind::Workspace => {
-            // The count comes first so it holds its place from one workspace to the next.
-            let detail = match event.preview {
-                UiHudLayout::Fullscreen => format!("{count_label} · Fullscreen"),
-                UiHudLayout::Split(_) => count_label,
-            };
-            (format!("Workspace {ws}"), detail)
+impl HudView<'_> {
+    /// The row's workspaces, with the one the marker starts on while it's no longer listed (an
+    /// empty workspace just left), so the marker has somewhere to leave from.
+    #[must_use]
+    pub fn entries(&self) -> Vec<UiHudWorkspace> {
+        let mut entries = self.row.workspaces.clone();
+        if let Some(focus) = self.focus
+            && !entries.iter().any(|entry| entry.workspace == focus)
+        {
+            let at = entries.partition_point(|entry| entry.workspace < focus);
+            entries.insert(
+                at,
+                UiHudWorkspace {
+                    workspace: focus,
+                    fullscreen: false,
+                    tiles: Vec::new(),
+                    floating: Vec::new(),
+                },
+            );
         }
-        UiHudKind::Moved => (format!("Moved to Workspace {ws}"), count_label),
-        UiHudKind::Layout { axis } => {
-            let split = match axis {
-                Axis::Horizontal => "Horizontal split",
-                Axis::Vertical => "Vertical split",
-            };
-            (format!("Workspace {ws}"), split.to_owned())
-        }
-        UiHudKind::Fullscreen { enabled } => (
-            format!("Workspace {ws}"),
-            if enabled {
-                "Fullscreen layout".to_owned()
-            } else {
-                "Split layout".to_owned()
-            },
-        ),
+        entries
     }
+}
+
+/// A style's row: cells laid out from `x = 0`, and where the marker goes.
+pub struct Track {
+    pub width: f32,
+    /// The marker's left edge, top and size, when the focus is in the row.
+    pub marker: Option<[f32; 4]>,
+    pub cells: Vec<El>,
+}
+
+/// The widest the row gets before it scrolls, for a panel `panel_width` wide.
+#[must_use]
+pub fn max_row_width(panel_width: f32) -> f32 {
+    panel_width - 2.0 * SHADOW_SIDE - 2.0
 }
 
 /// The capsule in the fixed-size row that carries its entrance and exit, so the capsule's own
 /// width can change underneath without moving the pose.
-pub fn slot(view: &HudView, p: Paint) -> El {
+pub fn slot(view: &HudView, style: HudStyle, icons: &Icons, panel_width: f32, p: Paint) -> El {
     let (spring, opacity) = if view.shown {
         (ENTER, 1.0)
     } else {
@@ -103,6 +122,11 @@ pub fn slot(view: &HudView, p: Paint) -> El {
         (1.0, 0.0)
     } else {
         (REST_SCALE, DROP)
+    };
+    let entries = view.entries();
+    let track = match style {
+        HudStyle::Layouts => grow::track(&entries, view.focus, icons, p),
+        HudStyle::Icons => icons::track(&entries, view.focus, icons, p),
     };
     row()
         .key("hud-slot")
@@ -115,67 +139,68 @@ pub fn slot(view: &HudView, p: Paint) -> El {
         .scale_motion(spring)
         .offset(0.0, drop)
         .offset_motion(spring)
-        .child(pill(view, p))
+        .child(capsule(view, track, max_row_width(panel_width), p))
 }
 
-/// Which phrase each label holds. Within one, only the characters that changed roll
-/// ("Workspace 1" to "Workspace 2", "3 windows" to "2 windows · Fullscreen"); a different one
-/// replaces the whole label in place, so no letter is left sliding across the others.
-const fn phrases(kind: UiHudKind) -> (&'static str, &'static str) {
-    match kind {
-        UiHudKind::Workspace => ("workspace", "count"),
-        UiHudKind::Moved => ("moved", "count"),
-        UiHudKind::Layout { .. } => ("workspace", "split"),
-        UiHudKind::Fullscreen { .. } => ("workspace", "mode"),
-    }
-}
-
-fn pill(view: &HudView, p: Paint) -> El {
-    let (headline, detail) = labels(view.event);
-    let (headline_phrase, detail_phrase) = phrases(view.event.kind);
+fn capsule(view: &HudView, track: Track, max_width: f32, p: Paint) -> El {
     let dark = Paint::new(true, 1.0 / p.hair);
-    // Going forward the new characters come up from below; going back, down from above.
-    let from = match view.travel {
-        Travel::Back => Edge::Top,
-        Travel::Forward | Travel::Stay => Edge::Bottom,
-    };
-    let label = |phrase: &str, copy: String, weight: f32, color: u32| {
-        RollingText::new(format!("{}-{phrase}", view.scope), copy)
-            .font(figures(weight))
-            .color(srgb(color))
-            .spring(ROLL)
-            .from(from)
-            .build(dark.k)
-            .transition(Transition::blur_replace().springs(SETTLE))
-    };
+    let width = track.width.min(max_width);
+    let overflow = track.width - width;
+    // Keep the marker's workspace in the middle of what shows, as far as the row reaches.
+    let scroll = track.marker.map_or(0.0, |[x, _, w, _]| {
+        (x + w / 2.0 - width / 2.0).clamp(0.0, overflow.max(0.0))
+    });
+    let fade = |clipped: bool| if clipped { CLIPPED_FADE } else { EDGE_FADE };
+    let mut content = el()
+        .key(match (view.still, view.focus) {
+            // Under Reduce Motion the whole row cross-fades instead of anything moving.
+            (true, Some(focus)) => format!("hud-row-{focus}"),
+            _ => "hud-row".to_owned(),
+        })
+        .absolute(-scroll, 0.0)
+        .w(track.width)
+        .h(INNER)
+        .motion(ROW)
+        .transition(Transition::opacity().springs(SETTLE));
+    if let Some([x, y, w, h]) = track.marker {
+        let marker = el()
+            .key(match view.still {
+                true => format!(
+                    "hud-marker-{}",
+                    view.focus.map(|f| f.to_string()).unwrap_or_default()
+                ),
+                false => "hud-marker".to_owned(),
+            })
+            .absolute(x, y)
+            .w(w)
+            .h(h)
+            .radius(9.0)
+            .fill(rgba(0xffffff, 0.1))
+            .border(p.hair, rgba(0xffffff, 0.2))
+            .motion(MARKER)
+            .lead(MARKER_LEAD, MARKER_TRAIL)
+            .transition(Transition::opacity().springs(SETTLE));
+        content = content.child(marker);
+    }
+    let viewport = el()
+        .key("hud-view")
+        .w(width)
+        .h(INNER)
+        .motion(ROW)
+        .clip_fade(fade(scroll > 0.5), 0.0, fade(scroll < overflow - 0.5), 0.0)
+        .child(content.children(track.cells));
     let mut capsule = row()
         .key("hud-pill")
+        .w(width + 2.0)
         .h(PILL_HEIGHT)
-        .pl(12.0)
-        .pr(16.0)
-        .gap(12.0)
-        .center_y()
+        .center()
         .radius(PILL_HEIGHT / 2.0)
         .fill(srgb(0x161618))
         .border(p.hair, srgb(0x303036))
-        .motion(ROLL)
-        .width_leads()
-        .child(mini_layout(view, p.hair))
-        .child(
-            row()
-                .key("copy")
-                .gap(8.0)
-                .center_y()
-                .child(label(headline_phrase, headline, 620.0, 0xf4f4f6))
-                .child(
-                    text("·")
-                        .key("dot")
-                        .font(figures(500.0))
-                        .color(srgb(0x6c6c76)),
-                )
-                .child(label(detail_phrase, detail, 460.0, 0xa4a4ae)),
-        );
+        .motion(ROW)
+        .child(viewport);
     if view.fresh {
+        // Just shown: the row lands as drawn, inside the capsule's entrance.
         capsule = capsule.instant_changes();
     }
     for shadow in &dark.k.elevation.overlay {
@@ -184,110 +209,42 @@ fn pill(view: &HudView, p: Paint) -> El {
     capsule
 }
 
-/// Tabular figures, so a workspace or window count changing digit doesn't change the width.
-fn figures(weight: f32) -> TextStyle {
-    TextStyle {
-        features: "'tnum' 1",
-        ..TextStyle::new(13.0, weight).lh(16.0)
+/// How a workspace joins or leaves the row: in place, with a fade and a little scale.
+pub fn presence() -> Transition {
+    Transition::scale(0.9).springs(SETTLE)
+}
+
+/// An app's icon at `size`, or its initial in a rounded square when it has none here.
+pub fn app_icon(icons: &Icons, bundle: &str, size: f32) -> El {
+    let base = el()
+        .key(format!("app-{bundle}"))
+        .size(size, size)
+        .transition(presence());
+    match icons.get(bundle) {
+        Some(pixels) => base.pixels(pixels),
+        None => {
+            let initial = crate::apps::fallback_name(bundle)
+                .chars()
+                .next()
+                .map(String::from)
+                .unwrap_or_default();
+            base.radius(size * 0.25)
+                .fill(rgba(0xffffff, 0.16))
+                .center()
+                .child(
+                    text(initial)
+                        .font(rune::TextStyle::new((size * 0.6).max(6.0), 600.0))
+                        .color(rgba(0xffffff, 0.7)),
+                )
+        }
     }
 }
 
-fn mini_layout(view: &HudView, hair: f32) -> El {
-    const OUTER_W: f32 = 30.0;
-    const OUTER_H: f32 = 20.0;
-    const INSET: f32 = 2.5;
-    let inner_w = OUTER_W - 2.0 * hair - INSET * 2.0;
-    let inner_h = OUTER_H - 2.0 * hair - INSET * 2.0;
-
-    // Workspaces sit side by side: going forward the next one comes in from the right.
-    let dx = match view.travel {
-        Travel::Forward => SLIDE,
-        Travel::Back => -SLIDE,
-        Travel::Stay => 0.0,
-    };
-    let slide = |dx: f32| {
-        Transition::offset(dx, 0.0)
-            .combined(Transition::opacity())
-            .springs(SETTLE)
-    };
-    let tile = |index: usize, (x, y, w, h): (f32, f32, f32, f32), radius: f32, alpha: f32| {
-        el().key(format!("tile{index}"))
-            .absolute(x, y)
-            .w(w)
-            .h(h)
-            .radius(radius)
-            .fill(rgba(0xffffff, alpha))
-            .transition(Transition::scale(0.9).springs(SETTLE))
-    };
-
-    let mut tiles = el()
-        .key(format!("ws{}", view.event.workspace))
-        .pin(Some(0.0), Some(0.0), Some(0.0), Some(0.0))
-        .transition(Transition::asymmetric(slide(dx), slide(-dx)));
-    if view.travel != Travel::Stay {
-        // A workspace's tiles arrive with it instead of each fading in on top of the slide.
-        tiles = tiles.instant_changes();
-    }
-    match &view.event.preview {
-        // The first tile grows to fill the screen, as the focused window does.
-        UiHudLayout::Fullscreen => {
-            tiles = tiles.child(tile(0, (INSET, INSET, inner_w, inner_h), 2.2, 0.86));
-        }
-        UiHudLayout::Split(rects) if rects.is_empty() => {
-            tiles = tiles.child(
-                el().key("empty")
-                    .absolute((OUTER_W - 3.0) / 2.0 - hair, (OUTER_H - 3.0) / 2.0 - hair)
-                    .w(3.0)
-                    .h(3.0)
-                    .radius(1.5)
-                    .fill(rgba(0xffffff, 0.28))
-                    .transition(Transition::opacity().springs(SETTLE)),
-            );
-        }
-        UiHudLayout::Split(rects) => {
-            for (index, rect) in rects.iter().enumerate() {
-                let frame = scale_tile(*rect, INSET, inner_w, inner_h, 0.6, 2.0);
-                tiles = tiles.child(tile(index, frame, 1.8, 0.80));
-            }
-        }
-    }
-
-    el().key("mini-screen")
-        .w(OUTER_W)
-        .h(OUTER_H)
-        .radius(4.5)
-        .fill(rgba(0xffffff, 0.05))
-        .border(hair, rgba(0xffffff, 0.22))
-        .motion(SETTLE.enter)
-        // Tiles rest inside the inset; sliding ones fade out through it instead of being cut.
-        .clip_fade(INSET, 0.0, INSET, 0.0)
-        .child_exit(slide(-dx))
-        .child(tiles)
-}
-
-pub(super) fn scale_tile(
-    rect: Rect,
-    inset: f32,
-    inner_w: f32,
-    inner_h: f32,
-    gap: f32,
-    min_side: f32,
-) -> (f32, f32, f32, f32) {
-    let pw = HUD_PREVIEW_RECT.width.max(1) as f32;
-    let ph = HUD_PREVIEW_RECT.height.max(1) as f32;
-    (
-        inset + (rect.x as f32 / pw) * inner_w + gap,
-        inset + (rect.y as f32 / ph) * inner_h + gap,
-        ((rect.width as f32 / pw) * inner_w - gap * 2.0).max(min_side),
-        ((rect.height as f32 / ph) * inner_h - gap * 2.0).max(min_side),
-    )
-}
-
-fn srgb(hex: u32) -> Color {
+pub fn srgb(hex: u32) -> Color {
     rgba(hex, 1.0)
 }
 
-fn rgba(hex: u32, alpha: f32) -> Color {
+pub fn rgba(hex: u32, alpha: f32) -> Color {
     let channel = |shift: u32| rune::color::srgb_decode(((hex >> shift) & 0xff) as f32 / 255.0);
     Color {
         r: channel(16),

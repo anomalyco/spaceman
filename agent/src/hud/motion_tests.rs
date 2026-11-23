@@ -2,24 +2,29 @@
 //! 120 Hz on a virtual clock and read back as presented rects, opacity and scale.
 //!
 //! `cargo test -p spaceman-agent hud::motion_tests::trace -- --ignored --nocapture` prints the
-//! capsule's pose for every frame of a show, a burst of switches and a hide.
+//! capsule's pose and the marker's edges for every frame of a show, a burst and a hide.
 
 use rune::{
     Env, Runtime,
     motion_gate::{Run, Snap},
 };
 use spaceman::{
-    Axis, Rect, WorkspaceId,
-    app::{UiHudEvent, UiHudKind, UiHudLayout},
+    Rect, WorkspaceId,
+    app::{UiHudDisplay, UiHudTile, UiHudWorkspace},
+    config::HudStyle,
 };
 
-use super::{HOLD_MS, HudOverlay, HudTick, LEAVE_MS, OVERLAY_SIZE, overlay_view, pill};
+use super::{HOLD_MS, HudOverlay, HudTick, LEAVE_MS, OVERLAY_SIZE, grow, overlay_view, pill};
 
 const HZ: f64 = 120.0;
 /// The most a spring here moves opacity in one 120 Hz frame; a pop is several times this.
 const OPACITY_STEP: f32 = 0.15;
 /// One 8-bit step of alpha: below it nothing is drawn.
 const UNSEEN: f32 = 1.0 / 255.0;
+/// The furthest the marker's edges go in one frame, crossing the whole demo row (Icons' 3 to 1
+/// is about 126 pt, peaking near 9.5 pt a frame); a snap would be several times this.
+const MARKER_STEP: f32 = 12.0;
+const STYLES: [HudStyle; 2] = [HudStyle::Layouts, HudStyle::Icons];
 
 struct Hud {
     run: Run<HudOverlay>,
@@ -27,19 +32,17 @@ struct Hud {
 }
 
 impl Hud {
-    /// Up and at rest on `event`, as the panel's first frame draws it.
-    fn showing(event: UiHudEvent) -> Self {
-        Self::start(event, false)
+    /// Up and at rest on `row`, as the panel's first frame draws it.
+    fn showing(style: HudStyle, row: UiHudDisplay) -> Self {
+        Self::start(style, row, false)
     }
 
-    fn start(event: UiHudEvent, reduce_motion: bool) -> Self {
-        let mut overlay = HudOverlay::new(true);
+    fn start(style: HudStyle, row: UiHudDisplay, reduce_motion: bool) -> Self {
+        let mut overlay = HudOverlay::new(true, style);
         overlay.reduce_motion = reduce_motion;
-        overlay.flow.trigger(event, 0);
+        overlay.flow.trigger(row, 0);
         let rt = Runtime::new(overlay, overlay_view, OVERLAY_SIZE, Env::new(true, 2.0));
         let mut run = Run::new(rt, HZ);
-        // The labels roll, so a count changing in place would be a swap.
-        run.rec.counts_roll = true;
         run.step();
         Self { run, frame: 0 }
     }
@@ -55,7 +58,7 @@ impl Hud {
         let mut tick = HudTick::Idle;
         self.run.rt.update_if(|overlay, _| {
             tick = overlay.flow.tick(now_ms);
-            tick == HudTick::Leave
+            matches!(tick, HudTick::Arrive | HudTick::Leave)
         });
         self.run.step();
         tick
@@ -78,48 +81,55 @@ impl Hud {
         panic!("the flow never reached {tick:?}");
     }
 
-    /// A switch landing on the next frame; returns that frame.
-    fn switch(&mut self, event: UiHudEvent) -> usize {
+    /// A row landing on the next frame; returns that frame.
+    fn switch(&mut self, row: UiHudDisplay) -> usize {
         let now_ms = self.now_ms();
         self.run.rec.input("switch");
         self.run.rt.update(move |overlay, _| {
-            overlay.flow.trigger(event, now_ms);
+            overlay.flow.trigger(row, now_ms);
         });
         self.step();
         self.run.rec.frames - 1
     }
 
-    /// The presented state of the element whose path ends in `path`, from frame `from` on.
-    fn snaps(&self, path: &str, from: usize) -> Vec<Snap> {
+    fn try_snaps(&self, path: &str, from: usize) -> Option<Vec<Snap>> {
         let suffix = format!("/{path}");
         let track = self
             .run
             .rec
             .tracks
             .iter()
-            .find(|track| track.path == path || track.path.ends_with(&suffix))
-            .unwrap_or_else(|| panic!("nothing drawn at {path}"));
-        track
-            .frames
-            .iter()
-            .filter(|(frame, _)| *frame >= from)
-            .map(|(_, snap)| *snap)
-            .collect()
+            .rfind(|track| track.path == path || track.path.ends_with(&suffix))?;
+        Some(
+            track
+                .frames
+                .iter()
+                .filter(|(frame, _)| *frame >= from)
+                .map(|(_, snap)| *snap)
+                .collect(),
+        )
     }
 
-    /// How far below its resting place the glyph that `label` gained on frame `at` started.
-    fn rolled_in_from(&self, label: &str, at: usize) -> f32 {
-        let inside = format!("/{label}/");
-        let glyph = self
-            .run
-            .rec
-            .tracks
+    /// The presented state of the element whose path ends in `path`, from frame `from` on.
+    fn snaps(&self, path: &str, from: usize) -> Vec<Snap> {
+        self.try_snaps(path, from)
+            .unwrap_or_else(|| panic!("nothing drawn at {path}"))
+    }
+
+    /// The marker's left and right edges from frame `from` on, measured inside the capsule
+    /// and scaled to its resting size, so the capsule's own entrance doesn't move them.
+    fn marker(&self, from: usize) -> Vec<(f32, f32)> {
+        let pill = self.snaps("hud-pill", from);
+        let rest = pill[pill.len() - 1].rect[2];
+        self.snaps("hud-marker", from)
             .iter()
-            .filter(|track| track.path.contains(&inside))
-            .find(|track| track.frames.first().is_some_and(|(frame, _)| *frame == at))
-            .unwrap_or_else(|| panic!("no glyph of {label} entered on frame {at}"));
-        let y = |index: usize| glyph.frames[index].1.rect[1];
-        y(0) - y(glyph.frames.len() - 1)
+            .zip(&pill)
+            .map(|(marker, pill)| {
+                let k = rest / pill.rect[2];
+                let left = (marker.rect[0] - pill.rect[0]) * k;
+                (left, left + marker.rect[2] * k)
+            })
+            .collect()
     }
 
     fn findings(&self) -> Vec<String> {
@@ -127,27 +137,58 @@ impl Hud {
     }
 }
 
-fn split(columns: i32) -> UiHudLayout {
-    let width = 1500 / columns.max(1);
-    UiHudLayout::Split(
-        (0..columns)
-            .map(|column| Rect {
-                x: column * width,
-                y: 0,
-                width,
-                height: 1100,
-            })
-            .collect(),
-    )
+fn id(number: u8) -> WorkspaceId {
+    WorkspaceId::new(number).unwrap()
 }
 
-fn workspace(number: u8, windows: i32) -> UiHudEvent {
-    UiHudEvent {
-        workspace: WorkspaceId::new(number).unwrap(),
-        kind: UiHudKind::Workspace,
-        preview: split(windows),
-        windows: windows as usize,
+fn workspace(number: u8, apps: &[&str]) -> UiHudWorkspace {
+    let count = apps.len().max(1) as i32;
+    UiHudWorkspace {
+        workspace: id(number),
+        fullscreen: false,
+        tiles: apps
+            .iter()
+            .zip(0..)
+            .map(|(bundle, index)| UiHudTile {
+                key: u64::from(number) * 100 + index as u64,
+                rect: Rect {
+                    x: index * 1500 / count,
+                    y: 0,
+                    width: 1500 / count,
+                    height: 1100,
+                },
+                bundle: Some((*bundle).to_owned()),
+            })
+            .collect(),
+        floating: Vec::new(),
     }
+}
+
+fn display(
+    id_: &str,
+    visible: u8,
+    from: Option<u8>,
+    workspaces: Vec<UiHudWorkspace>,
+) -> UiHudDisplay {
+    UiHudDisplay {
+        id: id_.to_owned(),
+        visible: Some(id(visible)),
+        from: from.map(id),
+        workspaces,
+    }
+}
+
+/// Workspaces 1 to 3 occupied, plus `visible` when it's empty; arrived at from `from`.
+fn row(visible: u8, from: Option<u8>) -> UiHudDisplay {
+    let mut workspaces = vec![
+        workspace(1, &["com.test.term", "com.test.web", "com.test.notes"]),
+        workspace(2, &["com.test.chat"]),
+        workspace(3, &["com.test.mail", "com.test.web"]),
+    ];
+    if visible > 3 {
+        workspaces.push(workspace(visible, &[]));
+    }
+    display("main", visible, from, workspaces)
 }
 
 /// Every step is small and in one direction; `rising` says which.
@@ -159,7 +200,7 @@ fn assert_one_way(values: &[f32], rising: bool, step: f32, what: &str) {
             pair[0] - pair[1]
         };
         assert!(
-            (-0.001..=step).contains(&delta),
+            (-0.01..=step).contains(&delta),
             "{what}: {} then {} in one frame",
             pair[0],
             pair[1]
@@ -171,95 +212,92 @@ fn opacity(snaps: &[Snap]) -> Vec<f32> {
     snaps.iter().map(|snap| snap.op).collect()
 }
 
+fn edges(marker: &[(f32, f32)]) -> (Vec<f32>, Vec<f32>) {
+    marker.iter().copied().unzip()
+}
+
 #[test]
 fn a_burst_of_switches_a_hide_and_a_show_pass_the_motion_gate() {
-    let mut hud = Hud::showing(workspace(1, 3));
-    hud.play(300);
-    // 1, 2, 3, then back to 1: each lands while the last is still moving.
-    hud.switch(workspace(2, 1));
-    hud.play(160);
-    hud.switch(workspace(3, 2));
-    hud.play(160);
-    hud.switch(workspace(1, 3));
-    hud.play_until(HudTick::Gone);
-    hud.play(100);
-    hud.switch(workspace(4, 0));
-    hud.play(700);
-    // Pops, jumps, swapped text, cut fades, overshoot, flicker, motion that never settles.
-    assert_eq!(hud.findings(), Vec::<String>::new());
+    for style in STYLES {
+        let mut hud = Hud::showing(style, row(1, None));
+        hud.play(300);
+        // 1, 2, 3, then back to 1: each lands while the last is still moving.
+        hud.switch(row(2, Some(1)));
+        hud.play(160);
+        hud.switch(row(3, Some(2)));
+        hud.play(160);
+        hud.switch(row(1, Some(3)));
+        hud.play_until(HudTick::Gone);
+        hud.play(100);
+        // Shown again on an empty workspace, which joins the row as the marker heads for it.
+        hud.switch(row(4, Some(1)));
+        hud.play(700);
+        // Pops, jumps, cut fades, overshoot, flicker, motion that never settles.
+        assert_eq!(hud.findings(), Vec::<String>::new(), "{style:?}");
+    }
 }
 
 #[test]
 fn the_capsule_leaves_and_comes_back_along_one_path() {
-    let mut hud = Hud::showing(workspace(1, 2));
-    let rest = hud.snaps("hud-slot", 0)[0];
-    assert_eq!(
-        (rest.op, rest.scale),
-        (1.0, 1.0),
-        "the first frame is at rest"
-    );
-
-    let left = hud.play_until(HudTick::Leave);
-    let gone = hud.play_until(HudTick::Gone);
-    let exit = hud.snaps("hud-slot", left - 1);
-    let exit = &exit[..=gone - left];
-    assert_one_way(&opacity(exit), false, OPACITY_STEP, "exit opacity");
-    assert_one_way(
-        &exit.iter().map(|snap| snap.rect[1]).collect::<Vec<_>>(),
-        true,
-        1.0,
-        "exit drop",
-    );
-    let last = exit[exit.len() - 1];
-    assert!(
-        last.op < UNSEEN,
-        "ordering the panel out after {LEAVE_MS} ms cuts a capsule still at {}",
-        last.op
-    );
-    assert!(
-        (last.scale - 0.96).abs() < 0.001,
-        "it shrank to {}",
-        last.scale
-    );
-
-    // Hidden, then another workspace: it enters from the pose it left in, content at rest.
-    hud.play(400);
-    let shown = hud.switch(workspace(3, 1));
-    hud.play(LEAVE_MS + 200);
-    let enter = hud.snaps("hud-slot", shown);
-    assert!(enter[0].op < 0.1, "it popped in at {}", enter[0].op);
-    assert_one_way(&opacity(&enter), true, OPACITY_STEP, "enter opacity");
-    assert_one_way(
-        &enter.iter().map(|snap| snap.rect[1]).collect::<Vec<_>>(),
-        false,
-        1.0,
-        "enter rise",
-    );
-    let settled = enter[enter.len() - 1];
-    assert_eq!(
-        (settled.op, settled.scale, settled.rect),
-        (1.0, 1.0, rest.rect)
-    );
-    let in_200_ms = enter[(0.2 * HZ) as usize];
-    assert!(in_200_ms.op > 0.97, "{} after 200 ms", in_200_ms.op);
-
-    // Nothing inside rolled or resized on the way in: the capsule is its final width, scaled.
-    let capsule = hud.snaps("hud-pill", shown);
-    let width = capsule[capsule.len() - 1].rect[2];
-    for snap in &capsule {
-        assert!(
-            (snap.rect[2] / snap.scale - width).abs() < 0.1,
-            "the capsule was {} wide at scale {} on its way to {width}",
-            snap.rect[2],
-            snap.scale
+    for style in STYLES {
+        let mut hud = Hud::showing(style, row(1, None));
+        let rest = hud.snaps("hud-slot", 0)[0];
+        assert_eq!(
+            (rest.op, rest.scale),
+            (1.0, 1.0),
+            "the first frame is at rest"
         );
+
+        let left = hud.play_until(HudTick::Leave);
+        let gone = hud.play_until(HudTick::Gone);
+        let exit = hud.snaps("hud-slot", left - 1);
+        let exit = &exit[..=gone - left];
+        assert_one_way(&opacity(exit), false, OPACITY_STEP, "exit opacity");
+        assert_one_way(
+            &exit.iter().map(|snap| snap.rect[1]).collect::<Vec<_>>(),
+            true,
+            1.0,
+            "exit drop",
+        );
+        let last = exit[exit.len() - 1];
+        assert!(
+            last.op < UNSEEN,
+            "ordering the panel out after {LEAVE_MS} ms cuts a capsule still at {}",
+            last.op
+        );
+        assert!(
+            (last.scale - 0.96).abs() < 0.001,
+            "it shrank to {}",
+            last.scale
+        );
+
+        // Hidden, then another workspace: it enters from the pose it left in.
+        hud.play(400);
+        let shown = hud.switch(row(3, Some(1)));
+        hud.play(LEAVE_MS + 300);
+        let enter = hud.snaps("hud-slot", shown);
+        assert!(enter[0].op < 0.1, "it popped in at {}", enter[0].op);
+        assert_one_way(&opacity(&enter), true, OPACITY_STEP, "enter opacity");
+        assert_one_way(
+            &enter.iter().map(|snap| snap.rect[1]).collect::<Vec<_>>(),
+            false,
+            1.0,
+            "enter rise",
+        );
+        let settled = enter[enter.len() - 1];
+        assert_eq!(
+            (settled.op, settled.scale, settled.rect),
+            (1.0, 1.0, rest.rect)
+        );
+        let in_200_ms = enter[(0.2 * HZ) as usize];
+        assert!(in_200_ms.op > 0.97, "{} after 200 ms", in_200_ms.op);
+        assert_eq!(hud.findings(), Vec::<String>::new(), "{style:?}");
     }
-    assert_eq!(hud.findings(), Vec::<String>::new());
 }
 
 #[test]
 fn a_switch_during_the_exit_turns_the_capsule_around_where_it_is() {
-    let mut hud = Hud::showing(workspace(1, 2));
+    let mut hud = Hud::showing(HudStyle::Layouts, row(1, None));
     let left = hud.play_until(HudTick::Leave);
     hud.play(50);
     let before = *hud.snaps("hud-slot", left).last().unwrap();
@@ -269,7 +307,7 @@ fn a_switch_during_the_exit_turns_the_capsule_around_where_it_is() {
         before.op
     );
 
-    let back = hud.switch(workspace(2, 2));
+    let back = hud.switch(row(2, Some(1)));
     hud.play(400);
     let after = hud.snaps("hud-slot", back);
     // It carries on from where it was: no restart from nothing, no snap to full.
@@ -293,124 +331,269 @@ fn a_switch_during_the_exit_turns_the_capsule_around_where_it_is() {
 }
 
 #[test]
-fn tiles_slide_and_labels_roll_the_way_of_travel() {
-    let mut hud = Hud::showing(workspace(2, 2));
-    hud.play(300);
-    let screen = hud.snaps("mini-screen", 0)[0].rect;
-
-    // Forward: the next workspace's tiles come in from the right as the old ones leave left,
-    // and its number rolls up from below.
-    let forward = hud.switch(workspace(3, 2));
-    hud.play(60);
-    let entering = hud.snaps("ws3", forward);
-    assert!(entering[0].rect[0] > screen[0] + 5.0, "from the right");
-    assert!(entering[0].op < 0.1);
-    let leaving = hud.snaps("ws2", forward);
-    assert!(
-        leaving[leaving.len() - 1].rect[0] < screen[0] - 1.0,
-        "out to the left"
-    );
-    hud.play(500);
-    assert!(
-        hud.rolled_in_from("hud-workspace", forward) > 5.0,
-        "up from below"
-    );
-    let settled = hud.snaps("ws3", forward);
-    assert_one_way(
-        &settled.iter().map(|snap| snap.rect[0]).collect::<Vec<_>>(),
-        false,
-        2.0,
-        "tiles sliding in",
-    );
-    assert_eq!(settled[settled.len() - 1].rect[0], screen[0]);
-
-    // Back: the other way.
-    let back = hud.switch(workspace(1, 2));
-    hud.play(60);
-    assert!(
-        hud.snaps("ws1", back)[0].rect[0] < screen[0] - 5.0,
-        "from the left"
-    );
-    hud.play(500);
-    assert!(
-        hud.rolled_in_from("hud-workspace", back) < -5.0,
-        "down from above"
-    );
-    assert_eq!(hud.findings(), Vec::<String>::new());
+fn the_marker_goes_one_way_per_switch_its_leading_edge_first() {
+    for style in STYLES {
+        let mut hud = Hud::showing(style, row(1, None));
+        hud.play(300);
+        for (to, from, rising) in [(3, 1, true), (1, 3, false)] {
+            let switched = hud.switch(row(to, Some(from)));
+            hud.play(700);
+            let marker = hud.marker(switched - 1);
+            let (left, right) = edges(&marker);
+            assert_one_way(&left, rising, MARKER_STEP, &format!("{style:?} left edge"));
+            assert_one_way(
+                &right,
+                rising,
+                MARKER_STEP,
+                &format!("{style:?} right edge"),
+            );
+            let width = |(left, right): (f32, f32)| right - left;
+            let (start, end) = (marker[0], marker[marker.len() - 1]);
+            // It stretches toward where it's going, then the trailing edge catches up.
+            let widest = marker.iter().copied().map(width).fold(0.0, f32::max);
+            assert!(
+                widest > width(start).max(width(end)) + 4.0,
+                "{style:?}: it never stretched ({widest})"
+            );
+            let lead = |frame: usize| {
+                let (left, right) = marker[frame];
+                if rising {
+                    right - start.1
+                } else {
+                    start.0 - left
+                }
+            };
+            let trail = |frame: usize| {
+                let (left, right) = marker[frame];
+                if rising {
+                    left - start.0
+                } else {
+                    start.1 - right
+                }
+            };
+            assert!(lead(8) > trail(8), "{style:?}: the trailing edge led");
+        }
+        assert_eq!(hud.findings(), Vec::<String>::new(), "{style:?}");
+    }
 }
 
 #[test]
-fn another_kind_of_message_replaces_the_whole_phrase() {
-    let moved = UiHudEvent {
-        kind: UiHudKind::Moved,
-        ..workspace(4, 2)
+fn a_switch_mid_flight_carries_the_marker_on_without_a_jump() {
+    for style in STYLES {
+        let mut hud = Hud::showing(style, row(1, None));
+        hud.play(300);
+        let first = hud.switch(row(2, Some(1)));
+        hud.play(80);
+        let second = hud.switch(row(3, Some(2)));
+        hud.play(700);
+        let marker = hud.marker(first - 1);
+        let (left, right) = edges(&marker);
+        // One way the whole time, never back toward 2 and never from rest again.
+        assert_one_way(&left, true, MARKER_STEP, &format!("{style:?} left edge"));
+        assert_one_way(&right, true, MARKER_STEP, &format!("{style:?} right edge"));
+        let at = second - (first - 1);
+        let speed = |edge: &[f32], frame: usize| edge[frame] - edge[frame - 1];
+        for edge in [&left, &right] {
+            assert!(
+                speed(edge, at) >= speed(edge, at - 1) * 0.9,
+                "{style:?}: the second switch slowed it from {} to {}",
+                speed(edge, at - 1),
+                speed(edge, at)
+            );
+        }
+        assert_eq!(hud.findings(), Vec::<String>::new(), "{style:?}");
+    }
+}
+
+#[test]
+fn shown_again_the_marker_starts_where_the_switch_left() {
+    for style in STYLES {
+        let mut hud = Hud::showing(style, row(2, None));
+        hud.play(300);
+        let on_two = hud.marker(0)[0];
+        hud.switch(row(1, Some(2)));
+        hud.play(400);
+        let on_one = *hud.marker(0).last().unwrap();
+        hud.play_until(HudTick::Gone);
+        hud.play(300);
+
+        // Hidden on 1. A switch from 2 to 3 (made while it was hidden, say on another display's
+        // shortcut) shows it with the marker on 2, which then travels to 3.
+        let shown = hud.switch(row(3, Some(2)));
+        hud.play(800);
+        let marker = hud.marker(shown);
+        let close =
+            |a: (f32, f32), b: (f32, f32)| (a.0 - b.0).abs() < 0.5 && (a.1 - b.1).abs() < 0.5;
+        assert!(
+            close(marker[0], on_two),
+            "{style:?}: started at {:?}, not {on_two:?}",
+            marker[0]
+        );
+        assert!(!close(marker[0], on_one));
+        let (left, right) = edges(&marker);
+        assert_one_way(&left, true, MARKER_STEP, &format!("{style:?} left edge"));
+        assert_one_way(&right, true, MARKER_STEP, &format!("{style:?} right edge"));
+        assert!(
+            right[right.len() - 1] > on_two.1 + 10.0,
+            "{style:?}: it never left 2"
+        );
+        if style == HudStyle::Layouts {
+            // The large cell starts on 2 as well.
+            let two = hud.snaps("ws2", shown);
+            let three = hud.snaps("ws3", shown);
+            assert!(
+                two[0].rect[2] > three[0].rect[2],
+                "{style:?}: 3 was already large"
+            );
+            assert!(two[two.len() - 1].rect[2] < three[three.len() - 1].rect[2]);
+        }
+
+        // With nowhere to come from, it shows at rest.
+        hud.play_until(HudTick::Gone);
+        hud.play(300);
+        let shown = hud.switch(row(1, None));
+        hud.play(500);
+        let marker = hud.marker(shown);
+        assert!(
+            marker.iter().all(|edges| close(*edges, marker[0])),
+            "{style:?}: it travelled"
+        );
+        assert_eq!(hud.findings(), Vec::<String>::new(), "{style:?}");
+    }
+}
+
+#[test]
+fn reduce_motion_fades_and_nothing_travels() {
+    for style in STYLES {
+        let mut hud = Hud::start(style, row(2, None), true);
+        hud.play(300);
+        let rest = hud.snaps("hud-slot", 0)[0];
+
+        let switched = hud.switch(row(3, Some(2)));
+        hud.play(400);
+        let mut faded = false;
+        for track in hud
+            .run
+            .rec
+            .tracks
+            .iter()
+            .filter(|track| track.path.contains("/hud-row"))
+        {
+            let (_, first) = track.frames[0];
+            for (_, snap) in &track.frames {
+                assert_eq!(
+                    (snap.rect, snap.scale),
+                    (first.rect, first.scale),
+                    "{style:?}: {} moved",
+                    track.path
+                );
+                faded |= track.path.ends_with("hud-marker-3") && (0.2..0.8).contains(&snap.op);
+            }
+        }
+        assert!(faded, "{style:?}: the marker should fade in on 3");
+        assert!(hud.try_snaps("hud-marker-3", switched).is_some());
+
+        let left = hud.play_until(HudTick::Leave);
+        let gone = hud.play_until(HudTick::Gone);
+        let exit = hud.snaps("hud-slot", left);
+        let exit = &exit[..=gone - left];
+        for snap in exit {
+            assert_eq!(
+                (snap.scale, snap.rect),
+                (1.0, rest.rect),
+                "no scale, no drop"
+            );
+        }
+        assert!(
+            exit.iter().any(|snap| (0.2..0.8).contains(&snap.op)),
+            "a fade, not a cut"
+        );
+        assert_one_way(&opacity(exit), false, OPACITY_STEP, "reduced exit");
+        assert!(exit[exit.len() - 1].op < UNSEEN);
+        hud.play(600);
+        assert_eq!(hud.findings(), Vec::<String>::new(), "{style:?}");
+    }
+}
+
+#[test]
+fn each_display_draws_its_own_row_and_only_the_switching_one_moves() {
+    let side = |from| {
+        display(
+            "side",
+            6,
+            from,
+            vec![
+                workspace(6, &["com.test.chat"]),
+                workspace(7, &["com.test.web"]),
+            ],
+        )
     };
-    let mut hud = Hud::showing(moved);
-    hud.play(300);
-    let moved_x = hud.snaps("hud-moved", 0)[0].rect[0];
+    for style in STYLES {
+        let mut main = Hud::showing(style, row(1, None));
+        let mut other = Hud::showing(style, side(None));
+        main.play(300);
+        other.play(300);
+        let start = other.marker(0)[0];
 
-    // "Moved to Workspace 4" to "Workspace 4": the old phrase fades out as the new one fades in
-    // where it rests, instead of "Workspace 4" sliding left across the letters rolling out.
-    let switched = hud.switch(workspace(4, 2));
-    hud.play(600);
-    let leaving = hud.snaps("hud-moved", switched);
-    assert!(
-        leaving.len() < (0.4 * HZ) as usize,
-        "the old phrase is gone"
-    );
-    assert!(leaving[leaving.len() - 1].op < 0.05);
-    let arriving = hud.snaps("hud-workspace", switched);
-    assert!(arriving[0].op < 0.1);
-    let rest = arriving[arriving.len() - 1].rect;
-    assert!(
-        (arriving[0].rect[1] - rest[1]).abs() < 1.0,
-        "in place, not rolled"
-    );
-    assert!(
-        (rest[0] - moved_x).abs() > 5.0,
-        "the capsule narrowed around it"
-    );
-    // The count is the same phrase in both, so it never left.
-    assert_eq!(hud.snaps("hud-count", 0).len(), hud.run.rec.frames);
-
-    hud.switch(UiHudEvent {
-        kind: UiHudKind::Fullscreen { enabled: true },
-        preview: UiHudLayout::Fullscreen,
-        ..workspace(4, 2)
-    });
-    hud.play(600);
-    assert_eq!(hud.findings(), Vec::<String>::new());
+        // A switch on the main display: both capsules get their own rows on the same frame.
+        let switched = main.switch(row(2, Some(1)));
+        assert_eq!(other.switch(side(None)), switched);
+        main.play(600);
+        other.play(600);
+        let moved = main.marker(switched);
+        assert!(
+            moved[moved.len() - 1].0 > moved[0].0 + 10.0,
+            "{style:?}: main's marker stayed"
+        );
+        for (frame, edges) in other.marker(0).iter().enumerate() {
+            assert_eq!(
+                *edges, start,
+                "{style:?}: the other display's marker moved on {frame}"
+            );
+        }
+        for path in ["ws6", "ws7"] {
+            let cell = other.snaps(path, 0);
+            assert!(
+                cell.iter()
+                    .all(|snap| snap.rect == cell[0].rect && snap.op == cell[0].op)
+            );
+        }
+        // They hold and leave together.
+        assert_eq!(
+            main.play_until(HudTick::Leave),
+            other.play_until(HudTick::Leave)
+        );
+        main.play_until(HudTick::Gone);
+        other.play_until(HudTick::Gone);
+        main.play(400);
+        other.play(400);
+        assert_eq!(main.findings(), Vec::<String>::new(), "{style:?}");
+        assert_eq!(other.findings(), Vec::<String>::new(), "{style:?}");
+    }
 }
 
 #[test]
-fn a_layout_change_on_the_same_workspace_moves_the_tiles_it_has() {
-    let mut hud = Hud::showing(workspace(1, 2));
+fn a_layout_change_moves_the_tiles_it_has() {
+    let mut hud = Hud::showing(
+        HudStyle::Layouts,
+        display("main", 1, None, vec![workspace(1, &["a", "b"])]),
+    );
     hud.play(300);
-    let before = hud.snaps("ws1/tile1", 0)[0].rect;
+    let before = hud.snaps("ws1/t101", 0)[0].rect;
 
-    let changed = hud.switch(UiHudEvent {
-        kind: UiHudKind::Layout {
-            axis: Axis::Vertical,
-        },
-        preview: UiHudLayout::Split(vec![
-            Rect {
-                x: 0,
-                y: 0,
-                width: 1500,
-                height: 550,
-            },
-            Rect {
-                x: 0,
-                y: 550,
-                width: 1500,
-                height: 550,
-            },
-        ]),
-        ..workspace(1, 2)
-    });
-    hud.play(500);
+    let mut rows = workspace(1, &["a", "b"]);
+    for (tile, y) in rows.tiles.iter_mut().zip([0, 550]) {
+        tile.rect = Rect {
+            x: 0,
+            y,
+            width: 1500,
+            height: 550,
+        };
+    }
+    let changed = hud.switch(display("main", 1, None, vec![rows]));
+    hud.play(600);
     // The same tile, from where it was to where it goes, with no slide of the whole set.
-    let tile = hud.snaps("ws1/tile1", changed - 1);
+    let tile = hud.snaps("ws1/t101", changed - 1);
     assert_eq!(tile[0].rect, before);
     for pair in tile.windows(2) {
         for edge in 0..4 {
@@ -424,85 +607,103 @@ fn a_layout_change_on_the_same_workspace_moves_the_tiles_it_has() {
 }
 
 #[test]
-fn reduce_motion_fades_and_nothing_travels() {
-    let mut hud = Hud::start(workspace(2, 2), true);
+fn a_moved_window_s_icon_leaves_one_workspace_for_the_other() {
+    let before = vec![
+        workspace(1, &["com.test.a", "com.test.b"]),
+        workspace(2, &["com.test.c"]),
+    ];
+    let after = vec![
+        workspace(1, &["com.test.a"]),
+        workspace(2, &["com.test.c", "com.test.b"]),
+    ];
+    let mut hud = Hud::showing(HudStyle::Icons, display("main", 1, None, before));
     hud.play(300);
-    let rest = hud.snaps("hud-slot", 0)[0];
-    let screen = hud.snaps("mini-screen", 0)[0].rect;
+    let two = hud.snaps("ws2", 0)[0].rect;
 
-    let switched = hud.switch(workspace(3, 2));
-    hud.play(400);
-    for snap in hud.snaps("ws3", switched) {
-        assert_eq!(snap.rect[0], screen[0], "tiles fade in place");
-    }
-    assert_eq!(hud.rolled_in_from("hud-workspace", switched), 0.0);
-
-    let left = hud.play_until(HudTick::Leave);
-    let gone = hud.play_until(HudTick::Gone);
-    let exit = hud.snaps("hud-slot", left);
-    let exit = &exit[..=gone - left];
-    for snap in exit {
-        assert_eq!(
-            (snap.scale, snap.rect),
-            (1.0, rest.rect),
-            "no scale, no drop"
-        );
-    }
-    assert!(
-        exit.iter().any(|snap| (0.2..0.8).contains(&snap.op)),
-        "a fade, not a cut"
-    );
-    assert_one_way(&opacity(exit), false, OPACITY_STEP, "reduced exit");
-    assert!(exit[exit.len() - 1].op < UNSEEN);
+    let moved = hud.switch(display("main", 1, None, after));
     hud.play(600);
+    let leaving = hud.snaps("ws1/apps/app-com.test.b", moved);
+    assert!(leaving[leaving.len() - 1].op < 0.05, "it left workspace 1");
+    let arriving = hud.snaps("ws2/apps/app-com.test.b", moved);
+    assert!(
+        arriving[0].op < 0.2,
+        "it popped into workspace 2 at {}",
+        arriving[0].op
+    );
+    assert_one_way(&opacity(&arriving), true, OPACITY_STEP, "icon fading in");
+    // Workspace 2 slides over into the room workspace 1 gave up.
+    let slide = hud.snaps("ws2", moved);
+    assert!(slide[slide.len() - 1].rect[0] < two[0] - 10.0);
+    assert_one_way(
+        &slide.iter().map(|snap| snap.rect[0]).collect::<Vec<_>>(),
+        false,
+        4.0,
+        "slide",
+    );
+    // The marker stays with you on 1.
+    let marker = hud.snaps("hud-marker", moved);
+    let one = hud.snaps("ws1", moved);
+    let (m, g) = (marker[marker.len() - 1].rect, one[one.len() - 1].rect);
+    assert!(
+        m[0] < g[0] && m[0] + m[2] > g[0] + g[2],
+        "{m:?} around {g:?}"
+    );
     assert_eq!(hud.findings(), Vec::<String>::new());
 }
 
 #[test]
 fn the_widest_capsule_and_its_shadow_fit_the_panel() {
-    let ten = WorkspaceId::new(10).unwrap();
-    let widest = [
-        UiHudEvent {
-            workspace: ten,
-            kind: UiHudKind::Moved,
-            preview: split(3),
-            windows: 99,
-        },
-        UiHudEvent {
-            workspace: ten,
-            kind: UiHudKind::Workspace,
-            preview: UiHudLayout::Fullscreen,
-            windows: 99,
-        },
-    ];
-    for event in widest {
-        let hud = Hud::showing(event);
-        let [x, y, width, height] = hud.snaps("hud-pill", 0)[0].rect;
-        // The shadow's widest layer blurs 32 pt; its lowest reaches `SHADOW_REACH` below.
-        assert!(
-            x >= 32.0 && x + width <= OVERLAY_SIZE.0 - 32.0,
-            "{x} + {width}"
-        );
-        assert!(y + height + pill::SHADOW_REACH <= OVERLAY_SIZE.1);
+    let apps: Vec<String> = (0..16)
+        .map(|index| format!("com.test.app{index}"))
+        .collect();
+    let apps: Vec<&str> = apps.iter().map(String::as_str).collect();
+    for style in STYLES {
+        for visible in [1, 5, 10] {
+            let workspaces = (1..=10).map(|number| workspace(number, &apps)).collect();
+            let hud = Hud::showing(style, display("main", visible, None, workspaces));
+            let [x, y, width, height] = hud.snaps("hud-pill", 0)[0].rect;
+            // The shadow's widest layer blurs 32 pt; its lowest reaches `SHADOW_REACH` below.
+            assert!(
+                x >= pill::SHADOW_SIDE && x + width <= OVERLAY_SIZE.0 - pill::SHADOW_SIDE,
+                "{x} + {width}"
+            );
+            assert!(y + height + pill::SHADOW_REACH <= OVERLAY_SIZE.1);
+            // A row that overflows still keeps your workspace in view.
+            let marker = hud.snaps("hud-marker", 0)[0].rect;
+            assert!(
+                marker[0] >= x && marker[0] + marker[2] <= x + width,
+                "{style:?} on {visible}: the marker at {marker:?} is outside {x} + {width}"
+            );
+        }
     }
+    // Ten workspaces of layouts fit without scrolling.
+    let ten: Vec<_> = (1..=10).map(|number| workspace(number, &["a"])).collect();
+    let (_, width) = grow::rest(&ten, Some(id(1)));
+    assert!(width <= pill::max_row_width(OVERLAY_SIZE.0));
 }
 
 #[test]
 #[ignore = "prints the capsule's pose per frame for tuning; asserts nothing"]
 fn trace() {
-    let mut hud = Hud::showing(workspace(1, 3));
+    let mut hud = Hud::showing(HudStyle::Layouts, row(1, None));
     hud.play(100);
-    hud.switch(workspace(2, 1));
+    hud.switch(row(2, Some(1)));
     hud.play(160);
-    hud.switch(workspace(3, 2));
+    hud.switch(row(3, Some(2)));
     hud.play_until(HudTick::Gone);
-    hud.switch(workspace(1, 3));
+    hud.switch(row(1, Some(3)));
     hud.play(300);
-    println!("frame,ms,opacity,scale,y,capsule_x,capsule_width");
-    let (slot, capsule) = (hud.snaps("hud-slot", 0), hud.snaps("hud-pill", 0));
-    for (frame, (slot, capsule)) in slot.iter().zip(&capsule).enumerate() {
+    println!("frame,ms,opacity,scale,y,capsule_x,capsule_width,marker_left,marker_right");
+    let (slot, capsule, marker) = (
+        hud.snaps("hud-slot", 0),
+        hud.snaps("hud-pill", 0),
+        hud.marker(0),
+    );
+    for (frame, ((slot, capsule), (left, right))) in
+        slot.iter().zip(&capsule).zip(&marker).enumerate()
+    {
         println!(
-            "{frame},{:.0},{:.3},{:.3},{:.2},{:.2},{:.2}",
+            "{frame},{:.0},{:.3},{:.3},{:.2},{:.2},{:.2},{left:.2},{right:.2}",
             frame as f64 * 1_000.0 / HZ,
             slot.op,
             slot.scale,

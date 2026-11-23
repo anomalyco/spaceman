@@ -50,13 +50,65 @@ pub enum UiHudLayout {
     Fullscreen,
 }
 
-/// Title-free Workspace HUD event emitted on explicit user actions.
+/// The most displays one HUD event describes.
+pub const HUD_MAX_DISPLAYS: usize = 8;
+/// The most tiles one HUD workspace carries.
+pub const HUD_MAX_TILES: usize = 16;
+/// The most floating apps one HUD workspace carries.
+pub const HUD_MAX_FLOATING: usize = 8;
+
+/// Title-free Workspace HUD event emitted on explicit user actions: every display's row of
+/// workspaces, with their layouts and the bundle IDs of the apps in them.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct UiHudEvent {
+    /// The workspace the action was on: switched to, moved to, or relaid.
     pub workspace: WorkspaceId,
     pub kind: UiHudKind,
-    pub preview: UiHudLayout,
-    pub windows: usize,
+    pub displays: Vec<UiHudDisplay>,
+}
+
+/// One display's row: its visible workspace and every other one holding windows, in order.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct UiHudDisplay {
+    /// The display's ID, as `DisplayOutput::id` gives it.
+    pub id: String,
+    pub visible: Option<WorkspaceId>,
+    /// The workspace a switch on this display just left, so the HUD can start from it.
+    pub from: Option<WorkspaceId>,
+    pub workspaces: Vec<UiHudWorkspace>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct UiHudWorkspace {
+    pub workspace: WorkspaceId,
+    /// Fullscreen Layout: the first tile is the window in front.
+    pub fullscreen: bool,
+    /// Tiles in layout order.
+    pub tiles: Vec<UiHudTile>,
+    /// Bundle IDs of the floating windows the workspace owns, once each.
+    pub floating: Vec<String>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct UiHudTile {
+    /// The tile's slot, stable while the window keeps its place.
+    pub key: u64,
+    /// In [`HUD_PREVIEW_RECT`] space.
+    pub rect: Rect,
+    pub bundle: Option<String>,
+}
+
+impl UiHudEvent {
+    /// The display whose row holds `workspace`.
+    #[must_use]
+    pub fn display_of(&self, workspace: WorkspaceId) -> Option<&UiHudDisplay> {
+        self.displays.iter().find(|display| {
+            display
+                .workspaces
+                .iter()
+                .any(|entry| entry.workspace == workspace)
+        })
+    }
 }
 
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
@@ -310,8 +362,7 @@ mod tests {
         let hud_event = UiHudEvent {
             workspace: WorkspaceId::ONE,
             kind: UiHudKind::Workspace,
-            preview: UiHudLayout::Fullscreen,
-            windows: 2,
+            displays: Vec::new(),
         };
         bridge.publish_hud(hud_event.clone());
         assert_eq!(wakes.load(Ordering::SeqCst), 3);

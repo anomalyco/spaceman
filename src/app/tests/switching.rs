@@ -339,6 +339,66 @@ fn workspace_back_and_forth_tracks_each_display_lane_independently() {
 }
 
 #[test]
+fn the_hud_gives_each_display_its_own_row_and_only_the_switched_one_moves() {
+    let main = window(10);
+    let secondary = window(20);
+    let mut backend = FakeBackend {
+        focused: Some(secondary.clone()),
+        ..FakeBackend::default()
+    };
+    backend.frames.insert(main.clone(), frame(50));
+    backend.frames.insert(secondary.clone(), frame(1050));
+    let mut runtime = runtime(backend);
+    bind(&mut runtime, WorkspaceId::ONE, &main);
+    bind(&mut runtime, WorkspaceId::SIX, &secondary);
+    let cancelled = AtomicBool::new(false);
+
+    let target = WorkspaceId::new(7).unwrap();
+    let hud = runtime
+        .switch(target, outputs(), &cancelled)
+        .unwrap()
+        .hud
+        .unwrap();
+    let rows: Vec<_> = hud
+        .displays
+        .iter()
+        .map(|display| {
+            (
+                display.id.as_str(),
+                display.visible,
+                display.from,
+                display
+                    .workspaces
+                    .iter()
+                    .map(|entry| entry.workspace)
+                    .collect::<Vec<_>>(),
+            )
+        })
+        .collect();
+    assert_eq!(
+        rows,
+        vec![
+            (
+                "main-id",
+                Some(WorkspaceId::ONE),
+                None,
+                vec![WorkspaceId::ONE]
+            ),
+            (
+                "secondary-id",
+                Some(target),
+                Some(WorkspaceId::SIX),
+                vec![WorkspaceId::SIX, target]
+            ),
+        ]
+    );
+    assert_eq!(
+        hud.display_of(target).map(|display| display.id.as_str()),
+        Some("secondary-id")
+    );
+}
+
+#[test]
 fn switching_aborts_when_the_incoming_workspace_cannot_be_laid_out() {
     let outgoing = window(10);
     let incoming = window(20);

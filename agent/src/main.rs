@@ -144,6 +144,15 @@ impl Ui {
         }
     }
 
+    pub fn set_hud_style(&mut self, style: spaceman::config::HudStyle) {
+        self.edit(|doc| doc.set_hud_style(style));
+        if self.error.is_none()
+            && let Some(driver) = &self.hud_driver
+        {
+            driver.set_style(self.doc.hud_style());
+        }
+    }
+
     pub fn mark_wrong(&self) {
         self.send_action(UiAction::MarkWrong);
     }
@@ -236,6 +245,7 @@ fn poll(ui: &mut Ui, _clock: f64, tx: &mut Tx) -> bool {
         ui.look_up_apps();
         if let Some(driver) = &ui.hud_driver {
             driver.set_enabled(ui.doc.hud());
+            driver.set_style(ui.doc.hud_style());
         }
         changed = true;
     }
@@ -336,10 +346,11 @@ pub(crate) fn live_app(
 ) -> rune::App<Ui> {
     let doc = Doc::load();
     let initial_hud = doc.hud();
+    let initial_style = doc.hud_style();
     let mut app = base_app()
         .init(move || Ui::load_live(doc, bridge, initial_tour, accessibility))
         .on_reopen(on_reopen);
-    let hud_driver = hud::install(&mut app, initial_hud);
+    let hud_driver = hud::install(&mut app, initial_hud, initial_style);
     app.handle().update_if(move |ui, _| {
         ui.hud_driver = Some(hud_driver);
         false

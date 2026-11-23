@@ -2,7 +2,7 @@
 
 use rune::{El, Icon, Tx, col};
 use rune_kit::SegmentedControl;
-use spaceman::{WorkspaceId, app::UiLaunchAtLogin};
+use spaceman::{WorkspaceId, app::UiLaunchAtLogin, config::HudStyle};
 
 use crate::{
     Ui, activity,
@@ -220,6 +220,29 @@ fn general(ui: &Ui, p: Paint) -> El {
             ui.doc.hud(),
             |ui| ui.toggle_hud(),
         );
+        let hud_style = controls::setting_row(
+            p,
+            "hud-style",
+            "HUD style",
+            Some((
+                "Each workspace as its layout, or as its number and app icons.".into(),
+                p.muted(),
+            )),
+            SegmentedControl::new(
+                &HUD_STYLES.map(|(label, _)| label.to_owned()),
+                HUD_STYLES
+                    .iter()
+                    .position(|(_, style)| *style == ui.doc.hud_style()),
+            )
+            .fit()
+            .on_pick(|ui: &mut Ui, index, _: &mut Tx| {
+                if let Some((_, style)) = HUD_STYLES.get(index) {
+                    ui.set_hud_style(*style);
+                }
+            })
+            .build(p.k)
+            .key("hud-style-picker"),
+        );
         let setup_tour = controls::setting_row(
             p,
             "setup-tour",
@@ -240,7 +263,7 @@ fn general(ui: &Ui, p: Paint) -> El {
             p,
             "agent",
             "Spaceman",
-            vec![access, tiling, hud, login, setup_tour],
+            vec![access, tiling, hud, hud_style, login, setup_tour],
         ));
     }
     sections.push(controls::section(
@@ -275,6 +298,8 @@ fn general(ui: &Ui, p: Paint) -> El {
 }
 
 const MONITORS: [&str; 3] = ["Any", "Main", "Secondary"];
+const HUD_STYLES: [(&str, HudStyle); 2] =
+    [("Layouts", HudStyle::Layouts), ("Icons", HudStyle::Icons)];
 
 fn workspaces(ui: &Ui, p: Paint) -> El {
     let rows = ui

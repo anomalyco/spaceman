@@ -31,6 +31,10 @@ Spaceman can read a window title for exact config-rule matching. Titles remain i
 explicitly excluded from serialized observations, persisted state, the arrangement journal,
 `spaceman ctl debug`, `spaceman doctor`, and `spaceman hud` output.
 
+The Workspace HUD shows each workspace's app icons. The runtime sends the agent each window's bundle
+identifier and its layout rectangle, never a title, and the agent reads the icons from the installed
+apps on the Mac. Nothing about the HUD is written to disk or logged.
+
 Local files live under `~/Library/Application Support/Spaceman/`:
 
 - `config.toml`: user-authored configuration;

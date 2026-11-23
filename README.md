@@ -24,9 +24,11 @@ Spaceman currently:
   identifier so reboots and startup recovery return windows to their workspaces;
 - journals window arrangements and model/screen disagreements locally, summarized in Settings (`Activity`)
   and by `spaceman doctor`;
-- shows a non-activating Workspace HUD capsule on workspace switches, cross-workspace moves, and layout
-  toggles (`[settings] hud = true`), which follows quick switches without restarting and honors
-  Reduce Motion;
+- shows a non-activating Workspace HUD capsule on each display on workspace switches,
+  cross-workspace moves, and layout toggles (`[settings] hud = true`): a row of that display's
+  workspaces, drawn as their layouts with app icons or (`hud_style = "icons"`) as numbers and app
+  icons, with a marker that travels to the one you are on. It follows quick switches without
+  restarting and honors Reduce Motion;
 - can register its signed app bundle with macOS to launch automatically at login;
 - supports directional focus and movement across displays, drag-to-reorder/nest, mouse and keyboard
   resizing, balancing, and a workspace-wide Fullscreen Layout;
@@ -155,7 +157,7 @@ spaceman ctl resume
 ## Configure
 
 Spaceman reads `~/Library/Application Support/Spaceman/config.toml` at startup and reloads rule,
-display, and HUD edits automatically when the file changes. See the exact current schema and
+display, and HUD (on/off and style) edits automatically when the file changes. See the exact current schema and
 [config.example.toml](config.example.toml) in [Configuration](docs/configuration.md).
 
 ```sh

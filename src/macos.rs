@@ -202,6 +202,25 @@ pub fn outputs() -> Result<DisplayOutputs, SnapshotError> {
     })
 }
 
+/// Each connected display's Core Graphics ID, keyed by the ID `outputs` gives it. Main thread
+/// only; empty elsewhere.
+#[must_use]
+pub fn display_ids() -> HashMap<String, u32> {
+    autoreleasepool(|_| {
+        let Some(marker) = MainThreadMarker::new() else {
+            return HashMap::new();
+        };
+        let screens = NSScreen::screens(marker);
+        (0..screens.count())
+            .filter_map(|index| screen_display_id(&screens.objectAtIndex(index)))
+            .map(|display_id| {
+                let id = display_uuid(display_id).unwrap_or_else(|| display_id.to_string());
+                (id, display_id)
+            })
+            .collect()
+    })
+}
+
 fn screen_display_id(screen: &NSScreen) -> Option<u32> {
     let description = screen.deviceDescription();
     let number = description.objectForKey(ns_string!("NSScreenNumber"))?;

@@ -45,6 +45,7 @@ mod backend;
 mod bridge;
 mod commands;
 mod cycle;
+mod hud_event;
 mod input;
 mod journal;
 mod memory;
@@ -57,7 +58,8 @@ mod worker;
 
 pub use app_loop::{MainThreadAgent, TickOutcome};
 pub use bridge::{
-    HUD_PREVIEW_RECT, UiAction, UiAgentSnapshot, UiBridge, UiHudEvent, UiHudKind, UiHudLayout,
+    HUD_MAX_DISPLAYS, HUD_MAX_FLOATING, HUD_MAX_TILES, HUD_PREVIEW_RECT, UiAction, UiAgentSnapshot,
+    UiBridge, UiHudDisplay, UiHudEvent, UiHudKind, UiHudLayout, UiHudTile, UiHudWorkspace,
     UiLaunchAtLogin, UiNews, UiUpdateStatus,
 };
 

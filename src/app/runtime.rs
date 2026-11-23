@@ -746,15 +746,6 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
             .collect()
     }
 
-    pub(super) fn hud_for(&self, workspace: WorkspaceId, kind: UiHudKind) -> UiHudEvent {
-        UiHudEvent {
-            workspace,
-            kind,
-            preview: self.workspace_preview(workspace),
-            windows: self.workspaces.windows(workspace).len(),
-        }
-    }
-
     fn workspace_preview(&self, workspace: WorkspaceId) -> UiHudLayout {
         if self.workspaces.uses_fullscreen_layout(workspace) {
             UiHudLayout::Fullscreen
