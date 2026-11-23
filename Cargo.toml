@@ -106,14 +106,11 @@ objc2-service-management = { version = "0.3.2", default-features = false, featur
 members = ["agent"]
 
 [workspace.lints.rust]
-# abattoir-lints begin
 unsafe_op_in_unsafe_fn = "deny"
 unused_must_use = "deny"
-# abattoir-lints end
 unsafe_code = "deny"
 
 [workspace.lints.clippy]
-# abattoir-lints begin
 await_holding_lock = "deny"
 await_holding_refcell_ref = "deny"
 dbg_macro = "deny"
@@ -124,7 +121,6 @@ let_underscore_must_use = "deny"
 todo = "warn"
 undocumented_unsafe_blocks = "deny"
 unwrap_used = "warn"
-# abattoir-lints end
 
 [lints]
 workspace = true

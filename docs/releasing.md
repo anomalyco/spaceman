@@ -58,8 +58,8 @@ every change under `.github/` need Dax's review.
 
 Installed builds update through Sparkle, which reads the signed `appcast.xml` at `SUFeedURL` on R2
 (bucket `spaceman-releases`); Sparkle doesn't read the release service. After a stable run, on the
-MacBook Pro (`ssh pro`, which has the Sparkle key and `wrangler` auth), in a clean worktree of the
-released commit:
+release Mac (which holds the Sparkle key in Keychain and `wrangler` auth), in a clean worktree of
+the released commit:
 
 ```sh
 ./scripts/release-app.sh          # prepare

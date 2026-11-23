@@ -5,23 +5,22 @@ This file is the current engineering contract. README and `docs/` describe curre
 
 ## Working Here
 
-- Agents merge their own Spaceman PRs and redeploy (release, publish, install) without asking
-  (Kit, Oct 27). The repo is private at `anomalyco/spaceman` (moved from `kitlangton`, Nov 20).
-- CI's macOS checks run only on dispatch and tags (macOS minutes bill at 10x), so run
-  `scripts/check` locally before merging and say so in the PR.
-- The installed app follows `dev` (the default branch; `main` was renamed on Nov 23, so rerun
-  `scripts/install-updater` on a Mac still set up for `main`): `scripts/spaceman-updater` (LaunchAgent
-  `dev.kit.spaceman-updater`, set up with `scripts/install-updater`, log in
+- Agents merge their own Spaceman PRs and redeploy (release, publish, install) without asking.
+- CI's macOS checks run only on dispatch and tags, so run `scripts/check` locally before merging
+  and say so in the PR.
+- The installed app follows `dev`: `scripts/spaceman-updater` (LaunchAgent
+  `anomaly.spaceman.updater`, set up with `scripts/install-updater`, log in
   `~/.local/share/spaceman/updater.log`) builds a merged `dev` once pushes stop for 3 minutes, or
   after 10 at most, and installs it when the keyboard and mouse have been idle for 2 minutes. You
   don't need to install by hand after a merge.
 - Dev loop: `scripts/dev` rebuilds and reinstalls on every save; restart restores every window and
   resumes tiling. The updater puts `dev` back on its next build.
-- Release notes are one file per version in `changelog/<version>.md`, in Abattoir's changelog format.
+- Release notes are one file per version in `changelog/<version>.md` (frontmatter `date` and
+  `summary`, then `## Major`, `## Improvements`, and `## Fixes`).
   The Release workflow (`.github/workflows/release.yml`, on `dev`) builds, signs with Anomaly's
   Developer ID, notarizes and publishes to `https://anoma.ly/release/spaceman` (dev channel on every
-  push, stable on dispatch); `.github/` changes need Dax (CODEOWNERS); then
-  `scripts/release-app.sh` on the MacBook Pro (`ssh pro`), which has the Sparkle key and `wrangler`,
+  push, stable on dispatch); `.github/` changes require CODEOWNERS review; then
+  `scripts/release-app.sh` on the release Mac (which holds the Sparkle key and `wrangler` auth)
   puts that exact zip into the R2 appcast. See [docs/releasing.md](docs/releasing.md).
 - Bundle ID is `anomaly.spaceman` (was `com.kitlangton.spaceman` through 0.3.0). State and config
   paths (`~/Library/Application Support/Spaceman`, `~/.config/spaceman`) don't depend on it.
