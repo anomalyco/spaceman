@@ -1,7 +1,8 @@
 # Releasing
 
 Spaceman is not release-ready merely because `scripts/build-app.sh` produces a signed bundle. The
-script builds locked release binaries, embeds Sparkle 2.9.4, assembles `Spaceman.app`, applies
+script builds locked release binaries, embeds Sparkle 2.9.4 (no longer loaded; the Release
+workflow's `sign-macos.sh` still expects its binaries), assembles `Spaceman.app`, applies
 hardened-runtime Developer ID signing from the innermost Sparkle helpers outward, and verifies the
 signature. It does not notarize, staple, or publish an artifact. With `SPACEMAN_RELEASE_UNSIGNED=1` it
 stops before signing; the Release workflow builds that way and signs in a separate job.
@@ -18,9 +19,12 @@ grant belongs to the old identity.
 A release has two halves:
 
 ```text
-Release workflow (GitHub Actions)              scripts/release-app.sh (release Mac)
-build ─► sign + notarize ─► verify ─► publish   download that zip ─► validate ─► Sparkle appcast ─► R2
-         (Apple keys from AWS)       anoma.ly/release/spaceman            (Sparkle key, wrangler)
+Release workflow (GitHub Actions)              installed Spaceman (src/updater.rs)
+build ─► sign + notarize ─► verify ─► publish ─► manifest ─► zip ─► SHA-256 + Developer ID ─► Install & Restart
+         (Apple keys from AWS)       anoma.ly/release/spaceman
+
+scripts/release-app.sh (release Mac), for builds up to 0.3.2 only
+download that zip ─► validate ─► Sparkle appcast ─► R2   (Sparkle key, wrangler)
 ```
 
 ### 1. The Release workflow
@@ -37,7 +41,9 @@ every push publishes the dev channel, and a dispatch picks a channel:
 Its jobs:
 
 - **build-macos** (`macos-26`, no secrets): `SPACEMAN_RELEASE_UNSIGNED=1 scripts/build-app.sh`, zipped
-  and uploaded with a `SHA256SUMS` whose digest the job reports.
+  and uploaded with a `SHA256SUMS` whose digest the job reports. Building unsigned also stamps
+  `SPACEMAN_RELEASE_BUILD=1` into the binaries, which turns the in-app updater on; every other build
+  is a source build that never checks.
 - **sign-macos** (environment `release`): checks out only `.github/release/`, assumes
   `role/github/spaceman-release` through GitHub OIDC, reads `shared/APPLE_SIGNING_CERTIFICATE` and
   `shared/APPLE_NOTARY_KEY` from AWS Secrets Manager in one step, and with the environment's
@@ -54,10 +60,32 @@ Its jobs:
 token run only those scripts, on artifacts they verify by digest and never execute. CODEOWNERS makes
 every change under `.github/` need Dax's review.
 
-### 2. Sparkle's appcast
+### 2. In-app updates
 
-Installed builds update through Sparkle, which reads the signed `appcast.xml` at `SUFeedURL` on R2
-(bucket `spaceman-releases`); Sparkle doesn't read the release service. After a stable run, on the
+A release build checks `https://anoma.ly/release/spaceman/desktop/<channel>.json` 10 seconds after
+launch, then hourly (every 15 minutes on dev) and on `Check for Updates...`. The channel is
+`[settings] update_channel` (`stable` by default, or `dev`), picked in `Settings > General > Updates`.
+When the channel's current release isn't the running build, it downloads the `macos-arm64` target
+(only from `https://anoma.ly/release/spaceman/files/`, no redirects), checks its size and SHA-256
+against the manifest, unpacks it beside the installed bundle as `.Spaceman-update-<version>-<sha>`,
+and requires exactly `Spaceman.app`, bundle ID `anomaly.spaceman`, `codesign --verify --deep --strict`
+against `app/update-requirement.txt` (Anomaly's Developer ID, notarized) and `TeamIdentifier=5NZ4Q7NXJ4`.
+`Install & Restart` (Settings sidebar, `General > Updates`, or the menu) then runs the same exit as
+quit: tiling stops and every parked window is restored, and only once restoration fully succeeds
+does Spaceman check the signature again, swap the bundles in one `renamex_np(RENAME_SWAP)` and open
+the new one after it exits. The next launch removes the old bundle.
+
+Versions are never compared. A build this updater installed is identified by
+`updates/installed.json` (the release's SHA-256, tied to the running `spaceman-agent`'s hash); any
+other build by `CARGO_PKG_VERSION`. So a stable install is current when its version matches the
+manifest, and a first dev-channel check always installs the current dev build once.
+
+### 3. The legacy Sparkle appcast
+
+Builds up to 0.3.2 update only through Sparkle, which reads the signed `appcast.xml` at `SUFeedURL` on
+R2 (bucket `spaceman-releases`) and not the release service. Until every install runs a build with
+the in-app updater, keep publishing each stable release there too, and keep the `SU*` keys in
+`app/Info.plist` (a Sparkle client checks them in the update it installs). After a stable run, on the
 release Mac (which holds the Sparkle key in Keychain and `wrangler` auth), in a clean worktree of
 the released commit:
 

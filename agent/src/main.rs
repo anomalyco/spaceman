@@ -1,5 +1,5 @@
 //! Spaceman's single-process macOS agent (`spaceman-agent`): runs the window
-//! manager, native status bar item, Sparkle updater, Settings window, and Rune
+//! manager, native status bar item, updater, Settings window, and Rune
 //! Playground (`⇧⌘D` / `--playground`) on one AppKit + Rune event loop.
 
 #[cfg(not(test))]
@@ -17,6 +17,7 @@ mod onboarding;
 mod panes;
 mod playground;
 mod rules;
+mod updates;
 mod view;
 
 use std::sync::Arc;
@@ -141,6 +142,19 @@ impl Ui {
 
     pub fn check_for_updates(&self) {
         self.send_action(UiAction::CheckForUpdates);
+    }
+
+    /// Restores every window, then installs the ready update and relaunches.
+    pub fn install_update(&self) {
+        self.send_action(UiAction::InstallUpdate);
+    }
+
+    /// Saves the channel, then checks it at once.
+    pub fn set_update_channel(&mut self, channel: spaceman::config::UpdateChannel) {
+        self.edit(|doc| doc.set_update_channel(channel));
+        if self.error.is_none() {
+            self.check_for_updates();
+        }
     }
 
     pub fn toggle_hud(&mut self) {

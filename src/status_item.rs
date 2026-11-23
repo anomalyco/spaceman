@@ -60,9 +60,16 @@ objc2::define_class!(
             drop(self.ivars().actions.send(Action::OpenSettings));
         }
 
+        /// Checks and opens Settings, whose sidebar shows the check's progress.
         #[unsafe(method(checkForUpdates:))]
         fn check_for_updates(&self, _sender: &NSObject) {
             drop(self.ivars().actions.send(Action::CheckForUpdates));
+            drop(self.ivars().actions.send(Action::OpenSettings));
+        }
+
+        #[unsafe(method(installUpdate:))]
+        fn install_update(&self, _sender: &NSObject) {
+            drop(self.ivars().actions.send(Action::InstallUpdate));
         }
 
         #[unsafe(method(toggleLaunchAtLogin:))]
@@ -105,6 +112,7 @@ struct Controller {
     automatic: Retained<NSMenuItem>,
     hud: Retained<NSMenuItem>,
     launch_at_login: Retained<NSMenuItem>,
+    update: Retained<NSMenuItem>,
     status_title: String,
     workspace_layouts: Vec<WorkspaceLayout>,
     workspace_menu: Vec<DisplayWorkspaces>,
@@ -158,13 +166,14 @@ pub fn install(sender: Sender<Action>) -> Result<(), String> {
         ",",
         marker,
     ));
-    menu.addItem(&action_item(
-        "Check for Updates...",
+    let update = action_item(
+        CHECK_FOR_UPDATES,
         &target,
         sel!(checkForUpdates:),
         "",
         marker,
-    ));
+    );
+    menu.addItem(&update);
     menu.addItem(&NSMenuItem::separatorItem(marker));
     menu.addItem(&action_item(
         "Quit Spaceman",
@@ -192,6 +201,7 @@ pub fn install(sender: Sender<Action>) -> Result<(), String> {
             automatic,
             hud,
             launch_at_login,
+            update,
             status_title: String::new(),
             workspace_layouts: Vec::new(),
             workspace_menu: Vec::new(),
@@ -199,6 +209,26 @@ pub fn install(sender: Sender<Action>) -> Result<(), String> {
         });
     });
     Ok(())
+}
+
+const CHECK_FOR_UPDATES: &str = "Check for Updates...";
+
+/// The update item checks, or installs a ready update.
+pub fn set_update(ready: Option<&str>) {
+    CONTROLLER.with(|controller| {
+        if let Some(controller) = controller.borrow().as_ref() {
+            let (title, action) = match ready {
+                Some(version) => (
+                    format!("Install Spaceman {version} and Restart"),
+                    sel!(installUpdate:),
+                ),
+                None => (CHECK_FOR_UPDATES.to_owned(), sel!(checkForUpdates:)),
+            };
+            controller.update.setTitle(&NSString::from_str(&title));
+            // SAFETY: Both selectors are methods on `Target`, the item's retained target.
+            unsafe { controller.update.setAction(Some(action)) };
+        }
+    });
 }
 
 pub fn set_status(status: &str) {

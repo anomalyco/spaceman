@@ -29,9 +29,6 @@ pub mod permission_guide;
 pub mod reconcile;
 pub mod runtime;
 mod serde_map;
-#[cfg(target_os = "macos")]
-#[allow(unsafe_code)]
-mod sparkle;
 #[allow(unsafe_code)]
 pub mod state_file;
 #[cfg(target_os = "macos")]
@@ -41,6 +38,8 @@ pub mod swipe;
 #[cfg(target_os = "macos")]
 #[allow(unsafe_code)]
 mod termination;
+#[cfg(target_os = "macos")]
+mod updater;
 pub mod window_memory;
 pub mod workspace;
 

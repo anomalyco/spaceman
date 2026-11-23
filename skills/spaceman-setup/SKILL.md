@@ -88,7 +88,8 @@ spaceman displays
   until pause or quit has restored every window.
 - **Windows keep moving on their own**: another window manager is running; quit it, then
   `spaceman ctl resume`.
-- **Updates**: signed and delivered through Sparkle in Spaceman Settings.
+- **Updates**: Spaceman checks Anomaly's release service and offers `Install & Restart` in Settings
+  and the menu; it restores every window first.
 
 ## Uninstall
 

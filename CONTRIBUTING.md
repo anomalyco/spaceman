@@ -25,7 +25,7 @@ README and linked docs whenever controls, configuration, compatibility, paths, p
 recovery behavior changes.
 
 Do not weaken safety behavior to make a live test pass. Do not add telemetry, network access beyond
-the reviewed Sparkle update path, automatic installation, new private APIs, or persisted sensitive
+the reviewed release-service update path (`src/updater.rs`), automatic installation, new private APIs, or persisted sensitive
 data without explicit design and security review.
 
 ## Changes And Review

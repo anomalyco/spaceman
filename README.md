@@ -62,7 +62,8 @@ and its [SHA-256 checksum](https://anoma.ly/spaceman/download/macos-arm64.sha256
 run `shasum -a 256 -c Spaceman.zip.sha256`, then unzip it and move `Spaceman.app`
 to `/Applications`.
 
-Later preview updates are signed and delivered through Sparkle. Use Spaceman Settings for upgrades.
+Spaceman updates itself from Anomaly's release service: when an update is ready, choose
+`Install & Restart` in Settings or the menu. Spaceman restores every window before it restarts.
 Builds after 0.3.0 are signed by Anomaly with the bundle ID `anomaly.spaceman`, so macOS asks for
 Accessibility access once more after that update; your config, workspaces and parked-window recovery
 carry over. If a manual replacement is necessary, pause and quit the running version and confirm that every parked
@@ -198,7 +199,7 @@ Follow [Recovery](docs/recovery.md) for stuck or crashed processes and safe unin
 ## Status
 
 Public experimental preview. The arm64 artifact is signed, notarized, stapled, checksummed, and served
-through a signed Sparkle feed. Broad release readiness is not proven: minimum-OS runtime validation,
+through Anomaly's release service, which the app's own updater checks. Broad release readiness is not proven: minimum-OS runtime validation,
 clean-machine install/upgrade/recovery/uninstall qualification, wider architecture support, and a
 concise product demo remain outstanding.
 

@@ -20,6 +20,7 @@ No response-time guarantee applies while the project remains experimental.
 ## Scope Notes
 
 Spaceman has broad Accessibility permission and uses private `_AXUIElementGetWindow`. The local
-control socket and lock are mode `0600`. There is no telemetry; packaged builds use Sparkle to fetch a
-signed update feed and selected archives from the public release bucket. See
+control socket and lock are mode `0600`. There is no telemetry; release builds check Anomaly's release service
+(`anoma.ly/release/spaceman`) for updates and install only archives whose SHA-256 and Developer ID
+signature check out. See
 [Security and privacy](docs/security-and-privacy.md) for the current data model.

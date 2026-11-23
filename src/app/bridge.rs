@@ -1,6 +1,6 @@
 use std::sync::{Arc, Mutex, mpsc::Sender};
 
-use crate::{Axis, Rect, WorkspaceId, login_item, sparkle};
+use crate::{Axis, Rect, WorkspaceId, login_item};
 
 use super::{Action, WorkerAction};
 
@@ -20,6 +20,8 @@ pub enum UiAction {
     FinishSetup,
     OpenAccessibility,
     CheckForUpdates,
+    /// Restore every window, then install the staged update and relaunch.
+    InstallUpdate,
     ToggleLaunchAtLogin,
     SetHud(bool),
     MarkWrong,
@@ -32,6 +34,7 @@ impl From<UiAction> for Action {
             UiAction::FinishSetup => Self::FinishSetup,
             UiAction::OpenAccessibility => Self::OpenAccessibility,
             UiAction::CheckForUpdates => Self::CheckForUpdates,
+            UiAction::InstallUpdate => Self::InstallUpdate,
             UiAction::ToggleLaunchAtLogin => Self::ToggleLaunchAtLogin,
             UiAction::SetHud(enabled) => Self::SetHud(enabled),
             UiAction::MarkWrong => Self::Worker(WorkerAction::MarkWrong),
@@ -143,37 +146,58 @@ impl UiLaunchAtLogin {
     }
 }
 
-#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+/// What the in-app updater is doing (`crate::updater`).
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
 pub enum UiUpdateStatus {
+    /// Updates are off: turned off, or an install Spaceman can't replace.
     #[default]
     Unavailable,
+    /// A build from source, which its checkout updates.
+    SourceBuild,
     Idle,
     Checking,
     UpToDate,
-    Available,
+    Downloading,
+    /// A verified update waits for Install & Restart.
+    Ready {
+        version: String,
+    },
+    /// Windows are restored and the update is swapped in; Spaceman relaunches.
+    Installing,
+    Failed,
 }
 
 impl UiUpdateStatus {
-    pub(super) const fn as_str(self) -> &'static str {
+    pub(crate) const fn as_str(&self) -> &'static str {
         match self {
             Self::Unavailable => "unavailable",
+            Self::SourceBuild => "source-build",
             Self::Idle => "idle",
             Self::Checking => "checking",
             Self::UpToDate => "up-to-date",
-            Self::Available => "available",
+            Self::Downloading => "downloading",
+            Self::Ready { .. } => "ready",
+            Self::Installing => "installing",
+            Self::Failed => "failed",
         }
     }
-}
 
-impl From<sparkle::UpdateStatus> for UiUpdateStatus {
-    fn from(status: sparkle::UpdateStatus) -> Self {
-        match status {
-            sparkle::UpdateStatus::Unavailable => Self::Unavailable,
-            sparkle::UpdateStatus::Idle => Self::Idle,
-            sparkle::UpdateStatus::Checking => Self::Checking,
-            sparkle::UpdateStatus::UpToDate => Self::UpToDate,
-            sparkle::UpdateStatus::UpdateAvailable => Self::Available,
+    /// The version a ready update installs.
+    #[must_use]
+    pub fn ready_version(&self) -> Option<&str> {
+        match self {
+            Self::Ready { version } => Some(version),
+            _ => None,
         }
+    }
+
+    /// Whether a manual check may start now.
+    #[must_use]
+    pub const fn can_check(&self) -> bool {
+        matches!(
+            self,
+            Self::Idle | Self::UpToDate | Self::Failed | Self::Ready { .. }
+        )
     }
 }
 
@@ -197,6 +221,7 @@ impl UiAgentSnapshot {
             "hud": self.hud,
             "launch_at_login": self.launch_at_login.as_settings_value(),
             "update": self.update.as_str(),
+            "update_version": self.update.ready_version(),
             "active_workspaces": self.active_workspaces,
             "last_error": self.last_error,
         })

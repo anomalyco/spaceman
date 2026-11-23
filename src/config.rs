@@ -8,6 +8,7 @@ use crate::{DisplaySelector, ObservedWindow, WorkspaceId, Workspaces};
 struct AppSettings {
     hud: bool,
     hud_style: HudStyle,
+    update_channel: UpdateChannel,
 }
 
 impl Default for AppSettings {
@@ -15,6 +16,37 @@ impl Default for AppSettings {
         Self {
             hud: true,
             hud_style: HudStyle::default(),
+            update_channel: UpdateChannel::default(),
+        }
+    }
+}
+
+/// Which release channel the in-app updater follows: `settings.update_channel`.
+#[derive(Clone, Copy, Debug, Default, Deserialize, Eq, PartialEq)]
+#[serde(rename_all = "lowercase")]
+pub enum UpdateChannel {
+    /// Public releases.
+    #[default]
+    Stable,
+    /// A build of every merge to `dev`.
+    Dev,
+}
+
+impl UpdateChannel {
+    #[must_use]
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Stable => "stable",
+            Self::Dev => "dev",
+        }
+    }
+
+    #[must_use]
+    pub fn parse(value: &str) -> Option<Self> {
+        match value {
+            "stable" => Some(Self::Stable),
+            "dev" => Some(Self::Dev),
+            _ => None,
         }
     }
 }
@@ -97,6 +129,8 @@ struct RawSettings {
     hud: bool,
     #[serde(default)]
     hud_style: HudStyle,
+    #[serde(default)]
+    update_channel: UpdateChannel,
 }
 
 impl Default for RawSettings {
@@ -104,6 +138,7 @@ impl Default for RawSettings {
         Self {
             hud: true,
             hud_style: HudStyle::default(),
+            update_channel: UpdateChannel::default(),
         }
     }
 }
@@ -183,6 +218,7 @@ impl Config {
             settings: AppSettings {
                 hud: raw.settings.hud,
                 hud_style: raw.settings.hud_style,
+                update_channel: raw.settings.update_channel,
             },
             rules,
             workspace_monitors,
@@ -197,6 +233,11 @@ impl Config {
     #[must_use]
     pub const fn hud_style(&self) -> HudStyle {
         self.settings.hud_style
+    }
+
+    #[must_use]
+    pub const fn update_channel(&self) -> UpdateChannel {
+        self.settings.update_channel
     }
 
     pub fn load() -> Result<Self, String> {
@@ -473,5 +514,23 @@ monitor = "main"
         assert!(Config::parse("version = 1\n[settings]\nhud_style = \"grid\"\n").is_err());
         assert!(Config::parse("version = 1\n[settings]\nhud_style = true\n").is_err());
         assert_eq!(HudStyle::parse("Icons"), None);
+    }
+
+    #[test]
+    fn parses_update_channel_with_stable_default() {
+        assert_eq!(Config::default().update_channel(), UpdateChannel::Stable);
+        assert_eq!(
+            Config::parse("version = 1").unwrap().update_channel(),
+            UpdateChannel::Stable
+        );
+        for channel in [UpdateChannel::Stable, UpdateChannel::Dev] {
+            let source = format!(
+                "version = 1\n[settings]\nupdate_channel = {:?}\n",
+                channel.as_str()
+            );
+            assert_eq!(Config::parse(&source).unwrap().update_channel(), channel);
+            assert_eq!(UpdateChannel::parse(channel.as_str()), Some(channel));
+        }
+        assert!(Config::parse("version = 1\n[settings]\nupdate_channel = \"beta\"\n").is_err());
     }
 }

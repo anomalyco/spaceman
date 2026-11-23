@@ -20,8 +20,10 @@ This file is the current engineering contract. README and `docs/` describe curre
   The Release workflow (`.github/workflows/release.yml`, on `dev`) builds, signs with Anomaly's
   Developer ID, notarizes and publishes to `https://anoma.ly/release/spaceman` (dev channel on every
   push, stable on dispatch); `.github/` changes require CODEOWNERS review; then
-  `scripts/release-app.sh` on the release Mac (which holds the Sparkle key and `wrangler` auth)
-  puts that exact zip into the R2 appcast. See [docs/releasing.md](docs/releasing.md).
+  installed builds update themselves from it (`src/updater.rs`). Until every install has a build
+  with that updater, `scripts/release-app.sh` on the release Mac (which holds the Sparkle key and
+  `wrangler` auth) still puts each stable zip into the R2 appcast that older (Sparkle) builds read.
+  See [docs/releasing.md](docs/releasing.md).
 - Bundle ID is `anomaly.spaceman` (was `com.kitlangton.spaceman` through 0.3.0). State and config
   paths (`~/Library/Application Support/Spaceman`, `~/.config/spaceman`) don't depend on it.
 - Code shape: keep Rust files under 800 non-test lines (1,500 hard cap, 1,000 for test files;
@@ -46,9 +48,11 @@ This file is the current engineering contract. README and `docs/` describe curre
   arrangement/anomaly journal and the `spaceman doctor` summary.
 - `src/app/input.rs`: bounded ordered user input and geometry-based gesture tracking, independent
   of preview-worker availability. Main-thread pointer sampling must not make synchronous AX calls.
-- `src/status_item.rs`, `src/login_item.rs`, `src/sparkle.rs`, `src/termination.rs`: main-thread
-  menu bar status item, login registration, signed updates, and asynchronous AppKit termination
+- `src/status_item.rs`, `src/login_item.rs`, `src/termination.rs`: main-thread
+  menu bar status item, login registration, and asynchronous AppKit termination
   coordination on winit's application delegate.
+- `src/updater.rs`, `src/updater/`: the in-app updater (release-service protocol, HTTPS transport,
+  bundle staging, Developer ID verification, swap and relaunch after restoration).
 - `src/hotkeys.rs`, `src/keyboard_layout.rs`: Carbon global shortcut adapters.
 - `src/macos.rs`, `src/macos/`: Accessibility/Core Graphics observation and writes, display
   discovery, native event monitor, and native handle cache.
@@ -103,6 +107,8 @@ This file is the current engineering contract. README and `docs/` describe curre
 - Window titles may be used for matching in memory but must never enter persistence, serialized
   snapshots, debug output, HUD output, fixtures, logs, or control responses.
 - No telemetry, network access, or update checks without explicit product and security review.
+  The updater (`src/updater.rs`) is the one reviewed network path: release builds only, the
+  release service's manifest and `files/` only, nothing about the install beyond the User-Agent.
 - Keep `control.sock` and `control.lock` at mode `0600`, bound under the user's Application Support
   directory, with bounded requests and single-agent locking.
 - Treat `_AXUIElementGetWindow` as private, optional, dynamically resolved compatibility risk. Do not

@@ -128,8 +128,11 @@ impl MainThreadAgent {
                     self.ui_dirty = true;
                 }
                 Action::CheckForUpdates => {
-                    sparkle::check_for_updates();
+                    self.updater.check_now();
                     self.ui_dirty = true;
+                }
+                Action::InstallUpdate if !self.updater.ready() => {
+                    status_item::set_status("No update is ready to install");
                 }
                 Action::ToggleLaunchAtLogin => {
                     let result = login_item::toggle();
@@ -159,6 +162,7 @@ impl MainThreadAgent {
                         _ => ExitIntent::Quit,
                     };
                     permission_guide::close();
+                    self.resume_after_update = intent == ExitIntent::Update && self.automatic;
                     self.exit_intent = Some(intent);
                     self.stop_automatic_and_restore();
                     if self.worker.is_busy() {

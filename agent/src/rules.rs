@@ -4,7 +4,10 @@
 
 use std::path::PathBuf;
 
-use spaceman::{WorkspaceId, config::HudStyle};
+use spaceman::{
+    WorkspaceId,
+    config::{HudStyle, UpdateChannel},
+};
 use toml_edit::{ArrayOfTables, DocumentMut, Item, Table, value};
 
 const EMPTY: &str = "# Spaceman configuration.\nversion = 1\n";
@@ -168,6 +171,25 @@ impl Doc {
         self.set_setting(
             "hud_style",
             (style != HudStyle::default()).then(|| value(style.as_str())),
+        );
+    }
+
+    /// The release channel the updater follows, from `settings.update_channel` (defaults to
+    /// stable).
+    pub fn update_channel(&self) -> UpdateChannel {
+        self.doc
+            .get("settings")
+            .and_then(Item::as_table_like)
+            .and_then(|table| table.get("update_channel"))
+            .and_then(Item::as_str)
+            .and_then(UpdateChannel::parse)
+            .unwrap_or_default()
+    }
+
+    pub fn set_update_channel(&mut self, channel: UpdateChannel) {
+        self.set_setting(
+            "update_channel",
+            (channel != UpdateChannel::default()).then(|| value(channel.as_str())),
         );
     }
 

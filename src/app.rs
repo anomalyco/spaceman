@@ -16,7 +16,7 @@ use crate::{
     config::{Config, WindowDisposition},
     control::{self, Command as ControlCommand, Request as ControlRequest},
     hotkeys::{DeliveryWatch, HotkeyPlan, Hotkeys},
-    live, login_item, macos, permission_guide, sparkle, status_item,
+    live, login_item, macos, permission_guide, status_item,
     swipe::Swipe,
     termination,
 };
@@ -359,7 +359,7 @@ pub fn prepare() -> Result<(PreparedAgent, UiBridge), String> {
 }
 
 impl PreparedAgent {
-    /// Installs main-thread AppKit hooks (termination gate, status item, Sparkle,
+    /// Installs main-thread AppKit hooks (termination gate, status item, updater,
     /// AX event monitor) once winit's `NSApplication` delegate is active.
     /// `setup_tour_open` holds automatic tiling until the first-run setup tour
     /// finishes, so a new install is never retiled behind the setup window.
@@ -380,9 +380,6 @@ impl PreparedAgent {
             return Err(format!("failed to install Spaceman status item: {error}"));
         }
         status_item::set_hud(self.hud);
-        if let Err(error) = sparkle::start(self.actions_sender.clone()) {
-            log_event!("Sparkle unavailable: {error}");
-        }
         let launch_status = login_item::status();
         match &launch_status {
             Ok(status) => status_item::set_launch_at_login(*status),

@@ -1,0 +1,462 @@
+//! Spaceman's in-app updater, a client of Anomaly's release service
+//! (`https://anoma.ly/release/spaceman/desktop/<channel>.json`). A worker thread
+//! checks the channel 10 seconds after launch, then hourly (every 15 minutes on
+//! the dev channel) or on "Check for Updates". When the channel's current
+//! release isn't the running build it downloads the zip from the release
+//! service's own `files/`, checks its size and SHA-256 against the manifest,
+//! unpacks it beside the installed bundle and checks its code signature
+//! (`bundle`). The update then waits for Install & Restart, which restores every
+//! parked window first (`ExitIntent::Update`) and only then swaps the bundles.
+//!
+//! Versions are display text and never compared: a build installed by this
+//! updater is known by its target's SHA-256 (`installed.json`, tied to the
+//! running executable's hash), any other by its exact version. Manifests are
+//! not signed: HTTPS, the manifest's SHA-256 and the Developer ID signature are
+//! the integrity checks. Builds from source (no `SPACEMAN_RELEASE_BUILD` stamp,
+//! which only the Release workflow's build sets) never check.
+
+#[allow(unsafe_code)]
+mod bundle;
+mod protocol;
+mod transport;
+
+use std::path::{Path, PathBuf};
+use std::sync::{
+    Arc, Condvar, Mutex, MutexGuard,
+    atomic::{AtomicU64, Ordering},
+};
+use std::time::Duration;
+
+use crate::app::UiUpdateStatus;
+use crate::config::{Config, UpdateChannel};
+use protocol::{Decision, Install};
+
+const APP: &str = "spaceman";
+const ARTIFACT: &str = "desktop";
+const TARGET: &str = "macos-arm64";
+const ORIGIN: &str = "https://anoma.ly/release";
+/// Every download must come from the release service's own files.
+const FILES: &str = "https://anoma.ly/release/spaceman/files/";
+const STARTUP_DELAY: Duration = Duration::from_secs(10);
+const CHECK_INTERVAL: Duration = Duration::from_secs(60 * 60);
+const DEV_CHECK_INTERVAL: Duration = Duration::from_secs(15 * 60);
+const RETRY_INTERVAL: Duration = Duration::from_secs(5 * 60);
+const RECEIPT: &str = "installed.json";
+const BUCKET: &str = "bucket";
+const VERSION: &str = env!("CARGO_PKG_VERSION");
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+enum Phase {
+    Disabled(UiUpdateStatus),
+    Idle,
+    Checking,
+    UpToDate,
+    Downloading,
+    Failed,
+    /// Swapped in; the process is about to exit, so nothing may change it.
+    Installed,
+}
+
+/// A verified update waiting for Install & Restart.
+#[derive(Clone, Debug, Eq, PartialEq)]
+struct StagedUpdate {
+    staged: bundle::Staged,
+    sha256: String,
+    version: String,
+    /// The SHA-256 of its `spaceman-agent`, which identifies it once it runs.
+    executable: String,
+}
+
+struct Core {
+    phase: Phase,
+    staged: Option<StagedUpdate>,
+    check_requested: bool,
+    stop: bool,
+}
+
+impl Core {
+    fn status(&self) -> UiUpdateStatus {
+        match (&self.phase, &self.staged) {
+            (Phase::Disabled(status), _) => status.clone(),
+            (Phase::Installed, _) => UiUpdateStatus::Installing,
+            (_, Some(update)) => UiUpdateStatus::Ready {
+                version: update.version.clone(),
+            },
+            (Phase::Idle, None) => UiUpdateStatus::Idle,
+            (Phase::Checking, None) => UiUpdateStatus::Checking,
+            (Phase::UpToDate, None) => UiUpdateStatus::UpToDate,
+            (Phase::Downloading, None) => UiUpdateStatus::Downloading,
+            (Phase::Failed, None) => UiUpdateStatus::Failed,
+        }
+    }
+
+    fn live(&self) -> bool {
+        !matches!(self.phase, Phase::Disabled(_) | Phase::Installed)
+    }
+
+    /// Adopts a newly staged update unless one was already installed; returns
+    /// what to discard.
+    fn adopt(&mut self, update: StagedUpdate) -> Option<StagedUpdate> {
+        if !self.live() {
+            return Some(update);
+        }
+        self.staged.replace(update)
+    }
+}
+
+struct Shared {
+    core: Mutex<Core>,
+    signal: Condvar,
+    /// Bumped on every change the UI shows.
+    revision: AtomicU64,
+}
+
+impl Shared {
+    fn lock(&self) -> MutexGuard<'_, Core> {
+        self.core.lock().unwrap_or_else(|error| error.into_inner())
+    }
+
+    fn changed(&self) {
+        self.revision.fetch_add(1, Ordering::AcqRel);
+    }
+
+    fn set_phase(&self, phase: Phase) {
+        let mut core = self.lock();
+        if core.live() {
+            core.phase = phase;
+        }
+        drop(core);
+        self.changed();
+    }
+}
+
+pub(crate) struct Updater {
+    shared: Arc<Shared>,
+}
+
+impl Updater {
+    /// Starts the worker, unless this build or install can't update itself.
+    pub(crate) fn start() -> Self {
+        let installed = bundle::installed_bundle();
+        let disabled = if option_env!("SPACEMAN_RELEASE_BUILD") != Some("1") {
+            Some(UiUpdateStatus::SourceBuild)
+        } else if std::env::var_os("SPACEMAN_DISABLE_UPDATES").is_some_and(|value| value == "1")
+            || !installed.as_deref().is_some_and(bundle::replaceable)
+        {
+            Some(UiUpdateStatus::Unavailable)
+        } else {
+            None
+        };
+        let updater = Self::with_phase(disabled.clone().map_or(Phase::Idle, Phase::Disabled));
+        if let (None, Some(installed)) = (disabled, installed) {
+            let shared = Arc::clone(&updater.shared);
+            if let Err(error) = std::thread::Builder::new()
+                .name("updater".into())
+                .spawn(move || run(&shared, &installed))
+            {
+                log(&format!("couldn't start: {error}"));
+                updater.shared.set_phase(Phase::Failed);
+            }
+        }
+        updater
+    }
+
+    fn with_phase(phase: Phase) -> Self {
+        Self {
+            shared: Arc::new(Shared {
+                core: Mutex::new(Core {
+                    phase,
+                    staged: None,
+                    check_requested: false,
+                    stop: false,
+                }),
+                signal: Condvar::new(),
+                revision: AtomicU64::new(0),
+            }),
+        }
+    }
+
+    pub(crate) fn status(&self) -> UiUpdateStatus {
+        self.shared.lock().status()
+    }
+
+    /// Changes whenever `status` may have.
+    pub(crate) fn revision(&self) -> u64 {
+        self.shared.revision.load(Ordering::Acquire)
+    }
+
+    pub(crate) fn ready(&self) -> bool {
+        let core = self.shared.lock();
+        core.live() && core.staged.is_some()
+    }
+
+    /// Checks now instead of at the next interval; a check asked for during a
+    /// download runs right after it.
+    pub(crate) fn check_now(&self) {
+        let mut core = self.shared.lock();
+        if !core.live() {
+            return;
+        }
+        if matches!(core.phase, Phase::Idle | Phase::UpToDate | Phase::Failed) {
+            core.phase = Phase::Checking;
+        }
+        core.check_requested = true;
+        drop(core);
+        self.shared.changed();
+        self.shared.signal.notify_all();
+    }
+
+    /// Swaps in the staged update and schedules its launch for when this
+    /// process exits. Call only once every parked window has been restored.
+    pub(crate) fn install(&self) -> Result<String, String> {
+        let mut core = self.shared.lock();
+        if !core.live() {
+            return Err("no update is ready".into());
+        }
+        let update = core.staged.take().ok_or("no update is ready")?;
+        let result = updates_dir()
+            .and_then(|updates| write_receipt(&updates, &update))
+            .and_then(|()| bundle::install(&update.staged));
+        match &result {
+            Ok(()) => {
+                core.phase = Phase::Installed;
+                core.stop = true;
+            }
+            Err(_) => {
+                bundle::discard(&update.staged);
+                core.phase = Phase::Failed;
+            }
+        }
+        drop(core);
+        self.shared.changed();
+        self.shared.signal.notify_all();
+        result.map(|()| update.version)
+    }
+}
+
+impl Drop for Updater {
+    fn drop(&mut self) {
+        self.shared.lock().stop = true;
+        self.shared.signal.notify_all();
+    }
+}
+
+/// Timestamped like the agent's other log lines; never carries user content.
+fn log(message: &str) {
+    let now = crate::config::now();
+    let line = format!(
+        "[{}.{:03}] updater: {message}\n",
+        now.as_secs(),
+        now.subsec_millis()
+    );
+    drop(std::io::Write::write_all(
+        &mut std::io::stderr().lock(),
+        line.as_bytes(),
+    ));
+}
+
+/// Waits `delay` or until woken; true when the updater should stop.
+fn wait(shared: &Shared, delay: Duration) -> bool {
+    let deadline = std::time::Instant::now() + delay;
+    let mut core = shared.lock();
+    while !core.check_requested && !core.stop {
+        let now = std::time::Instant::now();
+        if now >= deadline {
+            break;
+        }
+        core = shared
+            .signal
+            .wait_timeout(core, deadline - now)
+            .unwrap_or_else(|error| error.into_inner())
+            .0;
+    }
+    core.check_requested = false;
+    core.stop
+}
+
+fn channel() -> UpdateChannel {
+    Config::load().map_or(UpdateChannel::Stable, |config| config.update_channel())
+}
+
+fn run(shared: &Shared, installed: &Path) {
+    // The bundle an update replaced, and any update never installed.
+    bundle::remove_beside(installed, None);
+    if wait(shared, STARTUP_DELAY) {
+        return;
+    }
+    let mut failures = 0;
+    loop {
+        shared.set_phase(Phase::Checking);
+        let channel = channel();
+        let interval = match channel {
+            UpdateChannel::Stable => CHECK_INTERVAL,
+            UpdateChannel::Dev => DEV_CHECK_INTERVAL,
+        };
+        let delay = match check(shared, installed, channel) {
+            Ok(phase) => {
+                failures = 0;
+                shared.set_phase(phase);
+                interval
+            }
+            Err(error) => {
+                log(&format!("check failed: {error}"));
+                failures = (failures + 1).min(4);
+                shared.set_phase(Phase::Failed);
+                (RETRY_INTERVAL * 2u32.pow(failures - 1)).min(interval)
+            }
+        };
+        if wait(shared, delay) {
+            return;
+        }
+    }
+}
+
+fn check(shared: &Shared, installed: &Path, channel: UpdateChannel) -> Result<Phase, String> {
+    let updates = updates_dir()?;
+    let receipt = running_receipt(&updates);
+    let version = receipt
+        .as_ref()
+        .map_or(VERSION, |receipt| receipt.version.as_str());
+    let manifest_url = format!("{ORIGIN}/{APP}/{ARTIFACT}/{}.json", channel.as_str());
+    let user_agent = transport::user_agent(channel.as_str(), version);
+    let manifest = transport::fetch_manifest(&manifest_url, &user_agent)?;
+    let install = Install {
+        version: version.into(),
+        target: TARGET.into(),
+        distribution: "direct".into(),
+        rollout_bucket: rollout_bucket(&updates)?,
+        sha256: receipt.map(|receipt| receipt.sha256),
+        channel: None,
+    };
+    match protocol::decide(APP, ARTIFACT, channel.as_str(), &manifest, &install) {
+        Decision::Reject { reason } => Err(format!("the update manifest was rejected: {reason}")),
+        Decision::None { .. } | Decision::Notify { .. } => {
+            // The channel's release is running (or was switched back to).
+            let discarded = shared.lock().staged.take();
+            if let Some(update) = discarded {
+                bundle::discard(&update.staged);
+            }
+            transport::prune(&updates, None);
+            Ok(Phase::UpToDate)
+        }
+        Decision::Install {
+            version, target, ..
+        } => {
+            if shared
+                .lock()
+                .staged
+                .as_ref()
+                .is_some_and(|staged| staged.sha256 == target.sha256)
+            {
+                return Ok(Phase::Idle);
+            }
+            let url = protocol::resolve_url(&manifest_url, &target.url)
+                .filter(|url| url.starts_with(FILES))
+                .ok_or_else(|| {
+                    format!("the update URL {} is not the release service's", target.url)
+                })?;
+            shared.set_phase(Phase::Downloading);
+            transport::prune(&updates, Some(&target.sha256));
+            let file = transport::download(&url, &user_agent, &target, &updates)?;
+            let name = format!("{version}-{}", &target.sha256[..12]);
+            let staged = bundle::stage(&file, installed, &name)?;
+            transport::prune(&updates, None);
+            let executable = transport::sha256_hex(&staged.update.join(bundle::EXECUTABLE))
+                .map_err(|error| error.to_string())?;
+            log(&format!("{version} is ready to install"));
+            let update = StagedUpdate {
+                staged,
+                sha256: target.sha256,
+                version,
+                executable,
+            };
+            let mut core = shared.lock();
+            let kept = update.staged.update.clone();
+            match core.adopt(update) {
+                Some(discarded) if discarded.staged.update != kept => {
+                    bundle::discard(&discarded.staged);
+                }
+                Some(_) | None => {}
+            }
+            if core.live() {
+                bundle::remove_beside(installed, Some(&kept));
+            }
+            Ok(Phase::Idle)
+        }
+    }
+}
+
+fn updates_dir() -> Result<PathBuf, String> {
+    let updates =
+        crate::config::application_support_path("updates").ok_or("HOME is unavailable")?;
+    std::fs::create_dir_all(&updates).map_err(|error| error.to_string())?;
+    {
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::set_permissions(&updates, std::fs::Permissions::from_mode(0o700))
+            .map_err(|error| error.to_string())?;
+    }
+    Ok(updates)
+}
+
+/// What this updater last installed: the release's target SHA-256 and
+/// version, and its executable's hash, which says whether it is still the
+/// build running.
+#[derive(Debug, Eq, PartialEq, serde::Deserialize, serde::Serialize)]
+struct Receipt {
+    sha256: String,
+    version: String,
+    executable: String,
+}
+
+fn write_receipt(updates: &Path, update: &StagedUpdate) -> Result<(), String> {
+    let receipt = Receipt {
+        sha256: update.sha256.clone(),
+        version: update.version.clone(),
+        executable: update.executable.clone(),
+    };
+    let text = serde_json::to_string(&receipt).map_err(|error| error.to_string())?;
+    let partial = updates.join(format!("{RECEIPT}.partial"));
+    std::fs::write(&partial, text).map_err(|error| error.to_string())?;
+    std::fs::rename(&partial, updates.join(RECEIPT)).map_err(|error| error.to_string())
+}
+
+fn running_receipt(updates: &Path) -> Option<Receipt> {
+    static EXECUTABLE: std::sync::OnceLock<Option<String>> = std::sync::OnceLock::new();
+    let running = EXECUTABLE.get_or_init(|| {
+        std::env::current_exe()
+            .ok()
+            .and_then(|path| transport::sha256_hex(&path).ok())
+    });
+    receipt_for(updates, running.as_deref()?)
+}
+
+fn receipt_for(updates: &Path, executable: &str) -> Option<Receipt> {
+    let text = std::fs::read_to_string(updates.join(RECEIPT)).ok()?;
+    let receipt: Receipt = serde_json::from_str(&text).ok()?;
+    (receipt.executable == executable && protocol::is_version_name(&receipt.version))
+        .then_some(receipt)
+}
+
+/// This install's rollout bucket, 0–99, drawn once from `/dev/urandom`. It never
+/// leaves the device.
+fn rollout_bucket(updates: &Path) -> Result<u64, String> {
+    let path = updates.join(BUCKET);
+    if let Some(number) = std::fs::read_to_string(&path)
+        .ok()
+        .and_then(|text| text.trim().parse::<u32>().ok())
+    {
+        return Ok(u64::from(number) % 100);
+    }
+    let mut bytes = [0; 4];
+    std::io::Read::read_exact(
+        &mut std::fs::File::open("/dev/urandom").map_err(|error| error.to_string())?,
+        &mut bytes,
+    )
+    .map_err(|error| error.to_string())?;
+    let number = u32::from_le_bytes(bytes);
+    std::fs::write(&path, format!("{number}\n")).map_err(|error| error.to_string())?;
+    Ok(u64::from(number) % 100)
+}
+
+#[cfg(test)]
+mod tests;

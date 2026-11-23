@@ -17,11 +17,21 @@ and restored without changing their size. It does not require disabling System I
 
 ## Data Handling
 
-Spaceman has no telemetry or analytics. Packaged release builds use Sparkle to request the signed
-`appcast.xml` update feed and, when an update is selected, its signed archive from Spaceman's public
-Cloudflare R2 bucket. Automatic checks are enabled; automatic installation is not. Source CLI and
-test binaries have no adjacent Sparkle framework and do not perform update checks. Other runtime data
-stays on the Mac unless the user shares CLI output or files.
+Spaceman has no telemetry or analytics. Release builds check Anomaly's release service for updates:
+10 seconds after launch, then hourly (every 15 minutes on the dev channel) and on
+`Check for Updates...`, they request `https://anoma.ly/release/spaceman/desktop/<channel>.json` over
+HTTPS with the system's TLS and trusted roots and no redirects. The only thing a request says about
+the install is `User-Agent: spaceman/<channel>/<version>`. A newer release's zip is downloaded only
+from `https://anoma.ly/release/spaceman/files/`, and is used only once its size and SHA-256 match the
+manifest and the `Spaceman.app` inside it is `anomaly.spaceman`, passes
+`codesign --verify --deep --strict` against Anomaly's notarized Developer ID requirement
+(`app/update-requirement.txt`), and carries team `5NZ4Q7NXJ4`. Automatic installation is off: the
+update waits for `Install & Restart`, which restores every parked window before the bundle is
+swapped (`renamex_np`) and Spaceman relaunches. Downloads, the install's rollout bucket (a random
+0–99 that never leaves the Mac) and `installed.json` (which release the updater last installed) live in
+`~/Library/Application Support/Spaceman/updates/`. Builds from source, and installs in a location
+the user can't write to, never check. `SPACEMAN_DISABLE_UPDATES=1` turns checks off for a launch.
+Other runtime data stays on the Mac unless the user shares CLI output or files.
 
 The optional `Launch at Login` menu action registers or unregisters the signed main app through
 macOS Service Management. Registration is stored and enforced by macOS; Spaceman does not install a

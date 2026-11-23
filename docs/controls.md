@@ -82,7 +82,8 @@ The menu-bar control shows active workspace/layout glyphs and runtime errors. It
   `Settings > General > HUD style` picks how it draws each workspace (`Icons` or `Layouts`, `[settings] hud_style`, default `Icons`);
 - `Launch at Login`, shown checked when macOS has enabled the signed app bundle;
 - `Settings...` (`⌘,`), opening the Rune Settings window (`General`, `Rules`, `Workspaces`, `Shortcuts`, and `Activity`, plus `⇧⌘D` Playground);
-- `Check for Updates...`;
+- `Check for Updates...`, which checks and opens Settings (its sidebar and `General > Updates` show
+  the result), or `Install Spaceman <version> and Restart` once an update is downloaded and verified;
 - `Quit Spaceman` (`⌘Q`).
 
 If macOS reports that the login item requires approval, the menu label says
@@ -90,9 +91,11 @@ If macOS reports that the login item requires approval, the menu label says
 not bypass macOS consent and does not affect the currently running process.
 
 Pausing, quitting, and external macOS termination requests restore parked windows before completing.
-Restoration retries are visible in the menu status. Installing a Sparkle update uses the same
-restoration gate: Spaceman does not allow the installer or application termination to continue until
-parked windows are restored and their recovery metadata is durably removed.
+Restoration retries are visible in the menu status. Installing an update uses the same restoration
+gate: Spaceman swaps in the new bundle and relaunches only after every parked window is restored and
+its recovery metadata is durably removed. If the install then fails, Spaceman keeps running and
+resumes tiling. `Settings > General > Updates` shows the running version and the updater's state,
+and picks the release channel (`Stable` or `Dev`, `[settings] update_channel`, default `Stable`).
 
 ## CLI
 

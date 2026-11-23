@@ -3,10 +3,12 @@ version = 1
 
 # Optional UI preferences. The non-activating Workspace HUD capsule is on by default.
 # hud_style is "icons" (each workspace's number and its apps' icons, the default) or
-# "layouts" (each workspace's layout with app icons).
+# "layouts" (each workspace's layout with app icons). update_channel is "stable" (releases,
+# the default) or "dev" (a build of every change merged to dev).
 [settings]
 hud = true
 hud_style = "icons"
+update_channel = "stable"
 
 # Rules are optional, ordered, and first-match wins. Every matcher present in a
 # rule must match exactly. Valid actions are "float", "route", and "ignore".

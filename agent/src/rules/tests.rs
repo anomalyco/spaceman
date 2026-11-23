@@ -161,3 +161,20 @@ fn hud_style_round_trips_and_leaves_the_default_out() {
     doc.set_hud(true);
     assert!(!doc.source().contains("[settings]"));
 }
+
+#[test]
+fn update_channel_round_trips_and_leaves_stable_out() {
+    use spaceman::config::{Config, UpdateChannel};
+    let mut doc = Doc::parse(SOURCE);
+    assert_eq!(doc.update_channel(), UpdateChannel::Stable);
+    doc.set_update_channel(UpdateChannel::Dev);
+    assert_eq!(doc.update_channel(), UpdateChannel::Dev);
+    let dev = doc.source();
+    assert!(dev.contains("update_channel = \"dev\""));
+    assert_eq!(
+        Config::parse(&dev).unwrap().update_channel(),
+        UpdateChannel::Dev
+    );
+    doc.set_update_channel(UpdateChannel::Stable);
+    assert!(!doc.source().contains("[settings]"));
+}

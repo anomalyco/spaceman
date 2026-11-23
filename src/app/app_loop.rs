@@ -133,6 +133,11 @@ pub struct MainThreadAgent {
     swipes: Option<macos::SwipeMonitor>,
     /// Option key presses, to notice hotkeys macOS stopped delivering.
     keys: Option<macos::KeyMonitor>,
+    updater: crate::updater::Updater,
+    /// The updater revision last shown.
+    update_revision: u64,
+    /// Tiling was on when Install & Restart began, so a failed install resumes it.
+    resume_after_update: bool,
 }
 
 impl MainThreadAgent {
@@ -216,7 +221,11 @@ impl MainThreadAgent {
             activation_refresh_at: None,
             swipes: None,
             keys: None,
+            updater: crate::updater::Updater::start(),
+            update_revision: 0,
+            resume_after_update: false,
         };
+        status_item::set_update(agent.updater.status().ready_version());
         if automatic {
             agent.listen_for_input();
         }
@@ -304,20 +313,19 @@ impl MainThreadAgent {
                         self.ui_dirty = true;
                     }
                 }
+                // Every parked window is back on screen: only now may the
+                // bundle be swapped and Spaceman relaunch into it.
                 WorkerResult::Restored { failed: 0 }
                     if self.exit_intent == Some(ExitIntent::Update) =>
                 {
-                    self.worker.finish_restore();
-                    match sparkle::continue_install() {
-                        Ok(()) => {
-                            termination::allow_next();
-                            status_item::set_status("Installing update...");
-                        }
-                        Err(error) => {
-                            log_event!("Sparkle continuation failed after restoration: {error}");
+                    match self.updater.install() {
+                        Ok(version) => {
+                            log_event!("update {version} installed; relaunching");
+                            self.worker.stop();
                             termination::allow_next();
                             return TickOutcome::Quit;
                         }
+                        Err(error) => self.update_failed(&error),
                     }
                 }
                 WorkerResult::Restored { failed: 0 }
@@ -372,6 +380,12 @@ impl MainThreadAgent {
             self.tick_automatic();
         }
 
+        let revision = self.updater.revision();
+        if revision != self.update_revision {
+            self.update_revision = revision;
+            status_item::set_update(self.updater.status().ready_version());
+            self.ui_dirty = true;
+        }
         self.maybe_publish_ui();
         TickOutcome::Continue
     }
@@ -406,6 +420,21 @@ impl MainThreadAgent {
         self.last_error = Some("Exit blocked because window restoration is unavailable".into());
         self.ui_dirty = true;
         status_item::set_status("Exit blocked · restoration unavailable");
+    }
+
+    /// The update couldn't be installed after windows were restored: stay
+    /// running and resume tiling as it was.
+    fn update_failed(&mut self, error: &str) {
+        log_event!("update install failed: {error}");
+        self.worker.finish_restore();
+        self.exit_intent = None;
+        let message = format!("Update failed: {error}");
+        self.last_error = Some(message.clone());
+        self.ui_dirty = true;
+        status_item::set_status(&message);
+        if std::mem::take(&mut self.resume_after_update) {
+            drop(self.actions_sender.send(Action::ToggleAutomatic));
+        }
     }
 
     fn queue_worker_input(&mut self, input: QueuedInput) {
@@ -500,7 +529,7 @@ impl MainThreadAgent {
             automatic: self.automatic,
             hud: self.hud,
             launch_at_login: self.launch_at_login.clone(),
-            update: sparkle::status().into(),
+            update: self.updater.status(),
             active_workspaces: self.active_workspaces.clone(),
             last_error: self.last_error.clone(),
         }

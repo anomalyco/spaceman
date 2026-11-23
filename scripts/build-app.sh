@@ -53,6 +53,13 @@ if [ -z "$unsigned" ]; then
   esac
 fi
 
+# Only the Release workflow builds unsigned, and only its builds update themselves from
+# anoma.ly/release (src/updater.rs); every other build is a source build that never checks.
+if [ -n "$unsigned" ]; then
+  export SPACEMAN_RELEASE_BUILD=1
+else
+  unset SPACEMAN_RELEASE_BUILD
+fi
 CARGO_TARGET_DIR="$root/target" \
   "$cargo_bin" build --manifest-path "$root/Cargo.toml" --release --locked --workspace --bins
 # A global MACOSX_DEPLOYMENT_TARGET also applies to host-side proc-macro
@@ -84,6 +91,9 @@ xcrun actool "$root/app/AppIcon.icon" \
   --warnings \
   --notices >&2
 cp "$icon_output/AppIcon.icns" "$icon_output/Assets.car" "$bundle/Contents/Resources/"
+# Spaceman no longer loads Sparkle (src/updater.rs updates it), but the Release workflow's
+# sign-macos.sh still expects exactly these Mach-O files, so the framework stays until that
+# script drops it.
 /usr/bin/ditto "$sparkle_dir/Sparkle.framework" "$bundle/Contents/Frameworks/Sparkle.framework"
 plutil -lint "$bundle/Contents/Info.plist" >/dev/null
 if [ -n "$unsigned" ]; then

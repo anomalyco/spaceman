@@ -2,7 +2,11 @@
 
 use rune::{El, Icon, Tx, col};
 use rune_kit::SegmentedControl;
-use spaceman::{WorkspaceId, app::UiLaunchAtLogin, config::HudStyle};
+use spaceman::{
+    WorkspaceId,
+    app::{UiLaunchAtLogin, UiUpdateStatus},
+    config::HudStyle,
+};
 
 use crate::{
     Ui, activity,
@@ -130,6 +134,14 @@ pub(crate) const SCENES: &[Scene] = &[
             agent.accessibility = false;
             agent.automatic = false;
             agent.launch_at_login = UiLaunchAtLogin::Off;
+        }
+    }),
+    ("general-update-ready", |ui| {
+        reset_fixture(ui, Pane::General);
+        if let Some(agent) = &mut ui.agent {
+            agent.update = UiUpdateStatus::Ready {
+                version: "0.3.3".into(),
+            };
         }
     }),
     ("workspaces", |ui| reset_fixture(ui, Pane::Workspaces)),
@@ -264,6 +276,7 @@ fn general(ui: &Ui, p: Paint) -> El {
             vec![access, tiling, hud, hud_style, login, setup_tour],
         ));
     }
+    sections.push(crate::updates::section(ui, p));
     sections.push(controls::section(
         p,
         "config",

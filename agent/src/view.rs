@@ -2,7 +2,6 @@
 //! version and an update check at its foot, beside a raised panel holding the pane.
 
 use rune::{Anim, Cx, El, ScrollSpec, Tx, col, el, icon, row, text};
-use spaceman::app::UiUpdateStatus;
 
 use crate::{
     Pane, Ui,
@@ -81,51 +80,7 @@ fn sidebar(ui: &Ui, p: Paint) -> El {
                 .color(p.faint())
                 .pl(6.0),
         )
-        .child(update_status(ui, p))
-}
-
-/// Under the version: a manual check, or what the updater is doing.
-fn update_status(ui: &Ui, p: Paint) -> El {
-    let c = &p.k.c;
-    let update = ui
-        .agent
-        .as_ref()
-        .map_or(UiUpdateStatus::Unavailable, |agent| agent.update);
-    let label = match update {
-        UiUpdateStatus::Checking => "Checking for updates…",
-        UiUpdateStatus::UpToDate => "Spaceman is up to date",
-        UiUpdateStatus::Available => "Update available",
-        UiUpdateStatus::Idle | UiUpdateStatus::Unavailable => "Check for updates",
-    };
-    let check = matches!(
-        update,
-        UiUpdateStatus::Idle | UiUpdateStatus::UpToDate | UiUpdateStatus::Available
-    );
-    let mut status = row()
-        .key("check-for-updates")
-        .h(20.0)
-        .mt(2.0)
-        .px(6.0)
-        .center_y()
-        .radius(p.k.radius.sm)
-        .child(
-            text(label)
-                .key("label")
-                .font(p.k.ty.small)
-                .color(c.text_muted)
-                .truncate(),
-        );
-    if check {
-        status = status
-            .role("button")
-            .label("Check for updates")
-            .hover(c.hover)
-            .press(c.pressed)
-            .focusable(true)
-            .focus_ring(2.0, -2.0, c.border_focus)
-            .on_press(|ui: &mut Ui| ui.check_for_updates());
-    }
-    status
+        .child(crate::updates::sidebar(ui, p))
 }
 
 /// Slots tile the item column, each reaching halfway into the gaps around its item, so a press
