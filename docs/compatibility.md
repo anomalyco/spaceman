@@ -17,6 +17,12 @@ not produce every required physical shortcut.
 signed application bundle. macOS may require explicit approval under **System Settings > General >
 Login Items & Extensions**.
 
+Accessibility grants live in **System Settings > Privacy & Security**. The list is named
+`Accessibility` through macOS 26, `Device Control and Data Access` on macOS 27.0 through 27.2, and
+`System & App Protection Override` on macOS 27.3 and later. macOS 27.3 no longer accepts a dragged
+app tile in that list, so the setup guide asks for a click on the Privacy & Security notification or
+the list's `+` button instead.
+
 Spaceman observes Accessibility elements with role `AXWindow` and subrole `AXStandardWindow` that are
 on screen, not minimized, not in native fullscreen, centered on an attached display, and expose a
 settable position. Standard windows with an enabled fullscreen button (or borderless regular-app

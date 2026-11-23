@@ -1,6 +1,8 @@
 # Spaceman
 
 > Spaceman is a macOS tiling window manager for Apple silicon built around stable logical windows.
+> Version 0.3.2, bundle ID `anomaly.spaceman`, signed with Anomaly's Developer ID and notarized.
+> Source, issues and releases: <https://github.com/anomalyco/spaceman>.
 
 Spaceman treats a logical tile slot as product identity rather than tying layout state to a single physical `AXWindow`. When a native tabbed window (such as Ghostty) replaces its physical Accessibility window identity on tab switch, Spaceman keeps the logical slot, split tree weight, workspace, and focus intent intact.
 
@@ -15,7 +17,11 @@ Spaceman treats a logical tile slot as product identity rather than tying layout
     && ditto -x -k /tmp/Spaceman.zip /Applications && open /Applications/Spaceman.app
   ```
 
-- **Setup:** Move `Spaceman.app` to `/Applications`, open it, grant **System Settings > Privacy & Security > Accessibility**, and optionally link `/Applications/Spaceman.app/Contents/MacOS/spaceman` to `~/.local/bin/spaceman`.
+- **Setup:** Move `Spaceman.app` to `/Applications` and open it. A three-step tour runs: `Welcome`, `Give Spaceman window access`, then `You're all set`. Grant Accessibility in **System Settings > Privacy & Security**, optionally enable `Launch at Login`, and press `Start Tiling`. Tiling stays paused while the tour is open, so granting permission never rearranges windows behind it.
+
+  The permission list is named **Accessibility** through macOS 26, **Device Control and Data Access** on macOS 27.0 through 27.2, and **System & App Protection Override** on macOS 27.3 and later. On 27.3 and later System Settings refuses dragged app tiles: click the Privacy & Security notification, or use the list's `+` button. Optionally link `/Applications/Spaceman.app/Contents/MacOS/spaceman` to `~/.local/bin/spaceman`.
+
+- **Updates:** Sparkle delivers signed updates. Use `Check for Updates...` in the menu bar or Spaceman Settings; installing an update restores every parked window first.
 
 ## Keyboard Shortcuts
 
@@ -70,7 +76,9 @@ Rule actions:
 - `float`: keep matching windows associated with their workspace without tiling or resizing them.
 - `ignore`: never adopt, tile, or park matching windows.
 
-Validate a config file with `spaceman config-check "$HOME/Library/Application Support/Spaceman/config.toml"`.
+Edits to rules, display assignments and `[settings]` apply when the file changes; a newly referenced named-workspace letter registers its shortcut on the next app start. The Workspace HUD is on by default (`[settings] hud = true`) and draws `hud_style = "icons"` (numbers and app icons) or `"layouts"`.
+
+Validate a config file with `spaceman config-check "$HOME/Library/Application Support/Spaceman/config.toml"`, and list displays with `spaceman displays`.
 
 ## CLI and Diagnostics
 
@@ -80,11 +88,15 @@ The bundled `spaceman` CLI communicates with the running agent over an owner-onl
 - `spaceman ctl switch <workspace>` / `spaceman ctl move <workspace>`: switch workspaces or move the focused window
 - `spaceman ctl focus <left|down|up|right|next>` / `spaceman ctl move-direction <left|down|up|right>`
 - `spaceman ctl layout` / `spaceman ctl fullscreen` / `spaceman ctl balance` / `spaceman ctl resize <shrink|grow>`
-- `spaceman ctl pause` / `spaceman ctl resume` / `spaceman ctl retile` / `spaceman ctl quit`
-- `spaceman doctor`: summarize the local arrangement and anomaly journal
+- `spaceman ctl pause` / `spaceman ctl resume` / `spaceman ctl retile` / `spaceman ctl restart` / `spaceman ctl quit`
+- `spaceman ctl move-app <bundle-id> <workspace>`: move every current window of an app
+- `spaceman ctl debug` / `spaceman hud`: print sanitized runtime state; never window titles
+- `spaceman ctl wrong`: mark the journal and snapshot the arrangement at that moment
+- `spaceman doctor [hours]`: summarize the local arrangement and anomaly journal, with or without the agent running
 
 ## Recovery and Privacy Guarantees
 
 - **Durable restoration:** Spaceman persists each window's original on-screen frame to `parked-windows.json` before parking it for an inactive workspace, and restores parked windows before pausing, quitting, or installing a Sparkle update.
 - **Relaunch recall:** Per-bundle window placements are remembered across app restarts and reboots without storing window titles.
 - **Privacy:** Window titles are used only in memory for optional `title` rule matching and never enter persisted state, logs, journals, debug snapshots, or CLI output. Spaceman sends no telemetry.
+- **Recovery:** Preserve `parked-windows.json` until pause or quit restoration is confirmed. Reopen the same installed app after a crash and let it restore before deleting or editing state.

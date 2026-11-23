@@ -9,11 +9,13 @@ Spaceman uses macOS Accessibility APIs and needs no System Integrity Protection 
 - [Download for macOS](https://anoma.ly/spaceman/download/macos-arm64): version 0.3.2, Apple silicon, macOS 14 or later; Developer ID-signed and notarized.
 - [SHA-256 checksum](https://anoma.ly/spaceman/download/macos-arm64.sha256): live SHA-256 checksum for `Spaceman.zip`.
 - Terminal: `curl -fL https://anoma.ly/spaceman/download/macos-arm64 -o /tmp/Spaceman.zip && ditto -x -k /tmp/Spaceman.zip /Applications && open /Applications/Spaceman.app`
+- Setup: a three-step tour (`Welcome` → `Give Spaceman window access` → `You're all set`) asks for Accessibility and waits for `Start Tiling`, so your windows stay put until you start. On macOS 27.3 and later, grant access in **System & App Protection Override** (the renamed Accessibility list) by clicking the Privacy & Security notification or the list's `+`; that list refuses dragged app tiles.
 
 ## Agents
 
 - [Setup skill](https://anoma.ly/spaceman/skill.md): install, configure, verify, troubleshoot or uninstall Spaceman, including moving over from another window manager and recovering off-screen windows.
 - [Full documentation](https://anoma.ly/spaceman/llms-full.txt): installation, keyboard shortcuts, configuration rules, CLI commands and recovery guarantees in one document.
+- [Source and issues](https://github.com/anomalyco/spaceman): the public repository, changelog and releases.
 
 ## Optional
 

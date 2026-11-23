@@ -5,8 +5,9 @@ description: Install, configure, verify, troubleshoot, or uninstall the Spaceman
 
 # Spaceman Setup
 
-Spaceman is an experimental native macOS tiling window manager for Apple silicon. The preview
-declares macOS 14.0 as its minimum; compatibility is not yet broadly qualified.
+Spaceman is an experimental native macOS tiling window manager for Apple silicon. Version 0.3.2 is
+signed by Anomaly (`anomaly.spaceman`), notarized, and distributed outside the Mac App Store. The
+preview declares macOS 14.0 as its minimum; compatibility is not yet broadly qualified.
 
 ## Install
 
@@ -33,9 +34,19 @@ mv Spaceman.app "/Applications/"
 open "/Applications/Spaceman.app"
 ```
 
-Spaceman opens Settings and walks through granting Accessibility access
-(**System Settings > Privacy & Security > Accessibility**). Optionally enable `Launch at Login`.
-Tiling starts automatically once Accessibility permission is granted and hotkeys register.
+Spaceman opens a three-step setup tour: `Welcome`, `Give Spaceman window access`, then
+`You're all set`. Choose `Get started`, grant Accessibility access in
+**System Settings > Privacy & Security**, optionally enable `Launch at Login`, and press
+`Start Tiling`. Tiling stays paused while the tour is open, so granting permission never rearranges
+windows behind it; automatic tiling starts when you press `Start Tiling`.
+
+The permission list is named **Accessibility** through macOS 26, **Device Control and Data Access**
+on macOS 27.0 through 27.2, and **System & App Protection Override** on macOS 27.3 and later. On 27.3
+and later System Settings refuses dragged app tiles: click the Privacy & Security notification, or
+use the list's `+` button to add Spaceman. Never tell someone to drag Spaceman into that list, and
+never float a drag guide over System Settings there.
+
+Source, issues and releases: <https://github.com/anomalyco/spaceman>.
 
 ## Verify
 
@@ -81,6 +92,8 @@ spaceman displays
 
 ## Troubleshoot
 
+- **Tiling never starts**: the setup tour is still open and waiting for `Start Tiling`, or
+  Accessibility permission is missing. Open Settings, run the tour again, and check the menu bar item.
 - **Hotkeys do nothing**: another app owns the `Option` shortcuts, or Accessibility permission is
   missing — the menu bar item reports which.
 - **Windows off-screen after a crash**: reopen the same app, relaunch Spaceman, and let it restore.

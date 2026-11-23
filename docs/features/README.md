@@ -15,13 +15,15 @@ docs/features/
 
 ## Availability
 
-Source baseline: `main` at `7ad30eb` plus the uncommitted working tree of 2026-10-01.
+Baseline: `dev` at 0.3.2 (`93897a4`). Everything below except named workspaces and
+secondary-display workspaces ships in the notarized preview at
+<https://anoma.ly/spaceman/download/macos-arm64> and in source builds.
 
 | Surface | Status |
 | --- | --- |
-| Workspaces, tiling, Fullscreen Layout, parking/restoration | Source builds and the notarized preview artifact |
-| Parking exemption, remembered placements (`window-memory.json`), arrangement journal, `spaceman doctor` | On `main` (source builds) |
-| Single-process Rune Settings (`Activity`), first-run setup tour, non-activating Workspace HUD (`[settings] hud`) | On `main` (source builds) |
+| Workspaces, tiling, Fullscreen Layout, parking/restoration | Preview artifact and source builds |
+| Parking exemption, remembered placements (`window-memory.json`), arrangement journal, `spaceman doctor` | Preview artifact and source builds |
+| Single-process Rune Settings (`Activity`), three-step setup tour, non-activating Workspace HUD (`[settings] hud`) | Preview artifact and source builds |
 | Named workspaces A-Z | Opt-in: enabled by a `route` rule or `[[workspaces]]` entry |
 | Secondary-display workspaces 6-10 | Require a second display; with one display they fall back to `main` |
 
@@ -42,11 +44,10 @@ Each feature file labels evidence as one of:
 
 - **Unit (FakeBackend)**: a test in `src/app/tests/` driving `WorkspaceRuntime` through the fake
   backend. Proves runtime decisions and the native calls requested, not real application behavior,
-  z-order, timing, or what is painted on screen. The whole suite (229 tests) last passed on
-  2026-10-01 in this working tree.
-- **Live harness (not run)**: `scripts/live-workspaces.sh` and `scripts/live-ghostty-tabs.sh` drive
-  real hotkeys against disposable Ghostty windows. They require AeroSpace enabled initially and two
-  displays; neither was executed for this map.
+  z-order, timing, or what is painted on screen. CI runs the whole suite for every release.
+- **Live harness**: `scripts/live-workspaces.sh` and `scripts/live-ghostty-tabs.sh` drive real
+  hotkeys against disposable Ghostty windows. They require AeroSpace enabled initially and two
+  displays.
 - **Observed**: behavior seen in `agent.log` or `journal.jsonl` on the maintainer's machine, with the
   date. A log line proves what Spaceman requested, not what the user saw.
 - **User report**: what the user saw, unverified by tooling.
