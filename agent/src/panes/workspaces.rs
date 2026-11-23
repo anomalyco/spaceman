@@ -2,7 +2,9 @@
 
 mod displays;
 
-pub(crate) use displays::{ConnectedDisplay, THIRD_FIXTURE_ID, fixture_pair, fixture_three};
+pub(crate) use displays::{
+    ConnectedDisplay, THIRD_FIXTURE_ID, fixture_pair, fixture_quad, fixture_three,
+};
 
 use rune::{El, Tx, col};
 use rune_kit::SegmentedControl;
@@ -218,7 +220,7 @@ fn monitor_row(p: Paint, choices: &[Choice], workspace: WorkspaceId, effective: 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use displays::{choices, index_of};
+    use displays::{FOURTH_FIXTURE_ID, choices, index_of};
 
     #[test]
     fn workspace_monitor_defaults_split_main_and_secondary() {
@@ -309,6 +311,34 @@ mod tests {
         assert_eq!(saved, THIRD_FIXTURE_ID);
         assert_eq!(index_of(&choices, &saved), Some(2));
         assert_eq!(picker(&choices, &saved).0[2], "Studio Display 2");
+    }
+
+    #[test]
+    fn four_displays_number_the_picker_and_keep_names_in_the_headings() {
+        let choices = choices(&fixture_quad());
+        assert_eq!(
+            choices
+                .iter()
+                .map(|choice| choice.label.as_str())
+                .collect::<Vec<_>>(),
+            ["Main", "Secondary", "Display 3", "Display 4"]
+        );
+        assert_eq!(
+            choices
+                .iter()
+                .map(|choice| choice.title.as_str())
+                .collect::<Vec<_>>(),
+            [
+                "Main display",
+                "Secondary display",
+                "Studio Display 2",
+                "LG UltraFine 5K"
+            ]
+        );
+        assert_eq!(
+            choose(&choices, 3, WorkspaceId::new(9).unwrap()).as_deref(),
+            Some(FOURTH_FIXTURE_ID)
+        );
     }
 
     #[test]

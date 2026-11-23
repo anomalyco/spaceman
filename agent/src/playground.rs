@@ -142,6 +142,7 @@ mod tests {
             "Rules/rules-add",
             "Workspaces/workspaces",
             "Workspaces/workspaces-three-displays",
+            "Workspaces/workspaces-four-displays",
             "Workspaces/workspaces-unplugged",
             "Shortcuts/shortcuts",
             "Activity/activity",

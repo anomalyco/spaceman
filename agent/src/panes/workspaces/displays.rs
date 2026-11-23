@@ -121,10 +121,11 @@ pub(crate) fn choices(displays: &[ConnectedDisplay]) -> Vec<Choice> {
         .filter(|display| !display.is_built_in())
         .collect();
     for display in &extras {
-        let label = extra_label(choices.len() + 1, display, &ordered);
+        let title = extra_name(choices.len() + 1, display, &ordered);
+        let label = extra_label(choices.len() + 1, &title, ordered.len());
         choices.push(Choice {
             selector: display.selector.clone(),
-            title: label.clone(),
+            title,
             label,
             caption: format!("Display {}", choices.len() + 1),
             id: Some(display.id.clone()),
@@ -162,10 +163,9 @@ fn built_in(
     }
 }
 
-/// The label for a display past Secondary: its own name when that name is short and shared with
-/// no other connected display, "Studio Display 2" when two monitors share one, and its position
-/// ("Display 3") for a long name that would crowd the picker.
-fn extra_label(
+/// The heading for a display past Secondary: its own name, "Studio Display 2" when two monitors
+/// share one, and its position ("Display 3") for a long or missing name.
+fn extra_name(
     position: usize,
     display: &ConnectedDisplay,
     displays: &[&ConnectedDisplay],
@@ -184,6 +184,16 @@ fn extra_label(
         return format!("{name} {ordinal}");
     }
     if name.is_empty() || name.chars().count() > 16 {
+        format!("Display {position}")
+    } else {
+        name.to_owned()
+    }
+}
+
+/// The picker segment for a display past Secondary. With four or more displays even short names
+/// crowd the segmented control, so those get their position and the heading keeps the name.
+fn extra_label(position: usize, name: &str, displays: usize) -> String {
+    if displays > 3 {
         format!("Display {position}")
     } else {
         name.to_owned()
@@ -225,6 +235,9 @@ pub(crate) fn fixture_pair() -> Vec<ConnectedDisplay> {
 /// The third display's UUID in the Playground's three-display scene.
 pub(crate) const THIRD_FIXTURE_ID: &str = "8F14E45F-EA61-4B2A-9C3D-1B2C3D4E5F60";
 
+/// The fourth display's UUID in the Playground's four-display scene.
+pub(crate) const FOURTH_FIXTURE_ID: &str = "A1B2C3D4-E5F6-7081-92A3-B4C5D6E7F809";
+
 /// Three displays: the built-in main and two identically named external monitors.
 pub(crate) fn fixture_three() -> Vec<ConnectedDisplay> {
     let pair = fixture_pair();
@@ -245,4 +258,23 @@ pub(crate) fn fixture_three() -> Vec<ConnectedDisplay> {
             is_secondary: false,
         },
     ]
+}
+
+/// Four displays: the three-display pair plus a differently named external on the right.
+pub(crate) fn fixture_quad() -> Vec<ConnectedDisplay> {
+    let mut displays = fixture_three();
+    displays.push(ConnectedDisplay {
+        selector: FOURTH_FIXTURE_ID.to_owned(),
+        id: FOURTH_FIXTURE_ID.to_owned(),
+        name: "LG UltraFine 5K".to_owned(),
+        frame: Rect {
+            x: 4288,
+            y: 0,
+            width: 2560,
+            height: 1440,
+        },
+        is_main: false,
+        is_secondary: false,
+    });
+    displays
 }

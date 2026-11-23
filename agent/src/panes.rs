@@ -126,6 +126,11 @@ pub(crate) const SCENES: &[Scene] = &[
         let nine = spaceman::WorkspaceId::new(9).unwrap_or(spaceman::WorkspaceId::SIX);
         ui.edit(|doc| doc.set_monitor(nine, Some(workspaces::THIRD_FIXTURE_ID)));
     }),
+    // A fourth monitor: the picker numbers the last two so it stays one readable row.
+    ("workspaces-four-displays", |ui| {
+        reset_fixture(ui, Pane::Workspaces);
+        ui.displays = workspaces::fixture_quad();
+    }),
     // The third monitor unplugged: its saved assignment keeps its own card.
     ("workspaces-unplugged", |ui| {
         reset_fixture(ui, Pane::Workspaces);
