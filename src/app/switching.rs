@@ -38,7 +38,8 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
                 status.hud = Some(self.hud_for(workspace, UiHudKind::Workspace, None, &outputs));
                 return Ok(status);
             }
-            self.focus_workspace_entry(workspace, &windows, focused);
+            let frontmost = self.backend.frontmost_application();
+            self.focus_workspace_entry(workspace, &windows, focused, frontmost);
             let mut status = self.status(0, &outputs);
             status.hud = Some(self.hud_for(workspace, UiHudKind::Workspace, None, &outputs));
             return Ok(status);
@@ -54,11 +55,14 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
             outgoing.len(),
             incoming.len()
         );
-        let outgoing_focus = self
-            .backend
-            .focused_window()
-            .filter(|focused| outgoing.contains(focused));
-        if let Some(focused) = outgoing_focus.as_ref() {
+        // The focus before the switch, wherever it lives: after an empty
+        // workspace it is still a window of an earlier, hidden workspace.
+        let focused_before = self.backend.focused_window();
+        let frontmost_before = self.backend.frontmost_application();
+        if let Some(focused) = focused_before
+            .as_ref()
+            .filter(|focused| outgoing.contains(focused))
+        {
             self.workspaces.remember_focus(previous, focused);
         }
         // Reveal incoming windows first: position writes do not raise, so they
@@ -174,7 +178,7 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
         }
         self.workspaces.switch(workspace);
         self.foreground_lanes.insert(display_id, selector);
-        self.focus_workspace_entry(workspace, &incoming, outgoing_focus);
+        self.focus_workspace_entry(workspace, &incoming, focused_before, frontmost_before);
         self.persist_workspace_state_if_changed()?;
         log_event!(
             "switch complete: workspace {} in {}ms",
@@ -186,27 +190,48 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
         Ok(status)
     }
 
+    /// Focus the workspace's entry window and suppress focus follow for the
+    /// focus left behind. That focus stays put when the workspace is empty,
+    /// and macOS activates the entry window asynchronously, so for a few
+    /// cycles Accessibility can still report the old window or app; following
+    /// it would snap the display straight back. Suppression keeps the earlier
+    /// stale focus when Accessibility reports none, so switching on through
+    /// empty workspaces keeps it too.
     fn focus_workspace_entry(
         &mut self,
         workspace: WorkspaceId,
         windows: &[crate::PhysicalWindowId],
-        fallback: Option<crate::PhysicalWindowId>,
+        focused: Option<crate::PhysicalWindowId>,
+        frontmost: Option<crate::AppInstanceId>,
     ) {
+        let stale_window = focused.or_else(|| self.suppressed_focus.clone());
+        let stale_app = frontmost.or_else(|| self.suppressed_app.clone());
         let workspace_focus = self
             .workspaces
             .preferred_focus(workspace)
             .filter(|window| windows.contains(window))
             .or_else(|| windows.first().cloned());
-        let Some(window) = workspace_focus else {
-            self.suppressed_focus = fallback;
-            return;
-        };
-        if self.backend.focus_window(&window) {
+        if let Some(window) = workspace_focus
+            && self.backend.focus_window(&window)
+        {
             self.pending_fullscreen_focus_restore.remove(&workspace);
-            self.suppressed_focus = None;
-        } else {
-            self.suppressed_focus = fallback;
         }
+        // Focus already inside the workspace (focus follow switched to it) is
+        // where the display is going, not focus left behind.
+        if stale_window
+            .as_ref()
+            .is_some_and(|window| windows.contains(window))
+        {
+            self.clear_suppressed_focus();
+        } else {
+            self.suppressed_focus = stale_window;
+            self.suppressed_app = stale_app;
+        }
+    }
+
+    pub(super) fn clear_suppressed_focus(&mut self) {
+        self.suppressed_focus = None;
+        self.suppressed_app = None;
     }
 
     /// Bounded wait until every incoming window's restore is confirmed by the
@@ -308,6 +333,7 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
         outputs: &macos::DisplayOutputs,
     ) {
         self.suppressed_focus = self.backend.focused_window();
+        self.suppressed_app = self.backend.frontmost_application();
         for window in parked_outgoing {
             self.restore_window(&window);
         }
@@ -464,6 +490,7 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
         self.clear_relocation_evidence(source, target, &window);
         self.note_hand_move(&window, source, target);
         if !target_is_active {
+            self.suppressed_app = Some(window.app.clone());
             self.suppressed_focus = Some(window.clone());
         }
         let mut failed = 0;

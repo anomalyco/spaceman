@@ -100,7 +100,14 @@ pub(super) struct WorkspaceRuntime<B = MacWorkspaceBackend> {
     pub(super) minimum_sizes: HashMap<crate::PhysicalWindowId, (i32, i32)>,
     pub(super) config: Config,
     pub(super) foreground_lanes: HashMap<String, DisplaySelector>,
+    /// Focus left behind by a workspace switch or move. Focus follow ignores
+    /// it until Accessibility reports a different focused window, so a hidden
+    /// window that keeps (or has not yet lost) focus cannot pull the display
+    /// back to its workspace.
     pub(super) suppressed_focus: Option<crate::PhysicalWindowId>,
+    /// The frontmost application at that moment, for when Accessibility
+    /// reports no focused window for it (or one that is not frontmost).
+    pub(super) suppressed_app: Option<crate::AppInstanceId>,
     /// The window a focus command just focused, until Accessibility reports it.
     pub(super) pending_focus: Option<super::commands::PendingFocus>,
     pub(super) pending_fullscreen_focus_restore: HashSet<WorkspaceId>,
@@ -301,6 +308,7 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
             config,
             foreground_lanes: HashMap::new(),
             suppressed_focus: None,
+            suppressed_app: None,
             pending_focus: None,
             pending_fullscreen_focus_restore,
             persisted_workspace_state,

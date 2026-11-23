@@ -126,12 +126,18 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
                 .as_ref()
                 .and_then(|app| self.workspaces.workspace_for_app(app))
         };
-        let suppressed = focused_is_frontmost
-            && focused
-                .as_ref()
-                .is_some_and(|focused| self.suppressed_focus.as_ref() == Some(focused));
+        // Suppression lasts until Accessibility reports a different focus. When
+        // the focused window is missing or lags the frontmost app, the app is
+        // the evidence; with neither reported nothing has changed.
+        let suppressed = if focused_is_frontmost {
+            focused.as_ref() == self.suppressed_focus.as_ref()
+        } else if let Some(frontmost) = frontmost.as_ref() {
+            self.suppressed_app.as_ref() == Some(frontmost)
+        } else {
+            true
+        };
         if !suppressed {
-            self.suppressed_focus = None;
+            self.clear_suppressed_focus();
             if let Some(workspace) = focus_workspace
                 && !visible
                     .iter()

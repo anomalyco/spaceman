@@ -636,3 +636,245 @@ fn swipes_step_through_the_occupied_workspaces_of_the_display_under_the_pointer(
         [WorkspaceId::ONE, WorkspaceId::SIX]
     );
 }
+
+fn app_window(pid: i32, window_id: u32) -> crate::PhysicalWindowId {
+    crate::PhysicalWindowId {
+        app: AppInstanceId {
+            pid,
+            launched_at: 1,
+        },
+        window_id,
+    }
+}
+
+/// One complete application per window, so each window belongs to its own app.
+fn observation_for_apps(
+    windows: &[(crate::PhysicalWindowId, crate::Rect)],
+) -> crate::NativeObservation {
+    crate::NativeObservation {
+        cycle: 0,
+        mouse_down: false,
+        applications: windows
+            .iter()
+            .map(|(window, frame)| crate::AppObservation::Complete {
+                app: crate::ObservedApplication {
+                    id: window.app.clone(),
+                    bundle_id: format!("com.example.App{}", window.app.pid),
+                },
+                focused: Some(window.clone()),
+                windows: vec![crate::ObservedWindow {
+                    id: window.clone(),
+                    frame: *frame,
+                    resizable: true,
+                    title: None,
+                }],
+            })
+            .collect(),
+    }
+}
+
+fn main_workspace(runtime: &WorkspaceRuntime<FakeBackend>) -> Option<WorkspaceId> {
+    runtime.workspaces.active_for(&DisplaySelector::Main)
+}
+
+#[test]
+fn switching_across_empty_workspaces_does_not_snap_back_to_workspace_one() {
+    let first = app_window(1, 10);
+    let mut backend = FakeBackend {
+        focused: Some(first.clone()),
+        frontmost: Some(first.app.clone()),
+        observation: Some(observation_for_apps(&[(first.clone(), frame(50))])),
+        ..FakeBackend::default()
+    };
+    backend.frames.insert(first.clone(), frame(50));
+    let mut runtime = runtime(backend);
+    bind(&mut runtime, WorkspaceId::ONE, &first);
+    let four = WorkspaceId::new(4).unwrap();
+    let cancelled = AtomicBool::new(false);
+
+    runtime
+        .switch(WorkspaceId::THREE, outputs(), &cancelled)
+        .unwrap();
+    runtime.cycle(outputs(), &cancelled).unwrap();
+    assert_eq!(main_workspace(&runtime), Some(WorkspaceId::THREE));
+
+    // Workspace 3 is empty, so the hidden window on 1 still has focus.
+    runtime.switch(four, outputs(), &cancelled).unwrap();
+    runtime.cycle(outputs(), &cancelled).unwrap();
+    runtime.cycle(outputs(), &cancelled).unwrap();
+
+    assert_eq!(main_workspace(&runtime), Some(four));
+    assert!(runtime.parked.contains_key(&first));
+}
+
+#[test]
+fn switching_when_focused_window_is_none_but_frontmost_is_workspace_one_does_not_snap_back() {
+    let first = app_window(1, 10);
+    let mut backend = FakeBackend {
+        focused: Some(first.clone()),
+        frontmost: Some(first.app.clone()),
+        observation: Some(observation_for_apps(&[(first.clone(), frame(50))])),
+        ..FakeBackend::default()
+    };
+    backend.frames.insert(first.clone(), frame(50));
+    let mut runtime = runtime(backend);
+    bind(&mut runtime, WorkspaceId::ONE, &first);
+    let four = WorkspaceId::new(4).unwrap();
+    let cancelled = AtomicBool::new(false);
+
+    runtime
+        .switch(WorkspaceId::THREE, outputs(), &cancelled)
+        .unwrap();
+    // Accessibility loses the parked window but its app stays frontmost.
+    runtime.backend.focused = None;
+    runtime.cycle(outputs(), &cancelled).unwrap();
+    assert_eq!(main_workspace(&runtime), Some(WorkspaceId::THREE));
+
+    runtime.switch(four, outputs(), &cancelled).unwrap();
+    runtime.cycle(outputs(), &cancelled).unwrap();
+    assert_eq!(main_workspace(&runtime), Some(four));
+
+    // The window reports focus again: still the same stale focus.
+    runtime.backend.focused = Some(first.clone());
+    runtime.cycle(outputs(), &cancelled).unwrap();
+    assert_eq!(main_workspace(&runtime), Some(four));
+}
+
+#[test]
+fn switching_with_async_focus_lag_does_not_snap_back_to_previous_workspace() {
+    let two = WorkspaceId::new(2).unwrap();
+    let four = WorkspaceId::new(4).unwrap();
+    let on_two = app_window(2, 20);
+    let on_three = app_window(3, 30);
+    let on_four = app_window(4, 40);
+    let mut backend = FakeBackend {
+        observation: Some(observation_for_apps(&[
+            (on_two.clone(), frame(100)),
+            (on_three.clone(), frame(50)),
+            (on_four.clone(), frame(200)),
+        ])),
+        ..FakeBackend::default()
+    };
+    backend
+        .frames
+        .insert(on_two.clone(), main_parked_frame(frame(100)));
+    backend
+        .frames
+        .insert(on_three.clone(), main_parked_frame(frame(50)));
+    backend
+        .frames
+        .insert(on_four.clone(), main_parked_frame(frame(200)));
+    let mut runtime = runtime_with_parked(
+        backend,
+        [
+            (on_two.clone(), frame(100)),
+            (on_three.clone(), frame(50)),
+            (on_four.clone(), frame(200)),
+        ],
+    );
+    bind(&mut runtime, two, &on_two);
+    bind(&mut runtime, WorkspaceId::THREE, &on_three);
+    bind(&mut runtime, four, &on_four);
+    let cancelled = AtomicBool::new(false);
+    runtime
+        .switch(WorkspaceId::THREE, outputs(), &cancelled)
+        .unwrap();
+    assert_eq!(runtime.backend.focused, Some(on_three.clone()));
+
+    runtime.switch(four, outputs(), &cancelled).unwrap();
+    assert!(
+        runtime
+            .backend
+            .calls
+            .contains(&BackendCall::Focus(on_four.clone()))
+    );
+    // macOS activates the incoming app asynchronously: the next cycles still
+    // see the window from workspace 3, first without its app, then with it.
+    runtime.backend.focused = None;
+    runtime.backend.frontmost = Some(on_three.app.clone());
+    runtime.cycle(outputs(), &cancelled).unwrap();
+    assert_eq!(main_workspace(&runtime), Some(four));
+    runtime.backend.focused = Some(on_three.clone());
+    runtime.cycle(outputs(), &cancelled).unwrap();
+    assert_eq!(main_workspace(&runtime), Some(four));
+
+    // Focus lands on workspace 4 and the guard clears.
+    runtime.backend.focused = Some(on_four.clone());
+    runtime.backend.frontmost = Some(on_four.app.clone());
+    runtime.cycle(outputs(), &cancelled).unwrap();
+    assert_eq!(main_workspace(&runtime), Some(four));
+    assert_eq!(runtime.suppressed_focus, None);
+    assert_eq!(runtime.suppressed_app, None);
+
+    // Activating an app on workspace 2 is intentional and still followed.
+    runtime.backend.focused = Some(on_two.clone());
+    runtime.backend.frontmost = Some(on_two.app.clone());
+    runtime.cycle(outputs(), &cancelled).unwrap();
+    assert_eq!(main_workspace(&runtime), Some(two));
+}
+
+#[test]
+fn activating_another_app_after_switching_to_an_empty_workspace_still_follows_it() {
+    let two = WorkspaceId::new(2).unwrap();
+    let four = WorkspaceId::new(4).unwrap();
+    let first = app_window(1, 10);
+    let on_two = app_window(2, 20);
+    let mut backend = FakeBackend {
+        focused: Some(first.clone()),
+        frontmost: Some(first.app.clone()),
+        observation: Some(observation_for_apps(&[
+            (first.clone(), frame(50)),
+            (on_two.clone(), frame(100)),
+        ])),
+        ..FakeBackend::default()
+    };
+    backend.frames.insert(first.clone(), frame(50));
+    backend
+        .frames
+        .insert(on_two.clone(), main_parked_frame(frame(100)));
+    let mut runtime = runtime_with_parked(backend, [(on_two.clone(), frame(100))]);
+    bind(&mut runtime, WorkspaceId::ONE, &first);
+    bind(&mut runtime, two, &on_two);
+    let cancelled = AtomicBool::new(false);
+
+    runtime.switch(four, outputs(), &cancelled).unwrap();
+    runtime.cycle(outputs(), &cancelled).unwrap();
+    assert_eq!(main_workspace(&runtime), Some(four));
+
+    // Cmd+Tab: the app on workspace 2 is frontmost before Accessibility
+    // reports its window, and focus follows it.
+    runtime.backend.frontmost = Some(on_two.app.clone());
+    runtime.cycle(outputs(), &cancelled).unwrap();
+    assert_eq!(main_workspace(&runtime), Some(two));
+}
+
+#[test]
+fn reactivating_the_stale_app_after_another_app_follows_it_back() {
+    let four = WorkspaceId::new(4).unwrap();
+    let first = app_window(1, 10);
+    let elsewhere = app_window(9, 90);
+    let mut backend = FakeBackend {
+        focused: Some(first.clone()),
+        frontmost: Some(first.app.clone()),
+        observation: Some(observation_for_apps(&[(first.clone(), frame(50))])),
+        ..FakeBackend::default()
+    };
+    backend.frames.insert(first.clone(), frame(50));
+    let mut runtime = runtime(backend);
+    bind(&mut runtime, WorkspaceId::ONE, &first);
+    let cancelled = AtomicBool::new(false);
+
+    runtime.switch(four, outputs(), &cancelled).unwrap();
+    runtime.cycle(outputs(), &cancelled).unwrap();
+    assert_eq!(main_workspace(&runtime), Some(four));
+
+    // An unmanaged app takes focus, then the user Cmd+Tabs back.
+    runtime.backend.focused = Some(elsewhere.clone());
+    runtime.backend.frontmost = Some(elsewhere.app.clone());
+    runtime.cycle(outputs(), &cancelled).unwrap();
+    assert_eq!(main_workspace(&runtime), Some(four));
+    runtime.backend.focused = Some(first.clone());
+    runtime.backend.frontmost = Some(first.app.clone());
+    runtime.cycle(outputs(), &cancelled).unwrap();
+    assert_eq!(main_workspace(&runtime), Some(WorkspaceId::ONE));
+}
