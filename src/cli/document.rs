@@ -7,7 +7,7 @@ use std::{
 use serde::{Deserialize, Serialize};
 use spaceman::{
     DisplaySelector, WorkspaceId, Workspaces,
-    config::{Config, HudStyle, config_path},
+    config::{Config, HudStyle, UpdateChannel, config_path},
     state_file::write_atomic,
 };
 
@@ -45,11 +45,17 @@ pub(crate) struct SettingsDoc {
         serialize_with = "serialize_optional_hud_style"
     )]
     pub hud_style: Option<HudStyle>,
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        serialize_with = "serialize_optional_update_channel"
+    )]
+    pub update_channel: Option<UpdateChannel>,
 }
 
 impl SettingsDoc {
     fn is_empty(&self) -> bool {
-        self.hud.is_none() && self.hud_style.is_none()
+        self.hud.is_none() && self.hud_style.is_none() && self.update_channel.is_none()
     }
 
     pub(crate) fn effective_hud(&self) -> bool {
@@ -59,6 +65,10 @@ impl SettingsDoc {
     pub(crate) fn effective_hud_style(&self) -> HudStyle {
         self.hud_style.unwrap_or_default()
     }
+
+    pub(crate) fn effective_update_channel(&self) -> UpdateChannel {
+        self.update_channel.unwrap_or_default()
+    }
 }
 
 fn serialize_optional_hud_style<S: serde::Serializer>(
@@ -67,6 +77,16 @@ fn serialize_optional_hud_style<S: serde::Serializer>(
 ) -> Result<S::Ok, S::Error> {
     match style {
         Some(style) => serializer.serialize_str(style.as_str()),
+        None => serializer.serialize_none(),
+    }
+}
+
+fn serialize_optional_update_channel<S: serde::Serializer>(
+    channel: &Option<UpdateChannel>,
+    serializer: S,
+) -> Result<S::Ok, S::Error> {
+    match channel {
+        Some(channel) => serializer.serialize_str(channel.as_str()),
         None => serializer.serialize_none(),
     }
 }
@@ -94,6 +114,7 @@ pub(crate) struct WorkspaceDoc {
 pub(crate) struct EffectiveSettings {
     pub hud: bool,
     pub hud_style: &'static str,
+    pub update_channel: &'static str,
 }
 
 #[derive(Clone, Debug, Serialize)]
@@ -151,6 +172,7 @@ impl ConfigDoc {
         EffectiveSettings {
             hud: self.settings.effective_hud(),
             hud_style: self.settings.effective_hud_style().as_str(),
+            update_channel: self.settings.effective_update_channel().as_str(),
         }
     }
 

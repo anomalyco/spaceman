@@ -1,7 +1,7 @@
 use std::path::{Path, PathBuf};
 
 use serde::Serialize;
-use spaceman::config::{HudStyle, load_path};
+use spaceman::config::{HudStyle, UpdateChannel, load_path};
 
 use super::{
     Outcome,
@@ -46,6 +46,7 @@ struct CheckOutput {
 enum SettingKey {
     Hud,
     HudStyle,
+    UpdateChannel,
 }
 
 impl SettingKey {
@@ -53,8 +54,9 @@ impl SettingKey {
         match raw.strip_prefix("settings.").unwrap_or(raw) {
             "hud" => Ok(Self::Hud),
             "hud_style" => Ok(Self::HudStyle),
+            "update_channel" => Ok(Self::UpdateChannel),
             _ => Err(format!(
-                "unknown setting {raw:?}; valid keys: hud, hud_style"
+                "unknown setting {raw:?}; valid keys: hud, hud_style, update_channel"
             )),
         }
     }
@@ -63,6 +65,7 @@ impl SettingKey {
         match self {
             Self::Hud => "hud",
             Self::HudStyle => "hud_style",
+            Self::UpdateChannel => "update_channel",
         }
     }
 }
@@ -174,6 +177,13 @@ fn run_get(args: &[&str], path_override: Option<&Path>) -> Result<String, String
                 serde_json::Value::String(style.to_owned()),
             )
         }
+        SettingKey::UpdateChannel => {
+            let channel = doc.settings.effective_update_channel().as_str();
+            (
+                channel.to_owned(),
+                serde_json::Value::String(channel.to_owned()),
+            )
+        }
     };
     if json {
         to_json_pretty(&SettingOutput {
@@ -221,6 +231,18 @@ fn run_set(args: &[&str], path_override: Option<&Path>) -> Result<String, String
             doc.settings.hud_style = Some(parsed);
             (
                 format!("set hud_style = {}", parsed.as_str()),
+                serde_json::Value::String(parsed.as_str().to_owned()),
+            )
+        }
+        SettingKey::UpdateChannel => {
+            let parsed = UpdateChannel::parse(raw_value).ok_or_else(|| {
+                format!(
+                    "invalid value for update_channel: expected 'stable' or 'dev', got {raw_value:?}"
+                )
+            })?;
+            doc.settings.update_channel = Some(parsed);
+            (
+                format!("set update_channel = {}", parsed.as_str()),
                 serde_json::Value::String(parsed.as_str().to_owned()),
             )
         }
