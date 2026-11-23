@@ -73,6 +73,10 @@ pub(super) struct WorkspaceRuntime<B = MacWorkspaceBackend> {
     /// observation readback. Electron apps accept `AXSize` writes synchronously
     /// and clamp to their aspect-ratio or size limits asynchronously afterward.
     pub(super) applied: [HashMap<crate::PhysicalWindowId, crate::Rect>; WorkspaceId::COUNT],
+    /// Consecutive bounced or rejected applications per window for the same
+    /// target frame; past `APPLY_ATTEMPT_LIMIT` the target is frozen.
+    pub(super) apply_attempts:
+        [HashMap<crate::PhysicalWindowId, (crate::Rect, u8)>; WorkspaceId::COUNT],
     pub(super) parked: HashMap<crate::PhysicalWindowId, crate::Rect>,
     /// When each window was last parked. Apps apply position writes
     /// asynchronously, so a fresh park must settle before an on-screen
@@ -144,6 +148,12 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
                 (result, outputs)
             }
             WorkerCommand::Gesture(gesture, preview, outputs) => {
+                let window = match &gesture {
+                    FinalGesture::Drop(window, _) | FinalGesture::Resize(window, _) => window,
+                };
+                for attempts in &mut self.apply_attempts {
+                    attempts.remove(window);
+                }
                 let result = match gesture {
                     FinalGesture::Drop(window, point) => {
                         self.drop_window(window, point, preview, outputs.clone(), cancelled)
@@ -267,6 +277,7 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
             known_apps,
             constrained: std::array::from_fn(|_| HashMap::new()),
             applied: std::array::from_fn(|_| HashMap::new()),
+            apply_attempts: std::array::from_fn(|_| HashMap::new()),
             parked,
             recently_parked: HashMap::new(),
             recent_heals: HashMap::new(),
@@ -542,6 +553,12 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
         let settings = Settings::for_output(output);
         let mut placements = self.workspaces.engine(workspace).placements(&settings);
         self.apply_fullscreen_layout(workspace, &mut placements, output);
+        let attempts = &mut self.apply_attempts[workspace.index()];
+        for placement in &placements {
+            if let Some(window) = placement.window.as_ref() {
+                attempts.remove(window);
+            }
+        }
         let results = match dragged {
             Some(dragged) => {
                 self.backend
@@ -580,6 +597,7 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
         self.workspaces.forget_floating(window);
         self.constrained[workspace.index()].remove(window);
         self.applied[workspace.index()].remove(window);
+        self.apply_attempts[workspace.index()].remove(window);
         self.omitted_windows.remove(window);
         self.recently_parked.remove(window);
         self.recent_heals.remove(window);
@@ -618,22 +636,35 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
     ) {
         let constrained = &mut self.constrained[workspace.index()];
         let applied = &mut self.applied[workspace.index()];
+        let attempts = &mut self.apply_attempts[workspace.index()];
         for result in results {
             match (result.outcome, result.actual) {
                 (macos::ApplyOutcome::Constrained, Some(actual)) => {
                     applied.remove(&result.window);
                     constrained.insert(result.window.clone(), (result.target, actual));
+                    cycle::record_apply_attempt(attempts, workspace, &result.window, result.target);
                 }
                 (macos::ApplyOutcome::Applied, _) => {
                     constrained.remove(&result.window);
+                    if attempts
+                        .get(&result.window)
+                        .is_some_and(|(target, _)| *target != result.target)
+                    {
+                        attempts.remove(&result.window);
+                    }
                     applied.insert(result.window.clone(), result.target);
                 }
                 (macos::ApplyOutcome::Gone, _) => {
                     applied.remove(&result.window);
                     constrained.remove(&result.window);
+                    attempts.remove(&result.window);
+                }
+                (macos::ApplyOutcome::Deferred, _) => {
+                    applied.remove(&result.window);
                 }
                 _ => {
                     applied.remove(&result.window);
+                    cycle::record_apply_attempt(attempts, workspace, &result.window, result.target);
                 }
             }
         }

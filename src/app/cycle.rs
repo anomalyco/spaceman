@@ -11,6 +11,30 @@ use crate::journal::PlacementSource;
 /// starting a huddle) and briefly report a partial window list; one such
 /// snapshot must not retire a slot.
 pub(super) const OMISSION_SETTLE: Duration = Duration::from_secs(2);
+/// Consecutive bounced or rejected applications for the same target frame
+/// before Spaceman stops retrying that target (even when rejected frames vary
+/// each cycle), preventing infinite resize-fight flicker loops.
+pub(super) const APPLY_ATTEMPT_LIMIT: u8 = 3;
+
+pub(super) fn record_apply_attempt(
+    attempts: &mut HashMap<crate::PhysicalWindowId, (crate::Rect, u8)>,
+    workspace: WorkspaceId,
+    window: &crate::PhysicalWindowId,
+    target: crate::Rect,
+) {
+    let entry = attempts.entry(window.clone()).or_insert((target, 0));
+    if entry.0 != target {
+        *entry = (target, 0);
+    }
+    let previous = entry.1;
+    entry.1 = entry.1.saturating_add(1);
+    if previous < APPLY_ATTEMPT_LIMIT && entry.1 >= APPLY_ATTEMPT_LIMIT {
+        log_event!(
+            "workspace {workspace}: freezing {window:?} after {} bounced/rejected applications for {target:?}",
+            APPLY_ATTEMPT_LIMIT
+        );
+    }
+}
 
 struct ReconcileDisplayContext<'a> {
     outputs: &'a macos::DisplayOutputs,
@@ -371,6 +395,8 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
         self.constrained[target.index()].remove(window);
         self.applied[source.index()].remove(window);
         self.applied[target.index()].remove(window);
+        self.apply_attempts[source.index()].remove(window);
+        self.apply_attempts[target.index()].remove(window);
     }
 
     fn reconcile_display(
@@ -540,6 +566,7 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
         }
         self.constrained[workspace.index()].retain(|window, _| bound.contains(window));
         self.applied[workspace.index()].retain(|window, _| bound.contains(window));
+        self.apply_attempts[workspace.index()].retain(|window, _| bound.contains(window));
         let workspaces = &self.workspaces;
         self.minimum_sizes
             .retain(|window, _| workspaces.workspace_of(window).is_some());
@@ -563,6 +590,7 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
                 if observed.approximately_equals(target, settings.frame_tolerance) {
                     self.applied[workspace.index()].remove(window);
                     self.constrained[workspace.index()].remove(window);
+                    self.apply_attempts[workspace.index()].remove(window);
                     continue;
                 }
                 if self.constrained[workspace.index()]
@@ -571,8 +599,30 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
                 {
                     self.constrained[workspace.index()].remove(window);
                 }
+                if self.apply_attempts[workspace.index()]
+                    .get(window)
+                    .is_some_and(|(attempted_target, _)| *attempted_target != target)
+                {
+                    self.apply_attempts[workspace.index()].remove(window);
+                }
                 if self.applied[workspace.index()].remove(window) == Some(target) {
                     self.constrained[workspace.index()].insert(window.clone(), (target, observed));
+                    record_apply_attempt(
+                        &mut self.apply_attempts[workspace.index()],
+                        workspace,
+                        window,
+                        target,
+                    );
+                }
+                if self.apply_attempts[workspace.index()]
+                    .get(window)
+                    .is_some_and(|(attempted_target, count)| {
+                        *attempted_target == target && *count >= APPLY_ATTEMPT_LIMIT
+                    })
+                {
+                    self.constrained[workspace.index()]
+                        .entry(window.clone())
+                        .or_insert((target, observed));
                 }
             }
         }
@@ -585,6 +635,14 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
             let Some(window) = placement.window.as_ref() else {
                 return false;
             };
+            if self.apply_attempts[workspace.index()]
+                .get(window)
+                .is_some_and(|(target, count)| {
+                    *target == placement.frame && *count >= APPLY_ATTEMPT_LIMIT
+                })
+            {
+                return false;
+            }
             !self.constrained[workspace.index()]
                 .get(window)
                 .zip(observed_frames.get(window))

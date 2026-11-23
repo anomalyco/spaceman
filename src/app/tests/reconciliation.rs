@@ -591,3 +591,135 @@ fn asynchronously_clamped_window_settles_without_reapplying_every_cycle() {
     runtime.cycle(outputs, &cancelled).unwrap();
     assert!(!runtime.constrained[WorkspaceId::ONE.index()].contains_key(&huddle));
 }
+
+#[test]
+fn varying_async_bounces_freeze_after_attempt_limit_and_clear_on_target_change() {
+    let main = window(10);
+    let huddle = window(11);
+    let settings = window(12);
+    let mut backend = FakeBackend {
+        observation: Some(observation_for_windows(
+            "com.tinyspeck.slackmacgap",
+            &settings,
+            &[
+                (main.clone(), frame(50)),
+                (huddle.clone(), frame(350)),
+                (settings.clone(), frame(650)),
+            ],
+        )),
+        ..FakeBackend::default()
+    };
+    backend.frames.insert(main.clone(), frame(50));
+    backend.frames.insert(huddle.clone(), frame(350));
+    backend.frames.insert(settings.clone(), frame(650));
+    let mut runtime = runtime(backend);
+    let outputs = outputs();
+    let cancelled = AtomicBool::new(false);
+
+    // Cycle 1: initial layout applies target to huddle.
+    runtime.cycle(outputs.clone(), &cancelled).unwrap();
+    assert_eq!(runtime.backend.observed_apply_count, 1);
+    let target = runtime.backend.frames[&huddle];
+    assert_eq!(target.height, 800);
+
+    // Electron bounces huddle asynchronously to a different frame on every cycle,
+    // never staying within frame_tolerance of the last constrained frame.
+    let varying_heights = [520, 560, 480, 600, 440, 640, 420, 660, 400, 680, 380, 700];
+    for height in varying_heights {
+        let bounced = crate::Rect { height, ..target };
+        runtime.backend.frames.insert(huddle.clone(), bounced);
+        runtime.cycle(outputs.clone(), &cancelled).unwrap();
+    }
+
+    let limit = usize::from(super::super::cycle::APPLY_ATTEMPT_LIMIT);
+    assert_eq!(runtime.backend.observed_apply_count, limit);
+    assert_eq!(
+        runtime.apply_attempts[WorkspaceId::ONE.index()].get(&huddle),
+        Some(&(target, super::super::cycle::APPLY_ATTEMPT_LIMIT))
+    );
+    assert!(runtime.constrained[WorkspaceId::ONE.index()].contains_key(&huddle));
+
+    // Frozen windows do not spam Misplaced anomalies.
+    let visible = runtime.visible_workspaces(&outputs);
+    let server = runtime.backend.window_server_frames().unwrap();
+    let windows = runtime.arranged_windows(&server);
+    assert!(
+        runtime
+            .anomalies(&outputs, &visible, &windows, &server)
+            .is_empty()
+    );
+
+    // Closing the third window changes huddle's target frame, clearing the backoff.
+    runtime.backend.frames.remove(&settings);
+    runtime.cycle(outputs.clone(), &cancelled).unwrap();
+    assert_eq!(runtime.backend.observed_apply_count, limit + 1);
+    assert_eq!(
+        runtime.backend.frames[&huddle],
+        crate::Rect {
+            x: 500,
+            y: 0,
+            width: 500,
+            height: 800,
+        }
+    );
+    runtime.cycle(outputs, &cancelled).unwrap();
+    assert!(!runtime.apply_attempts[WorkspaceId::ONE.index()].contains_key(&huddle));
+    assert!(!runtime.constrained[WorkspaceId::ONE.index()].contains_key(&huddle));
+}
+
+#[test]
+fn varying_constrained_rejections_freeze_and_clear_on_user_gesture() {
+    let main = window(10);
+    let stubborn = window(11);
+    let mut backend = FakeBackend {
+        observation: Some(observation_for_windows(
+            "com.tinyspeck.slackmacgap",
+            &main,
+            &[(main.clone(), frame(50)), (stubborn.clone(), frame(550))],
+        )),
+        managed_outcome: Some(macos::ApplyOutcome::Constrained),
+        ..FakeBackend::default()
+    };
+    backend.frames.insert(main.clone(), frame(50));
+    backend.frames.insert(stubborn.clone(), frame(550));
+    let mut runtime = runtime(backend);
+    let outputs = outputs();
+    let cancelled = AtomicBool::new(false);
+
+    // First cycle binds both windows; stubborn rejects with varying heights across cycles.
+    let target = crate::Rect {
+        x: 500,
+        y: 0,
+        width: 500,
+        height: 800,
+    };
+    for height in [520, 560, 480, 600, 440, 640] {
+        runtime
+            .backend
+            .frames
+            .insert(stubborn.clone(), crate::Rect { height, ..target });
+        runtime.cycle(outputs.clone(), &cancelled).unwrap();
+    }
+
+    let limit = usize::from(super::super::cycle::APPLY_ATTEMPT_LIMIT);
+    assert_eq!(runtime.backend.observed_apply_count, limit);
+    assert_eq!(
+        runtime.apply_attempts[WorkspaceId::ONE.index()].get(&stubborn),
+        Some(&(target, super::super::cycle::APPLY_ATTEMPT_LIMIT))
+    );
+
+    // User gesture clears the backoff even when the window's target stays the same.
+    runtime.backend.managed_outcome = None;
+    let _ = runtime.execute(
+        WorkerCommand::Gesture(
+            FinalGesture::Drop(stubborn.clone(), (750, 400)),
+            false,
+            outputs.clone(),
+        ),
+        &cancelled,
+    );
+    assert_eq!(runtime.backend.frames[&stubborn], target);
+    runtime.cycle(outputs, &cancelled).unwrap();
+    assert!(!runtime.apply_attempts[WorkspaceId::ONE.index()].contains_key(&stubborn));
+    assert!(!runtime.constrained[WorkspaceId::ONE.index()].contains_key(&stubborn));
+}

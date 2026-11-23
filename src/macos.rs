@@ -675,6 +675,13 @@ pub(super) fn observe_window(
     let Some(&layer) = onscreen.get(&id.window_id) else {
         return Ok(WindowObservation::Ignored);
     };
+    // Every normal macOS window lives on layer 0 (`kCGNormalWindowLevel`).
+    // Always-on-top overlays (e.g. Slack Huddle, PiP, floating panels on
+    // layer != 0) must be ignored even when they expose a close or fullscreen
+    // button, otherwise tiling fights their floating bounds.
+    if layer != 0 {
+        return Ok(WindowObservation::Ignored);
+    }
     let role =
         attribute::<CFString>(window, "AXRole").map_err(|error| format!("AXRole: {error:?}"))?;
     if *role != *CFString::from_static_str("AXWindow") {
@@ -710,7 +717,7 @@ pub(super) fn observe_window(
     }
     let fullscreen_enabled = button_is_enabled(window, "AXFullScreenButton");
     let has_close_button = attribute::<AXUIElement>(window, "AXCloseButton").is_ok();
-    if (layer != 0 || accessory) && !fullscreen_enabled && !has_close_button {
+    if accessory && !fullscreen_enabled && !has_close_button {
         return Ok(WindowObservation::Ignored);
     }
     let modal = optional_bool_attribute(window, "AXModal").unwrap_or(false);
