@@ -6,6 +6,7 @@ mod journal;
 mod layout;
 mod memory;
 mod minimums;
+mod move_workspace;
 mod parking;
 mod reconciliation;
 mod reliability;
@@ -60,6 +61,9 @@ struct FakeBackend {
     /// Window-server stacking, front-most first.
     stacking: Option<Vec<u32>>,
     journal: Vec<crate::journal::JournalEvent>,
+    config_path: Option<PathBuf>,
+    fail_persist_config: bool,
+    persisted_monitors: Vec<(WorkspaceId, DisplaySelector)>,
 }
 
 impl WorkspaceBackend for FakeBackend {
@@ -282,6 +286,21 @@ impl WorkspaceBackend for FakeBackend {
         memory: &crate::window_memory::WindowMemory,
     ) -> Result<(), String> {
         self.window_memory = Some(memory.clone());
+        Ok(())
+    }
+
+    fn persist_workspace_monitor(
+        &mut self,
+        workspace: WorkspaceId,
+        selector: &DisplaySelector,
+    ) -> Result<(), String> {
+        if self.fail_persist_config {
+            return Err("injected config persistence failure".into());
+        }
+        if let Some(path) = &self.config_path {
+            crate::config::save_workspace_monitor_at(path, workspace, selector)?;
+        }
+        self.persisted_monitors.push((workspace, selector.clone()));
         Ok(())
     }
 
