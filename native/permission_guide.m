@@ -54,7 +54,7 @@ static BOOL sawSettingsWindow;
         NSFontAttributeName: [NSFont systemFontOfSize:13 weight:NSFontWeightSemibold],
         NSForegroundColorAttributeName: [NSColor colorWithWhite:(dark ? 0.94 : 0.12) alpha:1],
     };
-    [@"Spaceman" drawAtPoint:NSMakePoint(52, 14) withAttributes:attributes];
+    [@"Pane" drawAtPoint:NSMakePoint(52, 14) withAttributes:attributes];
 }
 
 - (void)mouseDown:(NSEvent *)event {
@@ -210,7 +210,7 @@ void spaceman_show_accessibility_guide(void) {
     content.layer.borderColor = [NSColor colorWithWhite:0 alpha:0.10].CGColor;
 
     NSTextField *instruction = [NSTextField labelWithString:
-        @"↑  Drag Spaceman into the Accessibility list above"];
+        @"↑  Drag Pane into the Accessibility list above"];
     instruction.frame = NSMakeRect(18, 73, panelSize.width - 36, 24);
     instruction.font = [NSFont systemFontOfSize:13 weight:NSFontWeightMedium];
     instruction.textColor = NSColor.labelColor;

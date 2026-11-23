@@ -82,3 +82,58 @@ fn parked_state_round_trips_and_rejects_malformed_data() {
         serde_json::to_vec(&vec![(window.clone(), frame(50)), (window, frame(100))]).unwrap();
     assert!(serde_json::from_slice::<ParkedWindows>(&duplicate).is_err());
 }
+
+#[test]
+fn legacy_spaceman_parked_windows_migrate_and_recover_without_losing_malformed_state() {
+    use std::sync::atomic::{AtomicUsize, Ordering};
+    static NEXT: AtomicUsize = AtomicUsize::new(0);
+    let id = NEXT.fetch_add(1, Ordering::Relaxed);
+    let home = std::env::temp_dir().join(format!(
+        "pane-startup-migration-{}-{id}",
+        std::process::id()
+    ));
+    let legacy_dir = home.join("Library/Application Support/Spaceman");
+    let pane_dir = home.join("Library/Application Support/Pane");
+    std::fs::create_dir_all(&legacy_dir).unwrap();
+
+    // 1. Valid legacy parked-windows.json migrates and loads exact original frames.
+    let mut expected = HashMap::new();
+    expected.insert(window(42), frame(120));
+    let encoded = serde_json::to_vec(&ParkedWindows(expected.clone())).unwrap();
+    std::fs::write(legacy_dir.join("parked-windows.json"), &encoded).unwrap();
+
+    let report = crate::config::migrate_legacy_data_in_home(&home, true, true).unwrap();
+    assert!(
+        report
+            .copied_state_files
+            .contains(&"parked-windows.json".to_owned())
+    );
+    let loaded = load_parked_at(&pane_dir.join("parked-windows.json")).unwrap();
+    assert_eq!(loaded, expected);
+    // Original file stays untouched.
+    assert!(legacy_dir.join("parked-windows.json").is_file());
+
+    // 2. Malformed legacy parked-windows.json is preserved and still rejected on load.
+    let bad_home = std::env::temp_dir().join(format!(
+        "pane-startup-migration-bad-{}-{id}",
+        std::process::id()
+    ));
+    let bad_legacy = bad_home.join("Library/Application Support/Spaceman");
+    let bad_pane = bad_home.join("Library/Application Support/Pane");
+    std::fs::create_dir_all(&bad_legacy).unwrap();
+    std::fs::write(bad_legacy.join("parked-windows.json"), b"{corrupt").unwrap();
+
+    crate::config::migrate_legacy_data_in_home(&bad_home, true, true).unwrap();
+    assert!(load_parked_at(&bad_pane.join("parked-windows.json")).is_err());
+    assert_eq!(
+        std::fs::read(bad_pane.join("parked-windows.json")).unwrap(),
+        b"{corrupt"
+    );
+    assert_eq!(
+        std::fs::read(bad_legacy.join("parked-windows.json")).unwrap(),
+        b"{corrupt"
+    );
+
+    std::fs::remove_dir_all(home).unwrap();
+    std::fs::remove_dir_all(bad_home).unwrap();
+}

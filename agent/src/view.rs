@@ -93,7 +93,7 @@ fn update_status(ui: &Ui, p: Paint) -> El {
         .map_or(UiUpdateStatus::Unavailable, |agent| agent.update);
     let label = match update {
         UiUpdateStatus::Checking => "Checking for updates…",
-        UiUpdateStatus::UpToDate => "Spaceman is up to date",
+        UiUpdateStatus::UpToDate => "Pane is up to date",
         UiUpdateStatus::Available => "Update available",
         UiUpdateStatus::Idle | UiUpdateStatus::Unavailable => "Check for updates",
     };
@@ -205,7 +205,7 @@ fn pane_header(p: Paint, title: &str, trailing: Option<El>) -> El {
         .children(trailing)
 }
 
-/// A save that failed, or a config file Spaceman can't read.
+/// A save that failed, or a config file Pane can't read.
 fn error_banner(ui: &Ui, p: Paint) -> Option<El> {
     let copy = ui.error.as_deref().or(ui.doc.error.as_deref())?;
     Some(

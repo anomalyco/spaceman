@@ -152,8 +152,8 @@ fn demo() -> Vec<DemoWorkspace> {
     ]
 }
 
-/// Full-window Playground stage: the visible workspace's windows, with the Layouts capsule
-/// and the Icons capsule under it, both on the same flow.
+/// Full-window Playground stage: the visible workspace's windows, with the default Icons capsule
+/// and the Layouts capsule under it, both on the same flow.
 pub fn stage(preview: &HudPreview, p: Paint, reduce_motion: bool) -> El {
     const PAD: f32 = 16.0;
     let inner_w = STAGE_W - 2.0 * p.hair - PAD * 2.0;
@@ -200,8 +200,8 @@ pub fn stage(preview: &HudPreview, p: Paint, reduce_motion: bool) -> El {
         .center_y()
         .child(windows)
         .child(el().key("screen-spacer").grow(1.0))
-        .child(capsule("layouts", HudStyle::Layouts))
-        .child(capsule("icons", HudStyle::Icons));
+        .child(capsule("icons", HudStyle::Icons))
+        .child(capsule("layouts", HudStyle::Layouts));
 
     col()
         .key("hud-stage")

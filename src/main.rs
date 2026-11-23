@@ -171,7 +171,7 @@ fn run_doctor(hours: Option<u64>) -> Result<String, String> {
     let (lines, skipped) = spaceman::journal::read(&[&rotated, &live])?;
     if lines.is_empty() && skipped == 0 {
         return Ok(format!(
-            "No arrangement journal at {} yet. It is written by a running Spaceman agent.",
+            "No arrangement journal at {} yet. It is written by a running Pane agent.",
             live.display()
         ));
     }
@@ -186,7 +186,7 @@ fn run_hud() -> Result<String, String> {
         let source = spaceman::control::send(&["debug".into()])?;
         let debug: serde_json::Value =
             serde_json::from_str(&source).map_err(|error| error.to_string())?;
-        print!("\x1b[2J\x1b[HSpaceman HUD  (Ctrl-C to close)\n\n");
+        print!("\x1b[2J\x1b[HPane HUD  (Ctrl-C to close)\n\n");
         for display in debug["displays"].as_array().into_iter().flatten() {
             let frame = &display["frame"];
             let layout = if display["fullscreen_layout"].as_bool() == Some(true) {

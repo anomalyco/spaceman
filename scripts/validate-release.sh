@@ -3,7 +3,7 @@ set -eu
 
 root=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
 plist="$root/app/Info.plist"
-expected_bundle_id=com.kitlangton.spaceman
+expected_bundle_id=anomaly.pane
 expected_executables="spaceman spaceman-agent"
 expected_feed_url=https://pub-6f85d683ffe0419cad0a71508904053a.r2.dev/appcast.xml
 expected_sparkle_key=mIek27lttJe8cIBqVZFhh6reRKjpTx1h9ZY9OKWPtuM=
@@ -56,16 +56,16 @@ fi
 
 [ "$#" -eq 2 ] || {
   echo "usage: $0 --metadata-only" >&2
-  echo "       $0 /path/to/Spaceman.app /path/to/Spaceman.zip" >&2
+  echo "       $0 /path/to/Pane.app /path/to/Pane.zip" >&2
   exit 2
 }
 
 bundle=$1
 archive=$2
-expected_arch=${SPACEMAN_RELEASE_ARCH:-$(uname -m)}
+expected_arch=${PANE_RELEASE_ARCH:-${SPACEMAN_RELEASE_ARCH:-$(uname -m)}}
 case "$expected_arch" in
   arm64|x86_64) ;;
-  *) fail "unsupported expected architecture '$expected_arch'; set SPACEMAN_RELEASE_ARCH to arm64 or x86_64" ;;
+  *) fail "unsupported expected architecture '$expected_arch'; set PANE_RELEASE_ARCH to arm64 or x86_64" ;;
 esac
 
 [ -d "$bundle" ] || fail "app bundle not found: $bundle"
@@ -121,17 +121,17 @@ actual_contents=$(mktemp)
 extracted=$(mktemp -d)
 trap 'rm -f "$actual_contents"; rm -rf "$extracted"' EXIT HUP INT TERM
 /usr/bin/unzip -Z1 "$archive" >"$actual_contents"
-if grep -Ev '^Spaceman\.app(/|$)' "$actual_contents" >/dev/null; then
-  fail "ZIP contains files outside Spaceman.app"
+if grep -Ev '^Pane\.app(/|$)' "$actual_contents" >/dev/null; then
+  fail "ZIP contains files outside Pane.app"
 fi
 for required in \
-  Spaceman.app/Contents/Info.plist \
-  Spaceman.app/Contents/MacOS/spaceman \
-  Spaceman.app/Contents/MacOS/spaceman-agent \
-  Spaceman.app/Contents/Resources/AppIcon.icns \
-  Spaceman.app/Contents/Resources/Assets.car \
-  Spaceman.app/Contents/Frameworks/Sparkle.framework/Versions/B/Sparkle \
-  Spaceman.app/Contents/_CodeSignature/CodeResources
+  Pane.app/Contents/Info.plist \
+  Pane.app/Contents/MacOS/spaceman \
+  Pane.app/Contents/MacOS/spaceman-agent \
+  Pane.app/Contents/Resources/AppIcon.icns \
+  Pane.app/Contents/Resources/Assets.car \
+  Pane.app/Contents/Frameworks/Sparkle.framework/Versions/B/Sparkle \
+  Pane.app/Contents/_CodeSignature/CodeResources
 do
   grep -Fxq "$required" "$actual_contents" || fail "ZIP is missing $required"
 done
@@ -146,12 +146,12 @@ for relative_path in \
   Contents/Frameworks/Sparkle.framework/Versions/B/Sparkle \
   Contents/_CodeSignature/CodeResources
 do
-  /usr/bin/cmp "$bundle/$relative_path" "$extracted/Spaceman.app/$relative_path" || \
+  /usr/bin/cmp "$bundle/$relative_path" "$extracted/Pane.app/$relative_path" || \
     fail "packed $relative_path differs from the validated bundle"
 done
-/usr/bin/codesign --verify --deep --strict --verbose=2 "$extracted/Spaceman.app" || \
+/usr/bin/codesign --verify --deep --strict --verbose=2 "$extracted/Pane.app" || \
   fail "packed bundle signature verification failed"
-xcrun stapler validate "$extracted/Spaceman.app" || \
+xcrun stapler validate "$extracted/Pane.app" || \
   fail "packed bundle has no valid stapled notarization ticket"
 
 printf 'Release valid: version %s, macOS %s, %s, Developer ID signed, notarized, and Gatekeeper accepted\n' \

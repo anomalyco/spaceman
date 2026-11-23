@@ -27,13 +27,13 @@ Source baseline: `main` at `7ad30eb` plus the uncommitted working tree of 2026-1
 
 ## Common Prerequisites
 
-- macOS with Accessibility permission granted to `Spaceman.app`. Without it, or without global
-  hotkey registration, Spaceman starts paused and only restores parked windows.
+- macOS with Accessibility permission granted to `Pane.app`. Without it, or without global
+  hotkey registration, Pane starts paused and only restores parked windows.
 - No other window manager running (AeroSpace, yabai, Amethyst): two managers fight over frames.
 - Only standard, movable, on-screen, non-native-fullscreen `AXWindow`s are managed. Panels,
   dialogs, and other subroles are invisible to Spaceman and stay global (see
   [Compatibility](../compatibility.md)).
-- CLI paths assume `~/.local/bin/spaceman` is on `PATH`; layout-changing `ctl` commands require
+- CLI paths assume `~/.local/bin/pane` (or `~/.local/bin/spaceman`) is on `PATH`; layout-changing `ctl` commands require
   automatic tiling to be enabled.
 
 ## Evidence Conventions

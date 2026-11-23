@@ -46,13 +46,13 @@ Diagnose                                                   // recover.doctor
 ## How To Get To It (User POV)
 
 ```ts
-Menu bar: workspaces (switch) | Disable Tiling (pause + restore) | Workspace HUD | Settings... (⌘,) | Quit Spaceman (⌘Q)
+Menu bar: workspaces (switch) | Disable Tiling (pause + restore) | Workspace HUD | Settings... (⌘,) | Quit Pane (⌘Q)
 Settings: Activity -> Refresh | Mark Issue | journal.jsonl (Show in Finder)
-CLI:      spaceman ctl pause | resume | quit | restart | status | debug
-          spaceman doctor [hours]      // reads files directly; works with the agent stopped
-          spaceman hud
-Implicit: macOS restart/log out/shutdown, Sparkle update, reopening Spaceman.app after a crash
-Files:    ~/Library/Application Support/Spaceman/
+CLI:      pane ctl pause | resume | quit | restart | status | debug
+          pane doctor [hours]          // reads files directly; works with the agent stopped
+          pane hud
+Implicit: macOS restart/log out/shutdown, Sparkle update, reopening Pane.app after a crash
+Files:    ~/Library/Application Support/Pane/   (migrated safely from .../Spaceman/ on first launch)
           ├── workspace-state.json   parked-windows.json   window-memory.json
           └── journal.jsonl(.1)      agent.log(.1)
 ```

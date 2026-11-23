@@ -1,5 +1,6 @@
-//! The Icons style: each workspace as its number and the icons of its apps, with no layouts.
-//! Nothing changes size; the group you are on is bright and the others dim.
+//! The default Icons style: each workspace as its tabular number and the icons of its apps.
+//! Nothing changes size; a concentric pill marker glides to the active group while inactive
+//! groups sit calmly dimmed.
 
 use rune::{El, Spring, TextStyle, row, text};
 use spaceman::{WorkspaceId, app::UiHudWorkspace};
@@ -7,17 +8,22 @@ use spaceman::{WorkspaceId, app::UiHudWorkspace};
 use super::pill::{INNER, Icons, Track, app_icon, presence, srgb};
 use crate::controls::Paint;
 
-pub const EDGE: f32 = 14.0;
+/// Inset from the capsule's inside edge to the first group: `EDGE - PAD = 6 pt`, matching the
+/// marker's 6 pt vertical inset (`(INNER - MARKER_H) / 2`) for a concentric pill-in-pill.
+pub const EDGE: f32 = 15.0;
 pub const ICON: f32 = 16.0;
-const ICON_GAP: f32 = 3.0;
+const ICON_GAP: f32 = 4.0;
 /// From the number to its first icon.
-const NUMBER_GAP: f32 = 5.0;
-pub const GROUP_GAP: f32 = 14.0;
-/// The marker's reach past the current group, and its height.
-pub const PAD: f32 = 6.0;
+const NUMBER_GAP: f32 = 6.0;
+pub const GROUP_GAP: f32 = 18.0;
+/// The marker's horizontal reach past the active group, and its height/radius.
+pub const PAD: f32 = 9.0;
 pub const MARKER_H: f32 = 30.0;
-const NUMBER_MIN_W: f32 = 9.0;
-const DIM: f32 = 0.4;
+pub const MARKER_RADIUS: f32 = MARKER_H / 2.0;
+const NUMBER_MIN_W: f32 = 10.0;
+/// Keeps an empty workspace's active marker at least circular (`MARKER_H` wide).
+const EMPTY_MIN_W: f32 = MARKER_H - 2.0 * PAD;
+const DIM: f32 = 0.42;
 const GROUP: Spring = Spring::new(0.3, 0.0);
 /// One icon per app, so a workspace full of windows still fits.
 const MAX_APPS: usize = 12;
@@ -54,7 +60,7 @@ fn number_width(label: &str) -> f32 {
 
 fn group_width(number: f32, apps: usize) -> f32 {
     if apps == 0 {
-        return number;
+        return number.max(EMPTY_MIN_W);
     }
     number + NUMBER_GAP + apps as f32 * ICON + (apps - 1) as f32 * ICON_GAP
 }
@@ -83,7 +89,7 @@ pub fn track(
             ]);
         }
         cells.push(
-            group(entry.workspace, &label, number, &apps, icons)
+            group(entry.workspace, &label, number, width, &apps, icons)
                 .absolute(x, 0.0)
                 .w(width)
                 .h(INNER)
@@ -102,12 +108,21 @@ pub fn track(
     Track {
         width,
         marker,
+        marker_radius: MARKER_RADIUS,
         cells,
     }
 }
 
-fn group(workspace: WorkspaceId, label: &str, number: f32, apps: &[&str], icons: &Icons) -> El {
-    let digits = row().key("number").w(number).h(16.0).center().child(
+fn group(
+    workspace: WorkspaceId,
+    label: &str,
+    number: f32,
+    width: f32,
+    apps: &[&str],
+    icons: &Icons,
+) -> El {
+    let digit_w = if apps.is_empty() { width } else { number };
+    let digits = row().key("number").w(digit_w).h(16.0).center().child(
         text(label.to_owned())
             .font(number_style())
             .color(srgb(0xf4f4f6)),

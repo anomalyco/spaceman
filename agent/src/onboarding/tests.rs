@@ -130,6 +130,11 @@ fn manual_tour_walks_all_steps_and_allows_dismiss() {
 #[test]
 fn recognizes_conflicting_window_managers_by_bundle_or_daemon_name() {
     assert_eq!(
+        window_manager_name(Some("com.kitlangton.spaceman"), None),
+        Some("Spaceman")
+    );
+    assert_eq!(window_manager_name(Some("anomaly.pane"), None), None);
+    assert_eq!(
         window_manager_name(Some("bobko.aerospace"), None),
         Some("AeroSpace")
     );

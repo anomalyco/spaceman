@@ -1,19 +1,20 @@
 #!/usr/bin/env bash
-# Keeps /Applications/Spaceman.app on the tip of main. Every 30 s it checks origin/main with
-# `git ls-remote`; once main has moved and then stayed put for QUIET seconds (pushes come in
-# bursts, so one build covers them all, and a busy stretch builds anyway after MAXWAIT), it builds
-# a signed bundle in its own worktree and installs it with `install-app.sh --wait-idle`, so the
-# restart, which restores and re-tiles every window, waits until the keyboard and mouse are idle.
+# Keeps /Applications/Pane.app on the tip of main (and cleanly replaces any legacy Spaceman.app).
+# Every 30 s it checks origin/main with `git ls-remote`; once main has moved and then stayed put
+# for QUIET seconds (pushes come in bursts, so one build covers them all, and a busy stretch
+# builds anyway after MAXWAIT), it builds a signed Pane.app bundle in its own worktree and
+# installs it with `install-app.sh --wait-idle`, so the restart, which restores and re-tiles
+# every window, waits until the keyboard and mouse are idle.
 # Run it from a LaunchAgent; scripts/install-updater sets that up.
 set -uo pipefail
-WT=${SPACEMAN_UPDATER_WT:-$HOME/code/worktrees/spaceman/updater}
+WT=${PANE_UPDATER_WT:-${SPACEMAN_UPDATER_WT:-$HOME/code/worktrees/spaceman/updater}}
 STATE=$HOME/.local/share/spaceman
 STAMP=$STATE/installed-rev
 # ~/bin first: its cargo wrapper sends the build through HiveMind.
 export PATH="$HOME/bin:$HOME/.cargo/bin:$HOME/.local/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin"
-QUIET=${SPACEMAN_UPDATER_QUIET:-180}
-MAXWAIT=${SPACEMAN_UPDATER_MAXWAIT:-600}
-IDLE=${SPACEMAN_UPDATER_IDLE:-120}
+QUIET=${PANE_UPDATER_QUIET:-${SPACEMAN_UPDATER_QUIET:-180}}
+MAXWAIT=${PANE_UPDATER_MAXWAIT:-${SPACEMAN_UPDATER_MAXWAIT:-600}}
+IDLE=${PANE_UPDATER_IDLE:-${SPACEMAN_UPDATER_IDLE:-120}}
 mkdir -p "$STATE"
 cd "$WT" || exit 1
 remote_head() { git ls-remote origin refs/heads/main 2>/dev/null | cut -f1; }

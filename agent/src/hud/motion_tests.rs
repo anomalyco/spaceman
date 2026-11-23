@@ -24,7 +24,7 @@ const UNSEEN: f32 = 1.0 / 255.0;
 /// The furthest the marker's edges go in one frame, crossing the whole demo row (Icons' 3 to 1
 /// is about 126 pt, peaking near 9.5 pt a frame); a snap would be several times this.
 const MARKER_STEP: f32 = 12.0;
-const STYLES: [HudStyle; 2] = [HudStyle::Layouts, HudStyle::Icons];
+const STYLES: [HudStyle; 2] = [HudStyle::Icons, HudStyle::Layouts];
 
 struct Hud {
     run: Run<HudOverlay>,
@@ -297,37 +297,42 @@ fn the_capsule_leaves_and_comes_back_along_one_path() {
 
 #[test]
 fn a_switch_during_the_exit_turns_the_capsule_around_where_it_is() {
-    let mut hud = Hud::showing(HudStyle::Layouts, row(1, None));
-    let left = hud.play_until(HudTick::Leave);
-    hud.play(50);
-    let before = *hud.snaps("hud-slot", left).last().unwrap();
-    assert!(
-        (0.2..0.8).contains(&before.op),
-        "mid-exit, at {}",
-        before.op
-    );
+    for style in STYLES {
+        let mut hud = Hud::showing(style, row(1, None));
+        let left = hud.play_until(HudTick::Leave);
+        hud.play(50);
+        let before = *hud.snaps("hud-slot", left).last().unwrap();
+        assert!(
+            (0.2..0.8).contains(&before.op),
+            "{style:?}: mid-exit, at {}",
+            before.op
+        );
 
-    let back = hud.switch(row(2, Some(1)));
-    hud.play(400);
-    let after = hud.snaps("hud-slot", back);
-    // It carries on from where it was: no restart from nothing, no snap to full.
-    assert!((after[0].op - before.op).abs() < OPACITY_STEP);
-    assert!((after[0].scale - before.scale).abs() < 0.01);
-    assert!((after[0].rect[1] - before.rect[1]).abs() < 1.0);
-    let lowest = opacity(&after).into_iter().fold(1.0, f32::min);
-    assert!(lowest > before.op - OPACITY_STEP, "it dipped to {lowest}");
-    for pair in after.windows(2) {
-        assert!((pair[1].op - pair[0].op).abs() <= OPACITY_STEP);
+        let back = hud.switch(row(2, Some(1)));
+        hud.play(400);
+        let after = hud.snaps("hud-slot", back);
+        // It carries on from where it was: no restart from nothing, no snap to full.
+        assert!((after[0].op - before.op).abs() < OPACITY_STEP);
+        assert!((after[0].scale - before.scale).abs() < 0.01);
+        assert!((after[0].rect[1] - before.rect[1]).abs() < 1.0);
+        let lowest = opacity(&after).into_iter().fold(1.0, f32::min);
+        assert!(
+            lowest > before.op - OPACITY_STEP,
+            "{style:?}: it dipped to {lowest}"
+        );
+        for pair in after.windows(2) {
+            assert!((pair[1].op - pair[0].op).abs() <= OPACITY_STEP);
+        }
+        assert_eq!(after[after.len() - 1].op, 1.0);
+        // The gate reads a capsule that dims and comes back as a flicker; here a switch asked for it.
+        let findings = hud.findings();
+        assert!(
+            findings
+                .iter()
+                .all(|finding| finding.starts_with("flicker")),
+            "{style:?}: {findings:?}"
+        );
     }
-    assert_eq!(after[after.len() - 1].op, 1.0);
-    // The gate reads a capsule that dims and comes back as a flicker; here a switch asked for it.
-    let findings = hud.findings();
-    assert!(
-        findings
-            .iter()
-            .all(|finding| finding.starts_with("flicker")),
-        "{findings:?}"
-    );
 }
 
 #[test]
@@ -685,7 +690,7 @@ fn the_widest_capsule_and_its_shadow_fit_the_panel() {
 #[test]
 #[ignore = "prints the capsule's pose per frame for tuning; asserts nothing"]
 fn trace() {
-    let mut hud = Hud::showing(HudStyle::Layouts, row(1, None));
+    let mut hud = Hud::showing(HudStyle::default(), row(1, None));
     hud.play(100);
     hud.switch(row(2, Some(1)));
     hud.play(160);
