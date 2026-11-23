@@ -61,7 +61,7 @@ impl WorkerDispatch {
     }
 
     pub(in crate::app) fn send_restore(&mut self) -> bool {
-        self.busy = self.send(WorkerCommand::RestoreAll);
+        self.busy = self.send(WorkerCommand::RestoreAll(macos::outputs().ok()));
         self.restoring = self.busy;
         self.busy
     }

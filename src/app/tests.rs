@@ -15,6 +15,7 @@ mod reliability;
 mod rules;
 mod startup;
 mod switching;
+mod tear_regressions;
 use crate::{BindingState, Slot, SlotId};
 
 use super::*;
@@ -51,6 +52,8 @@ struct FakeBackend {
     fail_persist: bool,
     frame_outcome: Option<macos::WindowAccessError>,
     managed_outcome: Option<macos::ApplyOutcome>,
+    /// Fails position writes with this outcome (an app briefly inaccessible).
+    position_outcome: Option<macos::ApplyOutcome>,
     /// Widths windows refuse to shrink below, clamped synchronously like AppKit.
     minimum_widths: HashMap<crate::PhysicalWindowId, i32>,
     focus_outcome: Option<bool>,
@@ -168,6 +171,9 @@ impl WorkspaceBackend for FakeBackend {
     ) -> macos::ApplyOutcome {
         self.calls
             .push(BackendCall::SetPosition(window.clone(), target));
+        if let Some(outcome) = self.position_outcome {
+            return outcome;
+        }
         let Some(frame) = self.frames.get_mut(window) else {
             return macos::ApplyOutcome::Gone;
         };

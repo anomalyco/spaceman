@@ -32,8 +32,10 @@ Move window without switching                              // ws.move-window
 └── ctl move-app <bundle-id> <ws>     -> every current window of that app
 
 Focus follows                                              // ws.focus-follow
-└── Focusing a window that lives on a hidden workspace (Dock, Cmd+Tab, notification)
-    -> that workspace becomes active
+├── Focusing a window that lives on a hidden workspace (Dock, Cmd+Tab, notification)
+│   -> that workspace becomes active
+└── No focused window reported -> follows the frontmost app only when all its windows, tiled
+    or floating, are on one workspace
 
 Where a new window goes (first match wins)                 // ws.adoption
 ├── ignore rule        -> never managed
@@ -46,7 +48,8 @@ Where a new window goes (first match wins)                 // ws.adoption
 
 Displays                                                    // ws.displays
 ├── Default: 1-5 main, 6-10 secondary; [[workspaces]] monitor = main | secondary | UUID | name
-└── Preferred display unplugged -> its workspaces fall back to main, return on reconnect
+├── Preferred display unplugged -> its workspaces fall back to main, return on reconnect
+└── Display added or removed -> hidden windows re-parked against the new displays
 
 Workspace HUD ([settings] hud, on by default)               // ws.hud
 ├── A switch, a window moved to another workspace, a split-axis or Fullscreen Layout toggle
@@ -119,6 +122,14 @@ on the same letter.
   `move_workspace_preserves_fullscreen_layout_and_focused_tile`,
   `move_workspace_persisted_assignment_survives_config_reload`,
   `move_workspace_replaces_unplugged_assignment_and_rolls_back_on_error`.
+- Unit (FakeBackend), `src/app/tests/tear_regressions.rs` (sequences found by model-based testing):
+  `switch_after_moving_a_window_there_survives_async_activation`,
+  `frontmost_app_with_a_visible_floating_window_does_not_switch_away`,
+  `reconnecting_a_display_keeps_parked_windows_hidden_and_owned`,
+  `a_failed_re_park_after_a_display_change_is_retried`,
+  `re_parking_a_grown_window_hides_all_of_it`,
+  `switching_away_parks_a_window_that_overflows_the_display_edge`,
+  `laying_out_a_parked_window_retires_its_stale_recovery_frame`.
 - Unit (FakeBackend), `src/app/tests/switching.rs`:
   `status_menu_lists_each_displays_visible_and_occupied_workspaces` (menu rows per display, checks,
   app order). The AppKit rows themselves (icons, tooltip of app names) are not covered.

@@ -433,13 +433,10 @@ fn with_managed_window_result<T>(
     if let Some(window) = MANAGED_WINDOWS.with(|windows| windows.borrow().get(id).cloned()) {
         match operation(&window) {
             Ok(value) => return Ok(value),
-            Err(WindowAccessError::Gone) => {
-                evict_managed_window(id);
-                return Err(WindowAccessError::Gone);
-            }
-            Err(WindowAccessError::Unavailable) => {
-                evict_managed_window(id);
-            }
+            // A cached handle can go stale while the window lives on (an app
+            // rebuilds its accessibility tree); resolve it afresh once before
+            // reporting the window gone.
+            Err(_) => evict_managed_window(id),
         }
     }
     if !process_incarnation_matches(&id.app) {

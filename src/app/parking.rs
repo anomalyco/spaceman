@@ -41,10 +41,11 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
         let Some(original) = self.parked.get(&window.id).copied() else {
             return;
         };
-        if self
-            .recently_parked
-            .get(&window.id)
-            .is_some_and(|parked_at| parked_at.elapsed() < PARK_SETTLE_GRACE)
+        if self.awaiting_display_repark(&window.id)
+            || self
+                .recently_parked
+                .get(&window.id)
+                .is_some_and(|parked_at| parked_at.elapsed() < PARK_SETTLE_GRACE)
         {
             // The park write may still be applying inside the app; wait it out.
             return;
@@ -241,10 +242,7 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
                 .get(&window.window_id)
                 .copied()
                 .unwrap_or(frame);
-            if !displays
-                .iter()
-                .any(|display| display.contains_center(frame))
-            {
+            if !crate::geometry::shows_on(frame, &displays) {
                 // Already off-screen by the app's own doing; leave it alone rather
                 // than recording an off-screen frame as recovery data.
                 continue;
@@ -316,11 +314,7 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
         let Some(server) = context.server_frames.get(&window.window_id).copied() else {
             return;
         };
-        if !context
-            .displays
-            .iter()
-            .any(|display| display.contains_center(server))
-        {
+        if !crate::geometry::shows_on(server, context.displays) {
             // Only a window that STAYED parked past the settle grace ends a
             // fight; right after a re-park write the app may still undo it.
             if self
@@ -377,7 +371,8 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
             }
             return;
         }
-        let target = crate::geometry::parked_frame(output, context.displays, original);
+        // Park by the size the window has now; the recovery frame's may be stale.
+        let target = crate::geometry::parked_frame(output, context.displays, server);
         log_event!(
             "re-park: {:?} drifted back on-screen to {:?}",
             window,
@@ -487,11 +482,8 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
         // wrong recovery frame.
         let frame = self.backend.window_server_frame(window).unwrap_or(frame);
         let was_parked = self.parked.contains_key(window);
-        if !outputs
-            .frames()
-            .any(|display| display.contains_center(frame))
-            && !was_parked
-        {
+        let displays = outputs.frames().collect::<Vec<_>>();
+        if !crate::geometry::shows_on(frame, &displays) && !was_parked {
             // The app keeps this window off-screen itself. There is nothing to hide
             // and no on-screen frame worth recording for recovery.
             log_event!("park skip: {:?} already off-screen at {:?}", window, frame);
@@ -501,8 +493,9 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
         if !self.mark_parked(window.clone(), recovery) {
             return macos::ApplyOutcome::Unavailable;
         }
-        let displays = outputs.frames().collect::<Vec<_>>();
-        let parked = crate::geometry::parked_frame(output, &displays, recovery);
+        // Park by the window's current size: once a layout (or the app) resized
+        // it, the recovery frame's size would leave the difference on screen.
+        let parked = crate::geometry::parked_frame(output, &displays, frame);
         let outcome = self.backend.set_position(window, parked);
         log_event!("park: {:?} from {:?} ({:?})", window, recovery, outcome);
         if matches!(outcome, macos::ApplyOutcome::Applied) {
@@ -540,11 +533,12 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
             // moves asynchronously. Keep the recovery frame until the
             // window server confirms arrival; cycles retry until it does.
             // A window the window server cannot see is not confirmed.
+            let target = self.restore_target(frame);
             let confirmed = self
                 .backend
                 .window_server_frame(window)
                 .is_some_and(|actual| {
-                    actual.position_approximately_equals(frame, RESTORE_CONFIRM_TOLERANCE)
+                    actual.position_approximately_equals(target, RESTORE_CONFIRM_TOLERANCE)
                 });
             if confirmed {
                 self.commit_unparked(window);
@@ -567,8 +561,14 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
         window: &crate::PhysicalWindowId,
         frame: crate::Rect,
     ) -> macos::ApplyOutcome {
-        let outcome = self.backend.set_position(window, frame);
-        log_event!("restore: {:?} to {:?} ({:?})", window, frame, outcome);
+        let target = self.restore_target(frame);
+        let mut outcome = self.backend.set_position(window, target);
+        log_event!("restore: {:?} to {:?} ({:?})", window, target, outcome);
+        // Accessibility reports a window it cannot resolve as gone; only the
+        // window server or the process exiting may retire its recovery frame.
+        if outcome == macos::ApplyOutcome::Gone && !self.confirm_gone(window) {
+            outcome = macos::ApplyOutcome::Unavailable;
+        }
         match outcome {
             macos::ApplyOutcome::Applied => {
                 // Also throttles the next retry and heal consideration.
@@ -578,6 +578,24 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
             _ => {}
         }
         outcome
+    }
+
+    /// A layout placed these windows on screen. Any still recorded as parked (a
+    /// config reload made their workspace visible) are no longer hidden; retire
+    /// their recovery frames, or a later park or restore would reuse them.
+    pub(super) fn retire_laid_out(&mut self, results: &[macos::ApplyResult]) {
+        let mut retired = Vec::new();
+        for result in results {
+            if matches!(
+                result.outcome,
+                macos::ApplyOutcome::Applied | macos::ApplyOutcome::Constrained
+            ) && let Some(frame) = self.parked.get(&result.window).copied()
+            {
+                self.commit_unparked(&result.window);
+                retired.push((result.window.clone(), frame));
+            }
+        }
+        self.persist_removals_or_rollback(retired);
     }
 
     /// The window is confirmed no longer parked; retire all parking state.

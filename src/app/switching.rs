@@ -206,6 +206,9 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
         focused: Option<crate::PhysicalWindowId>,
         frontmost: Option<crate::AppInstanceId>,
     ) {
+        let reported_inside = focused
+            .as_ref()
+            .is_some_and(|window| windows.contains(window));
         let stale_window = focused.or_else(|| self.suppressed_focus.clone());
         let stale_app = frontmost.or_else(|| self.suppressed_app.clone());
         let workspace_focus = self
@@ -219,14 +222,13 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
             self.pending_fullscreen_focus_restore.remove(&workspace);
         }
         // Focus already inside the workspace (focus follow switched to it) is
-        // where the display is going, not focus left behind.
-        if stale_window
-            .as_ref()
-            .is_some_and(|window| windows.contains(window))
-        {
+        // where the display is going, not focus left behind. Only the focus
+        // Accessibility reports now proves that: an earlier suppressed window
+        // that lives here must not drop the guard on the frontmost app.
+        if reported_inside {
             self.clear_suppressed_focus();
         } else {
-            self.suppressed_focus = stale_window;
+            self.suppressed_focus = stale_window.filter(|window| !windows.contains(window));
             self.suppressed_app = stale_app;
         }
     }
@@ -276,8 +278,9 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
                 let Some(original) = self.parked.get(window).copied() else {
                     continue;
                 };
+                let target = self.restore_target(original);
                 if frames.get(&window.window_id).is_some_and(|actual| {
-                    actual.position_approximately_equals(original, RESTORE_CONFIRM_TOLERANCE)
+                    actual.position_approximately_equals(target, RESTORE_CONFIRM_TOLERANCE)
                 }) {
                     self.commit_unparked(window);
                     removed.push((window.clone(), original));

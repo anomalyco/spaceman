@@ -679,17 +679,22 @@ impl Workspaces {
         self.floating_owners.remove(window);
     }
 
+    /// The one enabled workspace holding the app's windows, tiled or floating;
+    /// none when they are spread over several.
     #[must_use]
     pub fn workspace_for_app(&self, app: &crate::AppInstanceId) -> Option<WorkspaceId> {
         let mut matches = WorkspaceId::all().filter(|workspace| {
             self.is_enabled(*workspace)
-                && self
+                && (self
                     .engine(*workspace)
                     .model()
                     .workspace
                     .slots
                     .iter()
                     .any(|slot| slot.belongs_to(app))
+                    || self
+                        .floating_entries()
+                        .any(|(window, owner)| owner == *workspace && &window.app == app))
         });
         let workspace = matches.next()?;
         matches.next().is_none().then_some(workspace)

@@ -42,6 +42,46 @@ impl Rect {
     }
 }
 
+/// Width and height of the intersection of two rectangles; not positive when disjoint.
+fn overlap(a: Rect, b: Rect) -> (i64, i64) {
+    let width = (i64::from(a.x) + i64::from(a.width)).min(i64::from(b.x) + i64::from(b.width))
+        - i64::from(a.x.max(b.x));
+    let height = (i64::from(a.y) + i64::from(a.height)).min(i64::from(b.y) + i64::from(b.height))
+        - i64::from(a.y.max(b.y));
+    (width, height)
+}
+
+/// Whether more of `frame` than the one-pixel parking strip shows on any display.
+/// Center containment is not enough: a window wider than its tile overflows the
+/// display edge with its center outside while most of it stays visible.
+#[must_use]
+pub fn shows_on(frame: Rect, displays: &[Rect]) -> bool {
+    displays.iter().any(|display| {
+        let (width, height) = overlap(frame, *display);
+        width > 1 && height > 0
+    })
+}
+
+/// `frame` itself while it shows on a display, otherwise moved (size kept) inside
+/// `fallback`: the display it was recorded on has been disconnected.
+#[must_use]
+pub fn onto_displays(frame: Rect, displays: &[Rect], fallback: Rect) -> Rect {
+    if shows_on(frame, displays) {
+        return frame;
+    }
+    Rect {
+        x: frame.x.clamp(
+            fallback.x,
+            fallback.x + (fallback.width - frame.width).max(0),
+        ),
+        y: frame.y.clamp(
+            fallback.y,
+            fallback.y + (fallback.height - frame.height).max(0),
+        ),
+        ..frame
+    }
+}
+
 #[must_use]
 pub fn parked_frame(output: Rect, displays: &[Rect], window: Rect) -> Rect {
     // Keep a one-pixel strip at an actual display edge so macOS does not
@@ -67,15 +107,10 @@ pub fn parked_frame(output: Rect, displays: &[Rect], window: Rect) -> Rect {
             })
         })
         .filter(|(frame, _)| {
-            displays.iter().all(|display| {
-                let width = (i64::from(frame.x) + i64::from(frame.width))
-                    .min(i64::from(display.x) + i64::from(display.width))
-                    - i64::from(frame.x.max(display.x));
-                let height = (i64::from(frame.y) + i64::from(frame.height))
-                    .min(i64::from(display.y) + i64::from(display.height))
-                    - i64::from(frame.y.max(display.y));
-                (width <= 1 || height <= 0) && !display.contains_center(*frame)
-            })
+            !shows_on(*frame, displays)
+                && !displays
+                    .iter()
+                    .any(|display| display.contains_center(*frame))
         })
         .min_by_key(|(_, distance)| *distance)
         .map_or(
@@ -91,6 +126,49 @@ pub fn parked_frame(output: Rect, displays: &[Rect], window: Rect) -> Rect {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_window_overflowing_the_display_edge_still_shows() {
+        let display = Rect {
+            width: 1000,
+            height: 800,
+            ..Rect::default()
+        };
+        let overflowing = Rect {
+            x: 700,
+            y: 20,
+            width: 700,
+            height: 300,
+        };
+        let parked = Rect {
+            x: 999,
+            ..overflowing
+        };
+
+        assert!(!display.contains_center(overflowing));
+        assert!(shows_on(overflowing, &[display]));
+        assert!(!shows_on(parked, &[display]));
+    }
+
+    #[test]
+    fn frames_on_a_disconnected_display_move_onto_the_fallback() {
+        let main = Rect {
+            width: 1000,
+            height: 800,
+            ..Rect::default()
+        };
+        let on_main = Rect {
+            x: 50,
+            y: 20,
+            width: 400,
+            height: 300,
+        };
+        let on_unplugged = Rect { x: 1050, ..on_main };
+
+        assert_eq!(onto_displays(on_main, &[main], main), on_main);
+        assert_eq!(onto_displays(on_unplugged, &[main], main).x, 600);
+        assert_eq!(onto_displays(on_unplugged, &[main], main).y, 20);
+    }
 
     #[test]
     fn parks_beyond_outer_edges_without_requesting_a_clamped_position() {

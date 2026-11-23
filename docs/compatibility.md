@@ -66,7 +66,12 @@ macOS. Exact duplicate display names are ambiguous; prefer UUIDs. Missing assign
 to main until they reconnect.
 
 Parking checks the full window rectangle against all attached displays and chooses an exposed edge,
-including when the window's assigned display has neighbors on both sides. Empty gaps between
+including when the window's assigned display has neighbors on both sides. A window counts as on
+screen when more than its one-pixel parking strip shows on a display, so one wider than its tile that
+overflows the display edge is still parked. When a display is added or removed, every hidden window
+is re-parked against the new arrangement before focus follow or reappearance handling runs (a failed
+write is retried each cycle), and a recovery frame whose display is gone is restored onto the main
+display. Empty gaps between
 staggered displays are not treated as a window reappearing on screen. Native clamping and application
 behavior still require live qualification on a particular display arrangement.
 

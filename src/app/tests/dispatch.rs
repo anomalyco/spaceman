@@ -178,7 +178,7 @@ fn dispatch_classifies_cancellation_before_worker_receipt() {
             preview,
         ));
     }
-    commands.push((WorkerCommand::RestoreAll, false));
+    commands.push((WorkerCommand::RestoreAll(None), false));
     commands.push((WorkerCommand::Action(WorkerAction::Retile, outputs()), true));
     commands.push((WorkerCommand::Stop, false));
     for (command, expected) in commands {
@@ -241,7 +241,10 @@ fn restoration_request_sends_now_or_waits_for_the_current_worker() {
             assert_eq!(dispatch.start_pending_restore(), Some(true));
             assert!(dispatch.is_restoring());
         }
-        assert!(matches!(receiver.try_recv(), Ok(WorkerCommand::RestoreAll)));
+        assert!(matches!(
+            receiver.try_recv(),
+            Ok(WorkerCommand::RestoreAll(_))
+        ));
     }
 }
 
@@ -258,7 +261,7 @@ fn disconnected_worker_does_not_claim_restoration_is_running() {
 fn restoration_and_stop_do_not_require_display_outputs() {
     let mut runtime = fixture();
     assert!(matches!(
-        runtime.execute(WorkerCommand::RestoreAll, &AtomicBool::new(false)),
+        runtime.execute(WorkerCommand::RestoreAll(None), &AtomicBool::new(false)),
         Some(WorkerResult::Restored { failed: 0 })
     ));
     assert!(

@@ -94,6 +94,7 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
         if cancelled.load(Ordering::Acquire) {
             return Err("workspace operation cancelled".into());
         }
+        self.note_outputs(&outputs);
         // Parking is durable before workspace ownership. A crash between those
         // writes must not strand an unowned window behind an otherwise valid state.
         let unowned = self
@@ -109,6 +110,7 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
             ));
         }
         self.synchronize_foreground(&outputs);
+        self.follow_displays(&outputs);
         let visible = self.visible_workspaces(&outputs);
         let frontmost = self.backend.frontmost_application();
         let focused = self.backend.focused_window();

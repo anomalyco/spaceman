@@ -118,6 +118,7 @@ pub(super) struct WorkspaceRuntime<B = MacWorkspaceBackend> {
     /// Title-free placements that survive application relaunches and reboots.
     pub(super) memory: MemoryState,
     pub(super) journal: JournalState,
+    pub(super) displays: super::displays::DisplayWatch,
 }
 
 impl WorkspaceRuntime<MacWorkspaceBackend> {
@@ -153,6 +154,7 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
         if let WorkerCommand::Action(_, outputs) | WorkerCommand::Gesture(_, _, outputs) = &command
         {
             self.synchronize_foreground(outputs);
+            self.follow_displays(outputs);
         }
         let (result, outputs) = match command {
             WorkerCommand::Action(action, outputs) => {
@@ -176,7 +178,10 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
                 };
                 (result, outputs)
             }
-            WorkerCommand::RestoreAll => {
+            WorkerCommand::RestoreAll(outputs) => {
+                if let Some(outputs) = &outputs {
+                    self.note_outputs(outputs);
+                }
                 let requested = self.parked.len();
                 let failed = self.restore_all();
                 self.journal_restore("restore all", requested, failed);
@@ -324,6 +329,7 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
             persisted_workspace_state,
             memory: MemoryState::default(),
             journal: JournalState::default(),
+            displays: super::displays::DisplayWatch::default(),
         }
     }
 
@@ -603,6 +609,7 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
         };
         // Managed layout runs without a fresh observation; the next cycle validates readback.
         self.record_results(workspace, &results);
+        self.retire_laid_out(&results);
         let failed = failed_results(&results);
         let expected = placements
             .iter()

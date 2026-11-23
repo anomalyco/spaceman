@@ -45,6 +45,7 @@ mod backend;
 mod bridge;
 mod commands;
 mod cycle;
+mod displays;
 mod hud_event;
 mod input;
 mod journal;
@@ -238,7 +239,8 @@ impl WorkerAction {
 enum WorkerCommand {
     Action(WorkerAction, macos::DisplayOutputs),
     Gesture(FinalGesture, bool, macos::DisplayOutputs),
-    RestoreAll,
+    /// Restore every parked window, onto these displays when they are known.
+    RestoreAll(Option<macos::DisplayOutputs>),
     Stop,
 }
 
@@ -252,7 +254,7 @@ impl WorkerCommand {
             Self::Action(WorkerAction::Retile, _) => "retile",
             Self::Action(..) => "action",
             Self::Gesture(..) => "gesture",
-            Self::RestoreAll => "restore all",
+            Self::RestoreAll(_) => "restore all",
             Self::Stop => "stop",
         }
     }
