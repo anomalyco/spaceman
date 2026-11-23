@@ -6,6 +6,7 @@ mod keys;
 mod swipes;
 #[cfg(test)]
 mod tests;
+mod window_attributes;
 
 use std::collections::{HashMap, HashSet};
 
@@ -39,11 +40,11 @@ pub use swipes::SwipeMonitor;
 
 use apply::{cache_managed_window, evict_managed_app, prune_managed_app};
 use ax::{
-    application_element, attribute, button_is_enabled, cf_array_items, is_settable,
-    onscreen_windows, optional_bool_attribute, physical_window_id, set_ax_timeout, window_frame,
-    window_server_windows,
+    application_element, attribute, cf_array_items, is_settable, onscreen_windows,
+    optional_bool_attribute, physical_window_id, set_ax_timeout, window_server_windows,
 };
 use displays::main_output;
+use window_attributes::{WindowAttribute, WindowAttributes};
 
 #[derive(Debug)]
 pub enum SnapshotError {
@@ -524,12 +525,16 @@ pub(super) fn observe_window(
     if layer != 0 {
         return Ok(WindowObservation::Ignored);
     }
-    let role =
-        attribute::<CFString>(window, "AXRole").map_err(|error| format!("AXRole: {error:?}"))?;
+    // One round trip for every attribute below; each keeps the result (and
+    // error) its own `AXUIElementCopyAttributeValue` would have given.
+    let attributes = WindowAttributes::read(window);
+    let role = attributes
+        .get::<CFString>(WindowAttribute::Role)
+        .map_err(|error| format!("AXRole: {error:?}"))?;
     if *role != *CFString::from_static_str("AXWindow") {
         return Ok(WindowObservation::Ignored);
     }
-    let subrole = match attribute::<CFString>(window, "AXSubrole") {
+    let subrole = match attributes.get::<CFString>(WindowAttribute::Subrole) {
         Ok(subrole) => subrole,
         Err(AXError::NoValue | AXError::AttributeUnsupported) => {
             return Ok(WindowObservation::Ignored);
@@ -540,9 +545,11 @@ pub(super) fn observe_window(
         return Ok(WindowObservation::Ignored);
     }
 
-    if optional_bool_attribute(window, "AXMinimized")
+    if attributes
+        .optional_bool(WindowAttribute::Minimized)
         .map_err(|error| format!("AXMinimized: {error:?}"))?
-        || optional_bool_attribute(window, "AXFullScreen")
+        || attributes
+            .optional_bool(WindowAttribute::FullScreen)
             .map_err(|error| format!("AXFullScreen: {error:?}"))?
         || !is_settable(window, "AXPosition")
             .map_err(|error| format!("AXPosition settable: {error:?}"))?
@@ -550,23 +557,32 @@ pub(super) fn observe_window(
         return Ok(WindowObservation::Ignored);
     }
 
-    let frame = window_frame(window).ok_or("AX frame was unavailable")?;
+    let frame = attributes.frame().ok_or("AX frame was unavailable")?;
     if frame.width < MIN_MANAGEABLE_WINDOW_DIMENSION
         || frame.height < MIN_MANAGEABLE_WINDOW_DIMENSION
         || !output.contains_center(frame)
     {
         return Ok(WindowObservation::Ignored);
     }
-    let fullscreen_enabled = button_is_enabled(window, "AXFullScreenButton");
-    let has_close_button = attribute::<AXUIElement>(window, "AXCloseButton").is_ok();
+    let fullscreen_enabled = attributes
+        .get::<AXUIElement>(WindowAttribute::FullScreenButton)
+        .is_ok_and(|button| {
+            set_ax_timeout(&button);
+            optional_bool_attribute(&button, "AXEnabled").unwrap_or(false)
+        });
+    let has_close_button = attributes
+        .get::<AXUIElement>(WindowAttribute::CloseButton)
+        .is_ok();
     if accessory && !fullscreen_enabled && !has_close_button {
         return Ok(WindowObservation::Ignored);
     }
-    let modal = optional_bool_attribute(window, "AXModal").unwrap_or(false);
+    let modal = attributes
+        .optional_bool(WindowAttribute::Modal)
+        .unwrap_or(false);
     let dialog = modal || (!fullscreen_enabled && (has_close_button || accessory));
     let resizable = !dialog
         && is_settable(window, "AXSize").map_err(|error| format!("AXSize settable: {error:?}"))?;
-    let title = match attribute::<CFString>(window, "AXTitle") {
+    let title = match attributes.get::<CFString>(WindowAttribute::Title) {
         Ok(title) => Some(std::sync::Arc::from(title.to_string())),
         Err(_) => None,
     };

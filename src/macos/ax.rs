@@ -63,14 +63,6 @@ pub(super) fn window_frame(window: &AXUIElement) -> Option<Rect> {
     })
 }
 
-pub(super) fn button_is_enabled(window: &AXUIElement, name: &'static str) -> bool {
-    let Ok(button) = attribute::<AXUIElement>(window, name) else {
-        return false;
-    };
-    set_ax_timeout(&button);
-    optional_bool_attribute(&button, "AXEnabled").unwrap_or(false)
-}
-
 pub(super) fn onscreen_windows() -> Option<HashMap<i32, HashMap<CGWindowID, i64>>> {
     let list = CGWindowListCopyWindowInfo(
         CGWindowListOption::OptionOnScreenOnly | CGWindowListOption::ExcludeDesktopElements,

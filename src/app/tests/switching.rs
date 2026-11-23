@@ -878,3 +878,49 @@ fn reactivating_the_stale_app_after_another_app_follows_it_back() {
     runtime.cycle(outputs(), &cancelled).unwrap();
     assert_eq!(main_workspace(&runtime), Some(WorkspaceId::ONE));
 }
+
+#[test]
+fn reveal_confirms_windows_that_already_arrived_without_sleeping_or_rewriting() {
+    let incoming = window(20);
+    let normal = frame(100);
+    let mut backend = FakeBackend::default();
+    // The app applied the restore synchronously: the window is already back.
+    backend.frames.insert(incoming.clone(), normal);
+    let mut runtime = WorkspaceRuntime::with_backend(
+        ManagementScope::Both,
+        backend,
+        HashMap::from([(incoming.clone(), normal)]),
+    );
+
+    let started = Instant::now();
+    assert!(runtime.wait_for_reveal(std::slice::from_ref(&incoming), &AtomicBool::new(false)));
+
+    // The old loop always slept 10 ms before its first check.
+    assert!(started.elapsed() < Duration::from_millis(10));
+    assert!(!runtime.parked.contains_key(&incoming));
+    assert!(
+        !runtime
+            .backend
+            .calls
+            .iter()
+            .any(|call| matches!(call, BackendCall::SetPosition(..)))
+    );
+}
+
+#[test]
+fn reveal_confirms_a_window_missing_from_the_onscreen_list_from_the_full_list() {
+    let incoming = window(20);
+    let normal = frame(100);
+    let mut backend = FakeBackend::default();
+    backend.frames.insert(incoming.clone(), normal);
+    // Another Space or ordered out: only the full window list has it.
+    backend.ordered_out.insert(incoming.window_id);
+    let mut runtime = WorkspaceRuntime::with_backend(
+        ManagementScope::Both,
+        backend,
+        HashMap::from([(incoming.clone(), normal)]),
+    );
+
+    assert!(runtime.wait_for_reveal(std::slice::from_ref(&incoming), &AtomicBool::new(false)));
+    assert!(!runtime.parked.contains_key(&incoming));
+}

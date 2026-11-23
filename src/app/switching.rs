@@ -2,8 +2,10 @@ use super::parking::RESTORE_CONFIRM_TOLERANCE;
 use super::*;
 
 const REVEAL_SETTLE_LIMIT: Duration = Duration::from_millis(300);
-/// Poll interval while waiting for incoming windows to arrive.
-const REVEAL_POLL_INTERVAL: Duration = Duration::from_millis(10);
+/// Poll interval while waiting for incoming windows to arrive. The on-screen
+/// window list costs about half a millisecond, so polling this often is cheap
+/// and takes most of the wait out of a switch.
+const REVEAL_POLL_INTERVAL: Duration = Duration::from_millis(3);
 /// How long a pending reveal waits before the restore write is re-issued.
 const REVEAL_REWRITE_INTERVAL: Duration = Duration::from_millis(100);
 
@@ -238,8 +240,10 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
     /// window server (pending restores keep their recovery frames). Slow
     /// applications apply moves asynchronously; hiding the outgoing workspace
     /// before they arrive would flash the bare desktop. Polling is
-    /// confirmation-only; the restore write is re-issued only for windows
-    /// that still have not arrived after [`REVEAL_REWRITE_INTERVAL`].
+    /// confirmation-only and starts immediately, so apps that move
+    /// synchronously finish without a sleep; the restore write is re-issued
+    /// only for windows that still have not arrived after
+    /// [`REVEAL_REWRITE_INTERVAL`].
     pub(super) fn wait_for_reveal(
         &mut self,
         incoming: &[crate::PhysicalWindowId],
@@ -263,8 +267,8 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
                 );
                 return false;
             }
-            thread::sleep(REVEAL_POLL_INTERVAL);
-            let Some(frames) = self.backend.window_server_frames() else {
+            let Some(frames) = self.reveal_frames(&pending) else {
+                thread::sleep(REVEAL_POLL_INTERVAL);
                 continue;
             };
             let mut removed = Vec::new();
@@ -294,7 +298,32 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
                 }
             }
             self.persist_removals_or_rollback(removed);
+            if incoming
+                .iter()
+                .any(|window| self.parked.contains_key(window))
+            {
+                thread::sleep(REVEAL_POLL_INTERVAL);
+            }
         }
+    }
+
+    /// Window-server frames to confirm pending reveals against. A revealed
+    /// window is on screen, so the on-screen list (about 5x cheaper than the
+    /// full one) settles every window it contains; the full list is read only
+    /// when a pending window is missing from it (another Space, ordered out),
+    /// so such windows confirm exactly as before.
+    fn reveal_frames(
+        &mut self,
+        pending: &[crate::PhysicalWindowId],
+    ) -> Option<HashMap<u32, crate::Rect>> {
+        if let Some(frames) = self.backend.onscreen_window_frames()
+            && pending
+                .iter()
+                .all(|window| frames.contains_key(&window.window_id))
+        {
+            return Some(frames);
+        }
+        self.backend.window_server_frames()
     }
 
     /// Park the window furthest back first. Hiding the front window first
