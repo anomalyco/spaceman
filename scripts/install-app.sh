@@ -15,7 +15,7 @@ while [ $# -gt 0 ]; do
     *) echo "usage: $0 [--bundle PATH] [--wait-idle SECS]" >&2; exit 2 ;;
   esac
 done
-# The HiveMind cargo wrapper prints build output on stdout; the bundle path is the last line.
+# build-app.sh prints the built bundle path on its last line.
 [ -n "$source_bundle" ] || source_bundle=$("$root/scripts/build-app.sh" | tail -n 1)
 [ -d "$source_bundle/Contents" ] || { echo "no Spaceman.app at $source_bundle" >&2; exit 1; }
 if [ -n "$wait_idle" ]; then

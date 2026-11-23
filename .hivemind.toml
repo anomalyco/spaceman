@@ -1,8 +1,0 @@
-[land]
-batch_max = 4
-verify = "scripts/check --no-web && scripts/build-app.sh"
-
-[land.app]
-target = "/Applications/Spaceman.app"
-install_cmd = "scripts/install-app.sh --bundle target/Spaceman.app --wait-idle 120"
-stamp = "~/.local/share/spaceman/installed-rev"

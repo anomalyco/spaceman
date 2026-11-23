@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
 # Sets up scripts/spaceman-updater on this Mac: a detached worktree at
-# ~/code/worktrees/spaceman/updater for it to build in, and a LaunchAgent (dev.kit.spaceman-updater)
+# ~/.local/share/spaceman/updater for it to build in, and a LaunchAgent (anomaly.spaceman.updater)
 # that keeps it running. Run it again to pick up a new copy of the updater script.
 set -euo pipefail
 root=$(cd "$(dirname "$0")/.." && pwd)
-wt=$HOME/code/worktrees/spaceman/updater
-label=dev.kit.spaceman-updater
+wt=${SPACEMAN_UPDATER_WT:-$HOME/.local/share/spaceman/updater}
+label=anomaly.spaceman.updater
 plist=$HOME/Library/LaunchAgents/$label.plist
 log=$HOME/.local/share/spaceman/updater.log
 mkdir -p "$(dirname "$log")" "$(dirname "$wt")"

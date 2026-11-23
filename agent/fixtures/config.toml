@@ -6,7 +6,7 @@ bundle_id = "anomaly.hex"
 action = "float"
 
 [[rules]]
-bundle_id = "com.kitlangton.hex2"
+bundle_id = "com.apple.systempreferences"
 action = "float"
 
 [[rules]]
@@ -47,32 +47,32 @@ action = "route"
 workspace = 2
 
 [[rules]]
-bundle_id = "local.lamplight.arachnid"
+bundle_id = "com.apple.Notes"
 action = "route"
 workspace = "5"
 
 [[rules]]
-bundle_id = "local.lamplight.paper-study"
+bundle_id = "com.apple.Preview"
 action = "route"
 workspace = "5"
 
 [[rules]]
-bundle_id = "local.lamplight.paper-proof"
+bundle_id = "com.apple.mail"
 action = "route"
 workspace = "5"
 
 [[rules]]
-bundle_id = "local.lamplight.paper-escape"
+bundle_id = "com.apple.iCal"
 action = "route"
 workspace = "5"
 
 [[rules]]
-bundle_id = "local.lamplight.run-study"
+bundle_id = "com.apple.Music"
 action = "route"
 workspace = "5"
 
 [[rules]]
-bundle_id = "local.lamplight.creature-prototype"
+bundle_id = "com.mitchellh.ghostty"
 action = "route"
 workspace = "5"
 

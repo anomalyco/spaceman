@@ -1,4 +1,4 @@
-base = "main"
+base = "dev"
 check = "scripts/check"
 deps = ["website/node_modules"]
 lockfiles = ["Cargo.lock", "website/bun.lock"]

@@ -6,11 +6,10 @@
 # restart, which restores and re-tiles every window, waits until the keyboard and mouse are idle.
 # Run it from a LaunchAgent; scripts/install-updater sets that up.
 set -uo pipefail
-WT=${SPACEMAN_UPDATER_WT:-$HOME/code/worktrees/spaceman/updater}
+WT=${SPACEMAN_UPDATER_WT:-$(cd "$(dirname "$0")/.." && pwd)}
 STATE=$HOME/.local/share/spaceman
 STAMP=$STATE/installed-rev
-# ~/bin first: its cargo wrapper sends the build through HiveMind.
-export PATH="$HOME/bin:$HOME/.cargo/bin:$HOME/.local/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin"
+export PATH="$HOME/.cargo/bin:$HOME/.local/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin"
 QUIET=${SPACEMAN_UPDATER_QUIET:-180}
 MAXWAIT=${SPACEMAN_UPDATER_MAXWAIT:-600}
 IDLE=${SPACEMAN_UPDATER_IDLE:-120}
