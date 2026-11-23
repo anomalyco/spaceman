@@ -3,8 +3,11 @@ use spaceman::{
     app::{UiHudDisplay, UiHudTile, UiHudWorkspace},
 };
 
+use crate::rules::Place;
+
 use super::{
-    FRESH_MS, HOLD_MS, HudFlow, HudTick, HudTransition, LEAVE_MS, assign_panels, grow, icons,
+    FRESH_MS, HOLD_MS, HudFlow, HudTick, HudTransition, LEAVE_MS, RESUME_HOLD_MS, assign_panels,
+    grow, icons, menu,
 };
 
 fn id(number: u8) -> WorkspaceId {
@@ -120,13 +123,21 @@ fn a_fresh_show_starts_on_the_workspace_the_switch_left() {
     // Not until the panel has drawn it there, however long that takes.
     assert_eq!(flow.tick(FRESH_MS), HudTick::Idle);
     assert_eq!(flow.remaining_ms(FRESH_MS), Some(16));
-    flow.mark_drawn();
-    // A second switch before it sets off: still from where the first one left.
+    // Before the first frame drew, a second switch still starts from where the first left.
     flow.trigger(row(2, Some(3)), FRESH_MS + 5);
     assert_eq!(focus(&flow), (Some(id(1)), true));
+    flow.mark_drawn();
     assert_eq!(flow.tick(FRESH_MS + 10), HudTick::Arrive);
     assert_eq!(focus(&flow), (Some(id(2)), false));
     assert_eq!(flow.tick(FRESH_MS + 20), HudTick::Idle);
+
+    // Once the first frame HAS drawn, a rapid second switch leaves `fresh` immediately so it
+    // springs smoothly instead of snapping with `instant_changes()`.
+    let mut rapid = HudFlow::new(true);
+    rapid.trigger(row(2, Some(1)), 0);
+    rapid.mark_drawn();
+    rapid.trigger(row(3, Some(2)), 8);
+    assert_eq!(focus(&rapid), (Some(id(3)), false));
 
     // With nowhere to come from, it lands at rest on the visible one.
     let mut flow = HudFlow::new(true);
@@ -229,4 +240,134 @@ fn displays_keep_their_panels_as_others_come_and_go() {
     // More displays than panels: the extras go without.
     let crowded = assign_panels(&plugged, &["a", "b", "c", "d", "e"]);
     assert_eq!(crowded, [some("a"), some("b"), some("c"), some("d")]);
+}
+
+#[test]
+fn hovering_holds_the_hud_open_and_resumes_dismiss_on_leave() {
+    let mut flow = HudFlow::new(true);
+    arrived(&mut flow, row(1, None), 0);
+
+    assert!(flow.set_hovered(true, 400));
+    assert!(flow.is_held());
+    assert_eq!(flow.remaining_ms(400), None);
+    // Past the original hold deadline: stays shown while hovered.
+    assert_eq!(flow.tick(HOLD_MS * 3), HudTick::Idle);
+    assert!(shown(&flow));
+
+    // Pointer leaves: resumes auto-dismiss after RESUME_HOLD_MS.
+    let leave_hover = HOLD_MS * 3;
+    assert!(flow.set_hovered(false, leave_hover));
+    assert!(!flow.is_held());
+    assert_eq!(flow.remaining_ms(leave_hover), Some(RESUME_HOLD_MS));
+    assert_eq!(flow.tick(leave_hover + RESUME_HOLD_MS - 1), HudTick::Idle);
+    assert_eq!(flow.tick(leave_hover + RESUME_HOLD_MS), HudTick::Leave);
+
+    // Catching the pill mid-exit with hover restores it cleanly.
+    let caught = leave_hover + RESUME_HOLD_MS + 40;
+    assert!(flow.set_hovered(true, caught));
+    assert!(shown(&flow));
+    assert_eq!(flow.tick(caught + LEAVE_MS + 100), HudTick::Idle);
+
+    // An open context menu keeps the pill up even after the pointer leaves the capsule.
+    flow.set_menu_open(true, caught + 200);
+    flow.set_hovered(false, caught + 250);
+    assert!(flow.is_held());
+    assert_eq!(flow.tick(caught + HOLD_MS * 2), HudTick::Idle);
+    let closed = caught + HOLD_MS * 2;
+    flow.set_menu_open(false, closed);
+    assert!(!flow.is_held());
+    assert_eq!(flow.tick(closed + RESUME_HOLD_MS), HudTick::Leave);
+    assert_eq!(flow.tick(closed + RESUME_HOLD_MS + LEAVE_MS), HudTick::Gone);
+}
+
+#[test]
+fn visited_empty_workspaces_stay_in_the_row_until_hud_hides() {
+    let mut flow = HudFlow::new(true);
+    arrived(&mut flow, row(1, None), 0);
+    let numbers = |flow: &HudFlow| -> Vec<WorkspaceId> {
+        flow.view(false)
+            .unwrap()
+            .entries()
+            .iter()
+            .map(|entry| entry.workspace)
+            .collect()
+    };
+    assert_eq!(numbers(&flow), [id(1), id(2), id(3)]);
+
+    flow.trigger(row(4, Some(1)), 80);
+    assert_eq!(numbers(&flow), [id(1), id(2), id(3), id(4)]);
+    // Flick to another empty workspace (5): 4 stays in the row so width doesn't jitter.
+    flow.trigger(row(5, Some(4)), 160);
+    assert_eq!(numbers(&flow), [id(1), id(2), id(3), id(4), id(5)]);
+    // Back to occupied workspace 2: 4 and 5 stay for the remainder of this show.
+    flow.trigger(row(2, Some(5)), 240);
+    assert_eq!(numbers(&flow), [id(1), id(2), id(3), id(4), id(5)]);
+
+    // Once the HUD hides and opens again, empty workspaces are cleared.
+    assert_eq!(flow.tick(240 + HOLD_MS), HudTick::Leave);
+    assert_eq!(flow.tick(240 + HOLD_MS + LEAVE_MS), HudTick::Gone);
+    arrived(&mut flow, row(2, None), 240 + HOLD_MS + LEAVE_MS + 50);
+    assert_eq!(numbers(&flow), [id(1), id(2), id(3)]);
+}
+
+#[test]
+fn app_context_menu_reflects_float_tile_and_pin_state() {
+    let ws2 = id(2);
+    let ws4 = id(4);
+
+    // Default (tiled, unpinned): offers Float and Pin to Workspace 2.
+    let default_menu = menu::build_app_menu("Safari", ws2, None);
+    assert_eq!(
+        default_menu.find(menu::ID_TOGGLE_FLOAT).unwrap().title(),
+        "Float Safari"
+    );
+    assert_eq!(
+        default_menu.find(menu::ID_TOGGLE_PIN).unwrap().title(),
+        "Pin Safari to Workspace 2"
+    );
+    assert_eq!(
+        menu::resolve_app_menu_pick(menu::ID_TOGGLE_FLOAT, ws2, None),
+        Some(Some(Place::Float))
+    );
+    assert_eq!(
+        menu::resolve_app_menu_pick(menu::ID_TOGGLE_PIN, ws2, None),
+        Some(Some(Place::Workspace(ws2)))
+    );
+
+    // Currently floated: offers Tile and Pin to Workspace 2.
+    let float_menu = menu::build_app_menu("Safari", ws2, Some(Place::Float));
+    assert_eq!(
+        float_menu.find(menu::ID_TOGGLE_FLOAT).unwrap().title(),
+        "Tile Safari"
+    );
+    assert_eq!(
+        menu::resolve_app_menu_pick(menu::ID_TOGGLE_FLOAT, ws2, Some(Place::Float)),
+        Some(None)
+    );
+
+    // Pinned to current workspace: offers Float and Unpin.
+    let pinned_menu = menu::build_app_menu("Safari", ws2, Some(Place::Workspace(ws2)));
+    assert_eq!(
+        pinned_menu.find(menu::ID_TOGGLE_PIN).unwrap().title(),
+        "Unpin Safari from Workspace 2"
+    );
+    assert_eq!(
+        menu::resolve_app_menu_pick(menu::ID_TOGGLE_PIN, ws2, Some(Place::Workspace(ws2))),
+        Some(None)
+    );
+
+    // Pinned to another workspace: offers Float, Pin here, and Unpin from the other workspace.
+    let other_menu = menu::build_app_menu("Safari", ws2, Some(Place::Workspace(ws4)));
+    assert_eq!(
+        other_menu.find(menu::ID_TOGGLE_PIN).unwrap().title(),
+        "Pin Safari to Workspace 2"
+    );
+    assert_eq!(
+        other_menu.find(menu::ID_UNPIN_OTHER).unwrap().title(),
+        "Unpin Safari from Workspace 4"
+    );
+    assert_eq!(
+        menu::resolve_app_menu_pick(menu::ID_UNPIN_OTHER, ws2, Some(Place::Workspace(ws4))),
+        Some(None)
+    );
 }

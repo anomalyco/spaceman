@@ -4,6 +4,11 @@
 //! `cargo test -p spaceman-agent hud::motion_tests::trace -- --ignored --nocapture` prints the
 //! capsule's pose and the marker's edges for every frame of a show, a burst and a hide.
 
+use std::sync::{
+    Arc, Mutex,
+    atomic::{AtomicU64, Ordering},
+};
+
 use rune::{
     Env, Runtime,
     motion_gate::{Run, Snap},
@@ -14,21 +19,28 @@ use spaceman::{
     config::HudStyle,
 };
 
-use super::{HOLD_MS, HudOverlay, HudTick, LEAVE_MS, OVERLAY_SIZE, grow, overlay_view, pill};
+use crate::rules::{Doc, Place};
+
+use super::{
+    HOLD_MS, HudOverlay, HudSink, HudTick, LEAVE_MS, NoopHudSink, OVERLAY_SIZE, RESUME_HOLD_MS,
+    grow, menu, overlay_view, pill,
+};
 
 const HZ: f64 = 120.0;
-/// The most a spring here moves opacity in one 120 Hz frame; a pop is several times this.
-const OPACITY_STEP: f32 = 0.15;
+/// The most a spring here moves opacity in one 120 Hz frame (EXIT 0.11 s peaks near 0.18/frame);
+/// a pop is several times this.
+const OPACITY_STEP: f32 = 0.20;
 /// One 8-bit step of alpha: below it nothing is drawn.
 const UNSEEN: f32 = 1.0 / 255.0;
 /// The furthest the marker's edges go in one frame, crossing the whole demo row (Icons' 3 to 1
-/// is about 126 pt, peaking near 12.2 pt a frame); a snap would be several times this.
-const MARKER_STEP: f32 = 15.0;
+/// with MARKER_LEAD 0.13 s peaks near 19 pt/frame); a snap would be several times this.
+const MARKER_STEP: f32 = 22.0;
 const STYLES: [HudStyle; 2] = [HudStyle::Icons, HudStyle::Layouts];
 
 struct Hud {
     run: Run<HudOverlay>,
     frame: u64,
+    clock: Arc<AtomicU64>,
 }
 
 impl Hud {
@@ -38,13 +50,28 @@ impl Hud {
     }
 
     fn start(style: HudStyle, row: UiHudDisplay, reduce_motion: bool) -> Self {
-        let mut overlay = HudOverlay::new(true, style);
+        Self::with_sink(style, row, reduce_motion, Arc::new(NoopHudSink))
+    }
+
+    fn with_sink(
+        style: HudStyle,
+        row: UiHudDisplay,
+        reduce_motion: bool,
+        sink: Arc<dyn HudSink>,
+    ) -> Self {
+        let clock = Arc::new(AtomicU64::new(0));
+        let mut overlay = HudOverlay::new(true, style, sink);
         overlay.reduce_motion = reduce_motion;
+        overlay.virtual_clock = Some(Arc::clone(&clock));
         overlay.flow.trigger(row, 0);
         let rt = Runtime::new(overlay, overlay_view, OVERLAY_SIZE, Env::new(true, 2.0));
         let mut run = Run::new(rt, HZ);
         run.step();
-        Self { run, frame: 0 }
+        Self {
+            run,
+            frame: 0,
+            clock,
+        }
     }
 
     fn now_ms(&self) -> u64 {
@@ -55,6 +82,7 @@ impl Hud {
     fn step(&mut self) -> HudTick {
         self.frame += 1;
         let now_ms = self.now_ms();
+        self.clock.store(now_ms, Ordering::Relaxed);
         let mut tick = HudTick::Idle;
         self.run.rt.update_if(|overlay, _| {
             tick = overlay.flow.tick(now_ms);
@@ -62,6 +90,15 @@ impl Hud {
         });
         self.run.step();
         tick
+    }
+
+    fn rect_of(&self, path: &str) -> [f32; 4] {
+        self.snaps(path, 0).last().unwrap().rect
+    }
+
+    fn center_of(&self, path: &str) -> (f32, f32) {
+        let [x, y, w, h] = self.rect_of(path);
+        (x + w / 2.0, y + h / 2.0)
     }
 
     fn play(&mut self, ms: u64) {
@@ -256,7 +293,7 @@ fn the_capsule_leaves_and_comes_back_along_one_path() {
         assert_one_way(
             &exit.iter().map(|snap| snap.rect[1]).collect::<Vec<_>>(),
             true,
-            1.0,
+            1.5,
             "exit drop",
         );
         let last = exit[exit.len() - 1];
@@ -281,7 +318,7 @@ fn the_capsule_leaves_and_comes_back_along_one_path() {
         assert_one_way(
             &enter.iter().map(|snap| snap.rect[1]).collect::<Vec<_>>(),
             false,
-            1.0,
+            1.5,
             "enter rise",
         );
         let settled = enter[enter.len() - 1];
@@ -300,7 +337,7 @@ fn a_switch_during_the_exit_turns_the_capsule_around_where_it_is() {
     for style in STYLES {
         let mut hud = Hud::showing(style, row(1, None));
         let left = hud.play_until(HudTick::Leave);
-        hud.play(50);
+        hud.play(35);
         let before = *hud.snaps("hud-slot", left).last().unwrap();
         assert!(
             (0.2..0.8).contains(&before.op),
@@ -314,7 +351,7 @@ fn a_switch_during_the_exit_turns_the_capsule_around_where_it_is() {
         // It carries on from where it was: no restart from nothing, no snap to full.
         assert!((after[0].op - before.op).abs() < OPACITY_STEP);
         assert!((after[0].scale - before.scale).abs() < 0.01);
-        assert!((after[0].rect[1] - before.rect[1]).abs() < 1.0);
+        assert!((after[0].rect[1] - before.rect[1]).abs() < 1.5);
         let lowest = opacity(&after).into_iter().fold(1.0, f32::min);
         assert!(
             lowest > before.op - OPACITY_STEP,
@@ -570,8 +607,8 @@ fn each_display_draws_its_own_row_and_only_the_switching_one_moves() {
         );
         main.play_until(HudTick::Gone);
         other.play_until(HudTick::Gone);
-        main.play(400);
-        other.play(400);
+        main.play(550);
+        other.play(550);
         assert_eq!(main.findings(), Vec::<String>::new(), "{style:?}");
         assert_eq!(other.findings(), Vec::<String>::new(), "{style:?}");
     }
@@ -602,7 +639,7 @@ fn a_layout_change_moves_the_tiles_it_has() {
     assert_eq!(tile[0].rect, before);
     for pair in tile.windows(2) {
         for edge in 0..4 {
-            assert!((pair[1].rect[edge] - pair[0].rect[edge]).abs() < 2.0);
+            assert!((pair[1].rect[edge] - pair[0].rect[edge]).abs() < 3.5);
         }
         assert_eq!(pair[1].op, 1.0);
     }
@@ -685,6 +722,177 @@ fn the_widest_capsule_and_its_shadow_fit_the_panel() {
     let ten: Vec<_> = (1..=10).map(|number| workspace(number, &["a"])).collect();
     let (_, width) = grow::rest(&ten, Some(id(1)));
     assert!(width <= pill::max_row_width(OVERLAY_SIZE.0));
+}
+
+#[derive(Default)]
+struct RecordingSink {
+    switched: Mutex<Vec<WorkspaceId>>,
+    settings_opens: Mutex<usize>,
+    doc: Mutex<Option<Doc>>,
+}
+
+impl RecordingSink {
+    fn new() -> Self {
+        Self {
+            switched: Mutex::new(Vec::new()),
+            settings_opens: Mutex::new(0),
+            doc: Mutex::new(Some(Doc::parse("version = 1\n"))),
+        }
+    }
+
+    fn doc_place(&self, bundle: &str) -> Option<Place> {
+        self.doc
+            .lock()
+            .unwrap()
+            .as_ref()
+            .and_then(|doc| doc.app_place(bundle))
+    }
+}
+
+impl HudSink for RecordingSink {
+    fn switch_workspace(&self, workspace: WorkspaceId) {
+        self.switched.lock().unwrap().push(workspace);
+    }
+
+    fn open_settings(&self) {
+        *self.settings_opens.lock().unwrap() += 1;
+    }
+
+    fn app_place(&self, bundle_id: &str) -> Option<Place> {
+        self.doc_place(bundle_id)
+    }
+
+    fn set_app_place(&self, bundle_id: &str, place: Option<Place>) -> Result<(), String> {
+        if let Some(doc) = self.doc.lock().unwrap().as_mut() {
+            doc.set_app_place(bundle_id, place);
+        }
+        Ok(())
+    }
+}
+
+#[test]
+fn hovering_the_pill_holds_it_open_and_leaving_resumes_a_clean_exit() {
+    for style in STYLES {
+        let mut hud = Hud::showing(style, row(1, None));
+        hud.play(100);
+        let (px, py) = hud.center_of("hud-pill");
+        hud.run.rt.pointer_move(px, py);
+        // Hold well past HOLD_MS while hovering: stays at full opacity.
+        hud.play(HOLD_MS + 500);
+        let held = *hud.snaps("hud-slot", 0).last().unwrap();
+        assert_eq!(held.op, 1.0, "{style:?}: hovered pill should not fade out");
+
+        // Move pointer off the capsule: auto-dismiss resumes and exits cleanly.
+        hud.run.rt.pointer_move(2.0, 2.0);
+        let left_at = hud.now_ms();
+        let left_frame = hud.play_until(HudTick::Leave);
+        assert!(
+            hud.now_ms() >= left_at + RESUME_HOLD_MS - 20,
+            "{style:?}: left too early"
+        );
+        hud.play_until(HudTick::Gone);
+        let exit = hud.snaps("hud-slot", left_frame);
+        assert!(exit.last().unwrap().op < UNSEEN, "{style:?}: cut exit");
+        hud.play(550);
+        assert_eq!(hud.findings(), Vec::<String>::new(), "{style:?}");
+    }
+}
+
+#[test]
+fn clicking_a_workspace_slot_switches_it_and_gear_opens_settings() {
+    for style in STYLES {
+        let sink = Arc::new(RecordingSink::new());
+        let mut hud = Hud::with_sink(style, row(1, None), false, sink.clone());
+        hud.play(200);
+
+        let (wx, wy) = hud.center_of("ws3");
+        hud.run.rt.pointer_move(wx, wy);
+        hud.step();
+        hud.run.rt.pointer_down(wx, wy);
+        hud.run.rt.pointer_up(wx, wy);
+        hud.step();
+        assert_eq!(*sink.switched.lock().unwrap(), vec![id(3)], "{style:?}");
+
+        let (gx, gy) = hud.center_of("hud-settings");
+        hud.run.rt.pointer_move(gx, gy);
+        hud.step();
+        hud.run.rt.pointer_down(gx, gy);
+        hud.run.rt.pointer_up(gx, gy);
+        hud.step();
+        assert_eq!(*sink.settings_opens.lock().unwrap(), 1, "{style:?}");
+        // Opening Settings glides the pill out cleanly.
+        hud.play_until(HudTick::Gone);
+        hud.play(550);
+        assert_eq!(hud.findings(), Vec::<String>::new(), "{style:?}");
+    }
+}
+
+#[test]
+fn secondary_clicking_an_app_icon_opens_float_and_pin_menu() {
+    let sink = Arc::new(RecordingSink::new());
+    let mut hud = Hud::with_sink(HudStyle::Icons, row(1, None), false, sink.clone());
+    hud.play(200);
+
+    let (ax, ay) = hud.center_of("ws1/apps/app-com.test.web");
+    hud.run.rt.pointer_move(ax, ay);
+    hud.step();
+    hud.run.rt.secondary_down(ax, ay);
+    hud.run.rt.secondary_up(ax, ay);
+    hud.step();
+
+    // Opening the popup holds the HUD up even when the pointer moves onto the menu outside the pill.
+    hud.run.rt.pointer_move(2.0, 2.0);
+    hud.play(HOLD_MS + 300);
+    assert_eq!(hud.snaps("hud-slot", 0).last().unwrap().op, 1.0);
+
+    let popup = hud.run.rt.popup_menu().expect("popup should be queued");
+    assert_eq!(
+        popup.find(menu::ID_TOGGLE_FLOAT).unwrap().title(),
+        "Float Web"
+    );
+    assert_eq!(
+        popup.find(menu::ID_TOGGLE_PIN).unwrap().title(),
+        "Pin Web to Workspace 1"
+    );
+
+    // Pick Float -> writes float rule through Doc, then HUD resumes dismiss.
+    hud.run
+        .rt
+        .resolve_popup(Some(menu::ID_TOGGLE_FLOAT))
+        .unwrap();
+    hud.step();
+    assert_eq!(sink.doc_place("com.test.web"), Some(Place::Float));
+    hud.play_until(HudTick::Leave);
+    hud.play_until(HudTick::Gone);
+}
+
+#[test]
+fn rapid_80ms_switches_across_empty_workspaces_keep_motion_smooth() {
+    for style in STYLES {
+        let mut hud = Hud::showing(style, row(1, None));
+        hud.play(80);
+        // Rapid 80 ms keypresses across occupied & empty workspaces (4, 5, 6, then back to 2).
+        for (to, from) in [(4, 1), (5, 4), (6, 5), (2, 6), (5, 2)] {
+            hud.switch(row(to, Some(from)));
+            hud.play(80);
+        }
+        // Once empty workspaces 4, 5, 6 joined the row, flicking back to 2 and 5 never shrinks
+        // the pill underneath the moving marker.
+        let back_to_2 = hud.switch(row(2, Some(5)));
+        let widths: Vec<f32> = hud
+            .snaps("hud-pill", back_to_2)
+            .iter()
+            .map(|snap| snap.rect[2])
+            .collect();
+        let min_w = widths.iter().copied().fold(f32::INFINITY, f32::min);
+        let max_w = widths.iter().copied().fold(0.0, f32::max);
+        assert!(
+            max_w - min_w < 2.0,
+            "{style:?}: pill width wobbled during rapid empty switches ({min_w}..{max_w})"
+        );
+        hud.play(400);
+        assert_eq!(hud.findings(), Vec::<String>::new(), "{style:?}");
+    }
 }
 
 #[test]

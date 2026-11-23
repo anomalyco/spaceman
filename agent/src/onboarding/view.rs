@@ -391,8 +391,8 @@ fn setup(ui: &Ui, p: Paint, view: &View) -> El {
 }
 
 const DONE_SHORTCUTS: &[(&str, &[&[&str]])] = &[
-    ("Switch workspace", &[&["⌥", "1…0"]]),
-    ("Move window to workspace", &[&["⌥", "⇧", "1…0"]]),
+    ("Switch workspace", &[&["⌥", "1…9, 0"]]),
+    ("Move window to workspace", &[&["⌥", "⇧", "1…9, 0"]]),
     (
         "Focus or move a tile",
         &[&["⌥", "H J K L"], &["⌥", "⇧", "H J K L"]],
@@ -428,10 +428,22 @@ fn done(p: Paint, starting: bool) -> El {
         "Spaceman stays in the menu bar, ready for your shortcuts."
     };
     let rows = controls::shortcut_rows(p, "done-shortcut", DONE_SHORTCUTS);
+    let footnote = text("0 = workspace 10 · Two displays: 1–5 main, 6–10 secondary")
+        .key("done-footnote")
+        .font(DESCRIPTION)
+        .color(p.faint())
+        .align(rune::Align::Center)
+        .w_full();
     col()
         .key("done")
-        .gap(20.0)
+        .gap(18.0)
         .child(art)
         .child(title_block(p, "You're all set", Some(body)))
-        .child(controls::card(p, "done-shortcuts", rows))
+        .child(
+            col()
+                .key("done-shortcuts-group")
+                .gap(10.0)
+                .child(controls::card(p, "done-shortcuts", rows))
+                .child(footnote),
+        )
 }

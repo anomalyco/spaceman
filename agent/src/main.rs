@@ -360,10 +360,12 @@ pub(crate) fn live_app(
     let doc = Doc::load();
     let initial_hud = doc.hud();
     let initial_style = doc.hud_style();
+    let hud_bridge = bridge.clone();
     let mut app = base_app()
         .init(move || Ui::load_live(doc, bridge, initial_tour, accessibility))
         .on_reopen(on_reopen);
-    let hud_driver = hud::install(&mut app, initial_hud, initial_style);
+    let hud_sink = Arc::new(hud::LiveHudSink::new(hud_bridge, app.handle()));
+    let hud_driver = hud::install(&mut app, initial_hud, initial_style, hud_sink);
     app.handle().update_if(move |ui, _| {
         ui.hud_driver = Some(hud_driver);
         false

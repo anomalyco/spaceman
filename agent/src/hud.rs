@@ -6,8 +6,10 @@
 //! The capsule's entrance, exit and content changes are drawn inside it (`pill.rs`), so every
 //! one of them can turn around mid-flight.
 
+mod flow;
 mod grow;
 mod icons;
+mod menu;
 #[cfg(test)]
 mod motion_tests;
 mod pill;
@@ -16,7 +18,7 @@ mod stage;
 mod tests;
 
 use std::{
-    cell::Cell,
+    collections::HashMap,
     sync::{Arc, Mutex},
     time::Duration,
 };
@@ -31,20 +33,20 @@ use spaceman::{
     config::HudStyle,
 };
 
-pub use pill::{HudView, Icons};
+use flow::FRESH_MS;
+#[cfg(test)]
+use flow::{HOLD_MS, RESUME_HOLD_MS};
+pub use flow::{HudFlow, HudTick, HudTransition, LEAVE_MS};
+pub use menu::HudSink;
+#[cfg(target_os = "macos")]
+pub use menu::LiveHudSink;
+#[cfg(test)]
+use menu::NoopHudSink;
+pub use pill::Icons;
 pub(crate) use stage::{HudPreview, SCENES, stage, triggers};
 
 use crate::{apps, controls::Paint};
 
-pub const HOLD_MS: u64 = 1_150;
-/// How long the capsule's exit gets before the panel is ordered out. The exit spring is under
-/// 1/255 of the way from rest by then, so the cut removes nothing that shows.
-pub const LEAVE_MS: u64 = 220;
-/// A freshly shown HUD draws its marker where the switch started for this long, then sends it
-/// on: long enough for the panel's first frame to have drawn it there.
-const FRESH_MS: u64 = 50;
-/// Waiting on that first frame, how soon to look again.
-const DRAW_RETRY_MS: u64 = 16;
 /// While a panel is up, how often it checks its display is still connected.
 const DISPLAY_CHECK_MS: u64 = 250;
 /// Only the first show fades the panel itself: nothing has been drawn to enter from yet.
@@ -62,183 +64,12 @@ const PANEL_NAMES: [&str; 4] = [
     "Spaceman HUD 4",
 ];
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum HudTransition {
-    /// The HUD is off.
-    Ignored,
-    /// It was hidden: order the panel in.
-    Show,
-    /// It was up or on its way out: the capsule carries on from where it is.
-    Update,
-}
-
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum HudTick {
-    Idle,
-    /// The fresh capsule has drawn: the marker sets off for the visible workspace.
-    Arrive,
-    /// The hold ran out: the capsule starts to leave.
-    Leave,
-    /// The exit has played: order the panel out.
-    Gone,
-}
-
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-enum Stage {
-    Hidden,
-    Shown { hide_at_ms: u64 },
-    Leaving { gone_at_ms: u64 },
-}
-
-/// Pure HUD visibility and deadline state machine for one display's capsule.
-#[derive(Clone, Debug)]
-pub struct HudFlow {
-    enabled: bool,
-    stage: Stage,
-    current: Option<UiHudDisplay>,
-    /// Where a fresh show's marker starts: the workspace the switch left on this display.
-    from: Option<WorkspaceId>,
-    fresh: bool,
-    fresh_until_ms: u64,
-    /// The view has been built since the HUD was shown, so its marker has been drawn at `from`.
-    drawn: Cell<bool>,
-}
-
-impl Default for HudFlow {
-    fn default() -> Self {
-        Self::new(true)
-    }
-}
-
-impl HudFlow {
-    #[must_use]
-    pub const fn new(enabled: bool) -> Self {
-        Self {
-            enabled,
-            stage: Stage::Hidden,
-            current: None,
-            from: None,
-            fresh: true,
-            fresh_until_ms: 0,
-            drawn: Cell::new(false),
-        }
-    }
-
-    /// What the capsule draws now; the last row stays through the exit so it never blanks.
-    #[must_use]
-    pub fn view(&self, still: bool) -> Option<HudView<'_>> {
-        self.current.as_ref().map(|row| HudView {
-            row,
-            shown: matches!(self.stage, Stage::Shown { .. }),
-            fresh: self.fresh,
-            focus: if self.fresh {
-                self.from.or(row.visible)
-            } else {
-                row.visible
-            },
-            still,
-        })
-    }
-
-    /// The view was built: a fresh marker has been drawn where it starts.
-    pub fn mark_drawn(&self) {
-        self.drawn.set(true);
-    }
-
-    #[must_use]
-    pub const fn is_up(&self) -> bool {
-        !matches!(self.stage, Stage::Hidden)
-    }
-
-    pub fn trigger(&mut self, row: UiHudDisplay, now_ms: u64) -> HudTransition {
-        if !self.enabled {
-            return HudTransition::Ignored;
-        }
-        let hidden = self.stage == Stage::Hidden;
-        if hidden {
-            self.fresh = true;
-            self.fresh_until_ms = now_ms.saturating_add(FRESH_MS);
-            self.from = row.from;
-            self.drawn.set(false);
-        } else if self.fresh {
-            // Another event before the marker set off: it still starts where the first left.
-            self.from = self.from.or(row.from);
-        }
-        self.stage = Stage::Shown {
-            hide_at_ms: now_ms.saturating_add(HOLD_MS),
-        };
-        self.current = Some(row);
-        if hidden {
-            HudTransition::Show
-        } else {
-            HudTransition::Update
-        }
-    }
-
-    /// Advances the timers to `now_ms`.
-    pub fn tick(&mut self, now_ms: u64) -> HudTick {
-        if self.fresh && self.is_up() && now_ms >= self.fresh_until_ms && self.drawn.get() {
-            self.fresh = false;
-            return HudTick::Arrive;
-        }
-        match self.stage {
-            Stage::Shown { hide_at_ms } if now_ms >= hide_at_ms => {
-                self.leave(now_ms);
-                HudTick::Leave
-            }
-            Stage::Leaving { gone_at_ms } if now_ms >= gone_at_ms => {
-                self.stage = Stage::Hidden;
-                HudTick::Gone
-            }
-            _ => HudTick::Idle,
-        }
-    }
-
-    /// Until the next deadline, while one is pending.
-    #[must_use]
-    pub fn remaining_ms(&self, now_ms: u64) -> Option<u64> {
-        let until = match self.stage {
-            Stage::Hidden => return None,
-            Stage::Shown { hide_at_ms: until } | Stage::Leaving { gone_at_ms: until } => until,
-        };
-        let mut remaining = until.saturating_sub(now_ms);
-        if self.fresh {
-            let arrive = if now_ms < self.fresh_until_ms {
-                self.fresh_until_ms - now_ms
-            } else {
-                DRAW_RETRY_MS
-            };
-            remaining = remaining.min(arrive);
-        }
-        Some(remaining.max(1))
-    }
-
-    /// Updates `enabled`; returns `true` if a shown HUD starts to leave now.
-    pub fn set_enabled(&mut self, enabled: bool, now_ms: u64) -> bool {
-        self.enabled = enabled;
-        if !enabled && matches!(self.stage, Stage::Shown { .. }) {
-            self.leave(now_ms);
-            return true;
-        }
-        false
-    }
-
-    /// Gone at once: its display went away or another event left it out.
-    pub fn dismiss(&mut self) {
-        self.stage = Stage::Hidden;
-    }
-
-    fn leave(&mut self, now_ms: u64) {
-        self.stage = Stage::Leaving {
-            gone_at_ms: now_ms.saturating_add(LEAVE_MS),
-        };
-    }
-}
-
-struct HudOverlay {
+pub(super) struct HudOverlay {
     flow: HudFlow,
     style: HudStyle,
     icons: Icons,
+    names: HashMap<String, String>,
+    sink: Arc<dyn HudSink>,
     /// Reduce Motion as of the last event; the panel never takes focus, so Rune doesn't
     /// re-read it for us.
     reduce_motion: bool,
@@ -247,18 +78,140 @@ struct HudOverlay {
     /// The display the panel is on, to hide it if that display goes away.
     display: Option<u32>,
     handle: Option<OverlayHandle<HudOverlay>>,
+    hovered_workspace: Option<WorkspaceId>,
+    hovered_app: Option<(WorkspaceId, String)>,
+    #[cfg(test)]
+    virtual_clock: Option<Arc<std::sync::atomic::AtomicU64>>,
 }
 
 impl HudOverlay {
-    fn new(enabled: bool, style: HudStyle) -> Self {
+    fn new(enabled: bool, style: HudStyle, sink: Arc<dyn HudSink>) -> Self {
         Self {
             flow: HudFlow::new(enabled),
             style,
             icons: Icons::new(),
+            names: HashMap::new(),
+            sink,
             reduce_motion: false,
             primed: false,
             display: None,
             handle: None,
+            hovered_workspace: None,
+            hovered_app: None,
+            #[cfg(test)]
+            virtual_clock: None,
+        }
+    }
+
+    fn now_ms(&self) -> u64 {
+        #[cfg(test)]
+        if let Some(clock) = &self.virtual_clock {
+            return clock.load(std::sync::atomic::Ordering::Relaxed);
+        }
+        spaceman::journal::unix_millis()
+    }
+
+    fn schedule_wake(&self, now_ms: u64, tx: &mut Tx) {
+        if let Some(remaining_ms) = self.flow.remaining_ms(now_ms) {
+            let check = if self.display.is_some() {
+                DISPLAY_CHECK_MS
+            } else {
+                u64::MAX
+            };
+            tx.wake_after(Duration::from_millis(remaining_ms.min(check)));
+        } else if self.flow.is_up() && self.display.is_some() {
+            tx.wake_after(Duration::from_millis(DISPLAY_CHECK_MS));
+        }
+    }
+
+    pub(super) fn set_hovered(&mut self, inside: bool, tx: &mut Tx) {
+        let now_ms = self.now_ms();
+        self.flow.set_hovered(inside, now_ms);
+        if !inside && !self.flow.is_held() {
+            self.hovered_app = None;
+            self.hovered_workspace = None;
+        }
+        self.schedule_wake(now_ms, tx);
+    }
+
+    pub(super) fn set_hovered_workspace(&mut self, workspace: WorkspaceId, inside: bool) {
+        if inside {
+            self.hovered_workspace = Some(workspace);
+        } else if self.hovered_workspace == Some(workspace) {
+            self.hovered_workspace = None;
+        }
+    }
+
+    pub(super) fn set_hovered_app(&mut self, workspace: WorkspaceId, bundle: &str, inside: bool) {
+        if inside {
+            self.hovered_app = Some((workspace, bundle.to_owned()));
+        } else if self
+            .hovered_app
+            .as_ref()
+            .is_some_and(|(ws, id)| *ws == workspace && id == bundle)
+        {
+            self.hovered_app = None;
+        }
+    }
+
+    pub(super) fn switch_workspace(&mut self, workspace: WorkspaceId, tx: &mut Tx) {
+        self.sink.switch_workspace(workspace);
+        self.schedule_wake(self.now_ms(), tx);
+    }
+
+    pub(super) fn open_settings(&mut self, tx: &mut Tx) {
+        let now_ms = self.now_ms();
+        self.sink.open_settings();
+        if self.flow.leave_now(now_ms) {
+            tx.wake_after(Duration::from_millis(LEAVE_MS));
+        }
+    }
+
+    pub(super) fn open_app_menu(
+        &mut self,
+        workspace: WorkspaceId,
+        bundle: &str,
+        at: (f32, f32),
+        tx: &mut Tx,
+    ) {
+        let now_ms = self.now_ms();
+        let app_name = self
+            .names
+            .get(bundle)
+            .cloned()
+            .unwrap_or_else(|| apps::fallback_name(bundle));
+        let current = self.sink.app_place(bundle);
+        let popup = menu::build_app_menu(&app_name, workspace, current);
+        self.flow.set_menu_open(true, now_ms);
+        let bundle_id = bundle.to_owned();
+        tx.popup_menu(popup, at, move |overlay: &mut HudOverlay, picked, tx| {
+            let close_ms = overlay.now_ms();
+            if let Some(picked) = picked
+                && let Some(new_place) = menu::resolve_app_menu_pick(picked, workspace, current)
+            {
+                drop(overlay.sink.set_app_place(&bundle_id, new_place));
+            }
+            overlay.flow.set_menu_open(false, close_ms);
+            overlay.schedule_wake(close_ms, tx);
+        });
+    }
+
+    pub(super) fn secondary_click_at(&mut self, x: f32, y: f32, tx: &mut Tx) {
+        if !self.flow.is_up() {
+            return;
+        }
+        let target = self.hovered_app.clone().or_else(|| {
+            let workspace = self.hovered_workspace?;
+            let row = self.flow.current()?;
+            let entry = row
+                .workspaces
+                .iter()
+                .find(|entry| entry.workspace == workspace)?;
+            let apps = icons::apps(entry);
+            (apps.len() == 1).then(|| (workspace, apps[0].to_owned()))
+        });
+        if let Some((workspace, bundle)) = target {
+            self.open_app_menu(workspace, &bundle, (x, y), tx);
         }
     }
 }
@@ -279,8 +232,13 @@ pub struct HudDriver {
     panels: Arc<Mutex<Panels>>,
 }
 
-pub fn install<S: 'static>(app: &mut rune::App<S>, enabled: bool, style: HudStyle) -> HudDriver {
-    let panels = PANEL_NAMES
+pub fn install<S: 'static>(
+    app: &mut rune::App<S>,
+    enabled: bool,
+    style: HudStyle,
+    sink: Arc<dyn HudSink>,
+) -> HudDriver {
+    let panels: Vec<Panel> = PANEL_NAMES
         .iter()
         .map(|&name| {
             let spec = OverlaySpec {
@@ -294,7 +252,7 @@ pub fn install<S: 'static>(app: &mut rune::App<S>, enabled: bool, style: HudStyl
                 view: overlay_view,
             }
             .options(OverlayOptions {
-                input: OverlayInput::None,
+                input: OverlayInput::Regions,
                 keys: KeyPolicy::None,
                 prewarm: false,
                 ..Default::default()
@@ -302,7 +260,7 @@ pub fn install<S: 'static>(app: &mut rune::App<S>, enabled: bool, style: HudStyl
             // Showing must not settle the view: the capsule enters from the pose it left in.
             .animate_reveal()
             .poll(overlay_poll);
-            let handle = app.overlay(spec, HudOverlay::new(enabled, style));
+            let handle = app.overlay(spec, HudOverlay::new(enabled, style, Arc::clone(&sink)));
             let inner = handle.clone();
             handle.update(move |overlay, _| {
                 overlay.handle = Some(inner);
@@ -313,6 +271,9 @@ pub fn install<S: 'static>(app: &mut rune::App<S>, enabled: bool, style: HudStyl
             }
         })
         .collect();
+    menu::install_secondary_click_monitor(
+        panels.iter().map(|panel| panel.handle.clone()).collect(),
+    );
     HudDriver {
         panels: Arc::new(Mutex::new(Panels {
             panels,
@@ -329,7 +290,7 @@ impl HudDriver {
         let Ok(mut panels) = self.panels.lock() else {
             return;
         };
-        let icons = panels.icons_for(&event);
+        let (icons, names) = panels.metadata_for(&event);
         let mut rows: Vec<(UiHudDisplay, DisplayTarget, Option<u32>)> = event
             .displays
             .iter()
@@ -355,6 +316,7 @@ impl HudDriver {
                 continue;
             };
             let icons = icons.clone();
+            let names = names.clone();
             panel.handle.update_if(move |overlay, tx| {
                 if overlay.display != display || display.is_none() {
                     if let Some(handle) = &overlay.handle {
@@ -362,7 +324,7 @@ impl HudDriver {
                     }
                     overlay.display = display;
                 }
-                let now_ms = spaceman::journal::unix_millis();
+                let now_ms = overlay.now_ms();
                 let handle = overlay.handle.clone();
                 match overlay.flow.trigger(row, now_ms) {
                     HudTransition::Ignored => return false,
@@ -380,10 +342,9 @@ impl HudDriver {
                     HudTransition::Update => {}
                 }
                 overlay.icons.extend(icons);
+                overlay.names.extend(names);
                 overlay.reduce_motion = reduce_motion;
-                if let Some(remaining) = overlay.flow.remaining_ms(now_ms) {
-                    tx.wake_after(Duration::from_millis(remaining));
-                }
+                overlay.schedule_wake(now_ms, tx);
                 true
             });
         }
@@ -421,23 +382,26 @@ impl HudDriver {
 }
 
 impl Panels {
-    /// Every app in `event` that has an icon here, looked up once each.
-    fn icons_for(&mut self, event: &UiHudEvent) -> Icons {
+    /// Every app in `event`: its cached icon (when installed) and display name, looked up once.
+    fn metadata_for(&mut self, event: &UiHudEvent) -> (Icons, HashMap<String, String>) {
         let mut icons = Icons::new();
+        let mut names = HashMap::new();
         for workspace in event.displays.iter().flat_map(|row| &row.workspaces) {
             let tiles = workspace
                 .tiles
                 .iter()
                 .filter_map(|tile| tile.bundle.as_ref());
             for bundle in tiles.chain(&workspace.floating) {
-                if !icons.contains_key(bundle)
-                    && let Some(pixels) = self.apps.get(bundle).icon
-                {
-                    icons.insert(bundle.clone(), pixels);
+                if !names.contains_key(bundle) {
+                    let app = self.apps.get(bundle);
+                    names.insert(bundle.clone(), app.name);
+                    if let Some(pixels) = app.icon {
+                        icons.insert(bundle.clone(), pixels);
+                    }
                 }
             }
         }
-        icons
+        (icons, names)
     }
 
     /// Gives each display in `rows` a panel, and hides the panels of displays it leaves out.
@@ -522,19 +486,14 @@ fn overlay_poll(overlay: &mut HudOverlay, _clock: f64, tx: &mut Tx) -> bool {
         return false;
     }
     let tick = overlay.flow.tick(now_ms);
-    if tick == HudTick::Gone
-        && let Some(handle) = &overlay.handle
-    {
-        handle.hide();
+    if tick == HudTick::Gone {
+        overlay.hovered_app = None;
+        overlay.hovered_workspace = None;
+        if let Some(handle) = &overlay.handle {
+            handle.hide();
+        }
     }
-    if let Some(remaining_ms) = overlay.flow.remaining_ms(now_ms) {
-        let check = if overlay.display.is_some() {
-            DISPLAY_CHECK_MS
-        } else {
-            u64::MAX
-        };
-        tx.wake_after(Duration::from_millis(remaining_ms.min(check)));
-    }
+    overlay.schedule_wake(now_ms, tx);
     matches!(tick, HudTick::Arrive | HudTick::Leave)
 }
 
@@ -545,9 +504,8 @@ fn overlay_view(overlay: &HudOverlay, cx: &mut Cx<HudOverlay>) -> El {
     let p = Paint::new(true, cx.env().scale);
     overlay.flow.mark_drawn();
     row().key("hud-root").w_full().h_full().center().children(
-        overlay
-            .flow
-            .view(cx.is_reduced_motion())
-            .map(|view| pill::slot(&view, overlay.style, &overlay.icons, OVERLAY_SIZE.0, p)),
+        overlay.flow.view(cx.is_reduced_motion()).map(|view| {
+            pill::interactive_slot(&view, overlay.style, &overlay.icons, OVERLAY_SIZE.0, p)
+        }),
     )
 }

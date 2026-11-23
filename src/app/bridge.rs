@@ -12,16 +12,19 @@ pub const HUD_PREVIEW_RECT: Rect = Rect {
     height: 1100,
 };
 
-/// Actions the in-process Rune window can send to the agent loop.
+/// Actions the in-process Rune window or HUD overlay can send to the agent loop.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum UiAction {
     ToggleAutomatic,
     /// The first-run setup tour finished: automatic tiling may start.
     FinishSetup,
+    OpenSettings,
     OpenAccessibility,
     CheckForUpdates,
     ToggleLaunchAtLogin,
     SetHud(bool),
+    SwitchWorkspace(WorkspaceId),
+    Retile,
     MarkWrong,
 }
 
@@ -30,10 +33,15 @@ impl From<UiAction> for Action {
         match action {
             UiAction::ToggleAutomatic => Self::ToggleAutomatic,
             UiAction::FinishSetup => Self::FinishSetup,
+            UiAction::OpenSettings => Self::OpenSettings,
             UiAction::OpenAccessibility => Self::OpenAccessibility,
             UiAction::CheckForUpdates => Self::CheckForUpdates,
             UiAction::ToggleLaunchAtLogin => Self::ToggleLaunchAtLogin,
             UiAction::SetHud(enabled) => Self::SetHud(enabled),
+            UiAction::SwitchWorkspace(workspace) => {
+                Self::Worker(WorkerAction::SwitchWorkspace(workspace))
+            }
+            UiAction::Retile => Self::Worker(WorkerAction::Retile),
             UiAction::MarkWrong => Self::Worker(WorkerAction::MarkWrong),
         }
     }
@@ -380,6 +388,20 @@ mod tests {
 
         bridge.send(UiAction::ToggleAutomatic);
         assert_eq!(receiver.try_recv().ok(), Some(Action::ToggleAutomatic));
+        bridge.send(UiAction::OpenSettings);
+        assert_eq!(receiver.try_recv().ok(), Some(Action::OpenSettings));
+        bridge.send(UiAction::SwitchWorkspace(WorkspaceId::THREE));
+        assert_eq!(
+            receiver.try_recv().ok(),
+            Some(Action::Worker(WorkerAction::SwitchWorkspace(
+                WorkspaceId::THREE
+            )))
+        );
+        bridge.send(UiAction::Retile);
+        assert_eq!(
+            receiver.try_recv().ok(),
+            Some(Action::Worker(WorkerAction::Retile))
+        );
     }
 
     #[test]

@@ -2,10 +2,10 @@
 //! Nothing changes size; a concentric pill marker glides to the active group while inactive
 //! groups sit calmly dimmed.
 
-use rune::{El, Spring, TextStyle, row, text};
+use rune::{Cursor, El, Spring, TextStyle, Tx, el, row, text};
 use spaceman::{WorkspaceId, app::UiHudWorkspace};
 
-use super::pill::{INNER, Icons, Track, app_icon, presence, srgb};
+use super::pill::{INNER, Icons, Track, app_icon, presence, rgba, srgb};
 use crate::controls::Paint;
 
 /// Inset from the capsule's inside edge to the first group: `EDGE - PAD = 6 pt`, matching the
@@ -24,7 +24,7 @@ const NUMBER_MIN_W: f32 = 10.0;
 /// Keeps an empty workspace's active marker at least circular (`MARKER_H` wide).
 const EMPTY_MIN_W: f32 = MARKER_H - 2.0 * PAD;
 const DIM: f32 = 0.42;
-const GROUP: Spring = Spring::new(0.2, 0.0);
+const GROUP: Spring = Spring::new(0.14, 0.0);
 /// One icon per app, so a workspace full of windows still fits.
 const MAX_APPS: usize = 12;
 
@@ -65,11 +65,22 @@ fn group_width(number: f32, apps: usize) -> f32 {
     number + NUMBER_GAP + apps as f32 * ICON + (apps - 1) as f32 * ICON_GAP
 }
 
+#[cfg(test)]
 pub fn track(
     entries: &[UiHudWorkspace],
     focus: Option<WorkspaceId>,
     icons: &Icons,
+    p: Paint,
+) -> Track {
+    track_with_mode(entries, focus, icons, p, false)
+}
+
+pub fn track_with_mode(
+    entries: &[UiHudWorkspace],
+    focus: Option<WorkspaceId>,
+    icons: &Icons,
     _p: Paint,
+    interactive: bool,
 ) -> Track {
     let mut x = EDGE;
     let mut marker = None;
@@ -89,14 +100,23 @@ pub fn track(
             ]);
         }
         cells.push(
-            group(entry.workspace, &label, number, width, &apps, icons)
-                .absolute(x, 0.0)
-                .w(width)
-                .h(INNER)
-                .opacity(if current { 1.0 } else { DIM })
-                .opacity_motion(GROUP)
-                .motion(GROUP)
-                .transition(presence()),
+            group(
+                entry.workspace,
+                &label,
+                number,
+                width,
+                &apps,
+                icons,
+                current,
+                interactive,
+            )
+            .absolute(x, 0.0)
+            .w(width)
+            .h(INNER)
+            .opacity(if current { 1.0 } else { DIM })
+            .opacity_motion(GROUP)
+            .motion(GROUP)
+            .transition(presence()),
         );
         x += width + GROUP_GAP;
     }
@@ -113,6 +133,7 @@ pub fn track(
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 fn group(
     workspace: WorkspaceId,
     label: &str,
@@ -120,6 +141,8 @@ fn group(
     width: f32,
     apps: &[&str],
     icons: &Icons,
+    current: bool,
+    interactive: bool,
 ) -> El {
     let digit_w = if apps.is_empty() { width } else { number };
     let digits = row().key("number").w(digit_w).h(16.0).center().child(
@@ -127,7 +150,29 @@ fn group(
             .font(number_style())
             .color(srgb(0xf4f4f6)),
     );
-    let mut group = row().key(format!("ws{workspace}")).center_y().child(digits);
+    let mut group = row().key(format!("ws{workspace}")).center_y();
+    if interactive {
+        group = group
+            .role("button")
+            .label(format!("Switch to workspace {workspace}"))
+            .cursor(Cursor::Pointer)
+            .hover_group()
+            .on_hover_change(move |overlay: &mut super::HudOverlay, inside, _| {
+                overlay.set_hovered_workspace(workspace, inside);
+            })
+            .on_press_tx(move |overlay: &mut super::HudOverlay, tx: &mut Tx| {
+                overlay.switch_workspace(workspace, tx);
+            })
+            .child(
+                el().key("hover")
+                    .absolute(-PAD, (INNER - MARKER_H) / 2.0)
+                    .size(width + 2.0 * PAD, MARKER_H)
+                    .radius(MARKER_RADIUS)
+                    .fill(rgba(0xffffff, 0.08))
+                    .group_opacity(0.0, if current { 0.0 } else { 1.0 }),
+            );
+    }
+    group = group.child(digits);
     if !apps.is_empty() {
         group = group.child(
             row()
@@ -135,7 +180,10 @@ fn group(
                 .pl(NUMBER_GAP)
                 .gap(ICON_GAP)
                 .center_y()
-                .children(apps.iter().map(|bundle| app_icon(icons, bundle, ICON))),
+                .children(
+                    apps.iter()
+                        .map(|bundle| app_icon(icons, workspace, bundle, ICON, interactive)),
+                ),
         );
     }
     group

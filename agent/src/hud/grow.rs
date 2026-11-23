@@ -1,7 +1,7 @@
 //! The Layouts style: each workspace as its layout, an app icon in every tile, the one you are
 //! on larger than the rest.
 
-use rune::{El, Spring, el, row};
+use rune::{Cursor, El, Spring, Tx, el, row};
 use spaceman::{
     Rect, WorkspaceId,
     app::{HUD_PREVIEW_RECT, UiHudWorkspace},
@@ -55,11 +55,12 @@ pub fn rest(entries: &[UiHudWorkspace], focus: Option<WorkspaceId>) -> (Vec<(f32
     (cells, width)
 }
 
-pub fn track(
+pub fn track_with_mode(
     entries: &[UiHudWorkspace],
     focus: Option<WorkspaceId>,
     icons: &Icons,
     p: Paint,
+    interactive: bool,
 ) -> Track {
     let (rests, width) = rest(entries, focus);
     let mut marker = None;
@@ -79,7 +80,7 @@ pub fn track(
             }
             // The screen keeps its full size and draws scaled about its centre, which sits in
             // the middle of the room its scaled width takes.
-            screen(entry, icons, p)
+            screen(entry, icons, p, interactive)
                 .absolute(
                     x + SCREEN_W * scale / 2.0 - SCREEN_W / 2.0,
                     (INNER - SCREEN_H) / 2.0,
@@ -100,15 +101,29 @@ pub fn track(
     }
 }
 
-fn screen(entry: &UiHudWorkspace, icons: &Icons, p: Paint) -> El {
+fn screen(entry: &UiHudWorkspace, icons: &Icons, p: Paint, interactive: bool) -> El {
+    let workspace = entry.workspace;
     let inner_w = SCREEN_W - 2.0 * p.hair - 2.0 * INSET;
     let inner_h = SCREEN_H - 2.0 * p.hair - 2.0 * INSET;
-    let base = el()
-        .key(format!("ws{}", entry.workspace))
+    let mut base = el()
+        .key(format!("ws{workspace}"))
         .size(SCREEN_W, SCREEN_H)
         .radius(5.0)
         .fill(rgba(0xffffff, 0.05))
         .border(p.hair, rgba(0xffffff, 0.22));
+    if interactive {
+        base = base
+            .role("button")
+            .label(format!("Switch to workspace {workspace}"))
+            .cursor(Cursor::Pointer)
+            .hover(rgba(0xffffff, 0.10))
+            .on_hover_change(move |overlay: &mut super::HudOverlay, inside, _| {
+                overlay.set_hovered_workspace(workspace, inside);
+            })
+            .on_press_tx(move |overlay: &mut super::HudOverlay, tx: &mut Tx| {
+                overlay.switch_workspace(workspace, tx);
+            });
+    }
     if entry.fullscreen
         && let Some(front) = entry.tiles.first()
     {
@@ -129,11 +144,13 @@ fn screen(entry: &UiHudWorkspace, icons: &Icons, p: Paint) -> El {
             }
         }
         return base.child(tile("full", (x, y, w, h)).child(icon_row(
+            workspace,
             front.bundle.as_deref(),
             &behind,
             w,
             h,
             icons,
+            interactive,
         )));
     }
     if entry.tiles.is_empty() {
@@ -145,7 +162,15 @@ fn screen(entry: &UiHudWorkspace, icons: &Icons, p: Paint) -> El {
                     .key("floating")
                     .pin(Some(0.0), Some(0.0), Some(0.0), Some(0.0))
                     .center()
-                    .child(icon_row(None, &floating, inner_w, inner_h, icons)),
+                    .child(icon_row(
+                        workspace,
+                        None,
+                        &floating,
+                        inner_w,
+                        inner_h,
+                        icons,
+                        interactive,
+                    )),
             );
         }
         return base.child(
@@ -165,7 +190,9 @@ fn screen(entry: &UiHudWorkspace, icons: &Icons, p: Paint) -> El {
         let size = icon_size(frame.2, frame.3);
         let tile = tile(&format!("t{}", placed.key), frame).motion(GROW);
         match (&placed.bundle, size) {
-            (Some(bundle), Some(size)) => tile.child(app_icon(icons, bundle, size).motion(GROW)),
+            (Some(bundle), Some(size)) => {
+                tile.child(app_icon(icons, workspace, bundle, size, interactive).motion(GROW))
+            }
             _ => tile,
         }
     }))
@@ -189,20 +216,29 @@ fn icon_size(w: f32, h: f32) -> Option<f32> {
 }
 
 /// The app in front at full size, then as many of the others as fit, smaller and dimmer.
-fn icon_row(front: Option<&str>, behind: &[&str], w: f32, h: f32, icons: &Icons) -> El {
+fn icon_row(
+    workspace: WorkspaceId,
+    front: Option<&str>,
+    behind: &[&str],
+    w: f32,
+    h: f32,
+    icons: &Icons,
+    interactive: bool,
+) -> El {
     let size = icon_size(w, h).unwrap_or(6.0);
     let small = size * BEHIND_SCALE;
     let mut room = w - 2.0 * TILE_GAP - front.map_or(-BEHIND_GAP, |_| size);
     let mut icons_row = row().key("apps").gap(BEHIND_GAP).center_y();
     if let Some(front) = front {
-        icons_row = icons_row.child(app_icon(icons, front, size));
+        icons_row = icons_row.child(app_icon(icons, workspace, front, size, interactive));
     }
     for bundle in behind {
         room -= BEHIND_GAP + small;
         if room < 0.0 {
             break;
         }
-        icons_row = icons_row.child(app_icon(icons, bundle, small).opacity(BEHIND_OPACITY));
+        icons_row = icons_row
+            .child(app_icon(icons, workspace, bundle, small, interactive).opacity(BEHIND_OPACITY));
     }
     icons_row
 }

@@ -52,7 +52,14 @@ Workspace HUD ([settings] hud, on by default)               // ws.hud
 │      app's icon and the others smaller beside it
 ├── No text but workspace numbers, and never a window title; icons are looked up by bundle ID
 ├── Appears: fades in, scales from .96 and rises 6 pt; stays 1.15 s after the last event; leaves
-│   the same way back in about 0.2 s
+│   the same way back in about 0.17 s
+├── Interactive without stealing focus (OverlayInput::Regions, KeyPolicy::None):
+│   ├── Hover over the capsule -> pauses auto-dismiss (and rescues a mid-exit capsule); resumes
+│   │   0.6 s after the pointer leaves
+│   ├── Click a workspace slot -> switches that display to that workspace without activating
+│   ├── Trailing Settings gear -> opens Spaceman Settings and glides the capsule out
+│   └── Right-click (or Ctrl+click) an app icon -> native Float/Tile and Pin/Unpin menu writing
+│       through config.toml rules
 ├── Another switch while it's up, or on its way out -> the same capsule carries on from where it
 │   is: the marker's leading edge sets off first and its trailing edge catches up; in Layouts the
 │   cells grow and shrink and their neighbours slide. Only the display that switched moves its

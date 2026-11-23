@@ -5,23 +5,26 @@
 //!
 //! | What changes                     | What moves                                            | Spring (duration / bounce) |
 //! | -------------------------------- | ----------------------------------------------------- | -------------------------- |
-//! | The HUD appears                  | fades in, scales from .96 and rises 6 pt              | .20 / 0                    |
-//! | The HUD leaves                   | the same path back                                    | .14 / 0                    |
-//! | Another workspace                | the marker's leading edge, then its trailing edge     | .18 / 0, .27 / 0           |
-//! |                                  | Layouts: the cells grow and shrink, neighbours slide  | .25 / 0                    |
-//! |                                  | Icons: the groups brighten and dim                    | .20 / 0                    |
+//! | The HUD appears                  | fades in, scales from .96 and rises 6 pt              | .14 / 0                    |
+//! | The HUD leaves                   | the same path back                                    | .11 / 0                    |
+//! | Another workspace                | the marker's leading edge, then its trailing edge     | .13 / 0, .18 / 0           |
+//! |                                  | Layouts: the cells grow and shrink, neighbours slide  | .15 / 0                    |
+//! |                                  | Icons: the groups brighten and dim                    | .14 / 0                    |
 //! | Shown again after hiding         | the marker starts on the workspace you left and       | as above                   |
 //! |                                  | travels while the capsule fades in                    |                            |
 //! | A workspace joins or leaves      | it fades and scales in or out in place                | settle                     |
-//! | A layout changes                 | each tile springs to its new frame                    | .25 / 0                    |
+//! | A layout changes                 | each tile springs to its new frame                    | .15 / 0                    |
 //! | A window moves                   | its icon leaves one workspace for the other           | settle                     |
-//! | More workspaces than fit         | the row scrolls to keep yours in view, edges fade     | .25 / 0                    |
+//! | More workspaces than fit         | the row scrolls to keep yours in view, edges fade     | .15 / 0                    |
 //!
 //! Under Reduce Motion nothing travels or scales; the row cross-fades instead.
 
-use std::collections::HashMap;
+use std::collections::{BTreeSet, HashMap};
 
-use rune::{Color, El, Pixels, Spring, Transition, el, row, text, tok::motion::pair::SETTLE};
+use rune::{
+    Color, Cursor, El, Pixels, Spring, Transition, Tx, el, icon, row, text,
+    tok::motion::pair::SETTLE,
+};
 use spaceman::{
     WorkspaceId,
     app::{UiHudDisplay, UiHudWorkspace},
@@ -38,19 +41,23 @@ pub const INNER: f32 = PILL_HEIGHT - 2.0;
 pub const SHADOW_REACH: f32 = 48.0;
 /// Room each side of the capsule for its shadow's widest blur.
 pub const SHADOW_SIDE: f32 = 32.0;
+/// Trailing space inside the capsule for the hairline divider and concentric 30×30 Settings gear.
+pub const GEAR_SLOT_W: f32 = 42.0;
+const GEAR_SIZE: f32 = 30.0;
+const GEAR_INSET: f32 = (INNER - GEAR_SIZE) / 2.0;
 
-/// The capsule answering a shortcut: snappy in, faster out.
-const ENTER: Spring = Spring::new(0.2, 0.0);
-const EXIT: Spring = Spring::new(0.14, 0.0);
+/// The capsule answering a shortcut: crisp in, faster out.
+const ENTER: Spring = Spring::new(0.14, 0.0);
+const EXIT: Spring = Spring::new(0.11, 0.0);
 const REST_SCALE: f32 = 0.96;
 const DROP: f32 = 6.0;
 /// The marker's leading edge, quicker so it stretches toward where it is going, and its
 /// trailing edge catching up; with nowhere to go, one spring for both.
-const MARKER_LEAD: Spring = Spring::new(0.18, 0.0);
-const MARKER_TRAIL: Spring = Spring::new(0.27, 0.0);
-const MARKER: Spring = Spring::new(0.2, 0.0);
+const MARKER_LEAD: Spring = Spring::new(0.13, 0.0);
+const MARKER_TRAIL: Spring = Spring::new(0.18, 0.0);
+const MARKER: Spring = Spring::new(0.15, 0.0);
 /// The row's own layout: scrolling, and the capsule's width.
-pub const ROW: Spring = Spring::new(0.25, 0.0);
+pub const ROW: Spring = Spring::new(0.15, 0.0);
 /// The fade at an edge the row is cut at, and at an edge it fits inside.
 const CLIPPED_FADE: f32 = 24.0;
 const EDGE_FADE: f32 = 6.0;
@@ -70,27 +77,32 @@ pub struct HudView<'a> {
     pub focus: Option<WorkspaceId>,
     /// Reduce Motion: it fades where it rests, with no scale or drop to land in one frame.
     pub still: bool,
+    /// Pointer is hovering the pill or a context menu is open: warm subtle interactive chrome.
+    pub active: bool,
+    /// Empty workspaces visited during this HUD show, kept in the row until it hides so rapid
+    /// flicks across empty workspaces never wobble the capsule width underneath the marker.
+    pub visited_empty: &'a BTreeSet<WorkspaceId>,
 }
 
 impl HudView<'_> {
-    /// The row's workspaces, with the one the marker starts on while it's no longer listed (an
-    /// empty workspace just left), so the marker has somewhere to leave from.
+    /// The row's workspaces, plus any empty workspace visited during this show and the one a
+    /// fresh marker starts on, so the marker glides smoothly without the capsule wobbling.
     #[must_use]
     pub fn entries(&self) -> Vec<UiHudWorkspace> {
         let mut entries = self.row.workspaces.clone();
-        if let Some(focus) = self.focus
-            && !entries.iter().any(|entry| entry.workspace == focus)
-        {
-            let at = entries.partition_point(|entry| entry.workspace < focus);
-            entries.insert(
-                at,
-                UiHudWorkspace {
-                    workspace: focus,
-                    fullscreen: false,
-                    tiles: Vec::new(),
-                    floating: Vec::new(),
-                },
-            );
+        for &workspace in self.visited_empty.iter().chain(self.focus.iter()) {
+            if !entries.iter().any(|entry| entry.workspace == workspace) {
+                let at = entries.partition_point(|entry| entry.workspace < workspace);
+                entries.insert(
+                    at,
+                    UiHudWorkspace {
+                        workspace,
+                        fullscreen: false,
+                        tiles: Vec::new(),
+                        floating: Vec::new(),
+                    },
+                );
+            }
         }
         entries
     }
@@ -109,12 +121,35 @@ pub struct Track {
 /// The widest the row gets before it scrolls, for a panel `panel_width` wide.
 #[must_use]
 pub fn max_row_width(panel_width: f32) -> f32 {
-    panel_width - 2.0 * SHADOW_SIDE - 2.0
+    panel_width - 2.0 * SHADOW_SIDE - 2.0 - GEAR_SLOT_W
 }
 
-/// The capsule in the fixed-size row that carries its entrance and exit, so the capsule's own
-/// width can change underneath without moving the pose.
+/// Passive capsule used by Playground previews (no `HudOverlay` event handlers).
 pub fn slot(view: &HudView, style: HudStyle, icons: &Icons, panel_width: f32, p: Paint) -> El {
+    render_slot(view, style, icons, panel_width, p, false)
+}
+
+/// Interactive capsule used by the live HUD overlay and its 120 Hz tests: marks the capsule as a
+/// hit region, holds on hover, switches workspaces on click, opens Settings from the trailing
+/// gear, and opens the per-app Float/Pin menu on secondary click.
+pub fn interactive_slot(
+    view: &HudView,
+    style: HudStyle,
+    icons: &Icons,
+    panel_width: f32,
+    p: Paint,
+) -> El {
+    render_slot(view, style, icons, panel_width, p, true)
+}
+
+fn render_slot(
+    view: &HudView,
+    style: HudStyle,
+    icons: &Icons,
+    panel_width: f32,
+    p: Paint,
+    interactive: bool,
+) -> El {
     let (spring, opacity) = if view.shown {
         (ENTER, 1.0)
     } else {
@@ -127,8 +162,8 @@ pub fn slot(view: &HudView, style: HudStyle, icons: &Icons, panel_width: f32, p:
     };
     let entries = view.entries();
     let track = match style {
-        HudStyle::Layouts => grow::track(&entries, view.focus, icons, p),
-        HudStyle::Icons => icons::track(&entries, view.focus, icons, p),
+        HudStyle::Layouts => grow::track_with_mode(&entries, view.focus, icons, p, interactive),
+        HudStyle::Icons => icons::track_with_mode(&entries, view.focus, icons, p, interactive),
     };
     row()
         .key("hud-slot")
@@ -141,10 +176,16 @@ pub fn slot(view: &HudView, style: HudStyle, icons: &Icons, panel_width: f32, p:
         .scale_motion(spring)
         .offset(0.0, drop)
         .offset_motion(spring)
-        .child(capsule(view, track, max_row_width(panel_width), p))
+        .child(capsule(
+            view,
+            track,
+            max_row_width(panel_width),
+            p,
+            interactive,
+        ))
 }
 
-fn capsule(view: &HudView, track: Track, max_width: f32, p: Paint) -> El {
+fn capsule(view: &HudView, track: Track, max_width: f32, p: Paint, interactive: bool) -> El {
     let dark = Paint::new(true, 1.0 / p.hair);
     let width = track.width.min(max_width);
     let overflow = track.width - width;
@@ -193,14 +234,22 @@ fn capsule(view: &HudView, track: Track, max_width: f32, p: Paint) -> El {
         .child(content.children(track.cells));
     let mut capsule = row()
         .key("hud-pill")
-        .w(width + 2.0)
+        .w(width + GEAR_SLOT_W + 2.0)
         .h(PILL_HEIGHT)
         .center()
         .radius(PILL_HEIGHT / 2.0)
         .fill(srgb(0x161618))
         .border(p.hair, srgb(0x303036))
         .motion(ROW)
-        .child(viewport);
+        .child(viewport)
+        .child(settings_gear(view.active, p, interactive));
+    if interactive {
+        capsule = capsule
+            .hit()
+            .on_hover_change(|overlay: &mut super::HudOverlay, inside, tx| {
+                overlay.set_hovered(inside, tx);
+            });
+    }
     if view.fresh {
         // Just shown: the row lands as drawn, inside the capsule's entrance.
         capsule = capsule.instant_changes();
@@ -211,18 +260,65 @@ fn capsule(view: &HudView, track: Track, max_width: f32, p: Paint) -> El {
     capsule
 }
 
+/// Subtle, concentric Settings gear at the trailing end of the capsule: whisper-quiet at rest
+/// and warming cleanly when the pointer hovers the pill.
+fn settings_gear(active: bool, p: Paint, interactive: bool) -> El {
+    let sep = el()
+        .key("hud-settings-sep")
+        .w(p.hair)
+        .h(16.0)
+        .fill(rgba(0xffffff, if active { 0.14 } else { 0.08 }));
+    let mut button = row()
+        .key("hud-settings")
+        .size(GEAR_SIZE, GEAR_SIZE)
+        .radius(GEAR_SIZE / 2.0)
+        .center()
+        .child(
+            icon(&rune_theme_opencode::icons::SETTINGS_GEAR, 14.0)
+                .key("icon")
+                .color(rgba(0xffffff, if active { 0.72 } else { 0.30 })),
+        );
+    if interactive {
+        button = button
+            .role("button")
+            .label("Open Spaceman Settings")
+            .cursor(Cursor::Pointer)
+            .hover(rgba(0xffffff, 0.10))
+            .press(rgba(0xffffff, 0.16))
+            .on_press_tx(|overlay: &mut super::HudOverlay, tx: &mut Tx| {
+                overlay.open_settings(tx);
+            });
+    }
+    row()
+        .key("hud-settings-slot")
+        .w(GEAR_SLOT_W)
+        .h(INNER)
+        .pr(GEAR_INSET)
+        .center_y()
+        .justify_end()
+        .gap(5.0)
+        .child(sep)
+        .child(button)
+}
+
 /// How a workspace joins or leaves the row: in place, with a fade and a little scale.
 pub fn presence() -> Transition {
     Transition::scale(0.9).springs(SETTLE)
 }
 
 /// An app's icon at `size`, or its initial in a rounded square when it has none here.
-pub fn app_icon(icons: &Icons, bundle: &str, size: f32) -> El {
-    let base = el()
+pub fn app_icon(
+    icons: &Icons,
+    workspace: WorkspaceId,
+    bundle: &str,
+    size: f32,
+    interactive: bool,
+) -> El {
+    let mut base = el()
         .key(format!("app-{bundle}"))
         .size(size, size)
         .transition(presence());
-    match icons.get(bundle) {
+    base = match icons.get(bundle) {
         Some(pixels) => base.pixels(pixels),
         None => {
             let initial = crate::apps::fallback_name(bundle)
@@ -239,7 +335,19 @@ pub fn app_icon(icons: &Icons, bundle: &str, size: f32) -> El {
                         .color(rgba(0xffffff, 0.7)),
                 )
         }
+    };
+    if interactive {
+        let hover_bundle = bundle.to_owned();
+        let menu_bundle = bundle.to_owned();
+        base = base
+            .on_hover_change(move |overlay: &mut super::HudOverlay, inside, _| {
+                overlay.set_hovered_app(workspace, &hover_bundle, inside);
+            })
+            .on_secondary_press(move |overlay: &mut super::HudOverlay, press, tx| {
+                overlay.open_app_menu(workspace, &menu_bundle, (press.x, press.y), tx);
+            });
     }
+    base
 }
 
 pub fn srgb(hex: u32) -> Color {
