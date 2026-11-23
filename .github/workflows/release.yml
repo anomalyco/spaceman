@@ -1,0 +1,286 @@
+name: Release
+
+# Builds, signs, notarizes and publishes Spaceman for Apple silicon from one
+# exact commit of main to Anomaly's release service
+# (https://anoma.ly/release/spaceman), split the way Hex's release is:
+#
+# - build-macos and verify-macos run repository code (cargo, actool, the
+#   app's CLI). They have no environment, no secrets and no id-token.
+# - sign-macos and publish run in the release environment. They check out only
+#   .github/release/ and run only those scripts and SHA-pinned actions, on
+#   artifacts they treat as data. Apple credentials come from AWS Secrets
+#   Manager (role/github/spaceman-release) through GitHub OIDC and live only
+#   in the one step that reads them (.github/release/with-secrets.sh).
+# - every artifact carries a SHA256SUMS whose digest the job that made it
+#   reports; every job that downloads it checks that digest.
+#
+# Channels (.github/release/plan.sh), all dispatched from main:
+# - check: build, sign, notarize and verify; publish nothing, and push and
+#   delete a throwaway v0.0.0-test-<run> tag to prove the run can tag.
+# - dev: the same, published on the dev channel as 0.0.0-dev-<run number>.
+# - stable: Cargo.toml's version on the stable channel, then tag v<version>.
+#   Tags trigger nothing.
+#
+# The release service authorizes the publish job by its OIDC token:
+# anomalyco/spaceman, this file, refs/heads/main, environment release
+# (anomalyco/release registry/spaceman.json).
+#
+# Sparkle in installed builds still reads the R2 appcast: after a stable run,
+# scripts/release-app.sh on the release Mac downloads this run's zip from the
+# release service, signs it into the appcast and publishes both to R2
+# (docs/releasing.md).
+on:
+  workflow_dispatch:
+    inputs:
+      channel:
+        description: Run from main. check (build, sign and verify), dev (dev channel) or stable (public release).
+        type: choice
+        options: [check, dev, stable]
+        default: check
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ inputs.channel }}
+  cancel-in-progress: false
+
+defaults:
+  run:
+    shell: bash
+
+env:
+  SPACEMAN_TEAM_ID: 5NZ4Q7NXJ4
+
+jobs:
+  plan:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    outputs:
+      version: ${{ steps.plan.outputs.version }}
+      bundle-version: ${{ steps.plan.outputs.bundle-version }}
+      channel: ${{ steps.plan.outputs.channel }}
+      release-channel: ${{ steps.plan.outputs.release-channel }}
+      service: ${{ steps.plan.outputs.service }}
+      tag: ${{ steps.plan.outputs.tag }}
+      notes-url: ${{ steps.plan.outputs.notes-url }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.sha }}
+          sparse-checkout: |
+            /.github/release/
+            /Cargo.toml
+            /changelog/
+          sparse-checkout-cone-mode: false
+          persist-credentials: false
+      - id: plan
+        run: SHA=$(git rev-parse HEAD) bash .github/release/plan.sh
+        env:
+          EVENT: ${{ github.event_name }}
+          REF_NAME: ${{ github.ref_name }}
+          CHANNEL: ${{ inputs.channel }}
+          GH_TOKEN: ${{ github.token }}
+
+  # ---- Build: repository code; no environment, secrets or id-token ----------
+
+  # Spaceman.app, unsigned; sign-macos signs it with the Developer ID. Xcode 26
+  # (macos-26) compiles app/AppIcon.icon.
+  build-macos:
+    needs: plan
+    runs-on: macos-26
+    timeout-minutes: 60
+    outputs:
+      digest: ${{ steps.upload.outputs.digest }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
+        with:
+          toolchain: 1.100.0
+      - name: Build Spaceman.app
+        env:
+          SPACEMAN_RELEASE_UNSIGNED: "1"
+        run: |
+          bundle=$(scripts/build-app.sh | tail -n 1)
+          [ "$bundle" = "$PWD/target/Spaceman.app" ] || { echo "::error::build-app.sh made $bundle."; exit 1; }
+          scripts/validate-release.sh --metadata-only
+          mkdir -p "$RUNNER_TEMP/macos"
+          /usr/bin/ditto -c -k --keepParent "$bundle" "$RUNNER_TEMP/macos/Spaceman.app.zip"
+      - id: upload
+        uses: ./.github/release/upload
+        with:
+          name: build-macos-arm64
+          path: ${{ runner.temp }}/macos
+
+  # ---- Sign: release environment; only .github/release/ is checked out -------
+
+  sign-macos:
+    needs: [plan, build-macos]
+    runs-on: macos-26
+    timeout-minutes: 90
+    environment: release
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      SPACEMAN_VERSION: ${{ needs.plan.outputs.version }}
+      SPACEMAN_BUNDLE_VERSION: ${{ needs.plan.outputs.bundle-version }}
+    outputs:
+      digest: ${{ steps.upload.outputs.digest }}
+    steps:
+      - &checkout-release
+        name: Check out the release scripts
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.sha }}
+          sparse-checkout: /.github/release/
+          sparse-checkout-cone-mode: false
+          persist-credentials: false
+      - name: Require the Apple values
+        env:
+          KEY_ID: ${{ vars.APPLE_NOTARY_KEY_ID }}
+          ISSUER: ${{ vars.APPLE_NOTARY_ISSUER_ID }}
+        run: |
+          [ -n "$KEY_ID" ] && [ -n "$ISSUER" ] ||
+            { echo "::error::The release environment needs APPLE_NOTARY_KEY_ID and APPLE_NOTARY_ISSUER_ID."; exit 1; }
+      - name: Download
+        uses: ./.github/release/download
+        with:
+          pattern: build-macos-arm64
+          digests: build-macos-arm64=${{ needs.build-macos.outputs.digest }}
+      # AWS credentials only as this action's step outputs (never in the job's
+      # environment), for the one step below that reads the secrets.
+      - id: aws
+        name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd # v6.3.0
+        with:
+          role-to-assume: arn:aws:iam::604439173067:role/github/spaceman-release
+          role-session-name: spaceman-${{ github.run_id }}
+          role-duration-seconds: 900
+          aws-region: us-east-1
+          output-env-credentials: false
+          output-credentials: true
+      - name: Import the certificate and notary key
+        env:
+          AWS_ACCESS_KEY_ID: ${{ steps.aws.outputs.aws-access-key-id }}
+          AWS_SECRET_ACCESS_KEY: ${{ steps.aws.outputs.aws-secret-access-key }}
+          AWS_SESSION_TOKEN: ${{ steps.aws.outputs.aws-session-token }}
+        run: |
+          bash .github/release/with-secrets.sh \
+            APPLE_SIGNING_CERTIFICATE=shared/APPLE_SIGNING_CERTIFICATE \
+            APPLE_NOTARY_KEY=shared/APPLE_NOTARY_KEY \
+            -- bash .github/release/macos-credentials.sh "$RUNNER_TEMP/credentials"
+      - name: Sign, notarize and staple
+        env:
+          SPACEMAN_NOTARY_KEY_ID: ${{ vars.APPLE_NOTARY_KEY_ID }}
+          SPACEMAN_NOTARY_ISSUER: ${{ vars.APPLE_NOTARY_ISSUER_ID }}
+        run: bash .github/release/sign-macos.sh "$RUNNER_TEMP/in/build-macos-arm64/Spaceman.app.zip" "$RUNNER_TEMP/out"
+      - name: Remove the credentials
+        if: always()
+        run: |
+          security delete-keychain "$RUNNER_TEMP/credentials/signing.keychain-db" 2>/dev/null || true
+          rm -rf "$RUNNER_TEMP/credentials"
+      - id: upload
+        uses: ./.github/release/upload
+        with:
+          name: sign-macos
+          path: ${{ runner.temp }}/out
+
+  # ---- Verify: repository code on the signed files; no secrets ----------------
+
+  # What Gatekeeper and Sparkle check, the same release validation the release
+  # Mac runs, and a launch of the signed CLI.
+  verify-macos:
+    needs: [plan, sign-macos]
+    runs-on: macos-26
+    timeout-minutes: 20
+    env:
+      SPACEMAN_VERSION: ${{ needs.plan.outputs.version }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - uses: ./.github/release/download
+        with:
+          pattern: sign-macos
+          digests: sign-macos=${{ needs.sign-macos.outputs.digest }}
+      - name: Check the signed app
+        run: |
+          dir="$RUNNER_TEMP/in/sign-macos"
+          zip="Spaceman-$SPACEMAN_VERSION-macos-arm64.zip"
+          (cd "$dir" && shasum -a 256 -c "$zip.sha256")
+          check=$(mktemp -d)
+          ditto -x -k "$dir/$zip" "$check"
+          app="$check/Spaceman.app"
+          SPACEMAN_RELEASE_ARCH=arm64 scripts/validate-release.sh "$app" "$dir/$zip"
+          details=$(codesign --display --verbose=4 "$app" 2>&1)
+          grep -qx "TeamIdentifier=$SPACEMAN_TEAM_ID" <<< "$details" || { echo "::error::Not signed by team $SPACEMAN_TEAM_ID."; exit 1; }
+          codesign --verify --deep --strict -R="anchor apple generic and certificate leaf[subject.OU] = \"$SPACEMAN_TEAM_ID\" and identifier \"anomaly.spaceman\"" "$app"
+          spctl --assess --type execute --verbose=2 "$app" 2>&1 | tee "$check/spctl.txt"
+          grep -q 'source=Notarized Developer ID' "$check/spctl.txt" || { echo "::error::Gatekeeper does not see a notarized Developer ID app."; exit 1; }
+          "$app/Contents/MacOS/spaceman" config-check config.example.toml
+          codesign -dv "$app" 2>&1 | grep -E '^(Identifier|TeamIdentifier|Authority=Developer)' >> "$GITHUB_STEP_SUMMARY"
+
+  # ---- Publish: release environment; only .github/release/ is checked out ----
+
+  # The only job that publishes to the release service; its OIDC token is the
+  # credential.
+  publish:
+    needs: [plan, sign-macos, verify-macos]
+    if: needs.plan.outputs.channel != 'check'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    environment: release
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      RELEASE: ${{ needs.plan.outputs.service }}
+      SPACEMAN_VERSION: ${{ needs.plan.outputs.version }}
+      SPACEMAN_RELEASE_CHANNEL: ${{ needs.plan.outputs.release-channel }}
+    steps:
+      - *checkout-release
+      - uses: ./.github/release/download
+        with:
+          pattern: sign-macos
+          digests: sign-macos=${{ needs.sign-macos.outputs.digest }}
+      - name: Publish
+        env:
+          NOTES_URL: ${{ needs.plan.outputs.notes-url }}
+        run: |
+          dir="$RUNNER_TEMP/in/sign-macos"
+          bash .github/release/release-service.sh publish "$dir" "$NOTES_URL"
+          { echo '### Manifest'; echo '```json'; cat "$dir/manifest.json"; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+
+  # Last, once the release service published: tags v<version> on the released
+  # commit with the built-in token, so a failed run leaves no tag. A check run
+  # pushes and deletes a throwaway tag.
+  tag:
+    name: Tag
+    needs: [plan, verify-macos, publish]
+    if: >-
+      ${{ !cancelled() && (
+        (needs.plan.outputs.channel == 'stable' && needs.publish.result == 'success')
+        || (needs.plan.outputs.channel == 'check' && needs.verify-macos.result == 'success') ) }}
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    env:
+      SHA: ${{ github.sha }}
+      SPACEMAN_RELEASE_TAG: ${{ needs.plan.outputs.tag }}
+    steps:
+      # Credentials stay so the job can push the tag; it runs no repository
+      # code beyond .github/release/.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.sha }}
+          sparse-checkout: /.github/release/
+          sparse-checkout-cone-mode: false
+      - name: Tag
+        env:
+          SPACEMAN_RELEASE_TAG_TEST: ${{ needs.plan.outputs.channel == 'check' && '1' || '' }}
+        run: bash .github/release/tag-release.sh

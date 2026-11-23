@@ -9,7 +9,7 @@
     <key>CFBundleExecutable</key>
     <string>spaceman-agent</string>
     <key>CFBundleIdentifier</key>
-    <string>com.kitlangton.spaceman</string>
+    <string>anomaly.spaceman</string>
     <key>CFBundleIconFile</key>
     <string>AppIcon</string>
     <key>CFBundleIconName</key>

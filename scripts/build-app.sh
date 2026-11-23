@@ -1,4 +1,8 @@
 #!/bin/sh
+# Builds target/Spaceman.app and signs it with a Developer ID identity
+# (SPACEMAN_CODESIGN_IDENTITY, or the first one in the keychain).
+# SPACEMAN_RELEASE_UNSIGNED=1 skips signing: the Release workflow's build job
+# makes the bundle that way and its sign job signs it (.github/release/).
 set -eu
 
 root=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
@@ -7,6 +11,7 @@ icon_output="$root/target/AppIcon.assets"
 icon_info="$root/target/AppIcon-info.plist"
 sparkle_dir=$("$root/scripts/setup-sparkle.sh")
 identity=${SPACEMAN_CODESIGN_IDENTITY:-}
+unsigned=${SPACEMAN_RELEASE_UNSIGNED:-}
 deployment_target=$(/usr/bin/plutil -extract LSMinimumSystemVersion raw "$root/app/Info.plist")
 sdk_version=$(/usr/bin/xcrun --sdk macosx --show-sdk-version)
 cargo_bin=${CARGO:-}
@@ -22,22 +27,31 @@ if [ -z "$cargo_bin" ] || ! command -v "$cargo_bin" >/dev/null 2>&1; then
   exit 1
 fi
 
-if [ -z "$identity" ]; then
-  identity=$(security find-identity -v -p codesigning \
-    | sed -n 's/.*"\(Developer ID Application:[^"]*\)".*/\1/p' \
-    | head -1)
-fi
-if [ -z "$identity" ]; then
-  echo "No Developer ID Application identity found; set SPACEMAN_CODESIGN_IDENTITY." >&2
-  exit 1
-fi
-case "$identity" in
-  "Developer ID Application:"*) ;;
+case "$unsigned" in
+  ''|1) ;;
   *)
-    echo "SPACEMAN_CODESIGN_IDENTITY must be a Developer ID Application identity, not '$identity'." >&2
+    echo "SPACEMAN_RELEASE_UNSIGNED must be 1 or unset, not '$unsigned'." >&2
     exit 1
     ;;
 esac
+if [ -z "$unsigned" ]; then
+  if [ -z "$identity" ]; then
+    identity=$(security find-identity -v -p codesigning \
+      | sed -n 's/.*"\(Developer ID Application:[^"]*\)".*/\1/p' \
+      | head -1)
+  fi
+  if [ -z "$identity" ]; then
+    echo "No Developer ID Application identity found; set SPACEMAN_CODESIGN_IDENTITY." >&2
+    exit 1
+  fi
+  case "$identity" in
+    "Developer ID Application:"*) ;;
+    *)
+      echo "SPACEMAN_CODESIGN_IDENTITY must be a Developer ID Application identity, not '$identity'." >&2
+      exit 1
+      ;;
+  esac
+fi
 
 CARGO_TARGET_DIR="$root/target" \
   "$cargo_bin" build --manifest-path "$root/Cargo.toml" --release --locked --workspace --bins
@@ -72,6 +86,10 @@ xcrun actool "$root/app/AppIcon.icon" \
 cp "$icon_output/AppIcon.icns" "$icon_output/Assets.car" "$bundle/Contents/Resources/"
 /usr/bin/ditto "$sparkle_dir/Sparkle.framework" "$bundle/Contents/Frameworks/Sparkle.framework"
 plutil -lint "$bundle/Contents/Info.plist" >/dev/null
+if [ -n "$unsigned" ]; then
+  printf '%s\n' "$bundle"
+  exit 0
+fi
 sparkle="$bundle/Contents/Frameworks/Sparkle.framework/Versions/B"
 codesign --force --timestamp --options runtime --sign "$identity" \
   "$sparkle/XPCServices/Installer.xpc"
@@ -86,7 +104,7 @@ codesign --force --timestamp --options runtime --sign "$identity" \
 codesign --force --timestamp --options runtime --sign "$identity" \
   "$bundle/Contents/MacOS/spaceman"
 codesign --force --timestamp --options runtime --sign "$identity" \
-  --identifier com.kitlangton.spaceman \
+  --identifier anomaly.spaceman \
   "$bundle"
 codesign --verify --deep --strict "$bundle"
 
