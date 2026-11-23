@@ -49,8 +49,12 @@ use crate::{apps, controls::Paint};
 
 /// While a panel is up, how often it checks its display is still connected.
 const DISPLAY_CHECK_MS: u64 = 250;
-/// Only the first show fades the panel itself: nothing has been drawn to enter from yet.
+/// Only the first show fades the panel itself over 150 ms: nothing has been drawn to enter from yet.
 const FIRST_FADE: Duration = Duration::from_millis(150);
+/// Subsequent reveals use a brief fade (>= 33 ms) instead of `show()` so AppKit marks the
+/// panel visible before Rune's occlusion check runs, avoiding its 250 ms retry
+/// (anomalyco/rune#1714) while letting the capsule's own entry spring carry the motion.
+const REVEAL_FADE: Duration = Duration::from_millis(40);
 /// Room on every side of the capsule for its shadow, which the panel's edge would cut, and
 /// for ten or so workspaces before the row scrolls.
 const OVERLAY_SIZE: (f32, f32) = (860.0, pill::PILL_HEIGHT + 2.0 * pill::SHADOW_REACH);
@@ -330,7 +334,7 @@ impl HudDriver {
                     HudTransition::Ignored => return false,
                     HudTransition::Show if overlay.primed => {
                         if let Some(handle) = handle {
-                            handle.show();
+                            handle.fade_in(REVEAL_FADE);
                         }
                     }
                     HudTransition::Show => {
