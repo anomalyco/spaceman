@@ -588,3 +588,9 @@ Tape K unchanged (take k7, 105.8 s). Commits `a3eb9eb` (controls, opening, clips
 5. Dax at the window is Dax Raad, with his blessing (Kit, Nov 22): the last photo of the Hedge album
    (`n-alan.jpg`, `photos.md`) and his CCTV clip on six (`seq-alan.jpg`, `feeds.md`).
 6. `hero.py close=binders,wall,drill` renders close-ups of the details for checking.
+7. The export's opening was choppy (Kit, Nov 23). Frame 0 was the flat desktop, because the cues at 0 ran
+   only after the first step; they now run before the first frame, on the site too. Seeking the plate
+   video frame by frame in headless Chrome showed the keyframe for the two frames before it, so the room
+   jumped and froze every 15 frames. `capture.ts` now serves the plate's frames as PNGs from the 10-bit
+   HEVC at `/__plate_frames/` (`?plateFrames`), and `plate-check.ts` checks every master export
+   against the plate: frame 0→1 went from 119.9 to 0.6, and 22 freezes and 6 jumps went to none.

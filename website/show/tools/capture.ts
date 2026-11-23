@@ -175,6 +175,10 @@ if (masterArg) {
   await $`ffmpeg -y -loglevel error -i ${master} -vf scale=1440:900:flags=lanczos -c:v libx264 -preset slow -crf 23 -profile:v high -level:v 4.1 -pix_fmt yuv420p ${color} -c:a aac -b:a 160k -ac 2 -movflags +faststart ${share}`
   rmSync(raw)
   for (const f of [master, share]) (report.master as any)[f.split("/").pop()!] = (Bun.file(f).size / 1e6).toFixed(1) + " MB"
+  // the opening must move as smoothly as its plate: no flash on the first frame, no jump or freeze
+  const pc = await $`bun ${join(import.meta.dir, "plate-check.ts")} ${share}`.nothrow().quiet()
+  ;(report.master as any).plateCheck = { ok: pc.exitCode === 0, ...JSON.parse(pc.stdout.toString() || "{}") }
+  if (pc.exitCode) console.error("plate-check failed: the opening stutters, see report.json")
   writeFileSync(join(out, "report.json"), JSON.stringify(report, null, 1))
   console.log(JSON.stringify(report.master, null, 1))
   await browser.close()
