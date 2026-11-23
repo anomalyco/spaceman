@@ -128,3 +128,14 @@ unwrap_used = "warn"
 
 [lints]
 workspace = true
+
+# Rune ships patched copies of these crates in its vendor/ folder and expects every app that
+# builds it to apply them: a dependency's [patch] does not reach the workspace that depends on it.
+# Keep the rev in step with the rune crates in agent/Cargo.toml.
+[patch.crates-io]
+accesskit_macos = { git = "https://github.com/anomalyco/rune", rev = "1de0710548e53bb4aa6ef05cd4ca2c69b8fa8323" }
+accesskit_windows = { git = "https://github.com/anomalyco/rune", rev = "1de0710548e53bb4aa6ef05cd4ca2c69b8fa8323" }
+parley_engine = { git = "https://github.com/anomalyco/rune", rev = "1de0710548e53bb4aa6ef05cd4ca2c69b8fa8323" }
+sctk-adwaita = { git = "https://github.com/anomalyco/rune", rev = "1de0710548e53bb4aa6ef05cd4ca2c69b8fa8323" }
+wgpu-hal = { git = "https://github.com/anomalyco/rune", rev = "1de0710548e53bb4aa6ef05cd4ca2c69b8fa8323" }
+winit = { git = "https://github.com/anomalyco/rune", rev = "1de0710548e53bb4aa6ef05cd4ca2c69b8fa8323" }
