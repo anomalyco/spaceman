@@ -70,6 +70,22 @@ fn activation_settling_defers_refresh_without_an_ax_event() {
 }
 
 #[test]
+fn fallback_retile_backs_off_once_idle() {
+    assert_eq!(
+        fallback_refresh_interval(Duration::ZERO),
+        FALLBACK_REFRESH_INTERVAL
+    );
+    assert_eq!(
+        fallback_refresh_interval(RECENT_ACTIVITY - Duration::from_millis(1)),
+        FALLBACK_REFRESH_INTERVAL
+    );
+    assert_eq!(
+        fallback_refresh_interval(RECENT_ACTIVITY),
+        IDLE_FALLBACK_REFRESH_INTERVAL
+    );
+}
+
+#[test]
 fn window_creation_bypasses_activation_settling() {
     assert!(refresh_due(true, true, false, false));
     assert!(!refresh_due(false, true, false, false));

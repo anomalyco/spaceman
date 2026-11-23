@@ -118,13 +118,15 @@ pub struct MainThreadAgent {
     pending_inputs: InputQueue,
     gesture_tracker: GestureTracker,
     last_refresh: Instant,
-    last_application_refresh: Instant,
+    /// Last input, activation, or window event; idle loops retile less often.
+    last_activity: Instant,
+    last_frontmost_check: Instant,
     last_hotkey_refresh: Instant,
     last_ui_refresh: Instant,
     config_stamp: Option<SystemTime>,
     launch_at_login: UiLaunchAtLogin,
     /// Login-item and config state, read off the main thread.
-    probe: Receiver<probe::Probe>,
+    probe: probe::Prober,
     ui_dirty: bool,
     mouse_was_down: bool,
     frontmost_application: Option<AppInstanceId>,
@@ -209,7 +211,8 @@ impl MainThreadAgent {
             pending_inputs: InputQueue::default(),
             gesture_tracker: GestureTracker::default(),
             last_refresh: initial_refresh,
-            last_application_refresh: initial_refresh,
+            last_activity: Instant::now(),
+            last_frontmost_check: Instant::now(),
             last_hotkey_refresh: initial_refresh,
             last_ui_refresh: Instant::now(),
             config_stamp: crate::config::modified(),
@@ -452,6 +455,7 @@ impl MainThreadAgent {
     }
 
     fn queue_worker_input(&mut self, input: QueuedInput) {
+        self.last_activity = Instant::now();
         if let Err(error) = self.pending_inputs.push(input) {
             log_event!("{error}");
             self.last_error = Some(error.into());
@@ -472,8 +476,10 @@ impl MainThreadAgent {
         let mut config_changed = false;
         if periodic {
             self.last_ui_refresh = Instant::now();
-            while let Ok(probe) = self.probe.try_recv() {
-                self.launch_at_login = UiLaunchAtLogin::from_result(probe.launch_at_login);
+            while let Ok(probe) = self.probe.results.try_recv() {
+                if let Some(status) = probe.launch_at_login {
+                    self.launch_at_login = UiLaunchAtLogin::from_result(status);
+                }
                 if probe.config_stamp != self.config_stamp {
                     config_changed = true;
                     self.config_stamp = probe.config_stamp;
@@ -482,6 +488,10 @@ impl MainThreadAgent {
                         status_item::set_hud(hud);
                     }
                 }
+            }
+            // Approval happens in System Settings; watch for it closely until then.
+            if self.launch_at_login == UiLaunchAtLogin::NeedsApproval {
+                self.probe.refresh_login();
             }
         }
         if accessibility_poll {

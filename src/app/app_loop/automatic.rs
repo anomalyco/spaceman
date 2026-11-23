@@ -11,9 +11,18 @@ impl MainThreadAgent {
         if !self.automatic {
             return;
         }
-        let current_frontmost = macos::frontmost_application();
-        if current_frontmost != self.frontmost_application {
-            self.frontmost_application = current_frontmost;
+        // `NSWorkspace` flags activations; asking LaunchServices for the
+        // frontmost app on every tick cost a synchronous XPC 40 times a second.
+        let check_frontmost = self.events.take_frontmost_changed()
+            || self.last_frontmost_check.elapsed() >= FRONTMOST_FALLBACK_INTERVAL;
+        let frontmost_changed = check_frontmost && {
+            self.last_frontmost_check = Instant::now();
+            let current = macos::frontmost_application();
+            std::mem::replace(&mut self.frontmost_application, current)
+                != self.frontmost_application
+        };
+        if frontmost_changed {
+            self.last_activity = Instant::now();
             self.activation_refresh_at = Some(Instant::now() + APPLICATION_ACTIVATION_SETTLE);
             // Background cycles and previews yield to activation changes. Explicit
             // user commands (switch, move, focus) change the frontmost app
@@ -29,6 +38,9 @@ impl MainThreadAgent {
             self.events.invalidate();
         }
         let mouse_down = macos::mouse_down();
+        if mouse_down {
+            self.last_activity = Instant::now();
+        }
         if !self.mouse_was_down && mouse_down {
             // Core Graphics hit-testing and readback do not send synchronous
             // AX messages to another app from the main-thread input loop.
@@ -65,10 +77,6 @@ impl MainThreadAgent {
                 .send_with_outputs(|outputs| WorkerCommand::Gesture(gesture, true, outputs));
         }
         self.mouse_was_down = mouse_down;
-        if self.last_application_refresh.elapsed() >= APPLICATION_REFRESH_INTERVAL {
-            self.events.refresh_applications();
-            self.last_application_refresh = Instant::now();
-        }
         if !self.worker.is_busy()
             && let Some(input) = self.pending_inputs.front().cloned()
         {
@@ -86,10 +94,14 @@ impl MainThreadAgent {
             && {
                 let window_created = self.events.take_window_created();
                 let event_dirty = (window_created || activation_ready) && self.events.take_dirty();
+                if window_created || event_dirty {
+                    self.last_activity = Instant::now();
+                }
                 refresh_due(
                     window_created,
                     event_dirty,
-                    self.last_refresh.elapsed() >= FALLBACK_REFRESH_INTERVAL,
+                    self.last_refresh.elapsed()
+                        >= fallback_refresh_interval(self.last_activity.elapsed()),
                     activation_ready,
                 )
             }

@@ -78,11 +78,28 @@ use runtime::*;
 use worker::spawn_worker;
 
 pub const TICK_INTERVAL: Duration = Duration::from_millis(25);
+/// Retile without an event this often while the user is active...
 const FALLBACK_REFRESH_INTERVAL: Duration = Duration::from_secs(1);
+/// ...and this often once nothing has happened for `RECENT_ACTIVITY`. Each
+/// retile sends Accessibility queries to every app, so idle ones stay rare.
+const IDLE_FALLBACK_REFRESH_INTERVAL: Duration = Duration::from_secs(5);
+const RECENT_ACTIVITY: Duration = Duration::from_secs(5);
+/// `NSWorkspace` reports activations as they happen; this re-check only
+/// covers a missed notification (lock screen, notification centre hiccups).
+const FRONTMOST_FALLBACK_INTERVAL: Duration = Duration::from_secs(2);
 const APPLICATION_REFRESH_INTERVAL: Duration = Duration::from_secs(1);
 const ACCESSIBILITY_POLL_INTERVAL: Duration = Duration::from_millis(120);
 const RESTORE_RETRY_INTERVAL: Duration = Duration::from_secs(1);
 const APPLICATION_ACTIVATION_SETTLE: Duration = Duration::from_millis(50);
+
+/// How long since the last refresh a retile without an event waits.
+fn fallback_refresh_interval(since_activity: Duration) -> Duration {
+    if since_activity < RECENT_ACTIVITY {
+        FALLBACK_REFRESH_INTERVAL
+    } else {
+        IDLE_FALLBACK_REFRESH_INTERVAL
+    }
+}
 
 const fn refresh_due(
     window_created: bool,
