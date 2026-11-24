@@ -1,3 +1,4 @@
+use super::switching::RepeatSwitch;
 use super::*;
 
 pub(super) struct CycleStatus {
@@ -224,10 +225,13 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
         outputs: macos::DisplayOutputs,
         cancelled: &AtomicBool,
     ) -> Result<CycleStatus, String> {
+        // A switch keeps a focus command still in flight: pressing the active
+        // workspace's shortcut again steps from the window the last press
+        // focused, which Accessibility may not report yet. Every other action
+        // here starts from whatever focus is reported now.
         if matches!(
             action,
-            WorkerAction::SwitchWorkspace(_)
-                | WorkerAction::SelectWorkspace(_)
+            WorkerAction::SelectWorkspace(_)
                 | WorkerAction::WorkspaceBackAndForth
                 | WorkerAction::MoveWorkspaceToDisplay(_)
                 | WorkerAction::Swipe(..)
@@ -265,8 +269,13 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
                 }
                 Ok(status)
             }
-            WorkerAction::SwitchWorkspace(workspace) | WorkerAction::SelectWorkspace(workspace) => {
-                rt.switch(workspace, outputs, cancelled)
+            WorkerAction::SwitchWorkspace(workspace) => {
+                rt.switch_with(workspace, outputs, cancelled, RepeatSwitch::CycleFocus)
+            }
+            // A menu-bar or HUD click on the workspace already up re-focuses it;
+            // clicking it again must not jump to another window.
+            WorkerAction::SelectWorkspace(workspace) => {
+                rt.switch_with(workspace, outputs, cancelled, RepeatSwitch::KeepFocus)
             }
             WorkerAction::WorkspaceBackAndForth => rt.workspace_back_and_forth(outputs, cancelled),
             WorkerAction::MoveWorkspaceToDisplay(target) => {

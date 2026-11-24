@@ -13,7 +13,12 @@ Switch workspace                                           // ws.switch
 ├── Focus -> last-focused tile of the incoming workspace, keyboard focus included
 │   (that window raised and made main, then its app brought forward with `AXFrontmost`), unless
 │   one of its windows already has focus (e.g. focus follow): that window keeps it
-└── Already active -> stays, re-focuses its remembered tile (keeps current focus if it is there)
+└── Already active -> stays and re-focuses its remembered tile (keeps current focus if it is there)
+    ├── Pressed again (`Option+<ws>` / `ctl switch`) while focus is on that workspace -> the
+    │   next tile takes focus, wrapping at the end of the tile order; the way to walk the shared
+    │   frame in Fullscreen Layout
+    ├── Focus on another display's workspace -> only brings focus back; the press after that cycles
+    └── Menu bar or HUD click on the active workspace -> never cycles, keeps the current focus
 
 Swipe                                                      // ws.swipe
 ├── Three-finger swipe left/right -> next/previous workspace in the menu section of the display
@@ -122,7 +127,8 @@ with the original frame persisted to `parked-windows.json` first.
 
 ```ts
 Keyboard (while tiling is enabled)
-├── Option+<1..0 | A..Z>        -> switch
+├── Option+<1..0 | A..Z>        -> switch; pressed again on the active workspace -> next tile
+│                                  (wraps, and is how Fullscreen Layout tiles get focus)
 ├── Option+Shift+<1..0 | A..Z>  -> move focused window
 ├── Option+Tab                  -> back-and-forth (last two workspaces focused, any display)
 └── Option+Shift+Tab            -> move focused workspace to next display
@@ -152,6 +158,13 @@ on the same letter.
   `workspace_back_and_forth_bounces_between_the_last_two_focused_workspaces`,
   `workspace_back_and_forth_on_one_display_switches_like_before`,
   `switching_to_an_unconfigured_named_workspace_is_rejected`.
+- Unit (FakeBackend), `src/app/tests/switch_repeat.rs`: a repeat `SwitchWorkspace` walks a
+  3-tile workspace A -> B -> C -> A in split and Fullscreen Layout (remembered focus and HUD
+  included), warps the pointer onto each next tile under `mouse_follows_focus`, steps on inside
+  the focus settle window while Accessibility still reports the old window; with focus on another
+  display's workspace the first press only re-focuses and the next one cycles; a float hands focus
+  to the remembered tile; a menu-bar/HUD `SelectWorkspace` on the active workspace never cycles;
+  a single-tile workspace stays put.
 - Unit (FakeBackend), `src/app/tests/cross_display.rs`: moving a window to a workspace on
   another display, on screen (tiled, floating, focus history) or hidden (parked on its own display
   even when a write off the other display's edge is refused, shown on the target display later,

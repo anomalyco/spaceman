@@ -19,6 +19,7 @@ mod rules;
 mod scratchpad;
 mod spacing;
 mod startup;
+mod switch_repeat;
 mod switching;
 mod tear_regressions;
 use crate::{BindingState, Slot, SlotId};

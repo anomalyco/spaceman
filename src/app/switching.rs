@@ -11,12 +11,26 @@ const REVEAL_REWRITE_INTERVAL: Duration = Duration::from_millis(100);
 
 use super::commands::{WarpContext, WorkspaceFocusOutcome};
 
+mod repeat;
+
+pub(super) use repeat::RepeatSwitch;
+
 impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
     pub(super) fn switch(
         &mut self,
         workspace: WorkspaceId,
         outputs: macos::DisplayOutputs,
         cancelled: &AtomicBool,
+    ) -> Result<CycleStatus, String> {
+        self.switch_with(workspace, outputs, cancelled, RepeatSwitch::KeepFocus)
+    }
+
+    pub(super) fn switch_with(
+        &mut self,
+        workspace: WorkspaceId,
+        outputs: macos::DisplayOutputs,
+        cancelled: &AtomicBool,
+        repeat: RepeatSwitch,
     ) -> Result<CycleStatus, String> {
         self.synchronize_foreground(&outputs);
         let selector = self.ensure_managed_workspace(workspace)?;
@@ -28,7 +42,29 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
             .find(|resolved| resolved.display_id == display_id)
             .map_or(workspace, |resolved| resolved.workspace);
         if previous == workspace {
-            let focused = self.backend.focused_window();
+            // A repeat press steps from the window the previous press focused,
+            // which Accessibility may not report yet. Every other request
+            // trusts the reported focus exactly as before.
+            let focused = if repeat == RepeatSwitch::CycleFocus {
+                self.current_focus()
+            } else {
+                self.backend.focused_window()
+            };
+            // A repeat press of the shortcut for the workspace already up and
+            // focused walks its tiles. With focus somewhere else (another
+            // display's workspace, an unmanaged window) the press keeps its old
+            // job of bringing focus back to this workspace, and only the press
+            // after that cycles.
+            if repeat == RepeatSwitch::CycleFocus
+                && let Some(focused) = focused
+                    .as_ref()
+                    .filter(|focused| self.workspaces.workspace_of_any(focused) == Some(workspace))
+                && self.cycle_focus_on_repeat(workspace, focused, &outputs)?
+            {
+                let mut status = self.status(0, &outputs);
+                status.hud = Some(self.hud_for(workspace, UiHudKind::Workspace, None, &outputs));
+                return Ok(status);
+            }
             let windows = self.workspaces.windows(workspace);
             if self.workspaces.uses_fullscreen_layout(workspace)
                 && let Some(focused) = focused
@@ -57,6 +93,9 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
             status.hud = Some(self.hud_for(workspace, UiHudKind::Workspace, None, &outputs));
             return Ok(status);
         }
+        // A genuine switch: a focus command from before it is no longer in
+        // flight on anything this display will show.
+        self.pending_focus = None;
         let switch_started = Instant::now();
         let mut outgoing = self.workspaces.windows(previous);
         self.order_back_to_front(&mut outgoing, |window| window.window_id);

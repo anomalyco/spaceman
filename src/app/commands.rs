@@ -387,7 +387,7 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
 
     /// The focused window, trusting a focus command still in flight over the
     /// stale window Accessibility reports until the target app activates.
-    fn current_focus(&mut self) -> Option<crate::PhysicalWindowId> {
+    pub(super) fn current_focus(&mut self) -> Option<crate::PhysicalWindowId> {
         let reported = self.backend.focused_window();
         let Some(pending) = self.pending_focus.take() else {
             return reported;
@@ -400,7 +400,7 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
         reported
     }
 
-    fn focus_tile(
+    pub(super) fn focus_tile(
         &mut self,
         origin: Option<crate::PhysicalWindowId>,
         target: &crate::PhysicalWindowId,
