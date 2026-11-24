@@ -230,6 +230,9 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
 
         let mut moved_floating_originals = Vec::new();
         for window in &moved_floating {
+            if self.parked.contains_key(window) {
+                continue;
+            }
             if cancelled.load(Ordering::Acquire) {
                 self.rollback_move_workspace(MoveRollback {
                     moved_ws,
@@ -391,6 +394,24 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
             }
         } else {
             self.foreground_lanes.remove(&source_display_id);
+        }
+
+        // Translate any floating window still waiting on a pending recovery frame
+        // from the old display onto the new display so restore lands there (#286).
+        for window in &moved_floating {
+            let Some(&recovery) = self.parked.get(window) else {
+                continue;
+            };
+            if source_output.contains_center(recovery) {
+                let relocated = translate_frame_to_output(recovery, source_output, target_output);
+                let _: bool = self.record_recovery(window, relocated);
+            }
+            if !matches!(
+                self.restore_window(window),
+                macos::ApplyOutcome::Applied | macos::ApplyOutcome::Gone
+            ) {
+                failed += 1;
+            }
         }
 
         let moved_windows = self.workspaces.windows(moved_ws);

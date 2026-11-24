@@ -570,3 +570,163 @@ fn moving_floating_window_back_before_cross_display_park_settles_restores_on_mai
     assert_eq!(rt.backend.server_frames[&w], frame(50));
     assert_eq!(rt.backend.frames[&w], frame(50));
 }
+
+#[test]
+fn moving_workspace_relocates_pending_parked_float_onto_target_display() {
+    for temporarily_unavailable in [true, false] {
+        let w = window(10);
+        let backend = FakeBackend {
+            focused: Some(w.clone()),
+            frontmost: Some(w.app.clone()),
+            frames: HashMap::from([(w.clone(), frame(50))]),
+            observation: Some(observation(&w, frame(50))),
+            ..FakeBackend::default()
+        };
+        let config = Config::parse(
+            "version = 1\n[[rules]]\nbundle_id = 'com.example.Test'\naction = 'float'",
+        )
+        .unwrap();
+        let mut rt = runtime_with_config(backend, config);
+        let act = |rt: &mut WorkspaceRuntime<FakeBackend>, action: WorkerAction| {
+            let Some(WorkerResult::Status { result, .. }) = rt.execute(
+                WorkerCommand::Action(action, outputs()),
+                &AtomicBool::new(false),
+            ) else {
+                panic!("expected status");
+            };
+            result.unwrap()
+        };
+        assert_eq!(act(&mut rt, WorkerAction::Retile).failed, 0);
+        assert_eq!(
+            act(
+                &mut rt,
+                WorkerAction::MoveApp("com.example.Test".into(), WorkspaceId::TWO)
+            )
+            .failed,
+            0
+        );
+        rt.backend.focused = None;
+        rt.backend.position_outcome =
+            temporarily_unavailable.then_some(macos::ApplyOutcome::Unavailable);
+        assert_eq!(
+            act(
+                &mut rt,
+                WorkerAction::MoveApp("com.example.Test".into(), WorkspaceId::ONE)
+            )
+            .failed,
+            usize::from(temporarily_unavailable)
+        );
+        rt.backend.position_outcome = None;
+        assert_eq!(
+            act(
+                &mut rt,
+                WorkerAction::MoveWorkspaceToDisplay(DisplayTarget::Next)
+            )
+            .failed,
+            0
+        );
+        assert_eq!(
+            rt.workspaces.assignment(WorkspaceId::ONE),
+            &DisplaySelector::Secondary
+        );
+        rt.recently_parked
+            .insert(w.clone(), Instant::now() - Duration::from_secs(3));
+        for _ in 0..2 {
+            rt.backend.observation = Some(observation(&w, rt.backend.frames[&w]));
+            assert_eq!(act(&mut rt, WorkerAction::Retile).failed, 0);
+        }
+        assert!(!rt.parked.contains_key(&w));
+        assert!(!rt.backend.persisted.contains_key(&w));
+        assert_eq!(rt.backend.frames[&w], frame(1050));
+    }
+}
+
+#[test]
+fn display_pointer_follow_uses_dragged_floats_actual_display() {
+    let warps = |rt: &WorkspaceRuntime<FakeBackend>| -> Vec<(i32, i32)> {
+        rt.backend
+            .calls
+            .iter()
+            .filter_map(|call| match call {
+                BackendCall::WarpPointer(point) => Some(*point),
+                _ => None,
+            })
+            .collect()
+    };
+    let setup = |pointer: (i32, i32)| {
+        let windows = [
+            (window(10), frame(50)),
+            (window(20), frame(500)),
+            (window(30), frame(700)),
+        ];
+        let backend = FakeBackend {
+            frames: windows.iter().cloned().collect(),
+            focused: Some(window(30)),
+            frontmost: Some(window(30).app),
+            pointer: Some(pointer),
+            observation: Some(observation_for_windows(
+                "com.example.Test",
+                &window(30),
+                &windows,
+            )),
+            ..FakeBackend::default()
+        };
+        let config =
+            Config::parse("version = 1\n[settings]\nmouse_follows_focus = \"display\"\n").unwrap();
+        let mut rt = runtime_with_config(backend, config);
+        let run = |rt: &mut WorkspaceRuntime<FakeBackend>, cmd: WorkerCommand| {
+            let Some(WorkerResult::Status { result, .. }) =
+                rt.execute(cmd, &AtomicBool::new(false))
+            else {
+                panic!("expected status");
+            };
+            result.unwrap();
+        };
+        run(
+            &mut rt,
+            WorkerCommand::Action(WorkerAction::Retile, outputs()),
+        );
+        run(
+            &mut rt,
+            WorkerCommand::Action(WorkerAction::ToggleFloat, outputs()),
+        );
+        rt.backend.frames.insert(window(30), frame(1050));
+        run(
+            &mut rt,
+            WorkerCommand::Gesture(FinalGesture::Drop(window(30), (1250, 30)), false, outputs()),
+        );
+        rt.backend.calls.clear();
+        rt
+    };
+
+    // Pointer on Main, cycle onto dragged float on Secondary -> warps to float center.
+    let mut rt = setup((100, 100));
+    rt.backend.focused = Some(window(20));
+    rt.execute(
+        WorkerCommand::Action(WorkerAction::CycleFocus, outputs()),
+        &AtomicBool::new(false),
+    );
+    assert_eq!(warps(&rt), vec![(1250, 170)]);
+
+    // Pointer already on Secondary -> does not warp when cycling onto dragged float.
+    let mut rt = setup((1500, 300));
+    rt.backend.focused = Some(window(20));
+    rt.execute(
+        WorkerCommand::Action(WorkerAction::CycleFocus, outputs()),
+        &AtomicBool::new(false),
+    );
+    assert!(warps(&rt).is_empty());
+
+    // Switching away and back to workspace 1 (remembering the float on Secondary) warps from Main.
+    let mut rt = setup((100, 100));
+    rt.execute(
+        WorkerCommand::Action(WorkerAction::SwitchWorkspace(WorkspaceId::TWO), outputs()),
+        &AtomicBool::new(false),
+    );
+    rt.backend.calls.clear();
+    rt.execute(
+        WorkerCommand::Action(WorkerAction::SwitchWorkspace(WorkspaceId::ONE), outputs()),
+        &AtomicBool::new(false),
+    );
+    assert_eq!(warps(&rt), vec![(1250, 170)]);
+}

@@ -95,6 +95,8 @@ impl Doc {
             let named = self.named_workspaces();
             let bindings = self.bindings_mut();
             let unbound = bound_keys(bindings, |bound| bound.is_none());
+            let overridden = bound_keys(bindings, |bound| bound.is_some());
+            let mut suppress_moved = Vec::new();
             for key in unbound {
                 let Ok(chord) = shortcuts::parse_chord(&key) else {
                     continue;
@@ -102,12 +104,23 @@ impl Doc {
                 if !shortcuts::is_built_in_chord(chord, old, &named) {
                     continue;
                 }
+                bindings.remove(&key);
+                suppress_moved.push(chord);
+            }
+            for key in overridden {
+                let Ok(chord) = shortcuts::parse_chord(&key) else {
+                    continue;
+                };
+                if shortcuts::is_built_in_chord(chord, old, &named) {
+                    suppress_moved.push(chord);
+                }
+            }
+            for chord in suppress_moved {
                 let modifiers = if chord.modifiers.shift {
                     modifier.with_shift()
                 } else {
                     modifier
                 };
-                bindings.remove(&key);
                 let moved = Chord { modifiers, ..chord };
                 if find_chord(bindings, moved).is_none() {
                     bindings.insert(&moved.source(), value("none"));

@@ -90,6 +90,9 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
             return;
         }
         let target_rect = focused_window.unwrap_or(output);
+        let target_display_id = focused_window
+            .and_then(|frame| outputs.display_at(rect_center(frame)))
+            .map_or(target_display_id, |display| display.id.as_str());
         let already_there = self
             .backend
             .pointer_location()

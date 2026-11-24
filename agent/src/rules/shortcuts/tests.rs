@@ -239,3 +239,42 @@ fn clearing_or_rebinding_explicit_built_in_shortcut_preserves_retained_key_comme
     assert!(saved.contains("# Focus note."));
     assert!(saved.contains("# Balance note."));
 }
+
+#[test]
+fn modifier_round_trip_preserves_suppression_when_destination_holds_explicit_binding() {
+    let mut doc = Doc::parse("version = 1\n");
+    let ctrl_alt = Modifiers {
+        control: true,
+        option: true,
+        ..Modifiers::default()
+    };
+    let ctrl = Modifiers {
+        control: true,
+        ..Modifiers::default()
+    };
+    doc.set_shortcut(
+        "focus left",
+        Some(chord("alt+h")),
+        Some(chord("ctrl+alt+h")),
+    );
+    assert_eq!(bound(&doc, "ctrl+alt+h"), Some(Some("focus left".into())));
+    assert_eq!(bound(&doc, "alt+h"), Some(None));
+
+    // Switch Base modifier to Control+Option (colliding with ctrl+alt+h) and back to Option.
+    doc.set_shortcut_modifier(ctrl_alt);
+    let mut doc = saved(&doc);
+    assert_eq!(bound(&doc, "ctrl+alt+h"), Some(Some("focus left".into())));
+    assert_eq!(bound(&doc, "alt+h"), None);
+
+    doc.set_shortcut_modifier(Modifiers::OPTION);
+    let mut doc = saved(&doc);
+    assert_eq!(bound(&doc, "ctrl+alt+h"), Some(Some("focus left".into())));
+    assert_eq!(bound(&doc, "alt+h"), Some(None));
+
+    // Two-hop Option -> Control+Option -> Control also keeps focus left on ctrl+alt+h alone.
+    doc.set_shortcut_modifier(ctrl_alt);
+    doc.set_shortcut_modifier(ctrl);
+    let doc = saved(&doc);
+    assert_eq!(bound(&doc, "ctrl+alt+h"), Some(Some("focus left".into())));
+    assert_eq!(bound(&doc, "ctrl+h"), Some(None));
+}
