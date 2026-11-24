@@ -20,6 +20,7 @@ mod reconnect_unsettled;
 mod reliability;
 mod rules;
 mod scratchpad;
+mod set_aside;
 mod spacing;
 mod stacked_resize;
 mod startup;
@@ -51,6 +52,8 @@ enum BackendCall {
 struct FakeBackend {
     apps_confirming_no_windows: HashSet<AppInstanceId>,
     close_probes: Vec<AppInstanceId>,
+    /// Windows whose app is hidden or which are minimized.
+    set_aside: HashSet<crate::PhysicalWindowId>,
     frames: HashMap<crate::PhysicalWindowId, crate::Rect>,
     server_frames: HashMap<crate::PhysicalWindowId, crate::Rect>,
     /// Windows the window server still lists but has ordered out (closed
@@ -63,6 +66,8 @@ struct FakeBackend {
     observation: Option<crate::NativeObservation>,
     persisted: HashMap<crate::PhysicalWindowId, crate::Rect>,
     calls: Vec<BackendCall>,
+    /// Windows whose position writes went through the parking path.
+    parked_writes: Vec<crate::PhysicalWindowId>,
     fail_persist: bool,
     frame_outcome: Option<macos::WindowAccessError>,
     managed_outcome: Option<macos::ApplyOutcome>,
@@ -96,6 +101,10 @@ impl WorkspaceBackend for FakeBackend {
     fn confirms_no_windows(&mut self, app: &AppInstanceId) -> bool {
         self.close_probes.push(app.clone());
         self.apps_confirming_no_windows.contains(app)
+    }
+
+    fn confirms_set_aside(&mut self, window: &crate::PhysicalWindowId) -> bool {
+        self.set_aside.contains(window)
     }
 
     fn snapshot(
@@ -188,6 +197,15 @@ impl WorkspaceBackend for FakeBackend {
 
     fn onscreen_window_order(&mut self) -> Option<Vec<u32>> {
         self.stacking.clone()
+    }
+
+    fn set_parked_position(
+        &mut self,
+        window: &crate::PhysicalWindowId,
+        target: crate::Rect,
+    ) -> macos::ApplyOutcome {
+        self.parked_writes.push(window.clone());
+        self.set_position(window, target)
     }
 
     fn set_position(

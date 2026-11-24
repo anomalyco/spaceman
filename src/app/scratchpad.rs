@@ -36,8 +36,7 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
         cancelled: &AtomicBool,
     ) -> Result<CycleStatus, String> {
         let window = self
-            .backend
-            .focused_window()
+            .current_focus()
             .ok_or("Focused window is unavailable")?;
         if let Some(entry) = self.scratchpad.entry(&window) {
             return match entry.shown_on {
@@ -87,7 +86,7 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
         log_event!("scratchpad: hid {window:?} from workspace {workspace}");
         let layout = self.layout_workspace(workspace, output, cancelled);
         self.persist_workspace_state_if_changed()?;
-        self.focus_after_scratchpad(workspace);
+        self.focus_after_scratchpad(workspace, std::slice::from_ref(&window));
         Ok(self.status(layout.failed, &outputs))
     }
 
@@ -151,7 +150,7 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
                     .find(|resolved| resolved.workspace == workspace)
             })
         };
-        let focused = self.backend.focused_window();
+        let focused = self.current_focus();
         if let Some(resolved) = find(
             focused
                 .as_ref()
@@ -220,11 +219,12 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
         // confirms the window arrived at its centered summon frame; until then its owner's
         // cycles confirm or retry the centered destination rather than the former tile frame.
         if let Some(recovery) = recovery {
+            let expected = self.restore_target(frame);
             if self
                 .backend
                 .window_server_frame(&window)
                 .is_some_and(|actual| {
-                    actual.position_approximately_equals(frame, RESTORE_CONFIRM_TOLERANCE)
+                    actual.position_approximately_equals(expected, RESTORE_CONFIRM_TOLERANCE)
                 })
             {
                 self.scratchpad.set_pending_summon(&window, None);
@@ -235,7 +235,7 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
                 self.recently_parked.insert(window.clone(), Instant::now());
             }
         }
-        if !self.backend.focus_window(&window) {
+        if !self.focus_scratchpad_target(&window, &[]) {
             log_event!("scratchpad: could not focus {window:?}");
         }
         self.record_focused_workspace(target.workspace);
@@ -247,6 +247,22 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
         let mut status = self.status(failed, outputs);
         status.hud = Some(self.hud_for(target.workspace, UiHudKind::Workspace, None, outputs));
         Ok(status)
+    }
+
+    /// Confirms an arrived scratchpad summon or promotes its pending target over
+    /// the stale pre-summon tile recovery frame before moving the float to another
+    /// workspace so its floating position is preserved (#304).
+    pub(super) fn settle_pending_summon_for_move(&mut self, window: &crate::PhysicalWindowId) {
+        let Some(summon) = self.scratchpad.pending_summon(window) else {
+            return;
+        };
+        let expected = self.restore_target(summon);
+        if self.parked.contains_key(window) {
+            let _: macos::ApplyOutcome = self.finish_scratchpad_summon(window, summon, true);
+            if self.parked.contains_key(window) {
+                let _: bool = self.record_recovery(window, expected);
+            }
+        }
     }
 
     /// Confirms or retries a summoned scratchpad window's centered destination without
@@ -261,6 +277,7 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
             self.scratchpad.set_pending_summon(window, None);
             return macos::ApplyOutcome::Applied;
         };
+        let target = self.restore_target(target);
         if self
             .backend
             .window_server_frame(window)
@@ -323,7 +340,7 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
             }
         }
         self.persist_workspace_state_if_changed()?;
-        self.focus_after_scratchpad(target.workspace);
+        self.focus_after_scratchpad(target.workspace, windows);
         Ok(self.status(failed, outputs))
     }
 
@@ -362,7 +379,11 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
     }
 
     /// Hand focus back to the workspace's tiles once a scratchpad window leaves the screen.
-    fn focus_after_scratchpad(&mut self, workspace: WorkspaceId) {
+    fn focus_after_scratchpad(
+        &mut self,
+        workspace: WorkspaceId,
+        hidden: &[crate::PhysicalWindowId],
+    ) {
         let target = self.workspaces.preferred_focus(workspace).or_else(|| {
             self.workspaces
                 .engine(workspace)
@@ -370,11 +391,44 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
                 .into_iter()
                 .next()
         });
-        if let Some(target) = target
-            && !self.backend.focus_window(&target)
-        {
-            log_event!("scratchpad: could not focus {target:?} on workspace {workspace}");
+        if let Some(target) = target {
+            if !self.focus_scratchpad_target(&target, hidden) {
+                log_event!("scratchpad: could not focus {target:?} on workspace {workspace}");
+            }
+        } else {
+            self.pending_focus = None;
         }
+    }
+
+    /// Requests focus on `target` and records it in `pending_focus` so immediate
+    /// follow-up commands address `target` while Accessibility still reports the
+    /// previous or just-hidden window.
+    fn focus_scratchpad_target(
+        &mut self,
+        target: &crate::PhysicalWindowId,
+        extra_stale: &[crate::PhysicalWindowId],
+    ) -> bool {
+        let reported = self.backend.focused_window();
+        let mut stale = self.take_pending_focus_stale();
+        stale.retain(|window| window.as_ref() != Some(target));
+        if reported.as_ref() != Some(target) && !stale.contains(&reported) {
+            stale.push(reported);
+        }
+        for hidden in extra_stale {
+            let entry = Some(hidden.clone());
+            if hidden != target && !stale.contains(&entry) {
+                stale.push(entry);
+            }
+        }
+        if !self.backend.focus_window(target) {
+            return false;
+        }
+        self.pending_focus = Some(super::commands::PendingFocus {
+            target: target.clone(),
+            stale,
+            at: Instant::now(),
+        });
+        true
     }
 
     /// After every worker command: hide windows whose workspace was switched away (i3 keeps them
@@ -411,9 +465,15 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
                 Some(workspace) if visible.contains(&workspace) => {}
                 Some(workspace) => {
                     let output = output_for(&self.workspaces, workspace, outputs);
+                    // Prefer the window's live (or pending-summon) size over `self.parked`:
+                    // when a workspace switch happens before a delayed summon is confirmed,
+                    // `self.parked` still holds the pre-summon tile recovery frame (#258).
                     let size = self
-                        .parked
-                        .get(&window)
+                        .backend
+                        .frame(&window)
+                        .ok()
+                        .or(entry.pending_summon)
+                        .or_else(|| self.parked.get(&window).copied())
                         .map(|frame| (frame.width, frame.height));
                     if self.park_scratchpad_window(&window, output, outputs)
                         == macos::ApplyOutcome::Applied

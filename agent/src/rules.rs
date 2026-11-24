@@ -6,7 +6,7 @@ use std::path::PathBuf;
 
 use spaceman::{
     WorkspaceId,
-    config::{HudStyle, MouseFollowsFocus, UpdateChannel},
+    config::{HudPosition, HudStyle, MouseFollowsFocus, UpdateChannel},
 };
 use toml_edit::{
     Array, ArrayOfTables, DocumentMut, InlineTable, Item, Table, TableLike, Value, value,
@@ -19,6 +19,8 @@ const EMPTY: &str = "# Spaceman configuration.\nversion = 1\n";
 pub enum Place {
     Workspace(WorkspaceId),
     Float,
+    /// Tiled even when the window looks like a dialog.
+    Tile,
     /// Never tiled, moved or parked.
     Ignore,
 }
@@ -237,6 +239,25 @@ impl Doc {
         );
     }
 
+    /// Where the Workspace HUD capsule sits, from `settings.hud_position` (defaults to the
+    /// bottom of each display).
+    pub fn hud_position(&self) -> HudPosition {
+        self.doc
+            .get("settings")
+            .and_then(Item::as_table_like)
+            .and_then(|table| table.get("hud_position"))
+            .and_then(Item::as_str)
+            .and_then(HudPosition::parse)
+            .unwrap_or_default()
+    }
+
+    pub fn set_hud_position(&mut self, position: HudPosition) {
+        self.set_setting(
+            "hud_position",
+            (position != HudPosition::default()).then(|| value(position.as_str())),
+        );
+    }
+
     /// The release channel the updater follows, from `settings.update_channel` (defaults to
     /// stable).
     pub fn update_channel(&self) -> UpdateChannel {
@@ -286,7 +307,7 @@ impl Doc {
                     false
                 };
             if empty {
-                self.doc.remove("settings");
+                self.remove_table("settings");
             }
             return;
         };
@@ -337,7 +358,7 @@ impl Doc {
             .into_iter()
             .filter_map(|rule| match rule.place {
                 Place::Workspace(workspace) => Some(workspace),
-                Place::Float | Place::Ignore => None,
+                Place::Float | Place::Tile | Place::Ignore => None,
             })
             .chain(WorkspaceId::all().filter(|workspace| self.monitor(*workspace).is_some()))
             .collect();
@@ -547,6 +568,7 @@ impl Doc {
 fn read_rule(index: usize, table: &dyn TableLike) -> Option<Rule> {
     let place = match table.get("action").and_then(Item::as_str)? {
         "float" => Place::Float,
+        "tile" => Place::Tile,
         "ignore" => Place::Ignore,
         "route" => Place::Workspace(workspace(table.get("workspace")?)?),
         _ => return None,
@@ -619,11 +641,11 @@ fn set_place(table: &mut dyn TableLike, place: Place) {
             set_table_item(table, "action", value("route"));
             set_table_item(table, "workspace", workspace_value(workspace));
         }
-        Place::Float | Place::Ignore => {
-            let action = if place == Place::Float {
-                "float"
-            } else {
-                "ignore"
+        Place::Float | Place::Tile | Place::Ignore => {
+            let action = match place {
+                Place::Float => "float",
+                Place::Tile => "tile",
+                _ => "ignore",
             };
             set_table_item(table, "action", value(action));
             table.remove("workspace");

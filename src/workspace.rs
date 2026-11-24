@@ -659,8 +659,12 @@ impl Workspaces {
             .map(|slot| &slot.identity_window().app)
     }
 
-    pub(crate) fn app_owns_windows(&self, app: &crate::AppInstanceId) -> bool {
+    pub(crate) fn app_owns_tiled_windows(&self, app: &crate::AppInstanceId) -> bool {
         WorkspaceId::all().any(|workspace| self.app_instances(workspace).any(|owner| owner == app))
+    }
+
+    pub(crate) fn app_owns_windows(&self, app: &crate::AppInstanceId) -> bool {
+        self.app_owns_tiled_windows(app)
             || self.floating_owners.keys().any(|window| &window.app == app)
     }
 

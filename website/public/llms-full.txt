@@ -29,8 +29,9 @@ Spaceman treats a logical tile slot as product identity rather than tying layout
 - `Option+Shift+1` … `Option+Shift+0`: move the focused window to workspace `1` … `10`
 - `Option+A` … `Option+Z`: switch to an opt-in named workspace (`A`–`Z`)
 - `Option+Shift+A` … `Option+Shift+Z`: move the focused window to a named workspace
-- `Option+Tab`: toggle back and forth to the previous workspace on the focused display
-- `Option+\``: focus the next tiled window in the workspace
+- `Option+Tab`: focus the workspace focused before this one, on any display
+- `Option+\``: focus the next window in the workspace (tiles in stable order, then floating windows, wrapping)
+- `Option+Shift+\``: focus the previous window in that same order
 - `Option+H/J/K/L`: focus left / down / up / right across tiles and displays
 - `Option+Shift+H/J/K/L`: move or nest the focused tile left / down / up / right
 - `Option+/`: toggle the workspace's root split axis (horizontal / vertical)
@@ -86,7 +87,7 @@ The bundled `spaceman` CLI communicates with the running agent over an owner-onl
 
 - `spaceman ctl status`: print active workspaces, tiling state, and window counts
 - `spaceman ctl switch <workspace>` / `spaceman ctl move <workspace>`: switch workspaces or move the focused window
-- `spaceman ctl focus <left|down|up|right|next>` / `spaceman ctl move-direction <left|down|up|right>`
+- `spaceman ctl focus <left|down|up|right|next|prev>` / `spaceman ctl move-direction <left|down|up|right>`
 - `spaceman ctl layout` / `spaceman ctl fullscreen` / `spaceman ctl balance` / `spaceman ctl resize <shrink|grow>`
 - `spaceman ctl pause` / `spaceman ctl resume` / `spaceman ctl retile` / `spaceman ctl restart` / `spaceman ctl quit`
 - `spaceman ctl move-app <bundle-id> <workspace>`: move every current window of an app

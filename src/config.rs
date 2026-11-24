@@ -12,6 +12,7 @@ use crate::{
 struct AppSettings {
     hud: bool,
     hud_style: HudStyle,
+    hud_position: HudPosition,
     update_channel: UpdateChannel,
     mouse_follows_focus: MouseFollowsFocus,
     spacing: Spacing,
@@ -22,6 +23,7 @@ impl Default for AppSettings {
         Self {
             hud: true,
             hud_style: HudStyle::default(),
+            hud_position: HudPosition::default(),
             update_channel: UpdateChannel::default(),
             mouse_follows_focus: MouseFollowsFocus::default(),
             spacing: Spacing::default(),
@@ -124,6 +126,36 @@ impl HudStyle {
     }
 }
 
+/// Where the Workspace HUD capsule sits on each display: `settings.hud_position`.
+#[derive(Clone, Copy, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "lowercase")]
+pub enum HudPosition {
+    /// Just above the bottom of the display, clear of the Dock.
+    #[default]
+    Bottom,
+    /// Just below the top of the display, clear of the menu bar.
+    Top,
+}
+
+impl HudPosition {
+    #[must_use]
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Bottom => "bottom",
+            Self::Top => "top",
+        }
+    }
+
+    #[must_use]
+    pub fn parse(value: &str) -> Option<Self> {
+        match value {
+            "bottom" => Some(Self::Bottom),
+            "top" => Some(Self::Top),
+            _ => None,
+        }
+    }
+}
+
 /// The `[labs]` table: experimental features, each behind its own switch and off by default.
 /// With every switch off Spaceman behaves exactly as if Labs did not exist.
 #[derive(Clone, Copy, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
@@ -148,6 +180,8 @@ pub struct Config {
 pub enum WindowDisposition {
     Managed,
     Floating,
+    /// Tiled even when the window looks like a dialog or non-resizable panel.
+    Tiled,
     Route(WorkspaceId),
     /// Never tiled, owned, moved, or parked. For windows whose applications
     /// insist on managing them themselves.
@@ -190,6 +224,8 @@ struct RawSettings {
     #[serde(default)]
     hud_style: HudStyle,
     #[serde(default)]
+    hud_position: HudPosition,
+    #[serde(default)]
     update_channel: UpdateChannel,
     #[serde(default)]
     mouse_follows_focus: MouseFollowsFocus,
@@ -206,6 +242,7 @@ impl Default for RawSettings {
         Self {
             hud: true,
             hud_style: HudStyle::default(),
+            hud_position: HudPosition::default(),
             update_channel: UpdateChannel::default(),
             mouse_follows_focus: MouseFollowsFocus::default(),
             single_window_max_width: 0,
@@ -295,9 +332,11 @@ impl Config {
             let action = match (rule.action.as_str(), rule.workspace) {
                 ("float", None) => WindowDisposition::Floating,
                 ("ignore", None) => WindowDisposition::Ignored,
+                ("tile", None) => WindowDisposition::Tiled,
                 ("route", Some(workspace)) => WindowDisposition::Route(workspace),
                 ("float", Some(_)) => return Err("float rule cannot specify workspace".into()),
                 ("ignore", Some(_)) => return Err("ignore rule cannot specify workspace".into()),
+                ("tile", Some(_)) => return Err("tile rule cannot specify workspace".into()),
                 ("route", None) => return Err("route rule requires workspace".into()),
                 (action, _) => return Err(format!("unknown window rule action {action:?}")),
             };
@@ -336,6 +375,7 @@ impl Config {
             settings: AppSettings {
                 hud: raw.settings.hud,
                 hud_style: raw.settings.hud_style,
+                hud_position: raw.settings.hud_position,
                 update_channel: raw.settings.update_channel,
                 mouse_follows_focus: raw.settings.mouse_follows_focus,
                 spacing: raw.settings.spacing()?,
@@ -368,6 +408,11 @@ impl Config {
     #[must_use]
     pub const fn hud_style(&self) -> HudStyle {
         self.settings.hud_style
+    }
+
+    #[must_use]
+    pub const fn hud_position(&self) -> HudPosition {
+        self.settings.hud_position
     }
 
     #[must_use]
@@ -609,6 +654,8 @@ struct EditableSettings {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     hud_style: Option<HudStyle>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    hud_position: Option<HudPosition>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     update_channel: Option<UpdateChannel>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     mouse_follows_focus: Option<MouseFollowsFocus>,
@@ -624,6 +671,7 @@ impl EditableSettings {
     const fn is_empty(&self) -> bool {
         self.hud.is_none()
             && self.hud_style.is_none()
+            && self.hud_position.is_none()
             && self.update_channel.is_none()
             && self.mouse_follows_focus.is_none()
             && self.single_window_max_width.is_none()
@@ -832,6 +880,30 @@ workspace = 7
     }
 
     #[test]
+    fn tile_rule_parses_and_rejects_a_workspace() {
+        let config = Config::parse(
+            "version = 1\n[[rules]]\nbundle_id = 'com.apple.systempreferences'\naction = 'tile'",
+        )
+        .unwrap();
+        assert_eq!(
+            config.disposition("com.apple.systempreferences", &window(None)),
+            WindowDisposition::Tiled
+        );
+        assert_eq!(
+            config.disposition("com.example.Other", &window(None)),
+            WindowDisposition::Managed
+        );
+        assert_eq!(
+            Config::parse(
+                "version = 1\n[[rules]]\nbundle_id = 'x'\naction = 'tile'\nworkspace = 2"
+            )
+            .err()
+            .as_deref(),
+            Some("tile rule cannot specify workspace")
+        );
+    }
+
+    #[test]
     fn rejects_invalid_rules_and_workspaces() {
         assert!(Config::parse("version = 2").is_err());
         assert!(Config::parse("version = 1\n[[rules]]\naction = 'float'").is_err());
@@ -966,6 +1038,53 @@ monitor = "main"
         assert!(Config::parse("version = 1\n[settings]\nhud_style = \"grid\"\n").is_err());
         assert!(Config::parse("version = 1\n[settings]\nhud_style = true\n").is_err());
         assert_eq!(HudStyle::parse("Icons"), None);
+    }
+
+    #[test]
+    fn parses_hud_position_with_bottom_default() {
+        assert_eq!(Config::default().hud_position(), HudPosition::Bottom);
+        assert_eq!(
+            Config::parse("version = 1").unwrap().hud_position(),
+            HudPosition::Bottom
+        );
+        assert_eq!(
+            Config::parse("version = 1\n[settings]\nhud = false\n")
+                .unwrap()
+                .hud_position(),
+            HudPosition::Bottom
+        );
+        for position in [HudPosition::Bottom, HudPosition::Top] {
+            let source = format!(
+                "version = 1\n[settings]\nhud_position = {:?}\n",
+                position.as_str()
+            );
+            assert_eq!(Config::parse(&source).unwrap().hud_position(), position);
+            assert_eq!(HudPosition::parse(position.as_str()), Some(position));
+        }
+        assert!(Config::parse("version = 1\n[settings]\nhud_position = \"center\"\n").is_err());
+        assert!(Config::parse("version = 1\n[settings]\nhud_position = true\n").is_err());
+        assert_eq!(HudPosition::parse("Top"), None);
+    }
+
+    #[test]
+    fn saving_a_workspace_monitor_keeps_hud_position() {
+        let dir = std::env::temp_dir().join(format!(
+            "spaceman-config-hud-position-{}-{}",
+            std::process::id(),
+            now().as_nanos()
+        ));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("config.toml");
+        std::fs::write(&path, "version = 1\n[settings]\nhud_position = \"top\"\n").unwrap();
+        let saved = save_workspace_monitor_at(&path, WorkspaceId::TWO, &DisplaySelector::Secondary)
+            .unwrap();
+        assert_eq!(saved.hud_position(), HudPosition::Top);
+        assert!(
+            std::fs::read_to_string(&path)
+                .unwrap()
+                .contains("hud_position = \"top\"")
+        );
+        drop(std::fs::remove_dir_all(dir));
     }
 
     #[test]

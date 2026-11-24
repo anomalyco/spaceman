@@ -132,7 +132,7 @@ impl MainThreadAgent {
         let held = self.hotkey_hold.is_held();
         match shortcut_change(&self.shortcuts, &shortcuts, installed, held) {
             ShortcutChange::Same => {
-                if installed && self.is_shortcuts_not_applied_error() {
+                if self.is_shortcuts_not_applied_error() {
                     self.last_error = None;
                     self.ui_dirty = true;
                 }
@@ -140,6 +140,10 @@ impl MainThreadAgent {
             ShortcutChange::Store => {
                 log_event!("hotkeys: shortcuts changed; they register when tiling starts");
                 self.shortcuts = shortcuts;
+                if self.is_shortcuts_not_applied_error() {
+                    self.last_error = None;
+                    self.ui_dirty = true;
+                }
             }
             ShortcutChange::Defer => {
                 let differs = self.shortcuts.differs_from(&shortcuts);
@@ -171,6 +175,10 @@ impl MainThreadAgent {
         } = std::mem::take(&mut self.hotkey_hold)
         {
             self.shortcuts = next;
+            if self.is_shortcuts_not_applied_error() {
+                self.last_error = None;
+                self.ui_dirty = true;
+            }
         }
     }
 
@@ -252,18 +260,7 @@ impl MainThreadAgent {
             return;
         }
         match HotkeyPlan::current(&self.hotkey_workspaces, &self.shortcuts) {
-            Ok(plan) => {
-                let preserved = self
-                    .is_shortcuts_not_applied_error()
-                    .then(|| self.last_error.clone())
-                    .flatten();
-                self.reinstall_hotkeys(plan);
-                if self.hotkeys.is_some()
-                    && let Some(message) = preserved
-                {
-                    self.last_error = Some(message);
-                }
-            }
+            Ok(plan) => self.reinstall_hotkeys(plan),
             Err(error) => {
                 let error = format!("Hotkeys unavailable: {error}");
                 log_event!("{error}");
@@ -275,7 +272,7 @@ impl MainThreadAgent {
     }
 }
 
-const NOT_APPLIED: &str = "Shortcuts not applied";
+pub(super) const NOT_APPLIED: &str = "Shortcuts not applied";
 
 #[cfg(test)]
 mod tests {

@@ -90,6 +90,9 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
             return;
         }
         let target_rect = focused_window.unwrap_or(output);
+        let target_display_id = focused_window
+            .and_then(|frame| outputs.display_at(rect_center(frame)))
+            .map_or(target_display_id, |display| display.id.as_str());
         let already_there = self
             .backend
             .pointer_location()
@@ -221,6 +224,9 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
         let Some(source) = self.workspaces.workspace_of(&window) else {
             return self.cycle(outputs, cancelled);
         };
+        if !self.is_visible(source, &outputs) || self.parked.contains_key(&window) {
+            return Ok(self.status(0, &outputs));
+        }
         if self.workspaces.uses_fullscreen_layout(source) {
             return Ok(self.status(0, &outputs));
         }
@@ -300,6 +306,9 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
         let Some(workspace) = self.workspaces.workspace_of(&window) else {
             return self.cycle(outputs, cancelled);
         };
+        if !self.is_visible(workspace, &outputs) || self.parked.contains_key(&window) {
+            return Ok(self.status(0, &outputs));
+        }
         if self.workspaces.uses_fullscreen_layout(workspace) {
             return Ok(self.status(0, &outputs));
         }
@@ -409,6 +418,24 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
         self.resolve_focus(reported)
     }
 
+    /// Drains an unexpired `pending_focus` into its stale-report list (prior
+    /// stale windows plus its superseded target) so a replacement focus request
+    /// still ignores earlier targets in the same burst (#307).
+    pub(super) fn take_pending_focus_stale(&mut self) -> Vec<Option<crate::PhysicalWindowId>> {
+        let Some(pending) = self.pending_focus.take() else {
+            return Vec::new();
+        };
+        if pending.at.elapsed() >= FOCUS_SETTLE {
+            return Vec::new();
+        }
+        let mut stale = pending.stale;
+        let previous = Some(pending.target);
+        if !stale.contains(&previous) {
+            stale.push(previous);
+        }
+        stale
+    }
+
     pub(super) fn focus_tile(
         &mut self,
         origin: Option<crate::PhysicalWindowId>,
@@ -431,6 +458,8 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
         });
         if let Some(workspace) = self.workspaces.workspace_of(target) {
             self.remember_fullscreen_focus(workspace, target)?;
+        }
+        if let Some(workspace) = self.workspaces.workspace_of_any(target) {
             let display = outputs.resolve(self.workspaces.assignment(workspace));
             let output = display.frame;
             let frame = self.focus_window_frame(target, workspace, output);

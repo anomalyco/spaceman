@@ -14,7 +14,7 @@ Spaceman is an experimental public preview, not a broadly qualified release.
   floating state, not its tile position, weight, or nesting within the layout. Without titles,
   windows of a multi-window application that reopen with identical frames are matched in creation
   order and may swap workspaces.
-- Configuration supports ordered exact-match `float`/`route`/`ignore` rules and display assignment. It
+- Configuration supports ordered exact-match `float`/`tile`/`route`/`ignore` rules and display assignment. It
   intentionally does not support orthogonal named app spaces or regex title matching.
 - Configuration changes to rules, display assignments, and `[settings]` apply automatically; newly
   referenced named workspace letters register their global shortcuts on the next app start. `ctl restart`

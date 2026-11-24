@@ -619,3 +619,374 @@ fn tiling_an_unconfirmed_scratchpad_summon_keeps_tiles_separate_after_arrival() 
     assert!(!rt.parked.contains_key(&w));
     assert!(!rt.backend.persisted.contains_key(&w));
 }
+
+#[test]
+fn switching_away_before_delayed_summon_confirmation_remembers_floated_size() {
+    let mut rt = scratchpad_runtime(lab());
+    let w = window(10);
+    scratchpad(&mut rt, ScratchpadCommand::Mark).unwrap();
+    assert_hidden(&rt, &w);
+    rt.backend
+        .server_frames
+        .insert(w.clone(), rt.backend.frames[&w]);
+    rt.backend.frozen_server_frames = true;
+    scratchpad(&mut rt, ScratchpadCommand::Toggle).unwrap();
+    assert_eq!(rt.backend.frames[&w], summoned());
+    assert!(rt.scratchpad.pending_summon(&w).is_some());
+
+    // Summon arrives on the window server, then the user switches away before a cycle confirms it.
+    rt.backend.frozen_server_frames = false;
+    rt.backend.server_frames.insert(w.clone(), summoned());
+    run(&mut rt, WorkerAction::SwitchWorkspace(WorkspaceId::TWO)).unwrap();
+    assert_hidden(&rt, &w);
+    assert_eq!(rt.scratchpad.entry(&w).unwrap().size, Some((750, 600)));
+
+    run(&mut rt, WorkerAction::SwitchWorkspace(WorkspaceId::ONE)).unwrap();
+    scratchpad(&mut rt, ScratchpadCommand::Toggle).unwrap();
+    run(&mut rt, WorkerAction::Retile).unwrap();
+    assert_eq!(rt.backend.frames[&w], summoned());
+    assert_eq!(rt.backend.server_frames[&w], summoned());
+    assert_eq!(rt.scratchpad.pending_summon(&w), None);
+    assert!(!rt.parked.contains_key(&w));
+}
+
+#[test]
+fn scratchpad_actions_honor_and_track_pending_focus_during_activation_lag() {
+    let w = |id: u32| {
+        let mut win = window(id);
+        win.app.pid = id as i32;
+        win
+    };
+    let report = |rt: &mut WorkspaceRuntime<FakeBackend>, id: u32| {
+        rt.backend.focused = Some(w(id));
+        rt.backend.frontmost = Some(w(id).app);
+    };
+    let act = |rt: &mut WorkspaceRuntime<FakeBackend>, action: WorkerAction| {
+        let mut observation = crate::NativeObservation {
+            cycle: 0,
+            mouse_down: false,
+            applications: Vec::new(),
+        };
+        for id in [10, 20, 30] {
+            let win = w(id);
+            let mut part = observation_for_windows(
+                &format!("com.example.App{id}"),
+                &win,
+                &[(win.clone(), rt.backend.frames[&win])],
+            );
+            if rt.backend.focused.as_ref() != Some(&win)
+                && let crate::AppObservation::Complete { focused, .. } = &mut part.applications[0]
+            {
+                *focused = None;
+            }
+            observation.applications.extend(part.applications);
+        }
+        rt.backend.observation = Some(observation);
+        run(rt, action)
+    };
+    let setup = || {
+        let backend = FakeBackend {
+            frames: HashMap::from([
+                (w(10), frame(50)),
+                (w(20), frame(500)),
+                (w(30), frame(1050)),
+            ]),
+            focused: Some(w(10)),
+            frontmost: Some(w(10).app),
+            ..FakeBackend::default()
+        };
+        let mut rt = runtime_with_config(backend, lab());
+        bind(&mut rt, WorkspaceId::ONE, &w(10));
+        bind(&mut rt, WorkspaceId::ONE, &w(20));
+        bind(&mut rt, WorkspaceId::SIX, &w(30));
+        rt
+    };
+    let hidden_ids = |rt: &WorkspaceRuntime<FakeBackend>| {
+        let mut ids: Vec<_> = rt
+            .scratchpad
+            .entries()
+            .filter(|e| e.shown_on.is_none())
+            .map(|e| e.window.window_id)
+            .collect();
+        ids.sort();
+        ids
+    };
+    let shown = || {
+        let mut rt = setup();
+        report(&mut rt, 20);
+        act(&mut rt, WorkerAction::Scratchpad(ScratchpadCommand::Mark)).unwrap();
+        act(&mut rt, WorkerAction::Scratchpad(ScratchpadCommand::Toggle)).unwrap();
+        assert_eq!(
+            rt.scratchpad.entry(&w(20)).unwrap().shown_on,
+            Some(WorkspaceId::ONE)
+        );
+        rt
+    };
+
+    for stale in [true, false] {
+        // 1. Focus right 10 -> 20, then Mark hides 20.
+        let mut rt = setup();
+        act(&mut rt, WorkerAction::Focus(Direction::Right)).unwrap();
+        if stale {
+            report(&mut rt, 10);
+        }
+        act(&mut rt, WorkerAction::Scratchpad(ScratchpadCommand::Mark)).unwrap();
+        assert_eq!(hidden_ids(&rt), vec![20]);
+
+        // 2. Hide 20, focus right 10 -> 30 on secondary, Toggle summons onto ws 6.
+        let mut rt = setup();
+        report(&mut rt, 20);
+        act(&mut rt, WorkerAction::Scratchpad(ScratchpadCommand::Mark)).unwrap();
+        act(&mut rt, WorkerAction::Focus(Direction::Right)).unwrap();
+        if stale {
+            report(&mut rt, 10);
+        }
+        act(&mut rt, WorkerAction::Scratchpad(ScratchpadCommand::Toggle)).unwrap();
+        assert_eq!(
+            rt.scratchpad.entry(&w(20)).unwrap().shown_on,
+            Some(WorkspaceId::SIX)
+        );
+
+        // 3. Summon 20, then Mark tiles 20 instead of hiding 10.
+        let mut rt = shown();
+        if stale {
+            report(&mut rt, 10);
+        }
+        act(&mut rt, WorkerAction::Scratchpad(ScratchpadCommand::Mark)).unwrap();
+        assert!(hidden_ids(&rt).is_empty());
+        assert_eq!(rt.workspaces.workspace_of(&w(20)), Some(WorkspaceId::ONE));
+
+        // 4. Summon 20, then ToggleFloat tiles 20 instead of floating 10.
+        let mut rt = shown();
+        if stale {
+            report(&mut rt, 10);
+        }
+        act(&mut rt, WorkerAction::ToggleFloat).unwrap();
+        assert_eq!(rt.workspaces.workspace_of(&w(20)), Some(WorkspaceId::ONE));
+        assert_eq!(rt.workspaces.floating_workspace_of(&w(10)), None);
+
+        // 5. Hide shown 20 (focuses 10), then Mark hides 10 while AX still reports 20.
+        let mut rt = shown();
+        act(&mut rt, WorkerAction::Scratchpad(ScratchpadCommand::Toggle)).unwrap();
+        if stale {
+            report(&mut rt, 20);
+        }
+        act(&mut rt, WorkerAction::Scratchpad(ScratchpadCommand::Mark)).unwrap();
+        assert_eq!(hidden_ids(&rt), vec![10, 20]);
+    }
+}
+
+#[test]
+fn mark_after_quick_focus_and_summon_ignores_intermediate_focus_report() {
+    let w = |id: u32| {
+        let mut win = window(id);
+        win.app.pid = id as i32;
+        win
+    };
+    let report = |rt: &mut WorkspaceRuntime<FakeBackend>, id: u32| {
+        rt.backend.focused = Some(w(id));
+        rt.backend.frontmost = Some(w(id).app);
+    };
+    let act = |rt: &mut WorkspaceRuntime<FakeBackend>, action: WorkerAction| {
+        let mut observation = crate::NativeObservation {
+            cycle: 0,
+            mouse_down: false,
+            applications: Vec::new(),
+        };
+        for id in [10, 20, 30] {
+            let win = w(id);
+            let mut part = observation_for_windows(
+                &format!("com.example.App{id}"),
+                &win,
+                &[(win.clone(), rt.backend.frames[&win])],
+            );
+            if rt.backend.focused.as_ref() != Some(&win)
+                && let crate::AppObservation::Complete { focused, .. } = &mut part.applications[0]
+            {
+                *focused = None;
+            }
+            observation.applications.extend(part.applications);
+        }
+        rt.backend.observation = Some(observation);
+        run(rt, action).unwrap();
+    };
+    for reported_after_summon in [20, 30] {
+        let backend = FakeBackend {
+            frames: HashMap::from([(w(10), frame(50)), (w(20), frame(500)), (w(30), frame(200))]),
+            focused: Some(w(10)),
+            frontmost: Some(w(10).app),
+            ..FakeBackend::default()
+        };
+        let mut rt = runtime_with_config(backend, lab());
+        bind(&mut rt, WorkspaceId::ONE, &w(10));
+        bind(&mut rt, WorkspaceId::ONE, &w(20));
+        bind(&mut rt, WorkspaceId::TWO, &w(30));
+        act(&mut rt, WorkerAction::SwitchWorkspace(WorkspaceId::TWO));
+        report(&mut rt, 30);
+        act(&mut rt, WorkerAction::Scratchpad(ScratchpadCommand::Mark));
+        act(&mut rt, WorkerAction::SwitchWorkspace(WorkspaceId::ONE));
+        report(&mut rt, 10);
+        // 10 -> 20, AX lags at 10, summon 30, AX catches up only to intermediate 20 before Mark.
+        act(&mut rt, WorkerAction::Focus(Direction::Right));
+        report(&mut rt, 10);
+        act(&mut rt, WorkerAction::Scratchpad(ScratchpadCommand::Toggle));
+        report(&mut rt, reported_after_summon);
+        act(&mut rt, WorkerAction::Scratchpad(ScratchpadCommand::Mark));
+        report(&mut rt, 30);
+        act(&mut rt, WorkerAction::Retile);
+        assert!(!rt.scratchpad.contains(&w(30)));
+        assert!(!rt.scratchpad.contains(&w(20)));
+        assert_eq!(rt.workspaces.workspace_of(&w(30)), Some(WorkspaceId::ONE));
+        assert_eq!(rt.workspaces.workspace_of(&w(20)), Some(WorkspaceId::ONE));
+        assert!(rt.parked.is_empty());
+    }
+}
+
+#[test]
+fn settled_scratchpad_summon_confirms_translated_target_after_display_removal() {
+    let w = window(10);
+    let other = window(20);
+    let backend = FakeBackend {
+        frames: HashMap::from([(w.clone(), frame(500)), (other.clone(), frame(1050))]),
+        focused: Some(w.clone()),
+        frontmost: Some(w.app.clone()),
+        observation: Some(observation_for_windows(
+            "com.example.Test",
+            &w,
+            &[(w.clone(), frame(500)), (other.clone(), frame(1050))],
+        )),
+        ..FakeBackend::default()
+    };
+    let mut rt = runtime_with_config(backend, lab());
+    bind(&mut rt, WorkspaceId::ONE, &w);
+    bind(&mut rt, WorkspaceId::SIX, &other);
+    let cancelled = AtomicBool::new(false);
+    let exec = |rt: &mut WorkspaceRuntime<FakeBackend>, action, out| {
+        let Some(WorkerResult::Status { result, .. }) =
+            rt.execute(WorkerCommand::Action(action, out), &cancelled)
+        else {
+            panic!("expected status");
+        };
+        result.unwrap();
+    };
+    exec(&mut rt, WorkerAction::Retile, outputs());
+    exec(
+        &mut rt,
+        WorkerAction::Scratchpad(ScratchpadCommand::Mark),
+        outputs(),
+    );
+    let parked = rt.backend.frames[&w];
+    rt.backend.server_frames.insert(w.clone(), parked);
+    rt.backend.frozen_server_frames = true;
+    rt.backend.focused = Some(other.clone());
+    rt.backend.frontmost = Some(other.app.clone());
+    exec(
+        &mut rt,
+        WorkerAction::Scratchpad(ScratchpadCommand::Toggle),
+        outputs(),
+    );
+    let target = rt.scratchpad.pending_summon(&w).expect("delayed summon");
+
+    // Secondary display disconnects and the window settles at the translated frame on main.
+    rt.backend.frozen_server_frames = false;
+    let main_only = macos::DisplayOutputs::new(vec![outputs().main().clone()]).unwrap();
+    let settled = crate::Rect {
+        x: 250,
+        y: 100,
+        ..target
+    };
+    rt.backend.frames.insert(w.clone(), settled);
+    rt.backend.server_frames.insert(w.clone(), settled);
+    rt.recently_parked
+        .insert(w.clone(), Instant::now() - Duration::from_secs(5));
+    exec(&mut rt, WorkerAction::Retile, main_only.clone());
+    assert_eq!(rt.scratchpad.pending_summon(&w), None);
+    assert!(!rt.parked.contains_key(&w));
+
+    // A subsequent drag and pause both preserve the dragged frame.
+    let dragged = crate::Rect {
+        x: 100,
+        y: 150,
+        ..target
+    };
+    rt.backend.frames.insert(w.clone(), dragged);
+    rt.backend.server_frames.insert(w.clone(), dragged);
+    rt.backend.focused = Some(w.clone());
+    rt.backend.frontmost = Some(w.app.clone());
+    let gesture = rt.execute(
+        WorkerCommand::Gesture(
+            FinalGesture::Drop(w.clone(), (150, 200)),
+            false,
+            main_only.clone(),
+        ),
+        &cancelled,
+    );
+    assert!(matches!(
+        gesture,
+        Some(WorkerResult::Status { result: Ok(_), .. })
+    ));
+    exec(&mut rt, WorkerAction::Retile, main_only.clone());
+    assert_eq!(rt.backend.frames[&w], dragged);
+    let restored = rt.execute(WorkerCommand::RestoreAll(Some(main_only)), &cancelled);
+    assert!(matches!(
+        restored,
+        Some(WorkerResult::Restored { failed: 0 })
+    ));
+    assert_eq!(rt.backend.frames[&w], dragged);
+}
+
+#[test]
+fn moving_unconfirmed_scratchpad_float_preserves_summoned_position() {
+    for target in [WorkspaceId::SIX, WorkspaceId::new(7).unwrap()] {
+        for arrived in [true, false] {
+            let mut rt = scratchpad_runtime(lab());
+            let w = window(10);
+            scratchpad(&mut rt, ScratchpadCommand::Mark).unwrap();
+            rt.backend
+                .server_frames
+                .insert(w.clone(), rt.backend.frames[&w]);
+            rt.backend.frozen_server_frames = true;
+            assert_eq!(
+                scratchpad(&mut rt, ScratchpadCommand::Toggle)
+                    .unwrap()
+                    .failed,
+                0
+            );
+            let summoned = rt.backend.frames[&w];
+            assert!(rt.scratchpad.pending_summon(&w).is_some());
+            rt.backend.frozen_server_frames = false;
+            if arrived {
+                rt.backend.server_frames.insert(w.clone(), summoned);
+            }
+            assert_eq!(
+                run(&mut rt, WorkerAction::MoveFocused(target))
+                    .unwrap()
+                    .failed,
+                0
+            );
+            assert!(!rt.scratchpad.contains(&w));
+            assert_eq!(rt.workspaces.floating_workspace_of(&w), Some(target));
+            if !rt.is_visible(target, &outputs()) {
+                assert_eq!(
+                    run(&mut rt, WorkerAction::SwitchWorkspace(target))
+                        .unwrap()
+                        .failed,
+                    0
+                );
+            }
+            rt.recently_parked
+                .insert(w.clone(), Instant::now() - Duration::from_secs(5));
+            for _ in 0..2 {
+                assert_eq!(run(&mut rt, WorkerAction::Retile).unwrap().failed, 0);
+            }
+            let expected = super::super::move_workspace::translate_frame_to_output(
+                summoned,
+                outputs().main().frame,
+                outputs().secondary().unwrap().frame,
+            );
+            assert_eq!(rt.backend.frames[&w], expected);
+            assert!(!rt.parked.contains_key(&w));
+            assert!(!rt.backend.persisted.contains_key(&w));
+        }
+    }
+}

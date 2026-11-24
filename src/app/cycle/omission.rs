@@ -108,6 +108,10 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
         if !omission.is_settling(now) {
             return false;
         }
+        // ⌘H or ⌘M is not a flaky snapshot; reflow now instead of after the settle.
+        if !self.parked.contains_key(window) && self.backend.confirms_set_aside(window) {
+            return false;
+        }
         if probe && omission.should_probe(now) && self.backend.confirms_no_windows(&window.app) {
             return false;
         }

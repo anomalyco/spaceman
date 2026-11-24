@@ -71,7 +71,7 @@ Implicit: macOS restart/log out/shutdown, Install & Restart, quitting with an up
           reopening Spaceman.app after a crash
 Files:    ~/Library/Application Support/Spaceman/
           ├── workspace-state.json   parked-windows.json   window-memory.json
-          └── journal.jsonl(.1)      agent.log(.1)
+          └── journal.jsonl(.1)      agent.log(.prev)
 ```
 
 See [Recovery](../recovery.md) for the safe manual procedure; never delete `parked-windows.json` first.

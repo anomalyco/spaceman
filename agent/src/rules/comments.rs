@@ -145,6 +145,118 @@ impl Doc {
         }
     }
 
+    /// Removes top-level table `key` (and any subtables inside it), preserving detached
+    /// comments set off by a blank line above any removed table header or scalar key.
+    pub(super) fn remove_table(&mut self, key: &str) {
+        let mut comments = Vec::new();
+        let mut inline_comment = None;
+        let next_root_key = next_value_key_after(self.doc.as_table(), key);
+        match self.doc.get(key) {
+            Some(Item::Table(table)) => {
+                if table.is_dotted() {
+                    inline_comment = self
+                        .doc
+                        .key(key)
+                        .and_then(|k| k.leaf_decor().prefix())
+                        .and_then(RawString::as_str)
+                        .and_then(detached_comments);
+                }
+                collect_detached_table_comments(table, &mut comments);
+            }
+            Some(Item::Value(_)) => {
+                inline_comment = self
+                    .doc
+                    .key(key)
+                    .and_then(|k| k.leaf_decor().prefix())
+                    .and_then(RawString::as_str)
+                    .and_then(detached_comments);
+            }
+            _ => {}
+        }
+        self.doc.remove(key);
+        self.splice_removed_table_comments(comments, inline_comment, next_root_key);
+    }
+
+    /// Removes scalar key `key_name` from top-level table `table_key`, preserving any
+    /// detached comments separated by a blank line above that key.
+    pub(super) fn remove_key_in_table(&mut self, table_key: &str, key_name: &str) {
+        let removed = self
+            .doc
+            .get_mut(table_key)
+            .and_then(Item::as_table_mut)
+            .and_then(|table| {
+                let pos = table.position();
+                remove_table_key(table, key_name).map(|comment| (pos, comment))
+            });
+        if let Some((pos, comment)) = removed {
+            self.splice_detached_after_table(pos, comment);
+        }
+    }
+
+    /// Splices a detached comment that belonged to the end of the table at `table_position`
+    /// onto the following table header, or into the document's trailing decor.
+    pub(super) fn splice_detached_after_table(
+        &mut self,
+        table_position: Option<isize>,
+        comment: String,
+    ) {
+        self.splice_removed_table_comments(vec![(table_position, comment)], None, None);
+    }
+
+    /// Removes nested table `child` from top-level table `parent`, preserving any detached
+    /// comment heading set off by a blank line above the removed subtable header.
+    pub(super) fn remove_subtable(&mut self, parent: &str, child: &str) {
+        let mut comments = Vec::new();
+        if let Some(table) = self.doc.get(parent).and_then(Item::as_table)
+            && let Some(Item::Table(sub)) = table.get(child)
+        {
+            collect_detached_table_comments(sub, &mut comments);
+        }
+        if let Some(table) = self.doc.get_mut(parent).and_then(Item::as_table_mut) {
+            table.remove(child);
+        }
+        self.splice_removed_table_comments(comments, None, None);
+    }
+
+    fn splice_removed_table_comments(
+        &mut self,
+        mut comments: Vec<(Option<isize>, String)>,
+        inline_comment: Option<String>,
+        next_root_key: Option<String>,
+    ) {
+        if let Some(comment) = inline_comment {
+            if let Some(next_key) = next_root_key
+                && let Some(mut key) = self.doc.key_mut(&next_key)
+            {
+                prepend_decor_comment(key.leaf_decor_mut(), &comment);
+            } else if let Some(first_pos) = min_table_position(self.doc.as_table(), None)
+                && let Some(target) = find_table_at_position_mut(self.doc.as_table_mut(), first_pos)
+            {
+                prepend_decor_comment(target.decor_mut(), &comment);
+            } else {
+                let trailing = self.doc.trailing().as_str().unwrap_or_default().to_owned();
+                self.doc
+                    .set_trailing(join_comment_trailing(&comment, &trailing));
+            }
+        }
+        comments.sort_by_key(|(pos, _)| *pos);
+        // Splice in reverse order so multiple detached headings prepended onto the
+        // same following table keep their original top-to-bottom order.
+        for (pos, comment) in comments.into_iter().rev() {
+            if let Some(pos) = pos
+                && let Some(target_pos) = min_table_position(self.doc.as_table(), Some(pos))
+                && let Some(target) =
+                    find_table_at_position_mut(self.doc.as_table_mut(), target_pos)
+            {
+                prepend_decor_comment(target.decor_mut(), &comment);
+            } else {
+                let trailing = self.doc.trailing().as_str().unwrap_or_default().to_owned();
+                self.doc
+                    .set_trailing(join_comment_trailing(&comment, &trailing));
+            }
+        }
+    }
+
     fn splice_table_comment(
         &mut self,
         section: &str,
@@ -168,6 +280,82 @@ impl Doc {
         let trailing = self.doc.trailing().as_str().unwrap_or_default().to_owned();
         self.doc
             .set_trailing(join_comment_trailing(comment, &trailing));
+    }
+}
+
+/// Removes `key_name` from `table`, preserving any detached comment set off by a blank line
+/// above that key. If a following value key exists in `table`, the comment is prepended onto
+/// it immediately; otherwise it is returned so the caller can attach it to a newly inserted key
+/// or splice it after `table`.
+pub(super) fn remove_table_key(table: &mut Table, key_name: &str) -> Option<String> {
+    let detached = table
+        .key(key_name)
+        .and_then(|key| key.leaf_decor().prefix())
+        .and_then(RawString::as_str)
+        .and_then(detached_comments);
+    let next_key = detached
+        .as_ref()
+        .and_then(|_| next_value_key_after(table, key_name));
+    table.remove(key_name);
+    let comment = detached?;
+    if let Some(next_key) = next_key
+        && let Some(mut key) = table.key_mut(&next_key)
+    {
+        prepend_decor_comment(key.leaf_decor_mut(), &comment);
+        None
+    } else {
+        Some(comment)
+    }
+}
+
+pub(super) fn merge_detached_comments(
+    first: Option<String>,
+    second: Option<String>,
+) -> Option<String> {
+    match (first, second) {
+        (Some(a), Some(b)) => Some(join_comment_prefix(&a, &b)),
+        (Some(a), None) => Some(a),
+        (None, Some(b)) => Some(b),
+        (None, None) => None,
+    }
+}
+
+pub(super) fn prepend_key_comment(table: &mut Table, key_name: &str, comment: &str) {
+    if let Some(mut key) = table.key_mut(key_name) {
+        prepend_decor_comment(key.leaf_decor_mut(), comment);
+    }
+}
+
+fn collect_detached_table_comments(table: &Table, out: &mut Vec<(Option<isize>, String)>) {
+    if !table.is_implicit()
+        && let Some(comment) = table
+            .decor()
+            .prefix()
+            .and_then(RawString::as_str)
+            .and_then(detached_comments)
+    {
+        out.push((table.position(), comment));
+    }
+    for (key, item) in table.iter() {
+        match item {
+            Item::Table(sub) => collect_detached_table_comments(sub, out),
+            Item::ArrayOfTables(array) => {
+                for sub in array.iter() {
+                    collect_detached_table_comments(sub, out);
+                }
+            }
+            Item::Value(_) => {
+                if let Some(comment) = table
+                    .key(key)
+                    .and_then(|k| k.leaf_decor().prefix())
+                    .and_then(RawString::as_str)
+                    .and_then(detached_comments)
+                {
+                    out.push((table.position(), comment));
+                }
+            }
+            Item::None => {}
+        }
     }
 }
 

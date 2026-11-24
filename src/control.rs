@@ -23,7 +23,7 @@ const REQUEST_READ_TIMEOUT: Duration = Duration::from_millis(250);
 const RESPONSE_TIMEOUT: Duration = Duration::from_secs(5);
 const CLIENT_TIMEOUT: Duration = Duration::from_secs(6);
 
-pub const COMMAND_USAGE: &str = "status|debug|settings|open TARGET|open-settings|open-accessibility|check-for-updates|toggle-launch-at-login|switch WORKSPACE|back-and-forth|move-workspace [next|prev|DISPLAY]|move WORKSPACE|move-app ID WORKSPACE|focus DIR|focus next|focus prev|move-direction DIR|layout|fullscreen|float|resize shrink|resize grow|balance|scratchpad toggle|scratchpad mark|pause|resume|retile|wrong|restart|quit";
+pub const COMMAND_USAGE: &str = "status|debug|settings|open TARGET|open-settings|open-accessibility|check-for-updates|toggle-launch-at-login|switch WORKSPACE|back-and-forth|move-workspace [next|prev|DISPLAY]|move WORKSPACE [--follow]|move-app ID WORKSPACE|focus DIR|focus next|focus prev|move-direction DIR|layout|fullscreen|float|resize shrink|resize grow|balance|scratchpad toggle|scratchpad mark|pause|resume|retile|wrong|restart|quit";
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub(crate) enum Command {
@@ -216,6 +216,9 @@ fn parse_line(line: &str) -> Result<Command, String> {
         ["switch", workspace] => WorkerAction::SwitchWorkspace(WorkspaceId::parse(workspace)?),
         ["back-and-forth"] => WorkerAction::WorkspaceBackAndForth,
         ["move", workspace] => WorkerAction::MoveFocused(WorkspaceId::parse(workspace)?),
+        ["move", workspace, "--follow"] | ["move", "--follow", workspace] => {
+            WorkerAction::MoveFocusedFollow(WorkspaceId::parse(workspace)?)
+        }
         ["move-app", bundle_id, workspace] => {
             WorkerAction::MoveApp((*bundle_id).into(), WorkspaceId::parse(workspace)?)
         }
@@ -290,6 +293,14 @@ mod tests {
             WorkerAction::SwitchWorkspace(WorkspaceId::new(10).unwrap())
         );
         assert!(parse_line("move 11").is_err());
+        assert_eq!(
+            queued("move 2 --follow"),
+            WorkerAction::MoveFocusedFollow(WorkspaceId::new(2).unwrap())
+        );
+        assert_eq!(
+            queued("move --follow D"),
+            WorkerAction::MoveFocusedFollow(WorkspaceId::named('D').unwrap())
+        );
         assert_eq!(
             queued("switch D"),
             WorkerAction::SwitchWorkspace(WorkspaceId::named('D').unwrap())

@@ -60,7 +60,7 @@ Local files live under `~/Library/Application Support/Spaceman/`:
 - `agent.log`: timestamped diagnostic events (switches, parking, restoration, ownership changes) with
   process/window identifiers and frames, never window titles. Focus-follow switches also record
   how long ago a key, click, or modifier change happened and whether Command was held, never which
-  keys were pressed; mode `0600`, moved to `agent.log.1`
+  keys were pressed; mode `0600`, moved to `agent.log.prev`
   (replacing any previous generation) past 5 MB at the next launch. Terminal launches keep
   diagnostics on stderr instead;
 - `journal.jsonl` and `journal.jsonl.1`: the arrangement journal summarized by `spaceman doctor`.
