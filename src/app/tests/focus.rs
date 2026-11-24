@@ -586,3 +586,328 @@ fn mouse_follows_focus_never_warps_on_passive_cycle_focus_follow_or_mouse_down()
         .unwrap();
     assert!(warp_calls(&runtime).is_empty());
 }
+
+/// #120: reselecting the active split workspace keeps focus on the tile of
+/// that workspace that already has it, rather than its remembered tile.
+#[test]
+fn reselecting_the_active_split_workspace_keeps_the_focused_tile() {
+    let first = window(10);
+    let second = window(20);
+    let mut backend = FakeBackend {
+        focused: Some(first.clone()),
+        ..FakeBackend::default()
+    };
+    backend.frames.insert(first.clone(), frame(50));
+    backend.frames.insert(second.clone(), frame(500));
+    let mut runtime = runtime(backend);
+    bind(&mut runtime, WorkspaceId::ONE, &first);
+    bind(&mut runtime, WorkspaceId::ONE, &second);
+    let cancelled = AtomicBool::new(false);
+    let two = WorkspaceId::new(2).unwrap();
+
+    runtime.switch(two, outputs(), &cancelled).unwrap();
+    runtime
+        .switch(WorkspaceId::ONE, outputs(), &cancelled)
+        .unwrap();
+    assert_eq!(
+        runtime.workspaces.preferred_focus(WorkspaceId::ONE),
+        Some(first.clone())
+    );
+    runtime.backend.focused = Some(second.clone());
+
+    runtime
+        .switch(WorkspaceId::ONE, outputs(), &cancelled)
+        .unwrap();
+    assert_eq!(runtime.backend.focused, Some(second.clone()));
+
+    // Entering from another workspace still lands on the remembered tile.
+    runtime.switch(two, outputs(), &cancelled).unwrap();
+    runtime.backend.focused = None;
+    runtime.workspaces.remember_focus(WorkspaceId::ONE, &first);
+    runtime
+        .switch(WorkspaceId::ONE, outputs(), &cancelled)
+        .unwrap();
+    assert_eq!(runtime.backend.focused, Some(first));
+}
+
+/// #161: pointer-initiated workspace selection (menu bar or HUD click) switches
+/// and focuses the target workspace without warping the pointer away, whereas
+/// an equivalent keyboard/CLI switch still warps under mouse_follows_focus.
+#[test]
+fn pointer_workspace_selection_preserves_pointer_while_keyboard_switch_warps() {
+    let main_win = window(10);
+    let sec_six = window(20);
+    let sec_seven = window(21);
+    let seven = WorkspaceId::new(7).unwrap();
+    let cancelled = AtomicBool::new(false);
+
+    for mode in ["display", "window"] {
+        let mut backend = FakeBackend {
+            focused: Some(main_win.clone()),
+            pointer: Some((200, 12)),
+            ..FakeBackend::default()
+        };
+        backend.frames.insert(main_win.clone(), frame(50));
+        backend.frames.insert(sec_six.clone(), frame(1050));
+        backend
+            .frames
+            .insert(sec_seven.clone(), main_parked_frame(frame(1050)));
+        let mut runtime = WorkspaceRuntime::with_backend_and_config(
+            ManagementScope::Both,
+            backend,
+            HashMap::from([(sec_seven.clone(), frame(1050))]),
+            config_with_mouse_follows_focus(mode),
+        );
+        bind(&mut runtime, WorkspaceId::ONE, &main_win);
+        bind(&mut runtime, WorkspaceId::SIX, &sec_six);
+        bind(&mut runtime, seven, &sec_seven);
+
+        // Menu-bar / HUD click to hidden secondary workspace 7 switches and
+        // focuses it, leaving the pointer where the click happened.
+        runtime
+            .execute(
+                WorkerCommand::Action(WorkerAction::SelectWorkspace(seven), outputs()),
+                &cancelled,
+            )
+            .unwrap();
+        assert_eq!(runtime.backend.focused, Some(sec_seven.clone()), "{mode}");
+        assert!(warp_calls(&runtime).is_empty(), "{mode}");
+        assert_eq!(runtime.backend.pointer, Some((200, 12)), "{mode}");
+
+        // Clicking an already-visible cross-display workspace also preserves pointer.
+        runtime
+            .execute(
+                WorkerCommand::Action(WorkerAction::SelectWorkspace(seven), outputs()),
+                &cancelled,
+            )
+            .unwrap();
+        assert!(warp_calls(&runtime).is_empty(), "{mode}");
+        assert_eq!(runtime.backend.pointer, Some((200, 12)), "{mode}");
+
+        // Control: keyboard/CLI switch to workspace 6 on secondary DOES warp.
+        runtime
+            .execute(
+                WorkerCommand::Action(WorkerAction::SwitchWorkspace(WorkspaceId::SIX), outputs()),
+                &cancelled,
+            )
+            .unwrap();
+        assert_eq!(runtime.backend.focused, Some(sec_six.clone()), "{mode}");
+        assert_eq!(warp_calls(&runtime), vec![(1500, 400)], "{mode}");
+    }
+}
+
+/// #170: Display mouse-follow mode treats a display's menu-bar and Dock strips
+/// as part of that physical display, both with synthetic visible-only frames
+/// and with full physical bounds.
+#[test]
+fn mouse_follows_focus_display_preserves_pointer_in_menu_bar_and_dock_strips() {
+    let visible = crate::Rect {
+        x: 0,
+        y: 25,
+        width: 1000,
+        height: 750,
+    };
+    let displays = macos::DisplayOutputs::new(vec![
+        macos::DisplayOutput {
+            id: "main".into(),
+            name: "Main".into(),
+            frame: visible,
+            is_main: true,
+        },
+        macos::DisplayOutput {
+            id: "second".into(),
+            name: "Second".into(),
+            frame: crate::Rect { x: 1000, ..visible },
+            is_main: false,
+        },
+    ])
+    .unwrap();
+    let run_switch = |mode: &str, pointer: (i32, i32), mouse_down: bool| {
+        let outgoing = window(10);
+        let incoming = window(20);
+        let mut backend = FakeBackend {
+            focused: Some(outgoing.clone()),
+            pointer: Some(pointer),
+            mouse_down,
+            ..FakeBackend::default()
+        };
+        backend.frames.insert(outgoing.clone(), visible);
+        backend.frames.insert(incoming.clone(), visible);
+        let mut runtime = WorkspaceRuntime::with_backend_and_config(
+            ManagementScope::Both,
+            backend,
+            HashMap::new(),
+            config_with_mouse_follows_focus(mode),
+        );
+        bind(&mut runtime, WorkspaceId::ONE, &outgoing);
+        bind(&mut runtime, WorkspaceId::TWO, &incoming);
+        let result = runtime
+            .execute(
+                WorkerCommand::Action(
+                    WorkerAction::SwitchWorkspace(WorkspaceId::TWO),
+                    displays.clone(),
+                ),
+                &AtomicBool::new(false),
+            )
+            .unwrap();
+        match result {
+            WorkerResult::Status { result, .. } => {
+                result.unwrap();
+            }
+            _ => panic!("unexpected worker result"),
+        }
+        assert_eq!(runtime.backend.focused, Some(incoming));
+        (warp_calls(&runtime), runtime.backend.pointer)
+    };
+
+    // Already on main display (visible area, menu bar, or Dock): preserve pointer.
+    assert_eq!(
+        run_switch("display", (500, 300), false),
+        (vec![], Some((500, 300)))
+    );
+    assert_eq!(
+        run_switch("display", (500, 10), false),
+        (vec![], Some((500, 10)))
+    );
+    assert_eq!(
+        run_switch("display", (500, 790), false),
+        (vec![], Some((500, 790)))
+    );
+    // Other display (visible area or its menu bar): warp to main's incoming window.
+    assert_eq!(
+        run_switch("display", (1500, 300), false),
+        (vec![(500, 400)], Some((500, 400)))
+    );
+    assert_eq!(
+        run_switch("display", (1500, 10), false),
+        (vec![(500, 400)], Some((500, 400)))
+    );
+    // Window mode still warps from the menu bar into the focused window.
+    assert_eq!(
+        run_switch("window", (500, 10), false),
+        (vec![(500, 400)], Some((500, 400)))
+    );
+    // Mouse button held still suppresses warping.
+    assert_eq!(
+        run_switch("display", (1500, 300), true),
+        (vec![], Some((1500, 300)))
+    );
+}
+
+/// #175: swiping with the pointer in a secondary display's menu-bar or Dock
+/// strip switches the secondary display instead of falling back to main.
+#[test]
+fn swipe_in_secondary_menu_bar_or_dock_targets_secondary_display() {
+    let rect = |x, y, width, height| crate::Rect {
+        x,
+        y,
+        width,
+        height,
+    };
+    let swipe_state = |point: (i32, i32), height: i32| -> Vec<WorkspaceId> {
+        let displays = macos::DisplayOutputs::new(vec![
+            macos::DisplayOutput {
+                id: "main-id".into(),
+                name: "Main".into(),
+                frame: rect(0, 25, 1000, height),
+                is_main: true,
+            },
+            macos::DisplayOutput {
+                id: "secondary-id".into(),
+                name: "Secondary".into(),
+                frame: rect(1000, 25, 1000, height),
+                is_main: false,
+            },
+        ])
+        .unwrap();
+        let mut rt = runtime(FakeBackend::default());
+        for (id, workspace, x) in [(10, 1, 50), (11, 2, 450), (12, 6, 1050), (13, 7, 1450)] {
+            let win = window(id);
+            rt.backend.frames.insert(win.clone(), rect(x, 50, 400, 300));
+            bind(&mut rt, WorkspaceId::new(workspace).unwrap(), &win);
+        }
+        let mut tracker = crate::swipe::SwipeTracker::default();
+        assert_eq!(tracker.frame(0.0, &[(0.6, 0.5); 3]), None);
+        let swipe = tracker.frame(0.1, &[(0.3, 0.5); 3]).unwrap();
+        let result = rt.execute(
+            WorkerCommand::Action(WorkerAction::Swipe(swipe, point), displays.clone()),
+            &AtomicBool::new(false),
+        );
+        match result.unwrap() {
+            WorkerResult::Status { result, .. } => {
+                assert_eq!(result.unwrap().failed, 0);
+            }
+            _ => panic!("unexpected worker result"),
+        }
+        rt.visible_workspaces(&displays)
+            .iter()
+            .map(|entry| entry.workspace)
+            .collect()
+    };
+
+    let seven = WorkspaceId::new(7).unwrap();
+    // Secondary visible area, menu bar, and Dock all advance secondary 6 -> 7.
+    assert_eq!(swipe_state((1500, 400), 775), [WorkspaceId::ONE, seven]);
+    assert_eq!(swipe_state((1500, 10), 775), [WorkspaceId::ONE, seven]);
+    assert_eq!(swipe_state((1500, 790), 750), [WorkspaceId::ONE, seven]);
+    // Main menu bar advances main 1 -> 2 and leaves secondary on 6.
+    assert_eq!(
+        swipe_state((500, 10), 775),
+        [WorkspaceId::TWO, WorkspaceId::SIX]
+    );
+}
+
+#[test]
+fn focus_next_and_prev_follow_pointer_onto_floating_windows() {
+    for backward in [false, true] {
+        let windows = [
+            (window(10), frame(50)),
+            (window(20), frame(500)),
+            (window(30), frame(700)),
+        ];
+        let backend = FakeBackend {
+            frames: windows.iter().cloned().collect(),
+            focused: Some(window(30)),
+            frontmost: Some(window(30).app),
+            pointer: Some((100, 100)),
+            observation: Some(observation_for_windows(
+                "com.example.Test",
+                &window(30),
+                &windows,
+            )),
+            ..FakeBackend::default()
+        };
+        let mut rt = WorkspaceRuntime::with_backend_and_config(
+            ManagementScope::Both,
+            backend,
+            HashMap::new(),
+            config_with_mouse_follows_focus("window"),
+        );
+        let run = |rt: &mut WorkspaceRuntime<FakeBackend>, action: WorkerAction| {
+            let Some(WorkerResult::Status { result, .. }) = rt.execute(
+                WorkerCommand::Action(action, outputs()),
+                &AtomicBool::new(false),
+            ) else {
+                panic!("expected worker status");
+            };
+            result.unwrap();
+        };
+        run(&mut rt, WorkerAction::Retile);
+        run(&mut rt, WorkerAction::ToggleFloat);
+        rt.backend.calls.clear();
+        rt.backend.focused = Some(window(if backward { 10 } else { 20 }));
+
+        let target = rt.backend.frames[&window(30)];
+        let expected = (target.x + target.width / 2, target.y + target.height / 2);
+        run(
+            &mut rt,
+            if backward {
+                WorkerAction::CycleFocusPrevious
+            } else {
+                WorkerAction::CycleFocus
+            },
+        );
+        assert_eq!(rt.backend.focused, Some(window(30)));
+        assert_eq!(warp_calls(&rt), vec![expected]);
+    }
+}

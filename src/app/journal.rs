@@ -186,11 +186,7 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
         server_frames: &HashMap<u32, crate::Rect>,
     ) -> Vec<Anomaly> {
         let displays: Vec<_> = outputs.frames().collect();
-        let on_display = |frame: crate::Rect| {
-            displays
-                .iter()
-                .any(|display| display.contains_center(frame))
-        };
+        let on_display = |frame: crate::Rect| crate::geometry::shows_on(frame, &displays);
         let visible: HashSet<_> = visible_workspaces
             .iter()
             .map(|resolved| resolved.workspace)

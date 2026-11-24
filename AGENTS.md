@@ -158,6 +158,11 @@ Run `./scripts/live-ghostty-tabs.sh` and `./scripts/live-workspaces.sh` only whe
 their live behavior, AeroSpace is initially enabled, and the other safety conditions above are
 satisfied.
 
+`scripts/gauntlet.sh` (docs/development.md › Live Gauntlet) is the end-to-end check for changes to
+tiling, switching, parking, focus, reflow, float, the Scratchpad, or recovery. Run it on a disposable
+macOS VM or a test Mac with `--host`, never on a Mac someone is using, and quote its receipt summary
+in the PR.
+
 ## Documentation Synchronization
 
 Update README and linked docs in the same change when menu labels, shortcuts, CLI commands, config

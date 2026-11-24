@@ -7,8 +7,10 @@ use std::{
 use serde_json::Value;
 use spaceman::{
     AppInstanceId, ObservedWindow, PhysicalWindowId, Rect, WorkspaceId,
-    config::{Config, HudStyle, MouseFollowsFocus, WindowDisposition},
+    config::{Config, HudPosition, HudStyle, MouseFollowsFocus, WindowDisposition},
 };
+
+mod regressions;
 
 use super::{Outcome, try_run_with_config_path};
 
@@ -282,6 +284,77 @@ fn config_gets_sets_and_shows_mouse_follows_focus() {
 }
 
 #[test]
+fn config_gets_sets_and_resets_hud_position() {
+    let temp = TempConfig::new("config-hud-position");
+    temp.write("# Mine.\nversion = 1\n[settings]\nhud_style = \"layouts\"\n");
+    assert_eq!(
+        temp.run(&["config", "get", "hud_position"])
+            .stdout
+            .as_deref(),
+        Some("bottom")
+    );
+    assert_eq!(
+        temp.run(&["config", "get", "settings.hud_position"])
+            .stdout
+            .as_deref(),
+        Some("bottom")
+    );
+
+    let set_top = temp.run(&["config", "set", "settings.hud_position", "top"]);
+    assert_eq!(set_top.exit_code, 0);
+    assert_eq!(set_top.stdout.as_deref(), Some("set hud_position = top"));
+    assert_eq!(
+        Config::parse(&temp.read()).unwrap().hud_position(),
+        HudPosition::Top
+    );
+    assert!(temp.read().contains("hud_style = \"layouts\""));
+
+    assert_eq!(
+        temp.run(&["config", "get", "hud_position"])
+            .stdout
+            .as_deref(),
+        Some("top")
+    );
+    let show: Value = serde_json::from_str(
+        temp.run(&["config", "show", "--json"])
+            .stdout
+            .as_deref()
+            .unwrap(),
+    )
+    .unwrap();
+    assert_eq!(show["settings"]["hud_position"], "top");
+    assert_eq!(show["settings"]["hud_style"], "layouts");
+
+    let reset = temp.run(&["config", "reset", "hud_position"]);
+    assert_eq!(reset.exit_code, 0);
+    assert_eq!(reset.stdout.as_deref(), Some("reset hud_position = bottom"));
+    let source = temp.read();
+    assert!(!source.contains("hud_position"), "{source}");
+    assert!(source.contains("hud_style = \"layouts\""), "{source}");
+    assert_eq!(
+        Config::parse(&source).unwrap().hud_position(),
+        HudPosition::Bottom
+    );
+
+    // Resetting the only key also removes the table it emptied.
+    temp.write("version = 1\n[settings]\nhud_position = \"top\"\n");
+    let reset_json: Value = serde_json::from_str(
+        temp.run(&["config", "reset", "settings.hud_position", "--json"])
+            .stdout
+            .as_deref()
+            .unwrap(),
+    )
+    .unwrap();
+    assert_eq!(reset_json["key"], "hud_position");
+    assert_eq!(reset_json["value"], "bottom");
+    assert!(!temp.read().contains("[settings]"), "{}", temp.read());
+
+    let bad = temp.run(&["config", "set", "hud_position", "center"]);
+    assert_eq!(bad.exit_code, 1);
+    assert!(bad.stderr.unwrap().contains("expected 'bottom' or 'top'"));
+}
+
+#[test]
 fn config_gets_sets_and_shows_spacing() {
     let temp = TempConfig::new("config-spacing");
     temp.write("# Mine.\nversion = 1\n[settings]\nhud = false\n");
@@ -406,13 +479,33 @@ fn config_sets_outer_around_explicit_edges_and_reports_resolved_ones() {
         serde_json::json!({ "inner": 6, "outer": 20, "top": 0, "left": 12 })
     );
 
+    // Resetting an explicit edge drops its key so it follows `outer` again.
+    let reset_top = temp.run(&["config", "reset", "gaps.top"]);
+    assert_eq!(reset_top.exit_code, 0, "{:?}", reset_top.stderr);
+    assert_eq!(reset_top.stdout.as_deref(), Some("reset gaps.top = 20"));
+    assert_eq!(
+        written_gaps(&temp),
+        serde_json::json!({ "inner": 6, "outer": 20, "left": 12 })
+    );
+    assert_eq!(edges.map(|key| get(&temp, key)), ["20", "20", "12", "20"]);
+
     // Back at its default, `outer` leaves the file and every explicit edge stays.
     set(&temp, "gaps.outer", "0");
     assert_eq!(
         written_gaps(&temp),
-        serde_json::json!({ "inner": 6, "top": 0, "left": 12 })
+        serde_json::json!({ "inner": 6, "left": 12 })
     );
     assert_eq!(edges.map(|key| get(&temp, key)), ["0", "0", "12", "0"]);
+
+    // Resetting `gaps.outer` also removes it without touching explicit edges.
+    set(&temp, "gaps.outer", "8");
+    let reset_outer = temp.run(&["config", "reset", "gaps.outer"]);
+    assert_eq!(reset_outer.exit_code, 0, "{:?}", reset_outer.stderr);
+    assert_eq!(reset_outer.stdout.as_deref(), Some("reset gaps.outer = 0"));
+    assert_eq!(
+        written_gaps(&temp),
+        serde_json::json!({ "inner": 6, "left": 12 })
+    );
 }
 
 #[test]
@@ -650,6 +743,52 @@ fn rules_list_add_position_and_remove_by_index_and_bundle_id() {
         Some("No rules configured.")
     );
     assert!(Config::parse(&temp.read()).is_ok());
+}
+
+#[test]
+fn rules_add_tile_writes_a_tile_rule() {
+    let temp = TempConfig::new("rules-tile");
+
+    let added = temp.run(&[
+        "rules",
+        "add",
+        "--app",
+        "com.apple.systempreferences",
+        "--tile",
+    ]);
+    assert_eq!(added.exit_code, 0);
+    assert_eq!(
+        added.stdout.as_deref(),
+        Some("added rule 1: bundle_id=com.apple.systempreferences -> tile")
+    );
+    let config = Config::parse(&temp.read()).unwrap();
+    assert_eq!(
+        config.disposition("com.apple.systempreferences", &sample_window(None)),
+        WindowDisposition::Tiled
+    );
+
+    for conflicting in [
+        &["--tile", "--float"][..],
+        &["--ignore", "--tile"],
+        &["--tile=yes"],
+    ] {
+        let mut args = vec!["rules", "add", "--app", "com.example.App"];
+        args.extend_from_slice(conflicting);
+        assert_eq!(temp.run(&args).exit_code, 1, "{conflicting:?}");
+    }
+    assert_eq!(
+        temp.run(&[
+            "rules",
+            "add",
+            "--app",
+            "com.example.App",
+            "--tile",
+            "--workspace",
+            "2"
+        ])
+        .exit_code,
+        1
+    );
 }
 
 #[test]
@@ -926,5 +1065,158 @@ fn rules_add_accepts_literal_help_flag_as_title() {
             .stdout
             .as_deref()
             .is_some_and(|out| out.contains("Manage ordered, first-match window rules"))
+    );
+}
+
+#[test]
+fn config_commands_accept_and_preserve_shortcuts_base_modifier() {
+    let temp = TempConfig::new("shortcuts-modifier");
+    temp.write("version = 1\n\n[shortcuts]\nmodifier = \"ctrl+alt\"\n");
+
+    let explicit_path = temp.path.to_str().unwrap();
+    let explicit_check = temp.run(&["config", "check", explicit_path]);
+    assert_eq!(
+        explicit_check.exit_code, 0,
+        "stderr: {:?}",
+        explicit_check.stderr
+    );
+    assert_eq!(
+        explicit_check.stdout.as_deref(),
+        Some("configuration is valid")
+    );
+
+    let implicit_check = temp.run(&["config", "check"]);
+    assert_eq!(
+        implicit_check.exit_code, 0,
+        "stderr: {:?}",
+        implicit_check.stderr
+    );
+    assert_eq!(
+        implicit_check.stdout.as_deref(),
+        Some("configuration is valid")
+    );
+
+    let hud = temp.run(&["config", "get", "hud"]);
+    assert_eq!(hud.exit_code, 0, "stderr: {:?}", hud.stderr);
+    assert_eq!(hud.stdout.as_deref(), Some("true"));
+
+    let set_gap = temp.run(&["config", "set", "gaps.inner", "8"]);
+    assert_eq!(set_gap.exit_code, 0, "stderr: {:?}", set_gap.stderr);
+    assert_eq!(set_gap.stdout.as_deref(), Some("set gaps.inner = 8"));
+
+    let gap = temp.run(&["config", "get", "gaps.inner"]);
+    assert_eq!(gap.exit_code, 0, "stderr: {:?}", gap.stderr);
+    assert_eq!(gap.stdout.as_deref(), Some("8"));
+
+    let recheck = temp.run(&["config", "check"]);
+    assert_eq!(recheck.exit_code, 0, "stderr: {:?}", recheck.stderr);
+
+    let parsed = Config::parse(&temp.read()).expect("saved config stays valid");
+    assert_eq!(parsed.spacing().inner, 8);
+    assert!(parsed.shortcuts().modifier.control);
+    assert!(parsed.shortcuts().modifier.option);
+    assert!(!parsed.shortcuts().modifier.command);
+    assert!(!parsed.shortcuts().modifier.shift);
+}
+
+#[cfg(target_os = "macos")]
+#[test]
+fn ctl_help_describes_restart_as_exit_without_relaunch() {
+    let outcome = run_cli(&["ctl", "--help"], None);
+    assert_eq!(outcome.exit_code, 0);
+    let stdout = outcome.stdout.expect("ctl --help stdout");
+    assert!(
+        !stdout.contains("restart or quit"),
+        "ctl --help should not promise relaunch:\n{stdout}"
+    );
+    assert!(
+        stdout.contains("does not relaunch"),
+        "ctl --help should state restart exits without relaunching:\n{stdout}"
+    );
+}
+
+#[test]
+fn workspaces_clear_keeps_solely_declared_named_workspace_on_main() {
+    let temp = TempConfig::new("workspaces-clear-named");
+    temp.write("version = 1\n[[workspaces]]\nworkspace = \"D\"\nmonitor = \"secondary\"\n");
+
+    let clear_d = temp.run(&["workspaces", "clear", "D"]);
+    assert_eq!(clear_d.exit_code, 0, "stderr: {:?}", clear_d.stderr);
+    assert_eq!(
+        clear_d.stdout.as_deref(),
+        Some("cleared workspace D (default: main)")
+    );
+
+    let after_clear: Value = serde_json::from_str(
+        temp.run(&["workspaces", "list", "--json"])
+            .stdout
+            .as_deref()
+            .unwrap(),
+    )
+    .unwrap();
+    let d_entry = after_clear["workspaces"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|entry| entry["workspace"] == "D")
+        .expect("solely declared named workspace D must remain listed");
+    assert_eq!(d_entry["monitor"], "main");
+    assert_eq!(d_entry["configured"], true);
+
+    let parsed = Config::parse(&temp.read()).unwrap();
+    let d = WorkspaceId::named('D').unwrap();
+    assert_eq!(parsed.named_workspaces().collect::<Vec<_>>(), vec![d]);
+
+    // Clearing again is idempotent and still preserves D on main.
+    let clear_again = temp.run(&["workspaces", "clear", "D", "--json"]);
+    assert_eq!(clear_again.exit_code, 0);
+    let clear_again_json: Value = serde_json::from_str(&clear_again.stdout.unwrap()).unwrap();
+    assert_eq!(clear_again_json["cleared"], false);
+    assert_eq!(clear_again_json["monitor"], "main");
+    assert_eq!(
+        Config::parse(&temp.read())
+            .unwrap()
+            .named_workspaces()
+            .collect::<Vec<_>>(),
+        vec![d]
+    );
+
+    // Clearing an unconfigured named workspace does not declare it.
+    let clear_z = temp.run(&["workspaces", "clear", "Z", "--json"]);
+    assert_eq!(clear_z.exit_code, 0);
+    let clear_z_json: Value = serde_json::from_str(&clear_z.stdout.unwrap()).unwrap();
+    assert_eq!(clear_z_json["cleared"], false);
+    assert_eq!(
+        Config::parse(&temp.read())
+            .unwrap()
+            .named_workspaces()
+            .collect::<Vec<_>>(),
+        vec![d]
+    );
+
+    // When a route rule also references D, clearing removes the redundant [[workspaces]] entry.
+    assert_eq!(
+        temp.run(&[
+            "rules",
+            "add",
+            "--app",
+            "com.example.App",
+            "--workspace",
+            "D"
+        ])
+        .exit_code,
+        0
+    );
+    let clear_routed = temp.run(&["workspaces", "clear", "D", "--json"]);
+    assert_eq!(clear_routed.exit_code, 0);
+    let clear_routed_json: Value = serde_json::from_str(&clear_routed.stdout.unwrap()).unwrap();
+    assert_eq!(clear_routed_json["cleared"], true);
+    assert!(!temp.read().contains("[[workspaces]]"));
+    assert_eq!(
+        Config::parse(&temp.read())
+            .unwrap()
+            .named_workspaces()
+            .collect::<Vec<_>>(),
+        vec![d]
     );
 }

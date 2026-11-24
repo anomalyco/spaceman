@@ -127,6 +127,7 @@ impl Ui {
     pub fn start_tour(&mut self) {
         self.menu = None;
         self.drag = None;
+        self.flush_pending_reload();
         // Re-running setup from Settings replaces a first-run tour, and that
         // tour's hold on automatic tiling ends with it.
         if self.tour.as_ref().is_some_and(|tour| !tour.flow.manual()) {
@@ -140,6 +141,7 @@ impl Ui {
         self.navigated = true;
         self.menu = None;
         self.drag = None;
+        self.flush_pending_reload();
         self.highlight_lab = None;
         self.highlight_feature = None;
         if pane == Pane::Workspaces {
@@ -258,6 +260,16 @@ impl Ui {
         }
     }
 
+    /// Saves where the Workspace HUD capsule sits, then moves every panel to that edge.
+    pub fn set_hud_position(&mut self, position: spaceman::config::HudPosition) {
+        self.edit(|doc| doc.set_hud_position(position));
+        if self.error.is_none()
+            && let Some(driver) = &self.hud_driver
+        {
+            driver.set_position(position);
+        }
+    }
+
     /// Saves gaps, edge padding and the single-window width, then retiles so every display
     /// takes them at once.
     pub fn set_spacing(&mut self, spacing: spaceman::spacing::Spacing) {
@@ -284,20 +296,69 @@ impl Ui {
         }
     }
 
-    /// Applies `edit` and saves; a save that fails puts the rules back as they were.
+    /// Applies `edit` and saves against the latest file on disk under the config lock.
     pub fn edit(&mut self, edit: impl FnOnce(&mut Doc)) {
-        let before = self.doc.clone();
-        edit(&mut self.doc);
-        if !self.fixture {
-            match self.doc.save() {
+        self.try_edit(|doc| {
+            edit(doc);
+            Ok(())
+        });
+    }
+
+    /// Applies a fallible `edit` against the latest file on disk under the config lock.
+    pub fn try_edit(&mut self, edit: impl FnOnce(&mut Doc) -> Result<(), String>) {
+        if self.fixture {
+            let before = self.doc.clone();
+            match edit(&mut self.doc) {
                 Ok(()) => self.error = None,
                 Err(error) => {
                     self.error = Some(error);
                     self.doc = before;
                 }
             }
+            self.look_up_apps();
+            return;
         }
+        match self.doc.edit_and_save(edit) {
+            Ok(()) => self.error = None,
+            Err(error) => self.error = Some(error),
+        }
+        self.sync_hud_from_doc();
         self.look_up_apps();
+    }
+
+    fn sync_hud_from_doc(&self) {
+        if let Some(driver) = &self.hud_driver {
+            driver.set_enabled(self.doc.hud());
+            driver.set_style(self.doc.hud_style());
+            driver.set_position(self.doc.hud_position());
+        }
+    }
+
+    pub(crate) fn reload_doc(&mut self) {
+        if self.fixture {
+            return;
+        }
+        self.doc = self.doc.reloaded();
+        self.look_up_apps();
+        self.sync_hud_from_doc();
+    }
+
+    /// Handles a config-changed notification from the agent pump: reloads immediately when
+    /// idle, or defers until an active Rules drag finishes.
+    pub(crate) fn on_config_changed(&mut self) -> bool {
+        self.doc.mark_reload_pending();
+        if self.drag.is_none() {
+            self.reload_doc();
+            return true;
+        }
+        false
+    }
+
+    /// Applies a config reload that arrived while a Rules drag was in progress.
+    pub(crate) fn flush_pending_reload(&mut self) {
+        if self.drag.is_none() && self.doc.reload_pending() {
+            self.reload_doc();
+        }
     }
 
     pub fn open_add_menu(&mut self, place: Place) {
@@ -359,13 +420,10 @@ fn poll(ui: &mut Ui, clock: f64, tx: &mut Tx) -> bool {
     {
         driver.trigger(hud_event);
     }
-    if news.config_changed && ui.drag.is_none() {
-        ui.doc = Doc::load();
-        ui.look_up_apps();
-        if let Some(driver) = &ui.hud_driver {
-            driver.set_enabled(ui.doc.hud());
-            driver.set_style(ui.doc.hud_style());
-        }
+    if news.config_changed {
+        changed |= ui.on_config_changed();
+    } else if ui.doc.reload_pending() && ui.drag.is_none() {
+        ui.reload_doc();
         changed = true;
     }
     changed
@@ -376,6 +434,7 @@ fn on_key(ui: &mut Ui, event: &KeyEvent, _tx: &mut Tx) -> bool {
         if ui.drag.is_some() || ui.menu.is_some() {
             ui.drag = None;
             ui.menu = None;
+            ui.flush_pending_reload();
             return true;
         }
         if ui.tour.is_some() {
@@ -399,6 +458,7 @@ fn on_key(ui: &mut Ui, event: &KeyEvent, _tx: &mut Tx) -> bool {
 fn on_close(ui: &mut Ui, _tx: &mut Tx) {
     ui.drag = None;
     ui.menu = None;
+    ui.flush_pending_reload();
     // Closing the setup window dismisses the tour, so a first-run tour starts
     // tiling now rather than holding it behind a window nobody can see.
     onboarding::dismiss(ui);
@@ -489,13 +549,20 @@ pub(crate) fn live_app(
     let doc = Doc::load();
     let initial_hud = doc.hud();
     let initial_style = doc.hud_style();
+    let initial_position = doc.hud_position();
     let hud_bridge = bridge.clone();
     let mut app = base_app()
         .init(move || Ui::load_live(doc, bridge, initial_tour, accessibility, initial_target))
         .on_reopen(on_reopen)
         .on_open_url(on_open_url);
     let hud_sink = Arc::new(hud::LiveHudSink::new(hud_bridge, app.handle()));
-    let hud_driver = hud::install(&mut app, initial_hud, initial_style, hud_sink);
+    let hud_driver = hud::install(
+        &mut app,
+        initial_hud,
+        initial_style,
+        initial_position,
+        hud_sink,
+    );
     app.handle().update_if(move |ui, _| {
         ui.hud_driver = Some(hud_driver);
         false
@@ -555,6 +622,18 @@ mod tests {
         assert_eq!(ui.pane, Pane::General);
         assert_eq!(ui.highlight_lab.as_deref(), Some("scrolling-strip"));
         assert_eq!(ui.highlight_feature.as_deref(), Some("scrolling-strip"));
+
+        for (url, expected_feature) in [
+            ("spaceman://settings/layout", None),
+            ("spaceman://features/gaps", Some("gaps")),
+            ("spaceman://features/max-width", Some("max-width")),
+        ] {
+            let target = parse_url(url).unwrap().resolve();
+            ui.open_target(target);
+            assert_eq!(ui.pane, Pane::Layout, "{url}");
+            assert_eq!(ui.highlight_lab, None, "{url}");
+            assert_eq!(ui.highlight_feature.as_deref(), expected_feature, "{url}");
+        }
 
         let hud_feature = parse_url("spaceman://features/hud").unwrap().resolve();
         ui.open_target(hud_feature);

@@ -23,17 +23,24 @@ Accessibility grants live in **System Settings > Privacy & Security**. The list 
 app tile in that list, so the setup guide asks for a click on the Privacy & Security notification or
 the list's `+` button instead.
 
-Spaceman observes Accessibility elements with role `AXWindow` and subrole `AXStandardWindow` that are
-on screen, not minimized, not in native fullscreen, centered on an attached display, and expose a
-settable position. Standard windows with an enabled fullscreen button (or borderless regular-app
-windows without close/fullscreen buttons, such as Ghostty with `window-decoration = false`) and a
-settable size can tile, including standard windows at floating window level (`kCGWindowLayer = 3`,
-such as a popped-out Slack Huddle). Modal windows, standard windows whose fullscreen button is
-disabled or absent while a close button is present (such as file Open/Save panels, settings windows,
-and splash screens), movable non-resizable windows, and windows matched by a `float` rule retain their
-frame but park and reveal with their logical workspace. Buttonless accessory-application windows,
-utility panels, dialogs with other subroles, and applications with incomplete or unusual Accessibility
-implementations may remain global or be ignored.
+Spaceman observes normal-level (`kCGWindowLayer = 0`) Accessibility elements with role `AXWindow`
+and subrole `AXStandardWindow` that are on screen, not minimized, not in native fullscreen, centered
+on an attached display, and expose a settable position. Standard windows with a fullscreen button
+(or borderless regular-app windows without close/fullscreen buttons, such as Ghostty with
+`window-decoration = false`) and a settable size can tile. A regular application's fullscreen button
+may be disabled (as while a window shows a sheet), and a window without one tiles when its zoom
+button is enabled: SwiftUI and scene-based windows such as FaceTime, Phone, News, Podcasts, Games,
+Shortcuts, System Settings and Finder's Get Info expose no fullscreen button. Windows that keep
+their own aspect ratio (FaceTime) fill their tile along one side and leave the rest of it empty.
+Modal windows, standard windows with a close button but neither a fullscreen button nor an enabled
+zoom button (such as file Open/Save panels, settings windows, and splash screens),
+accessory-application windows whose fullscreen button is disabled or absent, movable non-resizable
+windows, and windows matched by a `float` rule retain their frame but park and reveal with their
+logical workspace. A `tile` rule tiles any of them, though a window that cannot resize keeps its own
+size inside its tile. Always-on-top overlays at non-zero window layers (`kCGWindowLayer != 0`, such
+as popped-out Slack Huddles and Picture-in-Picture windows), buttonless accessory-application
+windows, utility panels, dialogs with other subroles, and applications with incomplete or unusual
+Accessibility implementations remain global and are ignored so Spaceman never fights their bounds.
 
 Some applications reposition their own windows. If a parked window reappears on screen while its
 application is frontmost, the user summoned it: the stale recovery frame is discarded and the window —
@@ -45,7 +52,7 @@ twice within five minutes becomes parking-exempt for the rest of the session: it
 tiled on its workspace, but is left visible when another workspace is active rather than being fought
 indefinitely. Parking-exempt windows appear in the `parking_exempt` list of `spaceman ctl debug`; an
 `ignore` config rule instead opts an application out of management permanently. If a newly identified
-frontmost window appears at the exact one-pixel-edge position produced by Spaceman parking, it is
+frontmost window appears at the bottom-corner position produced by Spaceman parking, it is
 revealed so normal workspace adoption can recover an app that relaunched with stale saved bounds.
 Other windows an application keeps off screen itself are left alone rather than parked, and never
 recorded as recovery frames.
@@ -67,7 +74,7 @@ to main until they reconnect.
 
 Parking checks the full window rectangle against all attached displays and chooses an exposed edge,
 including when the window's assigned display has neighbors on both sides. A window counts as on
-screen when more than its one-pixel parking strip shows on a display, so one wider than its tile that
+screen when more than a one-pixel-wide column of it shows on a display, so one wider than its tile that
 overflows the display edge is still parked. When a display is added or removed, every hidden window
 is re-parked against the new arrangement before focus follow or reappearance handling runs (a failed
 write is retried each cycle), and a recovery frame whose display is gone is restored onto the main

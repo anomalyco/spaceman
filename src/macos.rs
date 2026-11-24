@@ -1,5 +1,6 @@
 mod apply;
 mod ax;
+mod classify;
 mod display_link;
 mod displays;
 mod events;
@@ -29,11 +30,11 @@ use crate::{
 
 pub use apply::{
     ApplyOutcome, ApplyResult, WindowAccessError, apply, apply_managed, apply_while, focus_window,
-    frame, raise_window, set_position_only, warp_pointer,
+    frame, raise_window, set_parked_position, set_position_only, warp_pointer,
 };
 pub use ax::{
-    onscreen_window_frames, onscreen_window_order, window_at_point, window_server_frame,
-    window_server_frames,
+    onscreen_window_frames, onscreen_window_order, window_server_frame, window_server_frames,
+    windows_at_point,
 };
 pub use display_link::{DisplayFrame, DisplayLink, DisplayLinkError};
 pub use displays::{DisplayOutput, DisplayOutputs, display_ids, outputs};
@@ -47,9 +48,11 @@ pub use swipes::SwipeMonitor;
 
 use apply::{cache_managed_window, evict_managed_app, prune_managed_app};
 use ax::{
-    application_element, attribute, cf_array_items, is_settable, onscreen_windows,
-    optional_bool_attribute, physical_window_id, set_ax_timeout, window_server_windows,
+    application_element, attribute, cf_array_items, is_non_standard_window_element, is_settable,
+    onscreen_windows, optional_bool_attribute, physical_window_id, set_ax_timeout,
+    window_server_windows,
 };
+use classify::{TitleBar, TitleButton, is_dialog, is_ignored};
 use displays::main_output;
 use window_attributes::{WindowAttribute, WindowAttributes};
 
@@ -426,6 +429,15 @@ pub(crate) fn confirms_no_windows(id: &AppInstanceId) -> bool {
     attribute::<CFArray>(&element, "AXWindows").is_ok_and(|windows| windows.count() == 0)
 }
 
+/// The user set the window aside: its app is hidden (⌘H) or the window is
+/// minimized (⌘M). Its ordered-out surface then proves it left the layout,
+/// unlike a snapshot that merely omitted it.
+pub(crate) fn confirms_set_aside(window: &PhysicalWindowId) -> bool {
+    running_application(&window.app).is_some_and(|application| {
+        application.isHidden() || apply::cached_window_is_minimized(window)
+    })
+}
+
 fn observe_application(
     application: &NSRunningApplication,
     pid: i32,
@@ -491,7 +503,11 @@ fn observe_application(
         .map(|window| (window, focused_id.clone()))
         .chain(cf_array_items::<AXUIElement>(&windows).map(|window| (window, None)));
     for (window, known_id) in elements {
+        set_ax_timeout(window);
         let Some(window_id) = known_id.or_else(|| physical_window_id(&id, window)) else {
+            if is_non_standard_window_element(window) {
+                continue;
+            }
             return Some(AppObservation::Unavailable {
                 app: id,
                 error: "physical window ID unavailable".into(),
@@ -500,7 +516,6 @@ fn observe_application(
         if !current_windows.insert(window_id.clone()) {
             continue;
         }
-        set_ax_timeout(window);
         match observe_window(window_id, accessory, window, onscreen, output) {
             Ok(WindowObservation::Observed(observation)) => {
                 cache_managed_window(&observation.id, window);
@@ -526,14 +541,14 @@ fn observe_application(
     })
 }
 
-pub(super) enum WindowObservation {
+enum WindowObservation {
     Observed(ObservedWindow),
     Ignored,
 }
 
 const MIN_MANAGEABLE_WINDOW_DIMENSION: i32 = 64;
 
-pub(super) fn observe_window(
+fn observe_window(
     id: PhysicalWindowId,
     accessory: bool,
     window: &AXUIElement,
@@ -589,22 +604,26 @@ pub(super) fn observe_window(
     {
         return Ok(WindowObservation::Ignored);
     }
-    let fullscreen_enabled = attributes
-        .get::<AXUIElement>(WindowAttribute::FullScreenButton)
-        .is_ok_and(|button| {
-            set_ax_timeout(&button);
-            optional_bool_attribute(&button, "AXEnabled").unwrap_or(false)
-        });
-    let has_close_button = attributes
+    let close = attributes
         .get::<AXUIElement>(WindowAttribute::CloseButton)
         .is_ok();
-    if accessory && !fullscreen_enabled && !has_close_button {
+    let mut bar = TitleBar {
+        fullscreen: title_button(&attributes, WindowAttribute::FullScreenButton),
+        zoom: TitleButton::Absent,
+        close,
+    };
+    if is_ignored(accessory, bar) {
         return Ok(WindowObservation::Ignored);
     }
     let modal = attributes
         .optional_bool(WindowAttribute::Modal)
         .unwrap_or(false);
-    let dialog = modal || (!fullscreen_enabled && (has_close_button || accessory));
+    // The zoom button's state costs its own round trip, and only decides a
+    // regular application's closable window without a fullscreen button.
+    if !accessory && !modal && close && bar.fullscreen == TitleButton::Absent {
+        bar.zoom = title_button(&attributes, WindowAttribute::ZoomButton);
+    }
+    let dialog = is_dialog(accessory, modal, bar);
     let resizable = !dialog
         && is_settable(window, "AXSize").map_err(|error| format!("AXSize settable: {error:?}"))?;
     let title = match attributes.get::<CFString>(WindowAttribute::Title) {
@@ -617,4 +636,18 @@ pub(super) fn observe_window(
         resizable,
         title,
     }))
+}
+
+fn title_button(attributes: &WindowAttributes<'_>, button: WindowAttribute) -> TitleButton {
+    match attributes.get::<AXUIElement>(button) {
+        Ok(button) => {
+            set_ax_timeout(&button);
+            if optional_bool_attribute(&button, "AXEnabled").unwrap_or(false) {
+                TitleButton::Enabled
+            } else {
+                TitleButton::Disabled
+            }
+        }
+        Err(_) => TitleButton::Absent,
+    }
 }

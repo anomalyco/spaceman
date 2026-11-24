@@ -110,7 +110,7 @@ impl HotkeyPlan {
         Self::from_layout(enabled, shortcuts, &layout)
     }
 
-    fn from_layout(
+    pub(crate) fn from_layout(
         enabled: &[WorkspaceId],
         shortcuts: &Shortcuts,
         layout: &LayoutSnapshot,
@@ -143,6 +143,20 @@ impl HotkeyPlan {
 
     pub(crate) fn matches(&self, hotkeys: &Hotkeys) -> bool {
         self.layout_fingerprint == hotkeys.layout_fingerprint
+    }
+
+    #[cfg(test)]
+    pub(crate) fn has_registration(
+        &self,
+        key_code: u32,
+        modifiers: u32,
+        action: &WorkerAction,
+    ) -> bool {
+        self.registrations.iter().any(|registration| {
+            registration.key_code == key_code
+                && registration.modifiers == modifiers
+                && registration.action == *action
+        })
     }
 }
 
@@ -220,6 +234,12 @@ fn push_defaults(plan: &mut PlanBuilder<'_>, enabled: &[WorkspaceId], base: u32)
             "cycle workspace windows",
         ),
         (
+            LogicalKey::Character('`'),
+            base | SHIFT_KEY,
+            WorkerAction::CycleFocusPrevious,
+            "cycle workspace windows backward",
+        ),
+        (
             LogicalKey::Semantic(SemanticKey::Tab),
             base,
             WorkerAction::WorkspaceBackAndForth,
@@ -280,15 +300,18 @@ fn worker_action(command: &Command) -> WorkerAction {
     match command {
         Command::Switch(workspace) => WorkerAction::SwitchWorkspace(*workspace),
         Command::Move(workspace) => WorkerAction::MoveFocused(*workspace),
+        Command::MoveFollow(workspace) => WorkerAction::MoveFocusedFollow(*workspace),
         Command::BackAndForth => WorkerAction::WorkspaceBackAndForth,
         Command::MoveWorkspace(target) => WorkerAction::MoveWorkspaceToDisplay(target.clone()),
         Command::Focus(direction) => WorkerAction::Focus(*direction),
         Command::FocusNext => WorkerAction::CycleFocus,
+        Command::FocusPrev => WorkerAction::CycleFocusPrevious,
         Command::MoveDirection(direction) => WorkerAction::Reorder(*direction),
         Command::Layout => WorkerAction::ToggleLayout,
         Command::Fullscreen => WorkerAction::ToggleFullscreenLayout,
         Command::Float => WorkerAction::ToggleFloat,
         Command::Resize(direction) => WorkerAction::Resize(*direction),
+        Command::ResizeTo(axis, points) => WorkerAction::ResizeTo(*axis, *points),
         Command::Balance => WorkerAction::Balance,
         Command::Retile => WorkerAction::Retile,
     }
@@ -650,6 +673,10 @@ mod tests {
             ),
             ("grow layout", WorkerAction::Resize(ResizeDirection::Grow)),
             ("cycle workspace windows", WorkerAction::CycleFocus),
+            (
+                "cycle workspace windows backward",
+                WorkerAction::CycleFocusPrevious,
+            ),
             ("focus left", WorkerAction::Focus(Direction::Left)),
             ("focus right", WorkerAction::Focus(Direction::Right)),
             ("move window left", WorkerAction::Reorder(Direction::Left)),
@@ -709,11 +736,11 @@ mod tests {
     }
 
     #[test]
-    fn full_plan_contains_all_thirty_six_registrations() {
+    fn full_plan_contains_all_thirty_seven_registrations() {
         let enabled = WorkspaceId::numbered().collect::<Vec<_>>();
         let plan = HotkeyPlan::from_layout(&enabled, &Shortcuts::default(), &layout()).unwrap();
-        assert_eq!(plan.registrations.len(), 36);
-        assert!(plan.registrations.capacity() >= 36);
+        assert_eq!(plan.registrations.len(), 37);
+        assert!(plan.registrations.capacity() >= 37);
         let move_ws = plan
             .registrations
             .iter()
@@ -1007,9 +1034,13 @@ mod tests {
             "alt+left" = "move-direction left"
             "alt+shift+ctrl+right" = "focus right"
             "alt+shift+b" = "balance"
+            "ctrl+alt+w" = "resize width 1200"
             "#,
         );
-        let layout_with_b = LayoutSnapshot::for_test(vec![(11, 'b', false, false)], vec![]);
+        let layout_with_b = LayoutSnapshot::for_test(
+            vec![(11, 'b', false, false), (13, 'w', false, false)],
+            vec![],
+        );
         let plan = HotkeyPlan::from_layout(&[], &shortcuts, &layout_with_b).unwrap();
         let reorder = registration(&plan, &WorkerAction::Reorder(Direction::Left));
         assert!(
@@ -1026,6 +1057,12 @@ mod tests {
                     && registration.modifiers == OPTION_KEY | SHIFT_KEY | CONTROL_KEY)
         );
         assert_eq!(registration(&plan, &WorkerAction::Balance).len(), 1);
+        let resize = registration(
+            &plan,
+            &WorkerAction::ResizeTo(crate::Axis::Horizontal, 1200),
+        );
+        assert!(resize.iter().any(|registration| registration.key_code == 13
+            && registration.modifiers == OPTION_KEY | CONTROL_KEY));
     }
 
     #[test]
@@ -1113,5 +1150,27 @@ mod tests {
                     && registration.modifiers == OPTION_KEY)
         );
         assert!(plan.warnings.is_empty(), "{:?}", plan.warnings);
+    }
+
+    #[test]
+    fn keeping_fixed_scratchpad_unbind_under_new_base_modifier_keeps_toggle_disabled() {
+        let layout = LayoutSnapshot::for_test(vec![(42, '\\', false, false)], vec![]);
+        let config = crate::config::Config::parse(
+            "version = 1\n[labs]\nscratchpad = true\n[shortcuts]\nmodifier = 'ctrl+alt'\n[shortcuts.bindings]\n'alt+\\' = 'none'\n",
+        )
+        .unwrap();
+        let enabled = [WorkspaceId::new(1).unwrap()];
+        let plan = HotkeyPlan::from_layout(&enabled, config.shortcuts(), &layout).unwrap();
+        assert_eq!(action(&plan, "show or hide the scratchpad"), None);
+        assert_eq!(
+            action(&plan, "move window to or from the scratchpad"),
+            Some(&WorkerAction::Scratchpad(ScratchpadCommand::Mark))
+        );
+        let switch_1 = plan
+            .registrations
+            .iter()
+            .find(|registration| registration.description == "switch workspace 1")
+            .unwrap();
+        assert_eq!(switch_1.modifiers, CONTROL_KEY | OPTION_KEY);
     }
 }

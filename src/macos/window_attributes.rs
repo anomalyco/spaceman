@@ -24,13 +24,14 @@ pub(super) enum WindowAttribute {
     Position,
     Size,
     FullScreenButton,
+    ZoomButton,
     CloseButton,
     Modal,
     Title,
 }
 
 /// Indexed by `WindowAttribute as usize`.
-const NAMES: [&str; 10] = [
+const NAMES: [&str; 11] = [
     "AXRole",
     "AXSubrole",
     "AXMinimized",
@@ -38,6 +39,7 @@ const NAMES: [&str; 10] = [
     "AXPosition",
     "AXSize",
     "AXFullScreenButton",
+    "AXZoomButton",
     "AXCloseButton",
     "AXModal",
     "AXTitle",

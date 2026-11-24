@@ -14,7 +14,8 @@ fails after the old registrations are released, it pauses and reports `Hotkeys u
 | Add `Shift` to a named workspace key | Move the focused window there without switching |
 | `Option+Tab` | Focus the workspace focused before this one, on any display; only a hidden one switches its display |
 | `Option+Shift+Tab` | Move the focused workspace to the next display (wrapping left-to-right) |
-| Option-backtick | Focus the next tiled window, wrapping in stable workspace order |
+| Option-backtick | Focus the next window on the workspace: tiles in stable order, then floating windows, wrapping |
+| Option-Shift-backtick | Focus the previous window in that same order |
 | `Option+H/J/K/L` | Focus the nearest tile left/down/up/right, including across displays |
 | `Option+Shift+H/J/K/L` | Move the focused tile in that direction |
 | `Option+/` | Toggle the active workspace layout's root horizontal/vertical axis |
@@ -40,16 +41,19 @@ overlaps a built-in shortcut, the workspace shortcut takes precedence. A `[short
 its chord before both, so binding `alt+h` replaces the built-in Focus Left and a named workspace H's
 switch shortcut too, and whichever was skipped is logged in `agent.log`.
 
-Spaceman remembers the last-focused logical tile in each workspace and restores that focus when the
-workspace becomes active again. Pressing an already-active workspace shortcut preserves the current
-focus when one of that workspace's windows is already focused; otherwise it focuses the remembered
-tile.
+Spaceman remembers the last-focused window (tile or floating) in each workspace and restores that
+focus when the workspace becomes active again, keeping the remembered tile as a fallback if a float
+closes, moves, or tiles. Pressing an already-active workspace shortcut again while one of that
+workspace's windows already has focus cycles through its tiles in stable order (wrapping around, in
+both split and Fullscreen Layout); if focus is on another display, the first press brings focus back
+to the workspace and a second press cycles. Clicking an already-active workspace in the menu bar or
+HUD preserves current focus.
 
 Fullscreen Layout is a workspace mode: every tiled window receives the full display frame (less any
 `settings.gaps` edge padding, and centered at `settings.single_window_max_width` when set), and the
 focused window is raised above the others. Its menu-bar workspace glyph is filled while the mode is
-active. Option-backtick focuses the next tiled window and wraps
-through the workspace's stable tile order; it provides the same ordering in split layouts. In
+active. Option-backtick focuses the next window and wraps
+through the workspace's stable tile order, then its floating windows; it provides the same ordering in split layouts. In
 Fullscreen Layout, `Option+H`/`Option+K` step to the previous tile and `Option+L`/`Option+J` to the
 next one in that order without wrapping; past either end of the stack they continue to the adjacent
 display, as in a split layout. Leaving the workspace hides its windows back to front, so stacked
@@ -58,8 +62,8 @@ Command-backtick continues to use macOS's same-application window cycle, and Spa
 resulting focus. Press `Option+Shift+F` again to restore the unchanged split layout. Fullscreen Layout
 and its active tile survive workspace switches, native-tab physical-window replacement, and Spaceman
 restarts. `Option+/` exits Fullscreen Layout, toggles the preserved split axis, and immediately applies
-the resulting normal layout. Keyboard resize, balance, and tile reordering require leaving Fullscreen
-Layout first. Pointer dragging and resizing are ignored while the mode is active. Floating windows are
+the resulting normal layout. Keyboard resize (including `resize width|height`), balance, and tile
+reordering require leaving Fullscreen Layout first. Pointer dragging and resizing are ignored while the mode is active. Floating windows are
 not expanded. Removing or moving away the workspace's final tiled window exits Fullscreen Layout.
 
 `Option+Shift+Space` floats the focused window: it leaves the tiles, keeps its exact frame and
@@ -125,7 +129,8 @@ The menu-bar control shows active workspace/layout glyphs and runtime errors. It
   hover) and its `Option` shortcut. Choosing one switches to it;
 - `Pause Tiling`, or `Resume Tiling` while paused;
 - `Workspace HUD`, checked while the non-activating workspace capsule (`[settings] hud = true`) is enabled;
-  `Settings > General > Workspace HUD` picks `Off`, `Icons`, or `Layouts` (`[settings] hud` and `hud_style`, default `Icons`);
+  `Settings > General > Workspace HUD` picks `Off`, `Icons`, or `Layouts` (`[settings] hud` and `hud_style`, default `Icons`),
+  and its `Position` picks `Bottom` or `Top` (`[settings] hud_position`, default `Bottom`) while the HUD is on;
 - `Launch at Login`, shown checked when macOS has enabled the signed app bundle;
 - `Settings...` (`⌘,`), opening the Rune Settings window (`General`, `Layout`, `Rules`, `Workspaces`, `Shortcuts`, and `Activity`, plus `⇧⌘D` Playground);
 - `Check for Updates...`, which checks and opens Settings (its sidebar and `General > Updates` show
@@ -163,15 +168,19 @@ spaceman ctl move-workspace
 spaceman ctl move-workspace prev
 spaceman ctl move-workspace secondary
 spaceman ctl move 7
+spaceman ctl move 7 --follow
 spaceman ctl move-app com.tinyspeck.slackmacgap 6
 spaceman ctl focus left
 spaceman ctl focus next
+spaceman ctl focus prev
 spaceman ctl move-direction right
 spaceman ctl layout
 spaceman ctl fullscreen
 spaceman ctl float
 spaceman ctl resize shrink
 spaceman ctl resize grow
+spaceman ctl resize width 1200
+spaceman ctl resize height 600
 spaceman ctl balance
 spaceman ctl scratchpad toggle
 spaceman ctl scratchpad mark
@@ -190,12 +199,16 @@ spaceman doctor 24
 ```
 
 Directions are `left`, `down`, `up`, and `right`. `focus next` is Option-backtick,
-`fullscreen` toggles the focused workspace's Fullscreen Layout, like `Option+Shift+F`, and `float`
+`focus prev` is Option-Shift-backtick, `fullscreen` toggles the focused workspace's Fullscreen Layout, like `Option+Shift+F`, and `float`
 toggles the focused window's floating, like `Option+Shift+Space`. `scratchpad toggle` and
 `scratchpad mark` are `Option+\` and `Option+Shift+\`; while `[labs] scratchpad` is off they report
-`Scratchpad is off`. `balance` equalizes the focused tile's immediate
-split while respecting nested minimum sizes. `hud` repeatedly renders sanitized runtime geometry in
-the terminal until interrupted. `ctl wrong` marks the journal the moment something looks wrong and
+`Scratchpad is off`. `resize width|height POINTS` resizes the focused window to that width or
+height (its own frame, gaps excluded) by moving its boundary at the nearest split along that axis;
+the split's other tiles give or take the difference in proportion, never below 50 points. `balance`
+equalizes the focused tile's immediate split while respecting nested minimum sizes; it does not
+touch the workspace's other splits. Neither has a default shortcut (see
+[Configuration › Shortcuts](configuration.md#shortcuts)). `hud` repeatedly renders sanitized
+runtime geometry in the terminal until interrupted. `ctl wrong` marks the journal the moment something looks wrong and
 writes a full arrangement snapshot, so `doctor` shows what the screen held then.
 
 `ctl debug` excludes window titles. It reports each display's Fullscreen Layout state and tiled

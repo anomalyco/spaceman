@@ -262,6 +262,73 @@ fn balance_applies_and_persists_the_focused_parent_split() {
 }
 
 #[test]
+fn resize_to_applies_and_persists_the_focused_window_width() {
+    let first = window(10);
+    let second = window(20);
+    let mut backend = FakeBackend {
+        focused: Some(second.clone()),
+        ..FakeBackend::default()
+    };
+    backend.frames.insert(first.clone(), frame(50));
+    backend.frames.insert(second.clone(), frame(500));
+    let mut runtime = runtime(backend);
+    bind(&mut runtime, WorkspaceId::ONE, &first);
+    bind(&mut runtime, WorkspaceId::ONE, &second);
+
+    runtime
+        .resize_focused_to(
+            crate::Axis::Horizontal,
+            700,
+            outputs(),
+            &AtomicBool::new(false),
+        )
+        .unwrap();
+
+    assert_eq!(runtime.backend.frames[&second].width, 700);
+    assert_eq!(runtime.backend.frames[&second].x, 300);
+    assert_eq!(runtime.backend.frames[&first].width, 300);
+    assert!(runtime.backend.workspace_state.is_some());
+
+    // The lone-axis case is a no-op, like `resize grow` with no sibling.
+    runtime.backend.workspace_state = None;
+    runtime
+        .resize_focused_to(
+            crate::Axis::Vertical,
+            300,
+            outputs(),
+            &AtomicBool::new(false),
+        )
+        .unwrap();
+    assert_eq!(runtime.backend.frames[&second].width, 700);
+    assert!(runtime.backend.workspace_state.is_none());
+}
+
+#[test]
+fn resize_to_requires_leaving_fullscreen_layout() {
+    let (first, second) = (window(10), window(20));
+    let mut backend = FakeBackend {
+        focused: Some(first.clone()),
+        ..FakeBackend::default()
+    };
+    backend.frames.insert(first.clone(), frame(50));
+    backend.frames.insert(second.clone(), frame(500));
+    let mut runtime = runtime(backend);
+    bind(&mut runtime, WorkspaceId::ONE, &first);
+    bind(&mut runtime, WorkspaceId::ONE, &second);
+    let cancelled = AtomicBool::new(false);
+    runtime
+        .toggle_fullscreen_layout(outputs(), &cancelled)
+        .unwrap();
+
+    let Err(resize) =
+        runtime.resize_focused_to(crate::Axis::Horizontal, 600, outputs(), &cancelled)
+    else {
+        panic!("resize width must not apply in Fullscreen Layout");
+    };
+    assert!(resize.contains("Exit Fullscreen Layout"), "{resize}");
+}
+
+#[test]
 fn reorder_moves_to_the_adjacent_display_at_a_tile_boundary() {
     let moving = window(10);
     let secondary = window(20);
@@ -384,4 +451,38 @@ fn perpendicular_reorder_creates_a_mixed_split_for_three_windows() {
         }
     );
     assert!(runtime.backend.workspace_state.is_some());
+}
+
+/// #119: an empty workspace on the adjacent display still takes the tile.
+#[test]
+fn reorder_moves_to_an_empty_workspace_on_the_adjacent_display() {
+    let moving = window(10);
+    let mut backend = FakeBackend {
+        focused: Some(moving.clone()),
+        ..FakeBackend::default()
+    };
+    backend.frames.insert(moving.clone(), frame(50));
+    let mut runtime = runtime(backend);
+    bind(&mut runtime, WorkspaceId::ONE, &moving);
+    assert!(runtime.workspaces.windows(WorkspaceId::SIX).is_empty());
+
+    runtime
+        .reorder_focused(Direction::Right, outputs(), &AtomicBool::new(false))
+        .unwrap();
+
+    assert_eq!(
+        runtime.workspaces.workspace_of(&moving),
+        Some(WorkspaceId::SIX)
+    );
+    assert!(runtime.is_visible(WorkspaceId::SIX, &outputs()));
+    assert_eq!(runtime.backend.focused, Some(moving.clone()));
+
+    // Nothing lies further right: the key does nothing.
+    runtime
+        .reorder_focused(Direction::Right, outputs(), &AtomicBool::new(false))
+        .unwrap();
+    assert_eq!(
+        runtime.workspaces.workspace_of(&moving),
+        Some(WorkspaceId::SIX)
+    );
 }

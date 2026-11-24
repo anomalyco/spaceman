@@ -34,6 +34,7 @@ struct RuleRemovedOutput {
 enum ActionArg {
     Workspace(WorkspaceId),
     Float,
+    Tile,
     Ignore,
 }
 
@@ -178,7 +179,9 @@ fn parse_add_options(args: &[&str]) -> Result<AddOptions, String> {
             }
             "--workspace" => {
                 if action.is_some() {
-                    return Err("specify only one of --workspace, --float, or --ignore".into());
+                    return Err(
+                        "specify only one of --workspace, --float, --tile, or --ignore".into(),
+                    );
                 }
                 let value = next_value(flag, inline_value, &mut index)?;
                 let workspace = WorkspaceId::parse(&value)?;
@@ -189,16 +192,31 @@ fn parse_add_options(args: &[&str]) -> Result<AddOptions, String> {
                     return Err("--float does not take a value".into());
                 }
                 if action.is_some() {
-                    return Err("specify only one of --workspace, --float, or --ignore".into());
+                    return Err(
+                        "specify only one of --workspace, --float, --tile, or --ignore".into(),
+                    );
                 }
                 action = Some(ActionArg::Float);
+            }
+            "--tile" => {
+                if inline_value.is_some() {
+                    return Err("--tile does not take a value".into());
+                }
+                if action.is_some() {
+                    return Err(
+                        "specify only one of --workspace, --float, --tile, or --ignore".into(),
+                    );
+                }
+                action = Some(ActionArg::Tile);
             }
             "--ignore" => {
                 if inline_value.is_some() {
                     return Err("--ignore does not take a value".into());
                 }
                 if action.is_some() {
-                    return Err("specify only one of --workspace, --float, or --ignore".into());
+                    return Err(
+                        "specify only one of --workspace, --float, --tile, or --ignore".into(),
+                    );
                 }
                 action = Some(ActionArg::Ignore);
             }
@@ -231,7 +249,9 @@ fn parse_add_options(args: &[&str]) -> Result<AddOptions, String> {
         return Err("rules add requires --app <bundle-id> (or --title <title>)".into());
     }
     let Some(action) = action else {
-        return Err("rules add requires one of --workspace <ws>, --float, or --ignore".into());
+        return Err(
+            "rules add requires one of --workspace <ws>, --float, --tile, or --ignore".into(),
+        );
     };
 
     Ok(AddOptions {
@@ -246,24 +266,10 @@ fn parse_add_options(args: &[&str]) -> Result<AddOptions, String> {
 fn run_add(args: &[&str], path_override: Option<&Path>) -> Result<String, String> {
     let options = parse_add_options(args)?;
     let path = resolve_config_path(path_override)?;
-    let (mut doc, _) = ConfigDoc::load_or_default(&path)?;
-
-    let insert_at = match options.position {
-        Some(position) => {
-            let max_position = doc.rules.len() + 1;
-            if position > max_position {
-                return Err(format!(
-                    "--position {position} is out of range (valid: 1..={max_position})"
-                ));
-            }
-            position - 1
-        }
-        None => doc.rules.len(),
-    };
-
     let (action, workspace) = match options.action {
         ActionArg::Workspace(workspace) => ("route".to_owned(), Some(workspace)),
         ActionArg::Float => ("float".to_owned(), None),
+        ActionArg::Tile => ("tile".to_owned(), None),
         ActionArg::Ignore => ("ignore".to_owned(), None),
     };
     let rule = RuleDoc {
@@ -272,10 +278,23 @@ fn run_add(args: &[&str], path_override: Option<&Path>) -> Result<String, String
         action,
         workspace,
     };
-    doc.rules.insert(insert_at, rule.clone());
-    doc.save_atomic(&path)?;
 
-    let display_index = insert_at + 1;
+    let display_index = ConfigDoc::edit_locked(&path, |doc| {
+        let insert_at = match options.position {
+            Some(position) => {
+                let max_position = doc.rules.len() + 1;
+                if position > max_position {
+                    return Err(format!(
+                        "--position {position} is out of range (valid: 1..={max_position})"
+                    ));
+                }
+                position - 1
+            }
+            None => doc.rules.len(),
+        };
+        doc.rules.insert(insert_at, rule.clone());
+        Ok((insert_at + 1, true))
+    })?;
     if options.json {
         to_json_pretty(&RuleAddedOutput {
             path: path.display().to_string(),
@@ -377,38 +396,38 @@ fn parse_remove_args(args: &[&str]) -> Result<(RemoveTarget, bool), String> {
 fn run_remove(args: &[&str], path_override: Option<&Path>) -> Result<String, String> {
     let (target, json) = parse_remove_args(args)?;
     let path = resolve_config_path(path_override)?;
-    let (mut doc, _) = ConfigDoc::load_or_default(&path)?;
 
-    let mut removed = Vec::new();
-    match target {
-        RemoveTarget::Index(position) => {
-            if position == 0 || position > doc.rules.len() {
-                return Err(format!(
-                    "rule index {position} is out of range ({} rules configured)",
-                    doc.rules.len()
-                ));
+    let (removed, remaining) = ConfigDoc::edit_locked(&path, |doc| {
+        let mut removed = Vec::new();
+        match target {
+            RemoveTarget::Index(position) => {
+                if position == 0 || position > doc.rules.len() {
+                    return Err(format!(
+                        "rule index {position} is out of range ({} rules configured)",
+                        doc.rules.len()
+                    ));
+                }
+                let rule = doc.rules.remove(position - 1);
+                removed.push(RuleView::from_doc(position, &rule));
             }
-            let rule = doc.rules.remove(position - 1);
-            removed.push(RuleView::from_doc(position, &rule));
-        }
-        RemoveTarget::App(bundle_id) => {
-            let mut kept = Vec::with_capacity(doc.rules.len());
-            for (index, rule) in doc.rules.drain(..).enumerate() {
-                if rule.bundle_id.as_deref() == Some(bundle_id.as_str()) {
-                    removed.push(RuleView::from_doc(index + 1, &rule));
-                } else {
-                    kept.push(rule);
+            RemoveTarget::App(bundle_id) => {
+                let mut kept = Vec::with_capacity(doc.rules.len());
+                for (index, rule) in doc.rules.drain(..).enumerate() {
+                    if rule.bundle_id.as_deref() == Some(bundle_id.as_str()) {
+                        removed.push(RuleView::from_doc(index + 1, &rule));
+                    } else {
+                        kept.push(rule);
+                    }
+                }
+                doc.rules = kept;
+                if removed.is_empty() {
+                    return Err(format!("no rules found for bundle_id {bundle_id:?}"));
                 }
             }
-            doc.rules = kept;
-            if removed.is_empty() {
-                return Err(format!("no rules found for bundle_id {bundle_id:?}"));
-            }
         }
-    }
-
-    doc.save_atomic(&path)?;
-    let remaining = doc.rules.len();
+        let remaining = doc.rules.len();
+        Ok(((removed, remaining), true))
+    })?;
     if json {
         to_json_pretty(&RuleRemovedOutput {
             path: path.display().to_string(),

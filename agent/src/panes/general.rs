@@ -5,7 +5,7 @@ use rune::{El, Tx, col};
 use rune_kit::SegmentedControl;
 use spaceman::{
     app::UiLaunchAtLogin,
-    config::{HudStyle, MouseFollowsFocus},
+    config::{HudPosition, HudStyle, MouseFollowsFocus},
 };
 
 use crate::{
@@ -26,6 +26,16 @@ fn hud_mode_index(enabled: bool, style: HudStyle) -> usize {
         .iter()
         .position(|(_, mode)| *mode == current)
         .unwrap_or(1)
+}
+
+const HUD_POSITIONS: [(&str, HudPosition); 2] =
+    [("Bottom", HudPosition::Bottom), ("Top", HudPosition::Top)];
+
+fn hud_position_index(position: HudPosition) -> usize {
+    HUD_POSITIONS
+        .iter()
+        .position(|(_, candidate)| *candidate == position)
+        .unwrap_or(0)
 }
 
 const MOUSE_FOLLOW_MODES: [(&str, MouseFollowsFocus); 3] = [
@@ -154,11 +164,35 @@ pub fn pane(ui: &Ui, p: Paint) -> El {
             ),
             "mouse-follows-focus",
         );
-        sections.push(controls::card(
-            p,
-            "agent",
-            vec![tiling, hud, mouse_follows_focus, login],
-        ));
+        let mut agent_rows = vec![tiling, hud];
+        // Where the capsule sits only means something while there is a capsule.
+        if ui.doc.hud() {
+            agent_rows.push(highlight(
+                controls::setting_row(
+                    p,
+                    "hud-position",
+                    "Position",
+                    None,
+                    SegmentedControl::new(
+                        &HUD_POSITIONS.map(|(label, _)| label.to_owned()),
+                        Some(hud_position_index(ui.doc.hud_position())),
+                    )
+                    .fit()
+                    .on_pick(|ui: &mut Ui, index, _: &mut Tx| {
+                        if let Some((_, position)) = HUD_POSITIONS.get(index) {
+                            ui.set_hud_position(*position);
+                        }
+                    })
+                    .build(p.k)
+                    .key("hud-position-picker"),
+                )
+                .pl(28.0),
+                "hud-position",
+            ));
+        }
+        agent_rows.push(mouse_follows_focus);
+        agent_rows.push(login);
+        sections.push(controls::card(p, "agent", agent_rows));
     }
     sections.push(crate::updates::section(ui, p));
     let focus = ui.highlight_feature.as_deref();
@@ -227,6 +261,12 @@ mod tests {
         assert_eq!(hud_mode_index(false, HudStyle::Layouts), 0);
         assert_eq!(hud_mode_index(true, HudStyle::Icons), 1);
         assert_eq!(hud_mode_index(true, HudStyle::Layouts), 2);
+    }
+
+    #[test]
+    fn hud_position_picker_maps_bottom_and_top() {
+        assert_eq!(hud_position_index(HudPosition::Bottom), 0);
+        assert_eq!(hud_position_index(HudPosition::Top), 1);
     }
 
     #[test]

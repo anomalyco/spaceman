@@ -18,7 +18,8 @@ Toggle off -> unchanged split layout re-applied       // fullscreen.toggle
 Option+/  -> leaves the mode AND flips the root axis   // fullscreen.exit-via-axis
 
 Choose which window shows                              // fullscreen.focus
-├── Option+` / ctl focus next -> next tile in stable order, wraps (raises it)
+├── Option+` / ctl focus next -> next tile in stable order, then floats, wraps (raises it)
+├── Option+Shift+` / ctl focus prev -> the same ring, backward
 ├── Option+H/K -> previous tile, Option+L/J -> next tile, no wrap
 │   └── Past either end -> adjacent display, as in split layouts
 ├── Command+`       -> macOS same-app cycle; Spaceman remembers the result
@@ -50,14 +51,16 @@ Unit (FakeBackend), `src/app/tests/layout.rs`:
 `switching_away_and_back_restores_fullscreen_layout_focus`,
 `selecting_an_active_fullscreen_workspace_preserves_its_current_focus`,
 `opening_a_new_tiled_window_exits_fullscreen_layout_and_splits_side_by_side`,
-`opening_a_floating_window_preserves_fullscreen_layout`, and
+`opening_a_floating_window_preserves_fullscreen_layout`,
+`reappearing_parked_tile_exits_fullscreen_layout_and_splits_side_by_side` (issue 153),
+`reappearing_parked_floating_window_preserves_fullscreen_layout`, and
 `ghostty_native_tab_replacement_preserves_workspace_and_fullscreen_layout`. They prove frames,
 persisted mode, and which window Spaceman asks to focus or raise; none observes real z-order.
 
 ## How To Get To It (User POV)
 
 ```ts
-Focus a window on the target workspace
+Focus a window on the target workspace (a tile or a floating window it owns)
 ├── Option+Shift+F / spaceman ctl fullscreen -> toggle
 └── Option+/                          -> exits (and flips the axis); there is no "exit only" key besides Option+Shift+F
 ```
@@ -67,6 +70,8 @@ independently.
 
 ## Existing Checks
 
+- `float.rs` `workspace_layout_commands_accept_a_focused_floating_window` (issue 135): entering and
+  both exits work with a floating window focused.
 - Unit tests listed above. Only `fullscreen_layout_activates_persisted_cross_app_focus_after_restart`
   exercises persistence through `WorkspaceState`; it does not restart a real process.
 - No live harness covers Fullscreen Layout. The back-to-front test proves the order of park requests

@@ -7,9 +7,11 @@ use std::{
 use serde::{Deserialize, Serialize};
 use spaceman::{
     DisplaySelector, WorkspaceId, Workspaces,
-    config::{Config, HudStyle, MouseFollowsFocus, UpdateChannel, config_path},
+    config::{
+        Config, HudPosition, HudStyle, MouseFollowsFocus, UpdateChannel, config_path, lock_config,
+        write_config_atomic,
+    },
     spacing::{Spacing, SpacingKey, check_outer},
-    state_file::write_atomic,
 };
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
@@ -42,6 +44,8 @@ pub(crate) struct LabsDoc {
 pub(crate) struct ShortcutsDoc {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub defaults: Option<bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub modifier: Option<String>,
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub bindings: BTreeMap<String, String>,
 }
@@ -59,7 +63,7 @@ impl Default for ConfigDoc {
     }
 }
 
-#[derive(Clone, Copy, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
+#[derive(Clone, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
 pub(crate) struct SettingsDoc {
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -70,6 +74,12 @@ pub(crate) struct SettingsDoc {
         serialize_with = "serialize_optional_hud_style"
     )]
     pub hud_style: Option<HudStyle>,
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        serialize_with = "serialize_optional_hud_position"
+    )]
+    pub hud_position: Option<HudPosition>,
     #[serde(
         default,
         skip_serializing_if = "Option::is_none",
@@ -84,6 +94,8 @@ pub(crate) struct SettingsDoc {
     pub mouse_follows_focus: Option<MouseFollowsFocus>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub single_window_max_width: Option<i64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub workspace_order: Option<Vec<WorkspaceId>>,
     #[serde(default, skip_serializing_if = "GapsDoc::is_empty")]
     pub gaps: GapsDoc,
 }
@@ -121,9 +133,11 @@ impl SettingsDoc {
     fn is_empty(&self) -> bool {
         self.hud.is_none()
             && self.hud_style.is_none()
+            && self.hud_position.is_none()
             && self.update_channel.is_none()
             && self.mouse_follows_focus.is_none()
             && self.single_window_max_width.is_none()
+            && self.workspace_order.is_none()
             && self.gaps.is_empty()
     }
 
@@ -156,7 +170,7 @@ impl SettingsDoc {
 
     /// The spacing the file asks for, every unset key at its fallback.
     pub(crate) fn effective_spacing(&self) -> Spacing {
-        let mut doc = *self;
+        let mut doc = self.clone();
         let mut spacing = Spacing::NONE;
         for key in SpacingKey::ALL {
             let value = match *doc.spacing_slot(key) {
@@ -166,6 +180,23 @@ impl SettingsDoc {
             key.set(&mut spacing, value);
         }
         spacing
+    }
+
+    /// Whether the file sets this spacing key explicitly.
+    pub(crate) fn has_spacing(&self, key: SpacingKey) -> bool {
+        match key {
+            SpacingKey::Inner => self.gaps.inner.is_some(),
+            SpacingKey::Top => self.gaps.top.is_some(),
+            SpacingKey::Bottom => self.gaps.bottom.is_some(),
+            SpacingKey::Left => self.gaps.left.is_some(),
+            SpacingKey::Right => self.gaps.right.is_some(),
+            SpacingKey::SingleWindowMaxWidth => self.single_window_max_width.is_some(),
+        }
+    }
+
+    /// Removes one spacing key from the file so it falls back to its default (or `gaps.outer`).
+    pub(crate) fn clear_spacing(&mut self, key: SpacingKey) {
+        *self.spacing_slot(key) = None;
     }
 
     /// Sets one spacing key after checking its range, or removes it when its value needs no key.
@@ -184,6 +215,10 @@ impl SettingsDoc {
         self.hud_style.unwrap_or_default()
     }
 
+    pub(crate) fn effective_hud_position(&self) -> HudPosition {
+        self.hud_position.unwrap_or_default()
+    }
+
     pub(crate) fn effective_update_channel(&self) -> UpdateChannel {
         self.update_channel.unwrap_or_default()
     }
@@ -199,6 +234,16 @@ fn serialize_optional_hud_style<S: serde::Serializer>(
 ) -> Result<S::Ok, S::Error> {
     match style {
         Some(style) => serializer.serialize_str(style.as_str()),
+        None => serializer.serialize_none(),
+    }
+}
+
+fn serialize_optional_hud_position<S: serde::Serializer>(
+    position: &Option<HudPosition>,
+    serializer: S,
+) -> Result<S::Ok, S::Error> {
+    match position {
+        Some(position) => serializer.serialize_str(position.as_str()),
         None => serializer.serialize_none(),
     }
 }
@@ -246,9 +291,11 @@ pub(crate) struct WorkspaceDoc {
 pub(crate) struct EffectiveSettings {
     pub hud: bool,
     pub hud_style: &'static str,
+    pub hud_position: &'static str,
     pub update_channel: &'static str,
     pub mouse_follows_focus: &'static str,
     pub single_window_max_width: i32,
+    pub workspace_order: Vec<WorkspaceId>,
     pub gaps: EffectiveGaps,
 }
 
@@ -289,10 +336,14 @@ impl RuleView {
 struct EffectiveConfigToml<'a> {
     version: u32,
     settings: EffectiveSettings,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    labs: Option<LabsDoc>,
     #[serde(skip_serializing_if = "<[RuleDoc]>::is_empty")]
     rules: &'a [RuleDoc],
     #[serde(skip_serializing_if = "<[WorkspaceDoc]>::is_empty")]
     workspaces: &'a [WorkspaceDoc],
+    #[serde(skip_serializing_if = "Option::is_none")]
+    shortcuts: Option<&'a ShortcutsDoc>,
 }
 
 impl ConfigDoc {
@@ -317,9 +368,11 @@ impl ConfigDoc {
         EffectiveSettings {
             hud: self.settings.effective_hud(),
             hud_style: self.settings.effective_hud_style().as_str(),
+            hud_position: self.settings.effective_hud_position().as_str(),
             update_channel: self.settings.effective_update_channel().as_str(),
             mouse_follows_focus: self.settings.effective_mouse_follows_focus().as_str(),
             single_window_max_width: spacing.single_window_max_width,
+            workspace_order: self.settings.workspace_order.clone().unwrap_or_default(),
             gaps: EffectiveGaps {
                 inner: spacing.inner,
                 top: spacing.top,
@@ -342,8 +395,10 @@ impl ConfigDoc {
         let view = EffectiveConfigToml {
             version: self.version,
             settings: self.effective_settings(),
+            labs: self.labs,
             rules: &self.rules,
             workspaces: &self.workspaces,
+            shortcuts: self.shortcuts.as_ref(),
         };
         let rendered = toml::to_string_pretty(&view)
             .map_err(|error| format!("failed to format config.toml: {error}"))?;
@@ -354,8 +409,24 @@ impl ConfigDoc {
 
     pub(crate) fn save_atomic(&self, path: &Path) -> Result<(), String> {
         let rendered = self.render_toml()?;
-        write_atomic(path, rendered.as_bytes())
+        write_config_atomic(path, rendered.as_bytes())
             .map_err(|error| format!("failed to write {}: {error}", path.display()))
+    }
+
+    /// Acquires an exclusive config lock, reads the latest document from `path`,
+    /// runs `edit`, and writes atomically when `edit` reports a change.
+    pub(crate) fn edit_locked<T>(
+        path: &Path,
+        edit: impl FnOnce(&mut Self) -> Result<(T, bool), String>,
+    ) -> Result<T, String> {
+        let _lock = lock_config(path)
+            .map_err(|error| format!("failed to lock {}: {error}", path.display()))?;
+        let (mut doc, _) = Self::load_or_default(path)?;
+        let (result, changed) = edit(&mut doc)?;
+        if changed {
+            doc.save_atomic(path)?;
+        }
+        Ok(result)
     }
 
     pub(crate) fn rule_views(&self) -> Vec<RuleView> {

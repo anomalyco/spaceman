@@ -83,6 +83,8 @@ use runtime::*;
 use worker::spawn_worker;
 
 pub const TICK_INTERVAL: Duration = Duration::from_millis(25);
+/// Prefix on `UiAgentSnapshot::last_error` when installing a staged update fails.
+pub const UPDATE_FAILED_PREFIX: &str = "Update failed: ";
 /// Retile without an event this often while the user is active...
 const FALLBACK_REFRESH_INTERVAL: Duration = Duration::from_secs(1);
 /// ...and this often once nothing has happened for `RECENT_ACTIVITY`. Each
@@ -100,6 +102,11 @@ const APPLICATION_ACTIVATION_SETTLE: Duration = Duration::from_millis(50);
 // AX creation and app activation can both precede the first on-screen frame.
 const WINDOW_OPENING_SETTLE: Duration = Duration::from_millis(500);
 const WINDOW_OPENING_RECHECK: Duration = Duration::from_millis(40);
+/// A cancelled cycle may have been a focus follow (Cmd+Tab, Dock, a
+/// notification) interrupted by the activation it answers. Accessibility can
+/// still report the old focus on the cycle right after, and no further event
+/// arrives once it catches up, so retile at the opening cadence for this long.
+const CANCELLED_CYCLE_RETRY: Duration = Duration::from_millis(500);
 
 fn opening_recheck(
     now: Instant,
@@ -110,6 +117,12 @@ fn opening_recheck(
     let deadline = until?;
     let next = now + WINDOW_OPENING_RECHECK;
     (frontmost? == missing? && next <= deadline).then_some(next)
+}
+
+/// The next retile while a cancelled cycle's retry window is open.
+fn cancelled_cycle_recheck(now: Instant, until: Option<Instant>) -> Option<Instant> {
+    let next = now + WINDOW_OPENING_RECHECK;
+    (next <= until?).then_some(next)
 }
 
 /// How long since the last refresh a retile without an event waits.
@@ -212,18 +225,27 @@ pub(crate) enum Action {
 pub(crate) enum WorkerAction {
     Retile,
     SwitchWorkspace(WorkspaceId),
+    /// Pointer-initiated workspace selection from the status menu or Workspace HUD:
+    /// switches and focuses without triggering mouse-follows-focus warping.
+    SelectWorkspace(WorkspaceId),
     WorkspaceBackAndForth,
     MoveWorkspaceToDisplay(DisplayTarget),
     /// A trackpad swipe, stepping through the occupied workspaces of the display
     /// under the pointer.
     Swipe(Swipe, (i32, i32)),
     MoveFocused(WorkspaceId),
+    MoveFocusedFollow(WorkspaceId),
     MoveApp(String, WorkspaceId),
     CycleFocus,
+    /// Option-Shift-backtick: the same ring as `CycleFocus`, walked backward.
+    CycleFocusPrevious,
     Focus(Direction),
     Reorder(Direction),
     ToggleLayout,
     Resize(ResizeDirection),
+    /// Resize the focused window to this width (`Horizontal`) or height (`Vertical`) in points.
+    ResizeTo(crate::Axis, i32),
+    /// Equalize the focused tile's immediate split.
     Balance,
     ToggleFullscreenLayout,
     /// Float the focused window above the workspace's tiles, or tile it again.
@@ -238,17 +260,24 @@ impl WorkerAction {
     fn queued_acknowledgement(&self) -> String {
         match self {
             Self::Retile => "retile queued".into(),
-            Self::SwitchWorkspace(workspace) => format!("switch to workspace {workspace} queued"),
+            Self::SwitchWorkspace(workspace) | Self::SelectWorkspace(workspace) => {
+                format!("switch to workspace {workspace} queued")
+            }
             Self::WorkspaceBackAndForth => "workspace back-and-forth queued".into(),
             Self::MoveWorkspaceToDisplay(_) => "move workspace to display queued".into(),
             Self::Swipe(..) => "swipe queued".into(),
             Self::MoveFocused(workspace) => format!("move to workspace {workspace} queued"),
+            Self::MoveFocusedFollow(workspace) => {
+                format!("move and switch to workspace {workspace} queued")
+            }
             Self::MoveApp(_, workspace) => format!("move app to workspace {workspace} queued"),
             Self::CycleFocus => "focus cycle queued".into(),
+            Self::CycleFocusPrevious => "reverse focus cycle queued".into(),
             Self::Focus(_) => "focus queued".into(),
             Self::Reorder(_) => "directional move queued".into(),
             Self::ToggleLayout => "layout toggle queued".into(),
             Self::Resize(_) => "resize queued".into(),
+            Self::ResizeTo(..) => "resize queued".into(),
             Self::Balance => "balance queued".into(),
             Self::ToggleFullscreenLayout => "fullscreen layout toggle queued".into(),
             Self::ToggleFloat => "float toggle queued".into(),

@@ -110,19 +110,16 @@ fn main() -> ExitCode {
             return ExitCode::from(2);
         }
         _ => {
-            eprintln!("unknown command: {command}");
+            drop(writeln!(io::stderr().lock(), "unknown command: {command}"));
             print_usage(&executable);
             return ExitCode::from(2);
         }
     };
 
     match result {
-        Ok(output) => {
-            println!("{output}");
-            ExitCode::SUCCESS
-        }
+        Ok(output) => cli::write_stdout_line(&output),
         Err(error) => {
-            eprintln!("{error}");
+            drop(writeln!(io::stderr().lock(), "{error}"));
             ExitCode::FAILURE
         }
     }
@@ -153,7 +150,11 @@ const KNOWN_COMMANDS: &[&str] = &[
 ];
 
 fn print_usage(executable: &str) {
-    eprintln!("{}", cli::help::root_usage(executable));
+    drop(writeln!(
+        io::stderr().lock(),
+        "{}",
+        cli::help::root_usage(executable)
+    ));
 }
 
 fn run_doctor(hours: Option<u64>) -> Result<String, String> {
@@ -166,8 +167,82 @@ fn run_doctor(hours: Option<u64>) -> Result<String, String> {
         ));
     }
     let now = spaceman::journal::unix_millis();
-    let since = hours.map_or(0, |hours| now.saturating_sub(hours * 3_600_000));
+    let since = doctor_since(now, hours);
     Ok(spaceman::journal::summarize(&lines, since, now, skipped))
+}
+
+fn doctor_since(now: u64, hours: Option<u64>) -> u64 {
+    hours.map_or(0, |hours| {
+        now.saturating_sub(hours.saturating_mul(3_600_000))
+    })
+}
+
+#[cfg(target_os = "macos")]
+fn write_hud_frame(out: &mut impl Write, debug: &serde_json::Value) -> io::Result<()> {
+    write!(out, "\x1b[2J\x1b[HSpaceman HUD  (Ctrl-C to close)\n\n")?;
+    for display in debug["displays"].as_array().into_iter().flatten() {
+        let frame = &display["frame"];
+        let layout = if display["fullscreen_layout"].as_bool() == Some(true) {
+            "Fullscreen Layout"
+        } else {
+            display["axis"].as_str().unwrap_or("unknown")
+        };
+        let workspace = display["workspace"]
+            .as_str()
+            .map(str::to_owned)
+            .unwrap_or_else(|| display["workspace"].to_string());
+        writeln!(
+            out,
+            "{}  workspace {}  {}  @ {},{} {}x{}",
+            display["name"].as_str().unwrap_or("Display"),
+            workspace,
+            layout,
+            frame["x"].as_i64().unwrap_or_default(),
+            frame["y"].as_i64().unwrap_or_default(),
+            frame["width"].as_i64().unwrap_or_default(),
+            frame["height"].as_i64().unwrap_or_default(),
+        )?;
+        for tile in debug["tiles"]
+            .as_array()
+            .into_iter()
+            .flatten()
+            .filter(|tile| tile["workspace"] == display["workspace"])
+        {
+            let frame = &tile["frame"];
+            let window = &tile["window"];
+            let focused = if window == &debug["focused"] {
+                "*"
+            } else {
+                " "
+            };
+            writeln!(
+                out,
+                "  {focused} window {} (pid {})  {},{} {}x{}",
+                window["window_id"].as_u64().unwrap_or_default(),
+                window["app"]["pid"].as_i64().unwrap_or_default(),
+                frame["x"].as_i64().unwrap_or_default(),
+                frame["y"].as_i64().unwrap_or_default(),
+                frame["width"].as_i64().unwrap_or_default(),
+                frame["height"].as_i64().unwrap_or_default(),
+            )?;
+        }
+        writeln!(out)?;
+    }
+    writeln!(out, "Directional targets:")?;
+    for direction in ["left", "down", "up", "right"] {
+        let target = &debug["targets"][direction];
+        if target.is_null() {
+            writeln!(out, "  {direction:>5}: none")?;
+        } else {
+            writeln!(
+                out,
+                "  {direction:>5}: window {} (pid {})",
+                target["window_id"].as_u64().unwrap_or_default(),
+                target["app"]["pid"].as_i64().unwrap_or_default(),
+            )?;
+        }
+    }
+    out.flush()
 }
 
 #[cfg(target_os = "macos")]
@@ -176,69 +251,13 @@ fn run_hud() -> Result<String, String> {
         let source = spaceman::control::send(&["debug".into()])?;
         let debug: serde_json::Value =
             serde_json::from_str(&source).map_err(|error| error.to_string())?;
-        print!("\x1b[2J\x1b[HSpaceman HUD  (Ctrl-C to close)\n\n");
-        for display in debug["displays"].as_array().into_iter().flatten() {
-            let frame = &display["frame"];
-            let layout = if display["fullscreen_layout"].as_bool() == Some(true) {
-                "Fullscreen Layout"
-            } else {
-                display["axis"].as_str().unwrap_or("unknown")
-            };
-            let workspace = display["workspace"]
-                .as_str()
-                .map(str::to_owned)
-                .unwrap_or_else(|| display["workspace"].to_string());
-            println!(
-                "{}  workspace {}  {}  @ {},{} {}x{}",
-                display["name"].as_str().unwrap_or("Display"),
-                workspace,
-                layout,
-                frame["x"].as_i64().unwrap_or_default(),
-                frame["y"].as_i64().unwrap_or_default(),
-                frame["width"].as_i64().unwrap_or_default(),
-                frame["height"].as_i64().unwrap_or_default(),
-            );
-            for tile in debug["tiles"]
-                .as_array()
-                .into_iter()
-                .flatten()
-                .filter(|tile| tile["workspace"] == display["workspace"])
-            {
-                let frame = &tile["frame"];
-                let window = &tile["window"];
-                let focused = if window == &debug["focused"] {
-                    "*"
-                } else {
-                    " "
-                };
-                println!(
-                    "  {focused} window {} (pid {})  {},{} {}x{}",
-                    window["window_id"].as_u64().unwrap_or_default(),
-                    window["app"]["pid"].as_i64().unwrap_or_default(),
-                    frame["x"].as_i64().unwrap_or_default(),
-                    frame["y"].as_i64().unwrap_or_default(),
-                    frame["width"].as_i64().unwrap_or_default(),
-                    frame["height"].as_i64().unwrap_or_default(),
-                );
+        let mut stdout = io::BufWriter::new(io::stdout().lock());
+        if let Err(error) = write_hud_frame(&mut stdout, &debug) {
+            if error.kind() == io::ErrorKind::BrokenPipe {
+                return Ok(String::new());
             }
-            println!();
+            return Err(format!("failed to render HUD: {error}"));
         }
-        println!("Directional targets:");
-        for direction in ["left", "down", "up", "right"] {
-            let target = &debug["targets"][direction];
-            if target.is_null() {
-                println!("  {direction:>5}: none");
-            } else {
-                println!(
-                    "  {direction:>5}: window {} (pid {})",
-                    target["window_id"].as_u64().unwrap_or_default(),
-                    target["app"]["pid"].as_i64().unwrap_or_default(),
-                );
-            }
-        }
-        io::stdout()
-            .flush()
-            .map_err(|error| format!("failed to render HUD: {error}"))?;
         thread::sleep(Duration::from_millis(150));
     }
 }
@@ -568,4 +587,18 @@ fn run_replay(path: &str) -> Result<ReplayOutput, String> {
     }
 
     Ok(ReplayOutput { steps })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::doctor_since;
+
+    #[test]
+    fn doctor_since_saturates_extreme_hour_counts_instead_of_overflowing() {
+        let now = 1_795_500_000_000;
+        assert_eq!(doctor_since(now, None), 0);
+        assert_eq!(doctor_since(now, Some(1)), now - 3_600_000);
+        assert_eq!(doctor_since(now, Some(144_115_188_075_855_872)), 0);
+        assert_eq!(doctor_since(now, Some(u64::MAX)), 0);
+    }
 }

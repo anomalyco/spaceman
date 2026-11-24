@@ -28,6 +28,9 @@ fn actions() -> Vec<(WorkerAction, DirectAction)> {
             |r, o, c| r.move_app("com.example.Test", WorkspaceId::SIX, o, c),
         ),
         (WorkerAction::CycleFocus, |r, o, c| r.cycle_focus(o, c)),
+        (WorkerAction::CycleFocusPrevious, |r, o, c| {
+            r.cycle_focus_previous(o, c)
+        }),
         (WorkerAction::Focus(Direction::Right), |r, o, c| {
             r.focus_relative(Direction::Right, o, c)
         }),
@@ -38,6 +41,10 @@ fn actions() -> Vec<(WorkerAction, DirectAction)> {
         (WorkerAction::Resize(ResizeDirection::Grow), |r, o, c| {
             r.resize_focused(ResizeDirection::Grow, o, c)
         }),
+        (
+            WorkerAction::ResizeTo(crate::Axis::Horizontal, 600),
+            |r, o, c| r.resize_focused_to(crate::Axis::Horizontal, 600, o, c),
+        ),
         (WorkerAction::Balance, |r, o, c| r.balance_focused(o, c)),
         (WorkerAction::ToggleFullscreenLayout, |r, o, c| {
             r.toggle_fullscreen_layout(o, c)
@@ -210,9 +217,11 @@ fn control_acknowledgements_name_each_queued_action() {
             "move to workspace 6 queued",
             "move app to workspace 6 queued",
             "focus cycle queued",
+            "reverse focus cycle queued",
             "focus queued",
             "directional move queued",
             "layout toggle queued",
+            "resize queued",
             "resize queued",
             "balance queued",
             "fullscreen layout toggle queued",

@@ -3,7 +3,10 @@
 
 use rune::{El, Tx, el, row, text};
 use rune_kit::SegmentedControl;
-use spaceman::{app::UiUpdateStatus, config::UpdateChannel};
+use spaceman::{
+    app::{UPDATE_FAILED_PREFIX, UiUpdateStatus},
+    config::UpdateChannel,
+};
 
 use crate::{
     Ui,
@@ -34,8 +37,15 @@ fn status(ui: &Ui) -> UiUpdateStatus {
         .map_or(UiUpdateStatus::Unavailable, |agent| agent.update.clone())
 }
 
+fn install_failure(ui: &Ui) -> Option<&str> {
+    ui.agent
+        .as_ref()
+        .and_then(|agent| agent.last_error.as_deref())
+        .filter(|error| error.starts_with(UPDATE_FAILED_PREFIX))
+}
+
 /// What the updater is doing, in a sentence.
-fn describe(status: &UiUpdateStatus) -> String {
+fn describe(status: &UiUpdateStatus, install_error: Option<&str>) -> String {
     match status {
         UiUpdateStatus::Idle => "Checks for updates automatically.".into(),
         UiUpdateStatus::Checking => "Checking for updates…".into(),
@@ -53,9 +63,27 @@ fn describe(status: &UiUpdateStatus) -> String {
              or move Spaceman to Applications to update in place."
         ),
         UiUpdateStatus::Installing => "Installing and restarting…".into(),
-        UiUpdateStatus::Failed => "Couldn't check for updates. It tries again soon.".into(),
+        UiUpdateStatus::Failed => install_error
+            .map(str::to_owned)
+            .unwrap_or_else(|| "Couldn't check for updates. It tries again soon.".into()),
         UiUpdateStatus::SourceBuild => "Built from source; your checkout updates it.".into(),
         UiUpdateStatus::Unavailable => "Updates are off for this copy of Spaceman.".into(),
+    }
+}
+
+fn sidebar_label(update: &UiUpdateStatus, install_error: Option<&str>) -> &'static str {
+    match update {
+        UiUpdateStatus::Checking => "Checking for updates…",
+        UiUpdateStatus::UpToDate => "Spaceman is up to date",
+        UiUpdateStatus::Downloading => "Downloading update…",
+        UiUpdateStatus::Switch { .. } => "Channel switch ready",
+        UiUpdateStatus::Download { .. } => "Update available",
+        UiUpdateStatus::Installing => "Restarting…",
+        UiUpdateStatus::Failed if install_error.is_some() => "Update install failed",
+        UiUpdateStatus::Failed => "Update check failed",
+        UiUpdateStatus::SourceBuild => "Built from source",
+        UiUpdateStatus::Unavailable => "Updates unavailable",
+        UiUpdateStatus::Idle | UiUpdateStatus::Ready { .. } => "Check for updates",
     }
 }
 
@@ -85,18 +113,7 @@ pub fn sidebar(ui: &Ui, p: Paint) -> El {
             .child(controls::status_dot(p.accent()))
             .child(install_button(p, "install-update", ButtonKind::Secondary));
     }
-    let label = match update {
-        UiUpdateStatus::Checking => "Checking for updates…",
-        UiUpdateStatus::UpToDate => "Spaceman is up to date",
-        UiUpdateStatus::Downloading => "Downloading update…",
-        UiUpdateStatus::Switch { .. } => "Channel switch ready",
-        UiUpdateStatus::Download { .. } => "Update available",
-        UiUpdateStatus::Installing => "Restarting…",
-        UiUpdateStatus::Failed => "Update check failed",
-        UiUpdateStatus::SourceBuild => "Built from source",
-        UiUpdateStatus::Unavailable => "Updates unavailable",
-        UiUpdateStatus::Idle | UiUpdateStatus::Ready { .. } => "Check for updates",
-    };
+    let label = sidebar_label(&update, install_failure(ui));
     let mut foot = row()
         .key("check-for-updates")
         .h(20.0)
@@ -167,7 +184,7 @@ pub fn section(ui: &Ui, p: Paint) -> El {
         p,
         "version",
         &format!("Spaceman {}", build_version()),
-        Some((describe(&update), color)),
+        Some((describe(&update, install_failure(ui)), color)),
         control,
     );
     let current = ui.doc.update_channel();
@@ -193,4 +210,27 @@ pub fn section(ui: &Ui, p: Paint) -> El {
         .key("channel-picker"),
     );
     controls::section(p, "updates", "Updates", vec![version, channel])
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn failed_install_shows_install_reason_instead_of_check_failure() {
+        let reason = format!("{UPDATE_FAILED_PREFIX}could not replace app bundle");
+        assert_eq!(describe(&UiUpdateStatus::Failed, Some(&reason)), reason);
+        assert_eq!(
+            sidebar_label(&UiUpdateStatus::Failed, Some(&reason)),
+            "Update install failed"
+        );
+        assert_eq!(
+            describe(&UiUpdateStatus::Failed, None),
+            "Couldn't check for updates. It tries again soon."
+        );
+        assert_eq!(
+            sidebar_label(&UiUpdateStatus::Failed, None),
+            "Update check failed"
+        );
+    }
 }

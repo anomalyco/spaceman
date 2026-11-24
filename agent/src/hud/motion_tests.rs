@@ -16,7 +16,7 @@ use rune::{
 use spaceman::{
     Rect, WorkspaceId,
     app::{UiHudDisplay, UiHudTile, UiHudWorkspace},
-    config::HudStyle,
+    config::{HudPosition, HudStyle},
 };
 
 use crate::rules::{Doc, Place};
@@ -49,6 +49,11 @@ impl Hud {
         Self::start(style, row, false)
     }
 
+    /// Up and at rest on `row`, with the capsule on `position`'s display edge.
+    fn showing_at(style: HudStyle, position: HudPosition, row: UiHudDisplay) -> Self {
+        Self::with_sink_at(style, position, row, false, Arc::new(NoopHudSink))
+    }
+
     fn start(style: HudStyle, row: UiHudDisplay, reduce_motion: bool) -> Self {
         Self::with_sink(style, row, reduce_motion, Arc::new(NoopHudSink))
     }
@@ -59,8 +64,18 @@ impl Hud {
         reduce_motion: bool,
         sink: Arc<dyn HudSink>,
     ) -> Self {
+        Self::with_sink_at(style, HudPosition::Bottom, row, reduce_motion, sink)
+    }
+
+    fn with_sink_at(
+        style: HudStyle,
+        position: HudPosition,
+        row: UiHudDisplay,
+        reduce_motion: bool,
+        sink: Arc<dyn HudSink>,
+    ) -> Self {
         let clock = Arc::new(AtomicU64::new(0));
-        let mut overlay = HudOverlay::new(true, style, sink);
+        let mut overlay = HudOverlay::new(true, style, position, sink);
         overlay.reduce_motion = reduce_motion;
         overlay.virtual_clock = Some(Arc::clone(&clock));
         overlay.flow.trigger(row, 0);
@@ -212,6 +227,7 @@ fn display(
         visible: Some(id(visible)),
         from: from.map(id),
         workspaces,
+        order: Vec::new(),
     }
 }
 
@@ -328,6 +344,51 @@ fn the_capsule_leaves_and_comes_back_along_one_path() {
         );
         let in_200_ms = enter[(0.2 * HZ) as usize];
         assert!(in_200_ms.op > 0.97, "{} after 200 ms", in_200_ms.op);
+        assert_eq!(hud.findings(), Vec::<String>::new(), "{style:?}");
+    }
+}
+
+#[test]
+fn a_top_capsule_leaves_upward_and_drops_back_into_place() {
+    for style in STYLES {
+        let mut hud = Hud::showing_at(style, HudPosition::Top, row(1, None));
+        let rest = hud.snaps("hud-slot", 0)[0];
+        assert_eq!(
+            (rest.op, rest.scale),
+            (1.0, 1.0),
+            "the first frame is at rest"
+        );
+
+        let left = hud.play_until(HudTick::Leave);
+        let gone = hud.play_until(HudTick::Gone);
+        let exit = hud.snaps("hud-slot", left - 1);
+        let exit = &exit[..=gone - left];
+        // Away from the top edge, the capsule's y only falls as it fades and shrinks upward.
+        assert_one_way(
+            &exit.iter().map(|snap| snap.rect[1]).collect::<Vec<_>>(),
+            false,
+            1.5,
+            "exit lift",
+        );
+
+        hud.play(400);
+        let shown = hud.switch(row(3, Some(1)));
+        hud.play(LEAVE_MS + 300);
+        let enter = hud.snaps("hud-slot", shown);
+        // Back from above: it starts higher and only descends into place.
+        assert!(
+            enter[0].rect[1] < rest.rect[1],
+            "it entered at {}, above the rest pose {}",
+            enter[0].rect[1],
+            rest.rect[1]
+        );
+        assert_one_way(
+            &enter.iter().map(|snap| snap.rect[1]).collect::<Vec<_>>(),
+            true,
+            1.5,
+            "enter drop",
+        );
+        assert_eq!(enter[enter.len() - 1].rect, rest.rect);
         assert_eq!(hud.findings(), Vec::<String>::new(), "{style:?}");
     }
 }

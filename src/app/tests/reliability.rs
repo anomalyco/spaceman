@@ -57,11 +57,16 @@ fn parked_window_in_a_display_gap_is_not_reparked_or_exempted() {
         width: 100,
         height: 100,
     };
-    let parked = crate::geometry::parked_frame(
-        outputs.secondary().unwrap().frame,
-        &outputs.frames().collect::<Vec<_>>(),
-        original,
-    );
+    // Off the secondary display's right edge, below the third display.
+    let parked = crate::Rect {
+        x: 1999,
+        y: 1600,
+        ..original
+    };
+    assert!(!crate::geometry::shows_on(
+        parked,
+        &outputs.frames().collect::<Vec<_>>()
+    ));
     assert!(outputs.union().contains_center(parked));
     assert!(
         !outputs

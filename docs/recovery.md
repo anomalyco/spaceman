@@ -1,8 +1,8 @@
 # Recovery And Uninstall
 
 Spaceman moves inactive-workspace windows beyond visible display edges, checking that no neighboring
-display is covered (apart from the one-pixel edge strip needed to avoid macOS clamping). Before doing so, it
-atomically records each original frame in:
+display is covered (apart from a one-pixel-wide slice of the title bar at a bottom corner, which macOS
+keeps on screen). Before doing so, it atomically records each original frame in:
 
 ```text
 ~/Library/Application Support/Spaceman/parked-windows.json

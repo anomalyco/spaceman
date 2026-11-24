@@ -135,3 +135,19 @@ fn parked_state_round_trips_and_rejects_malformed_data() {
         serde_json::to_vec(&vec![(window.clone(), frame(50)), (window, frame(100))]).unwrap();
     assert!(serde_json::from_slice::<ParkedWindows>(&duplicate).is_err());
 }
+
+#[test]
+fn a_cancelled_cycle_rechecks_at_the_opening_cadence_until_its_window_closes() {
+    // A follow cancelled by the activation it answers can meet stale
+    // Accessibility focus on the next cycle; nothing else retiles until the
+    // one-second fallback, so a Cmd+Tab to a hidden workspace looked ignored.
+    let now = Instant::now();
+    let until = Some(now + CANCELLED_CYCLE_RETRY);
+    assert_eq!(
+        cancelled_cycle_recheck(now, until),
+        Some(now + WINDOW_OPENING_RECHECK)
+    );
+    assert!(cancelled_cycle_recheck(now, None).is_none());
+    assert!(cancelled_cycle_recheck(now + CANCELLED_CYCLE_RETRY, until).is_none());
+    assert!(WINDOW_OPENING_RECHECK < FALLBACK_REFRESH_INTERVAL);
+}

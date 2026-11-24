@@ -48,7 +48,7 @@ impl From<UiAction> for Action {
             UiAction::ToggleLaunchAtLogin => Self::ToggleLaunchAtLogin,
             UiAction::SetHud(enabled) => Self::SetHud(enabled),
             UiAction::SwitchWorkspace(workspace) => {
-                Self::Worker(WorkerAction::SwitchWorkspace(workspace))
+                Self::Worker(WorkerAction::SelectWorkspace(workspace))
             }
             UiAction::Retile => Self::Worker(WorkerAction::Retile),
             UiAction::MarkWrong => Self::Worker(WorkerAction::MarkWrong),
@@ -96,6 +96,9 @@ pub struct UiHudDisplay {
     /// The workspace a switch on this display just left, so the HUD can start from it.
     pub from: Option<WorkspaceId>,
     pub workspaces: Vec<UiHudWorkspace>,
+    /// Every workspace in listing order (`settings.workspace_order`, then 1-10 and A-Z), so the
+    /// HUD can place a workspace this row leaves out; empty means that default order.
+    pub order: Vec<WorkspaceId>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -442,7 +445,7 @@ mod tests {
         bridge.send(UiAction::SwitchWorkspace(WorkspaceId::THREE));
         assert_eq!(
             receiver.try_recv().ok(),
-            Some(Action::Worker(WorkerAction::SwitchWorkspace(
+            Some(Action::Worker(WorkerAction::SelectWorkspace(
                 WorkspaceId::THREE
             )))
         );

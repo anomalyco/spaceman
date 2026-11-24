@@ -5,7 +5,7 @@
 use spaceman::spacing::{Spacing, SpacingKey, check_outer};
 use toml_edit::{Item, Table, TableLike};
 
-use super::{Doc, put};
+use super::Doc;
 
 impl Doc {
     /// The spacing the file asks for; a missing or out-of-range key reads as its fallback.
@@ -83,10 +83,15 @@ impl Doc {
                     gaps.is_empty()
                 });
             if emptied {
-                settings.remove("gaps");
+                self.remove_subtable("settings", "gaps");
             }
-            if settings.is_empty() {
-                self.doc.remove("settings");
+            if self
+                .doc
+                .get("settings")
+                .and_then(Item::as_table_like)
+                .is_some_and(toml_edit::TableLike::is_empty)
+            {
+                self.remove_table("settings");
             }
             return;
         };
@@ -116,7 +121,7 @@ impl Doc {
             gaps.set_position(position);
         }
         if let Some(gaps) = gaps.as_table_like_mut() {
-            put(gaps, name, item);
+            super::set_table_item(gaps, name, item);
         }
     }
 }

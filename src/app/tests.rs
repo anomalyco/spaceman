@@ -1,7 +1,11 @@
 mod benchmarks;
 mod cross_display;
 mod dispatch;
+mod display_disconnect;
+mod dual_selector_move;
+mod empty_workspace_move;
 mod float;
+mod float_regressions;
 mod focus;
 mod fullscreen;
 mod gestures;
@@ -12,13 +16,18 @@ mod minimums;
 mod move_workspace;
 mod parking;
 mod reconciliation;
+mod reconnect_unsettled;
 mod reliability;
 mod rules;
 mod scratchpad;
+mod set_aside;
 mod spacing;
+mod stacked_resize;
 mod startup;
+mod switch_repeat;
 mod switching;
 mod tear_regressions;
+mod workspace_order;
 use crate::{BindingState, Slot, SlotId};
 
 use super::*;
@@ -43,6 +52,8 @@ enum BackendCall {
 struct FakeBackend {
     apps_confirming_no_windows: HashSet<AppInstanceId>,
     close_probes: Vec<AppInstanceId>,
+    /// Windows whose app is hidden or which are minimized.
+    set_aside: HashSet<crate::PhysicalWindowId>,
     frames: HashMap<crate::PhysicalWindowId, crate::Rect>,
     server_frames: HashMap<crate::PhysicalWindowId, crate::Rect>,
     /// Windows the window server still lists but has ordered out (closed
@@ -55,6 +66,8 @@ struct FakeBackend {
     observation: Option<crate::NativeObservation>,
     persisted: HashMap<crate::PhysicalWindowId, crate::Rect>,
     calls: Vec<BackendCall>,
+    /// Windows whose position writes went through the parking path.
+    parked_writes: Vec<crate::PhysicalWindowId>,
     fail_persist: bool,
     frame_outcome: Option<macos::WindowAccessError>,
     managed_outcome: Option<macos::ApplyOutcome>,
@@ -88,6 +101,10 @@ impl WorkspaceBackend for FakeBackend {
     fn confirms_no_windows(&mut self, app: &AppInstanceId) -> bool {
         self.close_probes.push(app.clone());
         self.apps_confirming_no_windows.contains(app)
+    }
+
+    fn confirms_set_aside(&mut self, window: &crate::PhysicalWindowId) -> bool {
+        self.set_aside.contains(window)
     }
 
     fn snapshot(
@@ -180,6 +197,15 @@ impl WorkspaceBackend for FakeBackend {
 
     fn onscreen_window_order(&mut self) -> Option<Vec<u32>> {
         self.stacking.clone()
+    }
+
+    fn set_parked_position(
+        &mut self,
+        window: &crate::PhysicalWindowId,
+        target: crate::Rect,
+    ) -> macos::ApplyOutcome {
+        self.parked_writes.push(window.clone());
+        self.set_position(window, target)
     }
 
     fn set_position(

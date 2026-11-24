@@ -37,6 +37,7 @@ Placement recall (reboot, fresh start, or app relaunch)     // recover.memory
 │   remembered placements
 │   ├── recall closes early once every placement is claimed or the app quits
 │   ├── frame match (8 px) first, then creation order
+│   ├── a placement saved floating floats again (keeps its frame) until Toggle Float tiles it
 │   ├── route/ignore rules win; disabled/unmanaged workspaces skipped
 │   └── apps launched after the startup window open on the active workspace
 ├── An app relaunched mid-session (an update or restart) recalls its placements too: its new
@@ -70,7 +71,7 @@ Implicit: macOS restart/log out/shutdown, Install & Restart, quitting with an up
           reopening Spaceman.app after a crash
 Files:    ~/Library/Application Support/Spaceman/
           ├── workspace-state.json   parked-windows.json   window-memory.json
-          └── journal.jsonl(.1)      agent.log(.1)
+          └── journal.jsonl(.1)      agent.log(.prev)
 ```
 
 See [Recovery](../recovery.md) for the safe manual procedure; never delete `parked-windows.json` first.
@@ -89,7 +90,8 @@ See [Recovery](../recovery.md) for the safe manual procedure; never delete `park
 - Unit (FakeBackend), `memory.rs`: startup recall by frame then order, no recall for instances that
   already own windows, route precedence, recall expiry, recall closing when the app quits,
   mid-session launches opening on the active workspace, mid-session relaunches (quit first or
-  start first) returning to their workspace, and settle-before-record. Pure tests in
+  start first) returning to their workspace, floating placements staying floating
+  (`a_recalled_floating_placement_keeps_the_window_floating`, issue 122), and settle-before-record. Pure tests in
   `src/window_memory.rs` and `src/journal.rs` cover matching, eviction, diffing, debouncing,
   rotation, and the doctor summary. None involves a real reboot.
 - Unit, `src/updater/`: manifest decisions (the release service's shared vectors), download URLs
@@ -102,6 +104,11 @@ See [Recovery](../recovery.md) for the safe manual procedure; never delete `park
   or a quit) have no automated test.
 - Live harness (not run): `scripts/live-workspaces.sh` hard-kills the agent with a parked window and
   checks startup recovery.
+- Live gauntlet, `scripts/gauntlet.sh`: SIGKILL with a window parked keeps it parked and its record on
+  disk, and a relaunch keeps it on its workspace; `ctl quit` returns every parked window to its
+  recorded frame and empties `parked-windows.json`; `agent.log` has no panic or error line; no window
+  title reaches any state file, snapshot or `doctor` output; `doctor` counts every start, every clean
+  stop and no anomalies.
 - Observed (2026-10-01, two reinstalls via `scripts/install-app.sh`): restoration before exit
   succeeded both times (one retry). The first restart silently dropped five hidden-workspace slots
   when Accessibility could not find them right after launch, then stalled 81 s; fixed in the working

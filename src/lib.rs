@@ -67,3 +67,24 @@ pub enum ResizeDirection {
     Shrink,
     Grow,
 }
+
+/// Largest `resize width|height` size, in points.
+pub const MAX_RESIZE_POINTS: i32 = 16_384;
+
+/// Parses the arguments of `resize width|height POINTS`: the axis that `width` or `height` runs
+/// along, and the window size in points.
+pub fn parse_resize_to(dimension: &str, points: &str) -> Result<(Axis, i32), String> {
+    let axis = match dimension {
+        "width" => Axis::Horizontal,
+        "height" => Axis::Vertical,
+        other => return Err(format!("expected width or height, got {other:?}")),
+    };
+    let points = points
+        .parse::<i32>()
+        .ok()
+        .filter(|points| (1..=MAX_RESIZE_POINTS).contains(points))
+        .ok_or_else(|| {
+            format!("resize {dimension} takes a size from 1 to {MAX_RESIZE_POINTS} points, got {points:?}")
+        })?;
+    Ok((axis, points))
+}

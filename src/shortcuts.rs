@@ -5,7 +5,7 @@ use std::collections::BTreeMap;
 
 use serde::Deserialize;
 
-use crate::{Direction, DisplaySelector, DisplayTarget, ResizeDirection, WorkspaceId};
+use crate::{Axis, Direction, DisplaySelector, DisplayTarget, ResizeDirection, WorkspaceId};
 
 /// The parsed `[shortcuts]` table.
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -217,6 +217,44 @@ pub fn parse_modifier(source: &str) -> Result<Modifiers, String> {
     Ok(chord.modifiers)
 }
 
+/// Whether `chord` is a built-in default shortcut under `base` (with `named_workspaces`
+/// enabled) — i.e. a shortcut that moves when `[shortcuts] modifier` changes.
+///
+/// Fixed Lab chords such as Scratchpad's `alt+\` and `alt+shift+\` do not follow
+/// `[shortcuts] modifier` and return `false`.
+#[must_use]
+pub fn is_built_in_chord(chord: Chord, base: Modifiers, named_workspaces: &[WorkspaceId]) -> bool {
+    let shift = if chord.modifiers == base {
+        false
+    } else if chord.modifiers == base.with_shift() {
+        true
+    } else {
+        return false;
+    };
+    match chord.key {
+        Key::Number(1..=10) | Key::Code(0x30) => true,
+        Key::Code(0x31) => shift,
+        Key::Character(character) => {
+            let is_named = named_workspaces.iter().any(|workspace| {
+                workspace
+                    .letter()
+                    .is_some_and(|letter| letter.eq_ignore_ascii_case(&character))
+            });
+            if is_named {
+                return true;
+            }
+            match character {
+                'h' | 'j' | 'k' | 'l' => true,
+                'f' => shift,
+                '`' => true,
+                '/' | '-' | '=' => !shift,
+                _ => false,
+            }
+        }
+        _ => false,
+    }
+}
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq, PartialOrd, Ord)]
 pub enum Key {
     /// A character, found on whatever key types it in the active keyboard layout.
@@ -232,20 +270,24 @@ pub enum Key {
 pub enum Command {
     Switch(WorkspaceId),
     Move(WorkspaceId),
+    MoveFollow(WorkspaceId),
     BackAndForth,
     MoveWorkspace(DisplayTarget),
     Focus(Direction),
     FocusNext,
+    FocusPrev,
     MoveDirection(Direction),
     Layout,
     Fullscreen,
     Float,
     Resize(ResizeDirection),
+    /// Resize the focused window to this width (`Horizontal`) or height (`Vertical`) in points.
+    ResizeTo(Axis, i32),
     Balance,
     Retile,
 }
 
-pub const COMMAND_USAGE: &str = "switch WORKSPACE|move WORKSPACE|back-and-forth|move-workspace [next|prev|DISPLAY]|focus DIR|focus next|move-direction DIR|layout|fullscreen|float|resize shrink|resize grow|balance|retile|none";
+pub const COMMAND_USAGE: &str = "switch WORKSPACE|move WORKSPACE [--follow]|back-and-forth|move-workspace [next|prev|DISPLAY]|focus DIR|focus next|focus prev|move-direction DIR|layout|fullscreen|float|resize shrink|resize grow|resize width|height POINTS|balance|retile|none";
 
 /// `[shortcuts]` as written.
 #[derive(Deserialize)]
@@ -421,8 +463,12 @@ pub fn parse_command(source: &str) -> Result<Option<Command>, String> {
         ["none"] => return Ok(None),
         ["switch", workspace] => Command::Switch(WorkspaceId::parse(workspace)?),
         ["move", workspace] => Command::Move(WorkspaceId::parse(workspace)?),
+        ["move", workspace, "--follow"] | ["move", "--follow", workspace] => {
+            Command::MoveFollow(WorkspaceId::parse(workspace)?)
+        }
         ["back-and-forth"] => Command::BackAndForth,
         ["focus", "next"] => Command::FocusNext,
+        ["focus", "prev"] => Command::FocusPrev,
         ["focus", direction] => Command::Focus(direction.parse()?),
         ["move-direction", direction] => Command::MoveDirection(direction.parse()?),
         ["layout"] => Command::Layout,
@@ -430,6 +476,10 @@ pub fn parse_command(source: &str) -> Result<Option<Command>, String> {
         ["float"] => Command::Float,
         ["resize", "shrink"] => Command::Resize(ResizeDirection::Shrink),
         ["resize", "grow"] => Command::Resize(ResizeDirection::Grow),
+        ["resize", dimension, points] => {
+            let (axis, points) = crate::parse_resize_to(dimension, points)?;
+            Command::ResizeTo(axis, points)
+        }
         ["balance"] => Command::Balance,
         ["retile"] => Command::Retile,
         _ => {
@@ -446,7 +496,9 @@ impl Command {
     #[must_use]
     pub const fn workspace(&self) -> Option<WorkspaceId> {
         match self {
-            Self::Switch(workspace) | Self::Move(workspace) => Some(*workspace),
+            Self::Switch(workspace) | Self::Move(workspace) | Self::MoveFollow(workspace) => {
+                Some(*workspace)
+            }
             _ => None,
         }
     }
@@ -457,6 +509,9 @@ impl Command {
         match self {
             Self::Switch(workspace) => format!("switch workspace {workspace}"),
             Self::Move(workspace) => format!("move window to workspace {workspace}"),
+            Self::MoveFollow(workspace) => {
+                format!("move window to workspace {workspace} and follow")
+            }
             Self::BackAndForth => "workspace back-and-forth".into(),
             Self::MoveWorkspace(DisplayTarget::Next) => "move workspace to next display".into(),
             Self::MoveWorkspace(DisplayTarget::Prev) => "move workspace to previous display".into(),
@@ -465,12 +520,19 @@ impl Command {
             }
             Self::Focus(direction) => format!("focus {direction}"),
             Self::FocusNext => "cycle workspace windows".into(),
+            Self::FocusPrev => "cycle workspace windows backward".into(),
             Self::MoveDirection(direction) => format!("move window {direction}"),
             Self::Layout => "toggle layout".into(),
             Self::Fullscreen => "toggle fullscreen layout".into(),
             Self::Float => "toggle floating window".into(),
             Self::Resize(ResizeDirection::Shrink) => "shrink layout".into(),
             Self::Resize(ResizeDirection::Grow) => "grow layout".into(),
+            Self::ResizeTo(Axis::Horizontal, points) => {
+                format!("resize focused window to {points} wide")
+            }
+            Self::ResizeTo(Axis::Vertical, points) => {
+                format!("resize focused window to {points} tall")
+            }
             Self::Balance => "balance layout".into(),
             Self::Retile => "retile".into(),
         }
@@ -552,8 +614,11 @@ mod tests {
         for (source, expected) in [
             ("switch 3", Some(Command::Switch(three))),
             ("move S", Some(Command::Move(s))),
+            ("move S --follow", Some(Command::MoveFollow(s))),
+            ("move --follow 3", Some(Command::MoveFollow(three))),
             ("focus left", Some(Command::Focus(Direction::Left))),
             ("focus next", Some(Command::FocusNext)),
+            ("focus prev", Some(Command::FocusPrev)),
             (
                 "move-direction up",
                 Some(Command::MoveDirection(Direction::Up)),
@@ -561,6 +626,14 @@ mod tests {
             ("layout", Some(Command::Layout)),
             ("float", Some(Command::Float)),
             ("balance", Some(Command::Balance)),
+            (
+                "resize width 1200",
+                Some(Command::ResizeTo(Axis::Horizontal, 1200)),
+            ),
+            (
+                "resize  height   480",
+                Some(Command::ResizeTo(Axis::Vertical, 480)),
+            ),
             (
                 "move-workspace",
                 Some(Command::MoveWorkspace(DisplayTarget::Next)),
@@ -577,6 +650,14 @@ mod tests {
         assert!(parse_command("explode").is_err());
         assert!(parse_command("switch 11").is_err());
         assert!(parse_command("focus sideways").is_err());
+        for invalid in [
+            "resize width",
+            "resize width -5",
+            "resize width 99999",
+            "balance now",
+        ] {
+            assert!(parse_command(invalid).is_err(), "{invalid}");
+        }
     }
 
     #[test]
@@ -692,5 +773,57 @@ mod tests {
             ..base.clone()
         };
         assert!(base.differs_from(&scratchpad));
+    }
+
+    #[test]
+    fn is_built_in_chord_matches_base_shortcuts_and_excludes_fixed_scratchpad_chords() {
+        let base = Modifiers::OPTION;
+        let named = [
+            WorkspaceId::named('A').unwrap(),
+            WorkspaceId::named('F').unwrap(),
+        ];
+        for source in [
+            "alt+1",
+            "alt+shift+0",
+            "alt+h",
+            "alt+shift+l",
+            "alt+shift+f",
+            "alt+shift+space",
+            "alt+tab",
+            "alt+shift+tab",
+            "alt+/",
+            "alt+`",
+            "alt+shift+`",
+            "alt+-",
+            "alt+=",
+            "alt+a",
+            "alt+shift+a",
+            "alt+f",
+        ] {
+            assert!(
+                is_built_in_chord(parse_chord(source).unwrap(), base, &named),
+                "{source} should follow the base modifier"
+            );
+        }
+        for source in [
+            "alt+\\",
+            "alt+shift+\\",
+            "alt+space",
+            "alt+shift+/",
+            "alt+b",
+            "ctrl+alt+h",
+        ] {
+            assert!(
+                !is_built_in_chord(parse_chord(source).unwrap(), base, &named),
+                "{source} should not follow the base modifier"
+            );
+        }
+        // Without workspace F enabled, plain Option+F is not a built-in (only Option+Shift+F is).
+        assert!(!is_built_in_chord(parse_chord("alt+f").unwrap(), base, &[]));
+        assert!(is_built_in_chord(
+            parse_chord("alt+shift+f").unwrap(),
+            base,
+            &[]
+        ));
     }
 }
