@@ -74,7 +74,8 @@ pause, quit, or hotkey loss.
   `corner_drag_moves_both_nested_boundaries` cover insertion and diagonal resizing.
 - Unit (FakeBackend), `src/app/tests/gestures.rs`: drag swap preview, edge-nesting preview,
   cross-display drop; `startup.rs` covers gesture classification and `src/app/input.rs` covers
-  queued final gestures.
+  queued final gestures and edge drags grabbed from outside the window (in a gap or over the
+  neighbor), which `src/macos/tests.rs` hit-tests by resize-border reach.
 - Unit (FakeBackend), `src/app/tests/reconciliation.rs`:
   `early_open_event_rechecks_until_the_new_window_can_split_its_sibling`,
   `confirmed_last_window_close_reflows_the_sibling_in_the_same_cycle`,

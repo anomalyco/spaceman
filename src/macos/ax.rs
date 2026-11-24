@@ -90,35 +90,53 @@ pub fn window_server_frame(id: &PhysicalWindowId) -> Option<Rect> {
         .map(|window| window.frame)
 }
 
-/// Hit-test front-to-back window-server geometry, without synchronous AX calls
-/// or native handles crossing the main-thread/worker boundary.
-pub fn window_at_point(point: (i32, i32)) -> Option<(PhysicalWindowId, Rect)> {
+/// How far outside its frame the pointer can still grab a window's edge to
+/// resize it. macOS puts much of a window's resize border outside the frame,
+/// so an edge drag often starts in a gap or over the neighboring window.
+const RESIZE_BORDER_REACH: i32 = 10;
+
+/// Every window the pointer may be acting on, front to back with its current
+/// frame: the window under the point and any whose resize border reaches it.
+/// Hit-tests window-server geometry, without synchronous AX calls or native
+/// handles crossing the main-thread/worker boundary.
+pub fn windows_at_point(point: (i32, i32)) -> Vec<(PhysicalWindowId, Rect)> {
     autoreleasepool(|_| {
-        let windows = window_server_windows(CGWindowListOption::OptionOnScreenOnly)?;
-        let window = top_window_at_point(&windows, point)?;
-        let application =
-            NSRunningApplication::runningApplicationWithProcessIdentifier(window.pid)?;
-        let launched_at = launch_time(&application, window.pid);
-        (launched_at != 0).then_some((
-            PhysicalWindowId {
-                app: AppInstanceId {
-                    pid: window.pid,
-                    launched_at,
-                },
-                window_id: window.id,
-            },
-            window.frame,
-        ))
+        let Some(windows) = window_server_windows(CGWindowListOption::OptionOnScreenOnly) else {
+            return Vec::new();
+        };
+        windows_reaching_point(&windows, point)
+            .filter_map(|window| {
+                let application =
+                    NSRunningApplication::runningApplicationWithProcessIdentifier(window.pid)?;
+                let launched_at = launch_time(&application, window.pid);
+                (launched_at != 0).then_some((
+                    PhysicalWindowId {
+                        app: AppInstanceId {
+                            pid: window.pid,
+                            launched_at,
+                        },
+                        window_id: window.id,
+                    },
+                    window.frame,
+                ))
+            })
+            .collect()
     })
 }
 
-pub(super) fn top_window_at_point(
+pub(super) fn windows_reaching_point(
     windows: &[WindowServerWindow],
     point: (i32, i32),
-) -> Option<&WindowServerWindow> {
-    windows
-        .iter()
-        .find(|window| window.frame.contains(point.0, point.1))
+) -> impl Iterator<Item = &WindowServerWindow> {
+    windows.iter().filter(move |window| {
+        let reach = Rect {
+            x: window.frame.x - RESIZE_BORDER_REACH,
+            y: window.frame.y - RESIZE_BORDER_REACH,
+            width: window.frame.width + 2 * RESIZE_BORDER_REACH,
+            height: window.frame.height + 2 * RESIZE_BORDER_REACH,
+        };
+        reach.contains(point.0, point.1)
+    })
 }
 
 /// Window-server frames for every ordinary window in one list copy. Use this
