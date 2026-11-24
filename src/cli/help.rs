@@ -260,7 +260,7 @@ pub(crate) fn ctl_help(executable: &str) -> String {
         "  open <url-or-target>       Open Settings on a spaceman:// link, pane, feature, or Lab",
         "  open-settings              Open the Spaceman Settings window",
         "  open-accessibility         Open Accessibility onboarding / System Settings",
-        "  check-for-updates          Trigger a Sparkle update check",
+        "  check-for-updates          Check for Spaceman updates",
         "  toggle-launch-at-login     Toggle Launch at Login registration",
         "  restart | quit             Restore windows and restart or quit the agent",
     ]

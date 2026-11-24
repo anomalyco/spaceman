@@ -113,8 +113,11 @@ and a copy Spaceman can't replace offers `Download`.
 
 ## CLI
 
-The installed CLI is `~/.local/bin/spaceman`. Add `~/.local/bin` to `PATH`, or invoke that absolute
-path. Commands that alter layouts require automatic tiling to be enabled.
+Homebrew cask installs link the bundled CLI into `$(brew --prefix)/bin/spaceman` (typically
+`/opt/homebrew/bin/spaceman`, already on `PATH`). Source installs (`scripts/install-app.sh`) link
+`~/.local/bin/spaceman` (add `~/.local/bin` to `PATH` or invoke that absolute path), and direct ZIP
+installs bundle the CLI at `/Applications/Spaceman.app/Contents/MacOS/spaceman`. Commands that
+alter layouts require automatic tiling to be enabled.
 
 ```sh
 spaceman ctl status
