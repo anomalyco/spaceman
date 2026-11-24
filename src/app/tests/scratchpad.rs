@@ -619,3 +619,33 @@ fn tiling_an_unconfirmed_scratchpad_summon_keeps_tiles_separate_after_arrival() 
     assert!(!rt.parked.contains_key(&w));
     assert!(!rt.backend.persisted.contains_key(&w));
 }
+
+#[test]
+fn switching_away_before_delayed_summon_confirmation_remembers_floated_size() {
+    let mut rt = scratchpad_runtime(lab());
+    let w = window(10);
+    scratchpad(&mut rt, ScratchpadCommand::Mark).unwrap();
+    assert_hidden(&rt, &w);
+    rt.backend
+        .server_frames
+        .insert(w.clone(), rt.backend.frames[&w]);
+    rt.backend.frozen_server_frames = true;
+    scratchpad(&mut rt, ScratchpadCommand::Toggle).unwrap();
+    assert_eq!(rt.backend.frames[&w], summoned());
+    assert!(rt.scratchpad.pending_summon(&w).is_some());
+
+    // Summon arrives on the window server, then the user switches away before a cycle confirms it.
+    rt.backend.frozen_server_frames = false;
+    rt.backend.server_frames.insert(w.clone(), summoned());
+    run(&mut rt, WorkerAction::SwitchWorkspace(WorkspaceId::TWO)).unwrap();
+    assert_hidden(&rt, &w);
+    assert_eq!(rt.scratchpad.entry(&w).unwrap().size, Some((750, 600)));
+
+    run(&mut rt, WorkerAction::SwitchWorkspace(WorkspaceId::ONE)).unwrap();
+    scratchpad(&mut rt, ScratchpadCommand::Toggle).unwrap();
+    run(&mut rt, WorkerAction::Retile).unwrap();
+    assert_eq!(rt.backend.frames[&w], summoned());
+    assert_eq!(rt.backend.server_frames[&w], summoned());
+    assert_eq!(rt.scratchpad.pending_summon(&w), None);
+    assert!(!rt.parked.contains_key(&w));
+}

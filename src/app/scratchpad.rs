@@ -411,9 +411,15 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
                 Some(workspace) if visible.contains(&workspace) => {}
                 Some(workspace) => {
                     let output = output_for(&self.workspaces, workspace, outputs);
+                    // Prefer the window's live (or pending-summon) size over `self.parked`:
+                    // when a workspace switch happens before a delayed summon is confirmed,
+                    // `self.parked` still holds the pre-summon tile recovery frame (#258).
                     let size = self
-                        .parked
-                        .get(&window)
+                        .backend
+                        .frame(&window)
+                        .ok()
+                        .or(entry.pending_summon)
+                        .or_else(|| self.parked.get(&window).copied())
                         .map(|frame| (frame.width, frame.height));
                     if self.park_scratchpad_window(&window, output, outputs)
                         == macos::ApplyOutcome::Applied
