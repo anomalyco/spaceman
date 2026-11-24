@@ -481,3 +481,67 @@ fn ordered_out_window_off_display_is_not_moved_by_stranded_recovery() {
         "ordered-out window must not be moved by stranded visible recovery"
     );
 }
+
+#[test]
+fn clamshell_display_change_does_not_adopt_hidden_windows_when_repark_is_transiently_gone() {
+    let before = builtin_1512();
+    let after = external_1080p();
+    let external = after.main().frame;
+
+    let active = window(10);
+    let hidden_win = window(11);
+    let hidden_ws = WorkspaceId::new(2).unwrap();
+    let original = crate::Rect {
+        x: 0,
+        y: 31,
+        width: 1512,
+        height: 951,
+    };
+    let mut backend = FakeBackend {
+        observation: Some(observation(&active, original)),
+        frontmost: Some(active.app.clone()),
+        ..FakeBackend::default()
+    };
+    backend.frames.insert(active.clone(), original);
+    // Simulate macOS pulling a hidden window onto the new external display while
+    // AX transiently fails with Gone (not in backend.frames) during clamshell.
+    backend.server_frames.insert(hidden_win.clone(), external);
+
+    let mut runtime = runtime_with_parked(backend, [(hidden_win.clone(), original)]);
+    bind(&mut runtime, WorkspaceId::ONE, &active);
+    bind(&mut runtime, hidden_ws, &hidden_win);
+    runtime.note_outputs(&before);
+
+    // Pre-switch wobble + post-switch cycles where AX returns Gone for hidden_win.
+    for _ in 0..=(REPARK_ATTEMPT_LIMIT + 3) {
+        runtime.follow_displays(&after);
+        let server_frames = runtime.backend.window_server_frames().unwrap();
+        let visible = runtime.visible_workspaces(&after);
+        runtime.park_inactive(
+            &after,
+            &visible,
+            &server_frames,
+            &AtomicBool::new(false),
+            &mut 0,
+        );
+    }
+
+    assert_eq!(
+        runtime.workspaces.workspace_of(&hidden_win),
+        Some(hidden_ws),
+        "transient Gone during clamshell display change must not adopt hidden window into active workspace"
+    );
+    assert!(runtime.parked.contains_key(&hidden_win));
+    assert!(runtime.awaiting_display_repark(&hidden_win));
+
+    // Once AX recovers, follow_displays re-parks the window off the external display.
+    runtime.backend.frames.insert(hidden_win.clone(), external);
+    runtime.follow_displays(&after);
+    assert!(!runtime.awaiting_display_repark(&hidden_win));
+    assert_eq!(
+        runtime.workspaces.workspace_of(&hidden_win),
+        Some(hidden_ws)
+    );
+    let expected = crate::geometry::parked_frame(external, &[external], external);
+    assert_eq!(runtime.backend.frames[&hidden_win].x, expected.x);
+}

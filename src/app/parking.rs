@@ -313,6 +313,9 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
         output: crate::Rect,
         context: &ParkContext<'_>,
     ) {
+        if self.awaiting_display_repark(window) {
+            return;
+        }
         let Some(server) = context.server_frames.get(&window.window_id).copied() else {
             return;
         };
@@ -352,9 +355,7 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
             // position stays parked off-screen.
             return;
         }
-        let attempts = self.repark_attempts.entry(window.clone()).or_insert(0);
-        *attempts += 1;
-        if *attempts > REPARK_ATTEMPT_LIMIT {
+        if self.repark_attempts.get(window).copied().unwrap_or(0) >= REPARK_ATTEMPT_LIMIT {
             // The app undoes every park. Fighting on would flicker forever;
             // honor the reappearance instead (re-home, then exempt it from
             // parking if it keeps happening).
@@ -385,6 +386,10 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
             self.backend.set_position(window, target),
             macos::ApplyOutcome::Applied
         ) {
+            // Only a confirmed park write that the app later undoes proves the
+            // app is fighting parking; transient Gone/Unavailable errors during
+            // display reconfiguration must not escalate and adopt the window.
+            *self.repark_attempts.entry(window.clone()).or_insert(0) += 1;
             self.recently_parked.insert(window.clone(), Instant::now());
         }
     }
