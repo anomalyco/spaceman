@@ -224,6 +224,9 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
         let Some(source) = self.workspaces.workspace_of(&window) else {
             return self.cycle(outputs, cancelled);
         };
+        if !self.is_visible(source, &outputs) || self.parked.contains_key(&window) {
+            return Ok(self.status(0, &outputs));
+        }
         if self.workspaces.uses_fullscreen_layout(source) {
             return Ok(self.status(0, &outputs));
         }
@@ -303,6 +306,9 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
         let Some(workspace) = self.workspaces.workspace_of(&window) else {
             return self.cycle(outputs, cancelled);
         };
+        if !self.is_visible(workspace, &outputs) || self.parked.contains_key(&window) {
+            return Ok(self.status(0, &outputs));
+        }
         if self.workspaces.uses_fullscreen_layout(workspace) {
             return Ok(self.status(0, &outputs));
         }

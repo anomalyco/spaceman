@@ -35,3 +35,82 @@ fn replay_reports_a_slot_preserving_ghostty_replacement() {
     assert_eq!(steps[1]["decisions"][0]["type"], "native_tab_replaced");
     assert_eq!(steps[1]["decisions"][0]["slot"], 1);
 }
+
+#[test]
+fn read_only_cli_output_exits_cleanly_on_closed_pipe() {
+    use std::{
+        fmt::Write as _,
+        fs,
+        io::{BufRead, BufReader, Read},
+        process::Stdio,
+    };
+
+    let dir = std::env::temp_dir().join(format!("spaceman-broken-pipe-{}", std::process::id()));
+    let config_path = dir.join("config.toml");
+    let support_dir = dir.join("support");
+    fs::create_dir_all(&support_dir).unwrap();
+
+    // >81 KB rules output to exceed macOS pipe buffer and trigger EPIPE when reader closes early.
+    let mut config = String::from("version = 1\n");
+    for i in 0..850 {
+        writeln!(
+            config,
+            "\n[[rules]]\nbundle_id = \"com.example.Editor\"\ntitle = \"Project {i:04} - Planning and implementation notes\"\naction = \"float\""
+        )
+        .unwrap();
+    }
+    fs::write(&config_path, &config).unwrap();
+
+    // >81 KB doctor output via a journal with many recalled bundle IDs.
+    let mut journal = String::new();
+    let now = spaceman::journal::unix_millis();
+    for i in 0..2000 {
+        writeln!(
+            journal,
+            "{{\"t\":{now},\"kind\":\"recall\",\"bundle\":\"com.example.App{i:04}LongBundleIdentifier\",\"workspace\":1,\"placed\":\"tile\",\"reason\":\"remembered\"}}"
+        )
+        .unwrap();
+    }
+    fs::write(support_dir.join(spaceman::journal::JOURNAL_FILE), &journal).unwrap();
+
+    for args in [
+        &["rules", "list"][..],
+        &["config", "show"][..],
+        &["doctor"][..],
+    ] {
+        let mut child = Command::new(env!("CARGO_BIN_EXE_spaceman"))
+            .args(args)
+            .env("SPACEMAN_CONFIG", &config_path)
+            .env("SPACEMAN_APPLICATION_SUPPORT", &support_dir)
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .spawn()
+            .expect("spaceman should spawn");
+
+        let mut reader = BufReader::new(child.stdout.take().unwrap());
+        let mut first_line = String::new();
+        reader.read_line(&mut first_line).unwrap();
+        assert!(!first_line.is_empty(), "args {args:?} produced no output");
+        // Drop the reader end immediately to close the pipe while spaceman writes the rest.
+        drop(reader);
+
+        let mut stderr = String::new();
+        child
+            .stderr
+            .take()
+            .unwrap()
+            .read_to_string(&mut stderr)
+            .unwrap();
+        let status = child.wait().expect("spaceman should exit");
+        assert!(
+            status.success(),
+            "args {args:?} failed with {status:?}, stderr: {stderr}"
+        );
+        assert!(
+            stderr.is_empty(),
+            "args {args:?} wrote unexpected stderr: {stderr}"
+        );
+    }
+
+    drop(fs::remove_dir_all(&dir));
+}

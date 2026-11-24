@@ -407,6 +407,30 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
         }
     }
 
+    /// Confirms that an Accessibility `Gone` result means `window` actually
+    /// closed, and if so retires its parked recovery entry and workspace binding.
+    pub(super) fn retire_confirmed_gone_window(
+        &mut self,
+        workspace: WorkspaceId,
+        window: &crate::PhysicalWindowId,
+    ) -> bool {
+        if !self.confirm_gone(window) {
+            return false;
+        }
+        log_event!(
+            "forget {:?} (workspace {}): window closed",
+            window,
+            workspace
+        );
+        let frame = self.parked.get(window).copied();
+        self.commit_unparked(window);
+        if let Some(frame) = frame {
+            self.persist_removals_or_rollback(vec![(window.clone(), frame)]);
+        }
+        self.forget_window(workspace, window);
+        true
+    }
+
     /// Whether an Accessibility "gone" for `window` is real: the window
     /// server no longer lists it, its process exited, or Accessibility has
     /// failed to find it for [`INACCESSIBLE_GRACE`].
