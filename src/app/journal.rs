@@ -55,7 +55,7 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
             self.memory.memory.len()
         );
         self.journal_event(JournalEvent::Start {
-            version: env!("CARGO_PKG_VERSION").into(),
+            version: crate::updater::build_version().into(),
             pid: std::process::id(),
             restored_state,
             slots,

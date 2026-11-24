@@ -247,7 +247,7 @@ pub struct UiAgentSnapshot {
 impl UiAgentSnapshot {
     pub(super) fn to_settings_json(&self) -> serde_json::Value {
         serde_json::json!({
-            "version": env!("CARGO_PKG_VERSION"),
+            "version": crate::updater::build_version(),
             "accessibility": self.accessibility,
             "automatic": self.automatic,
             "hud": self.hud,

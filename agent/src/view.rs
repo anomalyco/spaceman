@@ -74,7 +74,7 @@ fn sidebar(ui: &Ui, p: Paint) -> El {
         .child(nav)
         .child(el().key("spacer").grow(1.0))
         .child(
-            text(format!("Version {}", env!("CARGO_PKG_VERSION")))
+            text(format!("Version {}", spaceman::build_version()))
                 .key("version")
                 .font(p.k.ty.small)
                 .color(p.faint())

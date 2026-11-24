@@ -1,5 +1,5 @@
 pub(crate) fn version() -> String {
-    format!("spaceman {}", env!("CARGO_PKG_VERSION"))
+    format!("spaceman {}", spaceman::build_version())
 }
 
 pub(crate) fn is_help_flag(arg: &str) -> bool {
@@ -46,7 +46,7 @@ pub(crate) fn root(executable: &str) -> String {
     let mut sections = vec![
         format!(
             "Spaceman {} — macOS tiling window manager",
-            env!("CARGO_PKG_VERSION")
+            spaceman::build_version()
         ),
         String::new(),
         format!("Usage: {executable} <command> [args...]"),

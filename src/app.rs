@@ -341,7 +341,7 @@ pub fn prepare() -> Result<(PreparedAgent, UiBridge), String> {
     log_event!(
         "agent started (pid {}, version {})",
         std::process::id(),
-        env!("CARGO_PKG_VERSION")
+        crate::updater::build_version()
     );
     let scope = ManagementScope::from_environment()?;
     let parked = load_parked()?;

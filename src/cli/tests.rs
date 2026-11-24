@@ -111,7 +111,7 @@ fn help_and_version_exit_zero_on_stdout() {
         assert!(outcome.stderr.is_none());
     }
 
-    let expected_version = format!("spaceman {}", env!("CARGO_PKG_VERSION"));
+    let expected_version = format!("spaceman {}", spaceman::build_version());
     for flag in ["--version", "-V"] {
         let outcome = run_cli(&[flag], None);
         assert_eq!(outcome.exit_code, 0);

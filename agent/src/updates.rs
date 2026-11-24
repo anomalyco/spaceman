@@ -16,10 +16,9 @@ const CHANNELS: [(&str, UpdateChannel); 2] = [
 ];
 
 /// The version this build was released as (the Release workflow's stamp), else Cargo's.
-const VERSION: &str = match option_env!("SPACEMAN_RELEASE_VERSION") {
-    Some(version) => version,
-    None => env!("CARGO_PKG_VERSION"),
-};
+fn build_version() -> &'static str {
+    spaceman::build_version()
+}
 
 /// A channel's name as the picker shows it.
 fn channel_label(channel: &str) -> &str {
@@ -167,7 +166,7 @@ pub fn section(ui: &Ui, p: Paint) -> El {
     let version = controls::setting_row(
         p,
         "version",
-        &format!("Spaceman {VERSION}"),
+        &format!("Spaceman {}", build_version()),
         Some((describe(&update), color)),
         control,
     );

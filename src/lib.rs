@@ -43,6 +43,7 @@ pub mod swipe;
 mod termination;
 #[cfg(target_os = "macos")]
 mod updater;
+pub use updater::build_version;
 #[cfg(target_os = "macos")]
 #[allow(unsafe_code)]
 mod url_handler;
