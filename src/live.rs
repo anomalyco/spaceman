@@ -125,6 +125,7 @@ mod tests {
             },
             frame_tolerance: 2,
             spacing: crate::spacing::Spacing::NONE,
+            layout: crate::config::LayoutMode::default(),
         };
         let mut observation = NativeObservation {
             cycle: 1,
@@ -183,6 +184,7 @@ mod tests {
             },
             frame_tolerance: 2,
             spacing: crate::spacing::Spacing::NONE,
+            layout: crate::config::LayoutMode::default(),
         };
         let initial = reconcile(
             &Model::default(),

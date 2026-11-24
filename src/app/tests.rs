@@ -3,6 +3,7 @@ mod cross_display;
 mod dispatch;
 mod display_disconnect;
 mod dual_selector_move;
+mod dwindle;
 mod empty_workspace_move;
 mod float;
 mod float_regressions;

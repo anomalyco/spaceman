@@ -596,7 +596,8 @@ fn asynchronously_clamped_window_settles_without_reapplying_every_cycle() {
     backend.frames.insert(main.clone(), frame(50));
     backend.frames.insert(huddle.clone(), frame(350));
     backend.frames.insert(settings.clone(), frame(650));
-    let mut runtime = runtime(backend);
+    let columns = Config::parse("version = 1\n[settings]\nlayout = \"columns\"\n").unwrap();
+    let mut runtime = runtime_with_config(backend, columns);
     let outputs = outputs();
     let cancelled = AtomicBool::new(false);
 
@@ -669,7 +670,8 @@ fn varying_async_bounces_freeze_after_attempt_limit_and_clear_on_target_change()
     backend.frames.insert(main.clone(), frame(50));
     backend.frames.insert(huddle.clone(), frame(350));
     backend.frames.insert(settings.clone(), frame(650));
-    let mut runtime = runtime(backend);
+    let columns = Config::parse("version = 1\n[settings]\nlayout = \"columns\"\n").unwrap();
+    let mut runtime = runtime_with_config(backend, columns);
     let outputs = outputs();
     let cancelled = AtomicBool::new(false);
 

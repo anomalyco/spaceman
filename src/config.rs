@@ -18,6 +18,7 @@ struct AppSettings {
     hud: bool,
     hud_style: HudStyle,
     hud_position: HudPosition,
+    layout: LayoutMode,
     update_channel: UpdateChannel,
     mouse_follows_focus: MouseFollowsFocus,
     spacing: Spacing,
@@ -29,9 +30,40 @@ impl Default for AppSettings {
             hud: true,
             hud_style: HudStyle::default(),
             hud_position: HudPosition::default(),
+            layout: LayoutMode::default(),
             update_channel: UpdateChannel::default(),
             mouse_follows_focus: MouseFollowsFocus::default(),
             spacing: Spacing::default(),
+        }
+    }
+}
+
+/// How newly opened tiled windows split the workspace: `settings.layout`.
+#[derive(Clone, Copy, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "lowercase")]
+pub enum LayoutMode {
+    /// Binary space partition: each new window splits the active tile along its longer side.
+    #[default]
+    Dwindle,
+    /// Side-by-side columns: each new window joins the active tile's split as a sibling.
+    Columns,
+}
+
+impl LayoutMode {
+    #[must_use]
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Dwindle => "dwindle",
+            Self::Columns => "columns",
+        }
+    }
+
+    #[must_use]
+    pub fn parse(value: &str) -> Option<Self> {
+        match value {
+            "dwindle" => Some(Self::Dwindle),
+            "columns" => Some(Self::Columns),
+            _ => None,
         }
     }
 }
@@ -231,6 +263,8 @@ struct RawSettings {
     #[serde(default)]
     hud_position: HudPosition,
     #[serde(default)]
+    layout: LayoutMode,
+    #[serde(default)]
     update_channel: UpdateChannel,
     #[serde(default)]
     mouse_follows_focus: MouseFollowsFocus,
@@ -248,6 +282,7 @@ impl Default for RawSettings {
             hud: true,
             hud_style: HudStyle::default(),
             hud_position: HudPosition::default(),
+            layout: LayoutMode::default(),
             update_channel: UpdateChannel::default(),
             mouse_follows_focus: MouseFollowsFocus::default(),
             single_window_max_width: 0,
@@ -382,6 +417,7 @@ impl Config {
                 hud: raw.settings.hud,
                 hud_style: raw.settings.hud_style,
                 hud_position: raw.settings.hud_position,
+                layout: raw.settings.layout,
                 update_channel: raw.settings.update_channel,
                 mouse_follows_focus: raw.settings.mouse_follows_focus,
                 spacing: raw.settings.spacing()?,
@@ -419,6 +455,11 @@ impl Config {
     #[must_use]
     pub const fn hud_position(&self) -> HudPosition {
         self.settings.hud_position
+    }
+
+    #[must_use]
+    pub const fn layout(&self) -> LayoutMode {
+        self.settings.layout
     }
 
     #[must_use]
@@ -878,6 +919,50 @@ monitor = "main"
             std::fs::read_to_string(&path)
                 .unwrap()
                 .contains("hud_position = \"top\"")
+        );
+        drop(std::fs::remove_dir_all(dir));
+    }
+
+    #[test]
+    fn parses_layout_with_dwindle_default() {
+        assert_eq!(Config::default().layout(), LayoutMode::Dwindle);
+        assert_eq!(
+            Config::parse("version = 1").unwrap().layout(),
+            LayoutMode::Dwindle
+        );
+        assert_eq!(
+            Config::parse("version = 1\n[settings]\nhud = false\n")
+                .unwrap()
+                .layout(),
+            LayoutMode::Dwindle
+        );
+        for mode in [LayoutMode::Dwindle, LayoutMode::Columns] {
+            let source = format!("version = 1\n[settings]\nlayout = {:?}\n", mode.as_str());
+            assert_eq!(Config::parse(&source).unwrap().layout(), mode);
+            assert_eq!(LayoutMode::parse(mode.as_str()), Some(mode));
+        }
+        assert!(Config::parse("version = 1\n[settings]\nlayout = \"bsp\"\n").is_err());
+        assert!(Config::parse("version = 1\n[settings]\nlayout = true\n").is_err());
+        assert_eq!(LayoutMode::parse("Dwindle"), None);
+    }
+
+    #[test]
+    fn saving_a_workspace_monitor_keeps_layout() {
+        let dir = std::env::temp_dir().join(format!(
+            "spaceman-config-layout-{}-{}",
+            std::process::id(),
+            now().as_nanos()
+        ));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("config.toml");
+        std::fs::write(&path, "version = 1\n[settings]\nlayout = \"columns\"\n").unwrap();
+        let saved = save_workspace_monitor_at(&path, WorkspaceId::TWO, &DisplaySelector::Secondary)
+            .unwrap();
+        assert_eq!(saved.layout(), LayoutMode::Columns);
+        assert!(
+            std::fs::read_to_string(&path)
+                .unwrap()
+                .contains("layout = \"columns\"")
         );
         drop(std::fs::remove_dir_all(dir));
     }

@@ -23,9 +23,16 @@ pub struct Settings {
     /// Gaps, outer padding and the lone-window width cap applied to every tile.
     #[serde(default, skip_serializing_if = "crate::spacing::Spacing::is_none")]
     pub spacing: crate::spacing::Spacing,
+    /// How newly opened tiled windows split the workspace.
+    #[serde(default, skip_serializing_if = "is_default_layout")]
+    pub layout: crate::config::LayoutMode,
 }
 
 pub const DEFAULT_FRAME_TOLERANCE: i32 = 2;
+
+fn is_default_layout(layout: &crate::config::LayoutMode) -> bool {
+    *layout == crate::config::LayoutMode::default()
+}
 
 impl Settings {
     #[must_use]
@@ -34,12 +41,18 @@ impl Settings {
             output,
             frame_tolerance: DEFAULT_FRAME_TOLERANCE,
             spacing: crate::spacing::Spacing::NONE,
+            layout: crate::config::LayoutMode::Dwindle,
         }
     }
 
     #[must_use]
     pub const fn spaced(self, spacing: crate::spacing::Spacing) -> Self {
         Self { spacing, ..self }
+    }
+
+    #[must_use]
+    pub const fn with_layout(self, layout: crate::config::LayoutMode) -> Self {
+        Self { layout, ..self }
     }
 
     /// The rect the layout partitions: the output less its outer padding.

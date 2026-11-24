@@ -7,7 +7,10 @@ mod slider;
 
 use rune::{Color, El, Tx, col, icon, row, text};
 use rune_kit::SegmentedControl;
-use spaceman::spacing::{Spacing, SpacingKey};
+use spaceman::{
+    config::LayoutMode,
+    spacing::{Spacing, SpacingKey},
+};
 
 use crate::{
     Ui,
@@ -21,6 +24,17 @@ use slider::{Channel, slider};
 const SLIDER_MAX: i32 = 32;
 /// Single-window widths offered besides Off.
 const WIDTHS: [i32; 3] = [1440, 1680, 1920];
+const LAYOUT_MODES: [(&str, LayoutMode); 2] = [
+    ("Dwindle", LayoutMode::Dwindle),
+    ("Columns", LayoutMode::Columns),
+];
+
+fn layout_mode_index(mode: LayoutMode) -> usize {
+    LAYOUT_MODES
+        .iter()
+        .position(|(_, candidate)| *candidate == mode)
+        .unwrap_or(0)
+}
 
 /// Every gap at once: between windows and all four screen edges. It reads the gap between
 /// windows, so while the gaps differ a drag evens them out.
@@ -120,9 +134,32 @@ fn apply_highlight(el: El, p: Paint, target: Option<Highlight>, wanted: Highligh
 }
 
 pub fn pane(ui: &Ui, p: Paint) -> El {
+    let layout = ui.doc.layout();
     let spacing = ui.spacing_draft.unwrap_or_else(|| ui.doc.spacing());
     let open = customize_open(ui, &spacing);
     let target = highlight_target(ui);
+    let new_windows = controls::card(
+        p,
+        "new-windows-card",
+        vec![controls::setting_row(
+            p,
+            "new-windows",
+            "New windows",
+            None,
+            SegmentedControl::new(
+                &LAYOUT_MODES.map(|(label, _)| label.to_owned()),
+                Some(layout_mode_index(layout)),
+            )
+            .fit()
+            .on_pick(|ui: &mut Ui, index, _: &mut Tx| {
+                if let Some((_, mode)) = LAYOUT_MODES.get(index) {
+                    ui.edit(|doc| doc.set_layout(*mode));
+                }
+            })
+            .build(p.k)
+            .key("layout-mode-picker"),
+        )],
+    );
     let gaps_card = apply_highlight(
         controls::card(p, "card", gap_rows(p, &spacing, open)),
         p,
@@ -155,7 +192,8 @@ pub fn pane(ui: &Ui, p: Paint) -> El {
         col()
             .key("sections")
             .gap(24.0)
-            .child(preview::card(p, spacing))
+            .child(preview::card(p, layout, spacing))
+            .child(new_windows)
             .child(gaps)
             .child(controls::section(p, "wide", "Wide displays", vec![width])),
     )
@@ -373,6 +411,43 @@ mod tests {
             highlight_style(p, target, Highlight::MaxWidth),
             Some((p.k.c.layer_02, p.hair, p.k.c.border_focus))
         );
+        let _ = pane(&ui, p);
+    }
+
+    #[test]
+    fn layout_mode_picker_maps_dwindle_and_columns_and_round_trips_config() {
+        assert_eq!(layout_mode_index(LayoutMode::Dwindle), 0);
+        assert_eq!(layout_mode_index(LayoutMode::Columns), 1);
+
+        let mut doc = crate::rules::Doc::parse("# Keep me.\nversion = 1\n");
+        assert_eq!(doc.layout(), LayoutMode::Dwindle);
+
+        doc.set_layout(LayoutMode::Columns);
+        assert_eq!(doc.layout(), LayoutMode::Columns);
+        let columns = doc.source();
+        assert!(columns.contains("layout = \"columns\""), "{columns}");
+        assert!(columns.contains("# Keep me."), "{columns}");
+        assert_eq!(
+            spaceman::config::Config::parse(&columns).unwrap().layout(),
+            LayoutMode::Columns
+        );
+
+        doc.set_layout(LayoutMode::Dwindle);
+        assert_eq!(doc.layout(), LayoutMode::Dwindle);
+        let dwindle = doc.source();
+        assert!(!dwindle.contains("layout"), "{dwindle}");
+        assert!(!dwindle.contains("[settings]"), "{dwindle}");
+        assert!(dwindle.contains("# Keep me."), "{dwindle}");
+        assert_eq!(
+            spaceman::config::Config::parse(&dwindle).unwrap().layout(),
+            LayoutMode::Dwindle
+        );
+
+        let p = Paint::new(true, 2.0);
+        let mut ui = crate::playground::blank_fixture();
+        ui.doc.set_layout(LayoutMode::Columns);
+        let _ = pane(&ui, p);
+        ui.doc.set_layout(LayoutMode::Dwindle);
         let _ = pane(&ui, p);
     }
 }

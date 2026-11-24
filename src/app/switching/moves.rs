@@ -165,8 +165,9 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
         if is_floating {
             self.workspaces.own_floating(window.clone(), target);
         } else {
+            let target_canvas = self.layout_settings(target_output).canvas();
             self.workspaces
-                .move_window(&window, target)
+                .move_window_with(&window, target, self.config.layout(), target_canvas)
                 .ok_or("Window could not be moved")?;
             self.exit_fullscreen_if_split(target);
         }

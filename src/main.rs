@@ -292,10 +292,19 @@ fn configured_spacing() -> spaceman::spacing::Spacing {
 }
 
 #[cfg(target_os = "macos")]
+fn configured_layout() -> spaceman::config::LayoutMode {
+    spaceman::config::Config::load()
+        .map(|config| config.layout())
+        .unwrap_or_default()
+}
+
+#[cfg(target_os = "macos")]
 fn run_retile(should_apply: bool) -> Result<SnapshotOutput, String> {
     let (observation, settings) =
         spaceman::macos::snapshot(1).map_err(|error| error.to_string())?;
-    let settings = settings.spaced(configured_spacing());
+    let settings = settings
+        .spaced(configured_spacing())
+        .with_layout(configured_layout());
     if should_apply
         && observation
             .applications
@@ -344,6 +353,7 @@ fn run_watch(
         }
         .map_err(|error| error.to_string())?;
         settings.spacing = configured_spacing();
+        settings.layout = configured_layout();
         if let Some(initial_window_id) = initial_window_id {
             let active_scope = match &mut scope {
                 Some(scope) => scope,
@@ -388,6 +398,7 @@ fn run_persistent(should_apply: bool) -> Result<String, String> {
     let mut engine = Engine::default();
     let mut known_apps = HashMap::new();
     let spacing = configured_spacing();
+    let layout = configured_layout();
     let mut output = io::BufWriter::new(io::stdout().lock());
     let mut completed_cycles = 0_u64;
 
@@ -420,6 +431,7 @@ fn run_persistent(should_apply: bool) -> Result<String, String> {
         }
         spaceman::live::add_absent_applications(&mut observation, &mut known_apps);
         settings.spacing = spacing;
+        settings.layout = layout;
         let reconciliation = engine
             .accept(ticket, &observation, &settings)
             .map_err(|error| format!("stale synchronous cycle: {error:?}"))?;

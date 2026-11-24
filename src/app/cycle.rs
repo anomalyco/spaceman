@@ -410,8 +410,8 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
             .collect();
         let mut routed_targets = HashSet::new();
         for (window, target) in &routes {
+            let target_output = output_for(&self.workspaces, *target, outputs);
             if !affinity_policy.visible_workspaces.contains(target) {
-                let target_output = output_for(&self.workspaces, *target, outputs);
                 match self.park_window_across(window, output, target_output, outputs) {
                     macos::ApplyOutcome::Applied => {}
                     macos::ApplyOutcome::Gone => {
@@ -424,7 +424,12 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
                     }
                 }
             }
-            if self.workspaces.move_window(window, *target).is_none() {
+            let target_canvas = self.layout_settings(target_output).canvas();
+            if self
+                .workspaces
+                .move_window_with(window, *target, self.config.layout(), target_canvas)
+                .is_none()
+            {
                 continue;
             }
             routed_targets.insert(*target);

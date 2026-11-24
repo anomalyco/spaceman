@@ -1,6 +1,6 @@
 use crate::{
     Model, NativeObservation, PhysicalWindowId, Placement, Reconciliation, ReconciliationEvidence,
-    Settings, Slot, layout_tree::LayoutTree, reconcile,
+    Settings, Slot, config::LayoutMode, layout_tree::LayoutTree, reconcile,
 };
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -71,7 +71,10 @@ impl Engine {
             result.model.workspace.axis,
             &result.model.workspace.slots,
             self.insertion_focus,
+            settings.layout,
+            settings.canvas(),
         ) {
+            result.model.workspace.axis = self.layout.root_axis();
             self.fit = None;
             self.insertion_focus = self
                 .insertion_focus
@@ -156,7 +159,17 @@ impl Engine {
         true
     }
 
-    pub(crate) fn insert_slot(&mut self, mut slot: Slot) {
+    pub(crate) fn insert_slot(&mut self, slot: Slot) {
+        self.insert_slot_with(slot, LayoutMode::Columns, crate::Rect::default(), None);
+    }
+
+    pub(crate) fn insert_slot_with(
+        &mut self,
+        mut slot: Slot,
+        mode: LayoutMode,
+        output: crate::Rect,
+        anchor: Option<crate::SlotId>,
+    ) {
         if self
             .model
             .workspace
@@ -168,8 +181,14 @@ impl Engine {
         }
         self.model.next_slot_id = self.model.next_slot_id.max(slot.id.0.saturating_add(1));
         self.model.workspace.slots.push(slot);
-        self.layout
-            .sync(self.model.workspace.axis, &self.model.workspace.slots);
+        self.layout.sync_near(
+            self.model.workspace.axis,
+            &self.model.workspace.slots,
+            anchor,
+            mode,
+            output,
+        );
+        self.model.workspace.axis = self.layout.root_axis();
         self.invalidate_layout();
     }
 
@@ -504,8 +523,9 @@ mod tests {
         assert!(engine.move_window_relative(&windows[0], &windows[1], crate::Direction::Up));
         engine.remember_insertion_focus(&windows[0]);
         let ticket = engine.begin_cycle();
+        let columns = settings().with_layout(LayoutMode::Columns);
         engine
-            .accept(ticket, &observation(ticket.cycle, 4), &settings())
+            .accept(ticket, &observation(ticket.cycle, 4), &columns)
             .unwrap();
         let output = crate::Rect {
             width: 1200,
@@ -517,12 +537,62 @@ mod tests {
             tiles.iter().map(|(s, _)| s.0).collect::<Vec<_>>(),
             [1, 4, 2, 3]
         );
+        assert_eq!(tiles[0].1.width, 600);
+        assert_eq!(tiles[1].1.width, 600);
         assert_eq!(
             tiles[3].1,
             crate::Rect {
                 x: 600,
                 width: 600,
                 ..output
+            }
+        );
+    }
+
+    #[test]
+    fn dwindle_splits_the_focused_tile_along_its_longer_side() {
+        let mut engine = Engine::default();
+        for i in 1..=3 {
+            engine.insert_slot(slot(i, 1));
+        }
+        let windows = engine.bound_windows();
+        assert!(engine.move_window_relative(&windows[0], &windows[1], crate::Direction::Up));
+        engine.remember_insertion_focus(&windows[0]);
+        let output = crate::Rect {
+            width: 1200,
+            height: 800,
+            ..crate::Rect::default()
+        };
+        let ticket = engine.begin_cycle();
+        engine
+            .accept(
+                ticket,
+                &observation(ticket.cycle, 4),
+                &Settings::for_output(output),
+            )
+            .unwrap();
+        // Tile 1 was 600x400 (wider than tall), so window 4 splits it horizontally.
+        let tiles = engine.layout.placements(output);
+        assert_eq!(
+            tiles.iter().map(|(s, _)| s.0).collect::<Vec<_>>(),
+            [1, 4, 2, 3]
+        );
+        assert_eq!(
+            tiles[0].1,
+            crate::Rect {
+                x: 0,
+                y: 0,
+                width: 300,
+                height: 400,
+            }
+        );
+        assert_eq!(
+            tiles[1].1,
+            crate::Rect {
+                x: 300,
+                y: 0,
+                width: 300,
+                height: 400,
             }
         );
     }
@@ -598,6 +668,7 @@ mod tests {
             },
             frame_tolerance: 2,
             spacing: crate::spacing::Spacing::NONE,
+            layout: LayoutMode::default(),
         }
     }
 

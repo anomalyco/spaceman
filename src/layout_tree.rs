@@ -7,7 +7,7 @@ use std::collections::HashSet;
 
 use serde::{Deserialize, Serialize};
 
-use crate::{Axis, Direction, Rect, SlotId};
+use crate::{Axis, Direction, Rect, SlotId, config::LayoutMode};
 
 const MIN_TILE_EXTENT: i32 = 50;
 
@@ -76,7 +76,13 @@ impl LayoutTree {
     }
 
     pub(crate) fn sync(&mut self, fallback_axis: Axis, slots: &[crate::Slot]) {
-        self.sync_near(fallback_axis, slots, None);
+        self.sync_near(
+            fallback_axis,
+            slots,
+            None,
+            LayoutMode::Columns,
+            Rect::default(),
+        );
     }
 
     pub(crate) fn sync_near(
@@ -84,6 +90,8 @@ impl LayoutTree {
         fallback_axis: Axis,
         slots: &[crate::Slot],
         mut anchor: Option<SlotId>,
+        mode: LayoutMode,
+        output: Rect,
     ) -> bool {
         let retained = slots.iter().map(|slot| slot.id).collect::<HashSet<_>>();
         let existing = self.slots().into_iter().collect::<HashSet<_>>();
@@ -107,13 +115,21 @@ impl LayoutTree {
                 children: Vec::new(),
             }),
         };
+        self.unwrap_single_split_root();
         for slot in slots.iter().filter(|slot| !existing.contains(&slot.id)) {
-            if let Some(previous) = anchor
-                && insert_sibling(&mut self.root, previous, slot.id)
-            {
-                anchor = Some(slot.id);
-            } else {
-                self.append(fallback_axis, slot.id, slot.weight);
+            match mode {
+                LayoutMode::Dwindle => {
+                    anchor = Some(self.insert_dwindle(slot.id, slot.weight, anchor, output));
+                }
+                LayoutMode::Columns => {
+                    if let Some(previous) = anchor
+                        && insert_sibling(&mut self.root, previous, slot.id)
+                    {
+                        anchor = Some(slot.id);
+                    } else {
+                        self.append(fallback_axis, slot.id, slot.weight);
+                    }
+                }
             }
         }
         true
@@ -199,6 +215,43 @@ impl LayoutTree {
         }
     }
 
+    /// Insert `slot` by splitting the focused (or last) leaf along that tile's longer side.
+    fn insert_dwindle(
+        &mut self,
+        slot: SlotId,
+        weight: u32,
+        anchor: Option<SlotId>,
+        output: Rect,
+    ) -> SlotId {
+        let target = anchor
+            .filter(|&id| self.root.contains(id))
+            .or_else(|| self.slots().last().copied());
+        let Some(target) = target else {
+            self.root = Node::Split {
+                axis: longer_axis(output),
+                children: vec![Child {
+                    weight: weight.max(1),
+                    node: Node::Leaf(slot),
+                }],
+            };
+            return slot;
+        };
+        let frame = tile_frame(&self.root, target, output).unwrap_or(output);
+        let axis = longer_axis(frame);
+        split_leaf(&mut self.root, target, slot, axis);
+        self.unwrap_single_split_root();
+        slot
+    }
+
+    fn unwrap_single_split_root(&mut self) {
+        while let Node::Split { children, .. } = &mut self.root
+            && children.len() == 1
+            && matches!(children[0].node, Node::Split { .. })
+        {
+            self.root = children.remove(0).node;
+        }
+    }
+
     fn append(&mut self, axis: Axis, slot: SlotId, weight: u32) {
         match &mut self.root {
             Node::Split { children, .. } => {
@@ -229,6 +282,56 @@ impl LayoutTree {
                 };
             }
         }
+    }
+}
+
+const fn longer_axis(rect: Rect) -> Axis {
+    if rect.height > rect.width {
+        Axis::Vertical
+    } else {
+        Axis::Horizontal
+    }
+}
+
+fn tile_frame(node: &Node, target: SlotId, frame: Rect) -> Option<Rect> {
+    match node {
+        Node::Leaf(slot) => (*slot == target).then_some(frame),
+        Node::Split { axis, children } => {
+            for (child, child_frame) in children
+                .iter()
+                .zip(partition_children(frame, *axis, children))
+            {
+                if let Some(found) = tile_frame(&child.node, target, child_frame) {
+                    return Some(found);
+                }
+            }
+            None
+        }
+    }
+}
+
+fn split_leaf(node: &mut Node, target: SlotId, inserted: SlotId, axis: Axis) -> bool {
+    match node {
+        Node::Leaf(existing) if *existing == target => {
+            *node = Node::Split {
+                axis,
+                children: vec![
+                    Child {
+                        weight: 1,
+                        node: Node::Leaf(target),
+                    },
+                    Child {
+                        weight: 1,
+                        node: Node::Leaf(inserted),
+                    },
+                ],
+            };
+            true
+        }
+        Node::Leaf(_) => false,
+        Node::Split { children, .. } => children
+            .iter_mut()
+            .any(|child| split_leaf(&mut child.node, target, inserted, axis)),
     }
 }
 
