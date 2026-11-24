@@ -112,28 +112,34 @@ pub fn parked_frame_clear_of(
     // window up, as far as bottom-aligned, to keep its title bar on screen, so
     // every position in between must stay off the other displays. Score whole
     // rectangles, not corners: the nearest output may have a neighbor on both
-    // sides.
+    // sides. When a display below blocks both corners, the bottom-aligned edge
+    // strip still beats another display's corner, which macOS clamps back
+    // onto the display the window is on.
     std::iter::once(&output)
         .chain(displays)
         .flat_map(|display| {
-            [true, false].map(|right| {
-                let strip = window.width.clamp(0, 2) / 2;
-                let frame = Rect {
+            [(true, false), (false, false), (true, true), (false, true)].map(|(right, strip)| {
+                let inset = window.width.clamp(0, 2) / 2;
+                let held = Rect {
                     x: if right {
-                        display.x + display.width - strip
+                        display.x + display.width - inset
                     } else {
-                        display.x - window.width + strip
+                        display.x - window.width + inset
                     },
-                    y: display.y + display.height - window.height.clamp(0, 2) / 2,
+                    y: display.y + (display.height - window.height).max(0),
                     ..window
                 };
-                let held = Rect {
-                    y: display.y + (display.height - window.height).max(0),
-                    ..frame
+                let frame = if strip {
+                    held
+                } else {
+                    Rect {
+                        y: display.y + display.height - window.height.clamp(0, 2) / 2,
+                        ..held
+                    }
                 };
                 let distance = (i64::from(display.x) - i64::from(output.x)).abs()
                     + (i64::from(display.y) - i64::from(output.y)).abs();
-                (frame, held, distance)
+                (frame, held, (distance, strip))
             })
         })
         .filter(|(frame, held, _)| {
@@ -146,7 +152,7 @@ pub fn parked_frame_clear_of(
                     .iter()
                     .any(|screen| screen.contains_center(*frame) || screen.contains_center(*held))
         })
-        .min_by_key(|(_, _, distance)| *distance)
+        .min_by_key(|(_, _, rank)| *rank)
         .map_or(
             Rect {
                 x: output.x + output.width,
@@ -330,6 +336,35 @@ mod tests {
 
         assert_eq!(parked.x, -599);
         assert!(!shows_on(parked, &[screen]));
+    }
+
+    #[test]
+    fn a_display_below_falls_back_to_the_edge_strip_not_its_corner() {
+        // Both bottom corners of the narrower top display run into the wider
+        // display below; parking there would be a cross-display park.
+        let top = Rect {
+            x: 200,
+            width: 1000,
+            height: 800,
+            ..Rect::default()
+        };
+        let bottom = Rect {
+            x: 0,
+            y: 800,
+            width: 1600,
+            height: 900,
+        };
+        let window = Rect {
+            width: 400,
+            height: 300,
+            ..Rect::default()
+        };
+
+        let parked = parked_frame(top, &[top, bottom], window);
+
+        assert_eq!((parked.x, parked.y), (1199, 500));
+        assert!(!shows_on(parked, &[top, bottom]));
+        assert_eq!(parked_frame(bottom, &[top, bottom], window).y, 1699);
     }
 
     #[test]

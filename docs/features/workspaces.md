@@ -272,10 +272,13 @@ on the same letter.
 - Unit, `src/geometry.rs`: `parking_leaves_a_single_corner_pixel_on_screen`,
   `a_window_held_above_its_parking_corner_is_still_parked`,
   `a_window_held_up_by_its_title_bar_stays_off_a_shorter_neighbor`,
-  `a_window_held_up_stays_off_a_neighbors_menu_bar`, and
-  `a_side_dock_moves_parking_to_the_other_corner`: parking targets a bottom corner, accepts macOS
-  holding the window up by its title bar, and keeps every held-up position off other displays and
-  off menu bars and Docks. How far macOS holds it up is not covered.
+  `a_window_held_up_stays_off_a_neighbors_menu_bar`,
+  `a_side_dock_moves_parking_to_the_other_corner`, and
+  `a_display_below_falls_back_to_the_edge_strip_not_its_corner`: parking targets a bottom corner,
+  accepts macOS holding the window up by its title bar, and keeps every held-up position off other
+  displays and off menu bars and Docks; when a display below blocks both corners it parks along its
+  own display's side edge rather than another display's corner. How far macOS holds it up is not
+  covered.
 - Unit (FakeBackend), `src/app/tests/reconciliation.rs`:
   `an_app_that_quits_while_hidden_releases_its_tiles_and_recovery_metadata` (an app that quits
   while its windows are parked frees their tiles without the workspace being shown).
