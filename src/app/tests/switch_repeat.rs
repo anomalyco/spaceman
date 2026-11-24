@@ -271,3 +271,39 @@ fn cycling_warps_the_pointer_onto_the_next_tile() {
         );
     }
 }
+
+#[test]
+fn quick_repeat_after_returning_from_another_display_advances_during_activation_lag() {
+    for fullscreen in [false, true] {
+        let two = WorkspaceId::TWO;
+        let first = window(10);
+        let second = window(20);
+        let mut elsewhere = window(30);
+        elsewhere.app.pid = 2;
+        let mut backend = FakeBackend::default();
+        backend.frames.insert(first.clone(), frame(50));
+        backend.frames.insert(second.clone(), frame(500));
+        backend.frames.insert(elsewhere.clone(), frame(1050));
+        let mut runtime = runtime(backend);
+        bind(&mut runtime, two, &first);
+        bind(&mut runtime, two, &second);
+        bind(&mut runtime, WorkspaceId::SIX, &elsewhere);
+        runtime.workspaces.set_fullscreen_layout(two, fullscreen);
+        press(&mut runtime, WorkerAction::SwitchWorkspace(two));
+
+        runtime.backend.focused = Some(elsewhere.clone());
+        runtime.backend.frontmost = Some(elsewhere.app.clone());
+        runtime.backend.calls.clear();
+
+        // First press returns focus to the entry tile (10), then AX still reports the old app.
+        press(&mut runtime, WorkerAction::SwitchWorkspace(two));
+        assert_eq!(focus_calls(&runtime), vec![10]);
+        runtime.backend.focused = Some(elsewhere.clone());
+        runtime.backend.frontmost = Some(elsewhere.app.clone());
+
+        // Second press inside the settle window advances directly to tile 20.
+        press(&mut runtime, WorkerAction::SwitchWorkspace(two));
+        assert_eq!(focus_calls(&runtime), vec![10, 20]);
+        assert_eq!(runtime.workspaces.preferred_focus(two), Some(second));
+    }
+}

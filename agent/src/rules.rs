@@ -366,31 +366,36 @@ impl Doc {
                     .and_then(|table| table_workspace(table))
                     == Some(workspace)
             });
-            match (found, monitor) {
+            let remove_index = match (found, monitor) {
                 (Some(index), Some(monitor)) => {
                     if let Some(table) = entries.get_mut(index).and_then(Value::as_inline_table_mut)
                     {
                         table.insert("monitor", Value::from(monitor));
                     }
+                    None
                 }
                 (Some(index), None) if keep_named => {
                     if let Some(table) = entries.get_mut(index).and_then(Value::as_inline_table_mut)
                     {
                         table.insert("monitor", Value::from("main"));
                     }
+                    None
                 }
-                (Some(index), None) => {
-                    entries.remove(index);
-                }
+                (Some(index), None) => Some(index),
                 (None, Some(monitor)) => {
                     let mut table = InlineTable::new();
                     TableLike::insert(&mut table, "workspace", workspace_value(workspace));
                     table.insert("monitor", Value::from(monitor));
                     push_inline_table(entries, table);
+                    None
                 }
-                (None, None) => {}
-            }
-            if entries.is_empty() {
+                (None, None) => None,
+            };
+            if let Some(index) = remove_index {
+                self.remove_entry("workspaces", index);
+            } else if let Some(Item::Value(Value::Array(entries))) = self.doc.get("workspaces")
+                && entries.is_empty()
+            {
                 self.doc.remove("workspaces");
             }
             return;
@@ -418,29 +423,34 @@ impl Doc {
         let found = tables
             .iter()
             .position(|table| table_workspace(table) == Some(workspace));
-        match (found, monitor) {
+        let remove_index = match (found, monitor) {
             (Some(index), Some(monitor)) => {
                 if let Some(table) = tables.get_mut(index) {
-                    table.insert("monitor", value(monitor));
+                    set_table_string(table, "monitor", monitor);
                 }
+                None
             }
             (Some(index), None) if keep_named => {
                 if let Some(table) = tables.get_mut(index) {
-                    table.insert("monitor", value("main"));
+                    set_table_string(table, "monitor", "main");
                 }
+                None
             }
-            (Some(index), None) => {
-                tables.remove(index);
-            }
+            (Some(index), None) => Some(index),
             (None, Some(monitor)) => {
                 let mut table = Table::new();
                 table.insert("workspace", workspace_value(workspace));
                 table.insert("monitor", value(monitor));
                 tables.push(table);
+                None
             }
-            (None, None) => {}
-        }
-        if tables.is_empty() {
+            (None, None) => None,
+        };
+        if let Some(index) = remove_index {
+            self.remove_entry("workspaces", index);
+        } else if let Some(Item::ArrayOfTables(tables)) = self.doc.get("workspaces")
+            && tables.is_empty()
+        {
             self.doc.remove("workspaces");
         }
     }
@@ -626,3 +636,19 @@ mod shortcuts;
 mod spacing;
 #[cfg(test)]
 mod tests;
+
+/// Updates an existing string key in place so its key comment decor and value
+/// spacing/trailing comments are preserved.
+fn set_table_string(table: &mut Table, key: &str, val: &str) {
+    if let Some(item) = table.get_mut(key) {
+        let decor = item
+            .as_value()
+            .map(|existing| existing.decor().clone())
+            .unwrap_or_default();
+        let mut next = Value::from(val);
+        *next.decor_mut() = decor;
+        *item = Item::Value(next);
+    } else {
+        table.insert(key, value(val));
+    }
+}

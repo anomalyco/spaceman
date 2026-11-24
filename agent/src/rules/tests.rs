@@ -787,3 +787,44 @@ fn removing_all_rules_or_rules_before_another_section_keeps_detached_comments_in
     );
     assert!(spaceman::config::Config::parse(&empty_inline).is_ok());
 }
+
+#[test]
+fn workspace_display_edits_preserve_key_and_detached_comments() {
+    let nine = WorkspaceId::new(9).unwrap();
+
+    // 1. Updating monitor in a [[workspaces]] table preserves the comment above monitor.
+    let mut doc = Doc::parse(
+        "version = 1\n\n[[workspaces]]\n# Unchanged workspace key.\nworkspace = 9\n# Display note.\nmonitor = \"Studio Display\"\n",
+    );
+    doc.set_monitor(nine, Some("main"));
+    assert!(doc.source().contains("# Unchanged workspace key."));
+    assert!(doc.source().contains("# Display note."));
+    assert_eq!(doc.monitor(nine).as_deref(), Some("main"));
+    assert!(spaceman::config::Config::parse(&doc.source()).is_ok());
+
+    // 2. Clearing a [[workspaces]] table preserves detached heading comments above it.
+    let mut doc = Doc::parse(
+        "version = 1\n\n# Display note.\n\n[[workspaces]]\nworkspace = 9\nmonitor = \"Studio Display\"\n\n[[workspaces]]\nworkspace = 4\nmonitor = \"secondary\"\n",
+    );
+    doc.set_monitor(nine, None);
+    assert!(doc.source().contains("# Display note."));
+    assert_eq!(doc.monitor(nine), None);
+    assert!(spaceman::config::Config::parse(&doc.source()).is_ok());
+
+    // 3. Clearing the last entry of an inline workspaces array preserves detached comments.
+    let mut doc = Doc::parse(
+        "version = 1\n\n# Display note.\n\nworkspaces = [\n  { workspace = 9, monitor = \"Studio Display\" },\n]\n",
+    );
+    doc.set_monitor(nine, None);
+    assert!(doc.source().contains("# Display note."));
+    assert_eq!(doc.monitor(nine), None);
+    assert!(spaceman::config::Config::parse(&doc.source()).is_ok());
+
+    // 4. Control: an attached comment with no blank line above a removed entry still goes with it.
+    let mut doc = Doc::parse(
+        "version = 1\n\n# Display note.\n[[workspaces]]\nworkspace = 9\nmonitor = \"Studio Display\"\n",
+    );
+    doc.set_monitor(nine, None);
+    assert!(!doc.source().contains("# Display note."));
+    assert!(spaceman::config::Config::parse(&doc.source()).is_ok());
+}

@@ -9,7 +9,7 @@ const REVEAL_POLL_INTERVAL: Duration = Duration::from_millis(3);
 /// How long a pending reveal waits before the restore write is re-issued.
 const REVEAL_REWRITE_INTERVAL: Duration = Duration::from_millis(100);
 
-use super::commands::{WarpContext, WorkspaceFocusOutcome};
+use super::commands::{PendingFocus, WarpContext, WorkspaceFocusOutcome};
 
 mod repeat;
 
@@ -296,6 +296,13 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
         let outcome = if let Some(window) = workspace_focus {
             if self.backend.focus_window(&window) {
                 self.pending_fullscreen_focus_restore.remove(&workspace);
+                if !reported_inside {
+                    self.pending_focus = Some(PendingFocus {
+                        target: window.clone(),
+                        stale: vec![stale_window.clone()],
+                        at: Instant::now(),
+                    });
+                }
                 WorkspaceFocusOutcome::Focused(window)
             } else {
                 // Keys may still be in the app focus left; the pending restore

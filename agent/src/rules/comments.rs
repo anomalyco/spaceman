@@ -8,6 +8,10 @@ use super::Doc;
 
 impl Doc {
     pub fn remove(&mut self, index: usize) {
+        self.remove_entry("rules", index);
+    }
+
+    pub(super) fn remove_entry(&mut self, section: &str, index: usize) {
         enum Removed {
             None,
             Table {
@@ -20,7 +24,7 @@ impl Doc {
                 emptied: bool,
             },
         }
-        let removed = match self.doc.get_mut("rules") {
+        let removed = match self.doc.get_mut(section) {
             Some(Item::ArrayOfTables(rules)) if index < rules.len() => {
                 let (position, comment) = rules
                     .get(index)
@@ -96,10 +100,10 @@ impl Doc {
                 emptied,
             } => {
                 if emptied {
-                    self.doc.remove("rules");
+                    self.doc.remove(section);
                 }
                 if let Some(comment) = comment {
-                    self.splice_table_comment(position, index, &comment);
+                    self.splice_table_comment(section, position, index, &comment);
                 }
             }
             Removed::Inline {
@@ -108,12 +112,12 @@ impl Doc {
             } => {
                 let key_comment = self
                     .doc
-                    .key("rules")
+                    .key(section)
                     .and_then(|key| key.leaf_decor().prefix())
                     .and_then(RawString::as_str)
                     .and_then(detached_comments);
-                let next_root_key = next_value_key_after(self.doc.as_table(), "rules");
-                self.doc.remove("rules");
+                let next_root_key = next_value_key_after(self.doc.as_table(), section);
+                self.doc.remove(section);
                 let combined = match (key_comment, comment) {
                     (Some(a), Some(b)) => Some(join_comment_prefix(&a, &b)),
                     (Some(a), None) => Some(a),
@@ -143,6 +147,7 @@ impl Doc {
 
     fn splice_table_comment(
         &mut self,
+        section: &str,
         removed_position: Option<isize>,
         index: usize,
         comment: &str,
@@ -154,8 +159,8 @@ impl Doc {
             prepend_decor_comment(target.decor_mut(), comment);
             return;
         }
-        if let Some(Item::ArrayOfTables(rules)) = self.doc.get_mut("rules")
-            && let Some(next) = rules.get_mut(index)
+        if let Some(Item::ArrayOfTables(entries)) = self.doc.get_mut(section)
+            && let Some(next) = entries.get_mut(index)
         {
             prepend_decor_comment(next.decor_mut(), comment);
             return;
