@@ -138,7 +138,7 @@ Trackpad: three-finger swipe left/right -> next/previous workspace (turn macOS's
           "Swipe between full-screen applications" off or move it to four fingers)
 CLI: spaceman ctl switch | back-and-forth | move-workspace | move | move-app
 Config: ~/Library/Application Support/Spaceman/config.toml -> [[rules]], [[workspaces]] (edits apply when the file changes; new named-workspace shortcuts register on the next app start)
-Menu bar: shows the active workspace glyphs; its menu lists each display's visible workspace (checked)
+Menu bar: one box per visible or occupied workspace, the focused one filled; its menu lists each display's visible workspace (checked)
           and occupied ones with their apps' icons and Option shortcut -> choose one to switch
 Mouse: drop a tile on another display -> moves it to that display's active workspace (see tiling.md)
 ```

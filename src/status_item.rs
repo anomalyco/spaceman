@@ -1,19 +1,22 @@
 use std::{cell::RefCell, sync::mpsc::Sender};
 
 use block2::RcBlock;
+use objc2::runtime::AnyObject;
 use objc2::{
     DefinedClass, MainThreadMarker, MainThreadOnly, msg_send, rc::Retained, runtime::Bool, sel,
 };
 use objc2_app_kit::{
-    NSBezierPath, NSColor, NSControlStateValueOff, NSControlStateValueOn, NSImage, NSMenu,
-    NSMenuItem, NSStatusBar, NSStatusBarButton, NSStatusItem, NSStringDrawing,
-    NSVariableStatusItemLength,
+    NSBezierPath, NSColor, NSCompositingOperation, NSControlStateValueOff, NSControlStateValueOn,
+    NSFont, NSFontAttributeName, NSGraphicsContext, NSImage, NSMenu, NSMenuItem, NSStatusBar,
+    NSStatusBarButton, NSStatusItem, NSStringDrawing, NSVariableStatusItemLength,
 };
-use objc2_foundation::{NSObject, NSObjectProtocol, NSPoint, NSRect, NSSize, NSString};
+use objc2_foundation::{
+    NSDictionary, NSObject, NSObjectProtocol, NSPoint, NSRect, NSSize, NSString,
+};
 
 use crate::{
     WorkspaceId,
-    app::{Action, HUD_PREVIEW_RECT, UiHudLayout, WorkerAction},
+    app::{Action, UiHudLayout, WorkerAction},
     login_item,
 };
 
@@ -24,6 +27,8 @@ pub(crate) use workspaces::{DisplayWorkspaces, MenuWorkspace};
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub(crate) struct WorkspaceLayout {
     pub(crate) workspace: String,
+    /// The display's visible workspace: drawn filled, the others outlined.
+    pub(crate) current: bool,
     pub(crate) mode: UiHudLayout,
 }
 
@@ -368,25 +373,41 @@ pub fn set_workspace_menu(displays: &[DisplayWorkspaces]) {
     });
 }
 
+const BOX_HEIGHT: f64 = 18.0;
+const BOX_MIN_WIDTH: f64 = 20.0;
+const BOX_PADDING: f64 = 10.0;
+const BOX_GAP: f64 = 5.0;
+const IMAGE_HEIGHT: f64 = 20.0;
+const BOX_Y: f64 = (IMAGE_HEIGHT - BOX_HEIGHT) / 2.0;
+
+/// AeroSpace-style strip: every listed workspace as a numbered box, the visible one filled
+/// with its number knocked out, the others outlined.
 fn workspace_layout_image(layouts: &[WorkspaceLayout]) -> Retained<NSImage> {
     let labels = layouts
         .iter()
         .map(|layout| NSString::from_str(&layout.workspace))
         .collect::<Vec<_>>();
-    let label_widths = labels
+    let attributes = label_attributes();
+    let label_sizes = labels
         .iter()
         .map(|label| {
-            // SAFETY: `sizeWithAttributes(None)` measures `label` using AppKit's default font.
-            unsafe { label.sizeWithAttributes(None) }.width.ceil()
+            // SAFETY: `attributes` maps `NSFontAttributeName` to an `NSFont`.
+            unsafe { label.sizeWithAttributes(Some(&attributes)) }
         })
         .collect::<Vec<_>>();
-    let width = label_widths.iter().sum::<f64>() + layouts.len() as f64 * 24.0 - 6.0;
+    let box_widths = label_sizes
+        .iter()
+        .map(|size| (size.width.ceil() + BOX_PADDING).max(BOX_MIN_WIDTH))
+        .collect::<Vec<_>>();
+    let width =
+        (box_widths.iter().sum::<f64>() + layouts.len().saturating_sub(1) as f64 * BOX_GAP + 1.0)
+            .max(1.0);
     let layouts = layouts.to_vec();
     let image = NSImage::imageWithSize_flipped_drawingHandler(
-        NSSize::new(width, 16.0),
+        NSSize::new(width, IMAGE_HEIGHT),
         false,
         &RcBlock::new(move |_: NSRect| {
-            draw_workspace_layouts(&layouts, &labels, &label_widths);
+            draw_workspace_boxes(&layouts, &labels, &label_sizes, &box_widths, &attributes);
             Bool::YES
         }),
     );
@@ -394,49 +415,52 @@ fn workspace_layout_image(layouts: &[WorkspaceLayout]) -> Retained<NSImage> {
     image
 }
 
-fn draw_workspace_layouts(
+fn label_attributes() -> Retained<NSDictionary<NSString, AnyObject>> {
+    let font = NSFont::boldSystemFontOfSize(13.5);
+    // SAFETY: `NSFontAttributeName` is an immutable AppKit constant.
+    let key = unsafe { NSFontAttributeName };
+    NSDictionary::<NSString, AnyObject>::from_slices(&[key], &[font.as_ref()])
+}
+
+fn draw_workspace_boxes(
     layouts: &[WorkspaceLayout],
     labels: &[Retained<NSString>],
-    label_widths: &[f64],
+    label_sizes: &[NSSize],
+    box_widths: &[f64],
+    attributes: &NSDictionary<NSString, AnyObject>,
 ) {
     NSColor::blackColor().setStroke();
     NSColor::blackColor().setFill();
-    let mut x = 0.5;
-    for ((layout, label), label_width) in
-        layouts.iter().zip(labels).zip(label_widths.iter().copied())
+    let context = NSGraphicsContext::currentContext();
+    let mut x = 0.75;
+    for (((layout, label), size), box_width) in layouts
+        .iter()
+        .zip(labels)
+        .zip(label_sizes)
+        .zip(box_widths.iter().copied())
     {
-        let frame = NSRect::new(NSPoint::new(x, 2.5), NSSize::new(15.0, 11.0));
-        let outline = NSBezierPath::bezierPathWithRoundedRect_xRadius_yRadius(frame, 2.5, 2.5);
-        match &layout.mode {
-            UiHudLayout::Fullscreen => outline.fill(),
-            UiHudLayout::Split(tiles) => {
-                outline.setLineWidth(1.25);
-                outline.stroke();
-                for tile in tiles {
-                    let tile = NSRect::new(
-                        NSPoint::new(
-                            x + f64::from(tile.x) / f64::from(HUD_PREVIEW_RECT.width) * 15.0,
-                            // Preview frames are top-down; the image is unflipped.
-                            2.5 + (f64::from(HUD_PREVIEW_RECT.height)
-                                - f64::from(tile.y)
-                                - f64::from(tile.height))
-                                / f64::from(HUD_PREVIEW_RECT.height)
-                                * 11.0,
-                        ),
-                        NSSize::new(
-                            f64::from(tile.width) / f64::from(HUD_PREVIEW_RECT.width) * 15.0,
-                            f64::from(tile.height) / f64::from(HUD_PREVIEW_RECT.height) * 11.0,
-                        ),
-                    );
-                    let tile = NSBezierPath::bezierPathWithRect(tile);
-                    tile.setLineWidth(0.75);
-                    tile.stroke();
-                }
+        let frame = NSRect::new(NSPoint::new(x, BOX_Y), NSSize::new(box_width, BOX_HEIGHT));
+        let outline = NSBezierPath::bezierPathWithRoundedRect_xRadius_yRadius(frame, 4.5, 4.5);
+        let text_at = NSPoint::new(
+            x + (box_width - size.width) / 2.0,
+            BOX_Y + (BOX_HEIGHT - size.height) / 2.0,
+        );
+        if layout.current {
+            outline.fill();
+            if let Some(context) = &context {
+                context.setCompositingOperation(NSCompositingOperation::Clear);
             }
+        } else {
+            outline.setLineWidth(1.5);
+            outline.stroke();
         }
-        // SAFETY: Called inside `NSImage` drawing handler with a active graphics context.
-        unsafe { label.drawAtPoint_withAttributes(NSPoint::new(x + 19.0, 0.5), None) };
-        x += 24.0 + label_width;
+        // SAFETY: Called inside `NSImage` drawing handler with an active graphics context, and
+        // `attributes` maps `NSFontAttributeName` to an `NSFont`.
+        unsafe { label.drawAtPoint_withAttributes(text_at, Some(attributes)) };
+        if let Some(context) = &context {
+            context.setCompositingOperation(NSCompositingOperation::SourceOver);
+        }
+        x += box_width + BOX_GAP;
     }
 }
 
@@ -471,4 +495,43 @@ fn action_item(
     // SAFETY: `target` is retained inside `Controller` for the lifetime of the menu.
     unsafe { item.setTarget(Some(target)) };
     item
+}
+
+#[cfg(test)]
+mod preview_tests {
+    use super::*;
+
+    fn layout(workspace: &str, current: bool) -> WorkspaceLayout {
+        WorkspaceLayout {
+            workspace: workspace.to_owned(),
+            current,
+            mode: UiHudLayout::Fullscreen,
+        }
+    }
+
+    /// Renders sample strips to `target/menubar-preview-*.tiff` for eyeballing.
+    #[test]
+    #[ignore = "writes preview images"]
+    fn render_menu_bar_preview() {
+        let samples: [(&str, Vec<WorkspaceLayout>); 3] = [
+            ("one-three", vec![layout("1", false), layout("3", true)]),
+            ("single", vec![layout("3", true)]),
+            (
+                "busy",
+                vec![
+                    layout("1", false),
+                    layout("2", true),
+                    layout("4", false),
+                    layout("10", false),
+                    layout("B", false),
+                ],
+            ),
+        ];
+        for (name, layouts) in samples {
+            let image = workspace_layout_image(&layouts);
+            let data = image.TIFFRepresentation().expect("TIFF data");
+            std::fs::write(format!("target/menubar-preview-{name}.tiff"), data.to_vec())
+                .expect("write preview");
+        }
+    }
 }

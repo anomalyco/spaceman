@@ -760,17 +760,20 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
             .filter(|resolved| self.scope.manages_selector(&resolved.selector))
             .map(|resolved| resolved.workspace)
             .collect();
+        let menu = self.workspace_menu(visible, outputs);
         CycleStatus {
             missing_frontmost_window: None,
             close_recheck: None,
-            layouts: active
+            layouts: menu
                 .iter()
-                .map(|workspace| status_item::WorkspaceLayout {
-                    workspace: workspace.to_string(),
-                    mode: self.workspace_preview(*workspace),
+                .flat_map(|display| &display.workspaces)
+                .map(|listed| status_item::WorkspaceLayout {
+                    workspace: listed.workspace.to_string(),
+                    current: listed.current,
+                    mode: self.workspace_preview(listed.workspace),
                 })
                 .collect(),
-            menu: self.workspace_menu(visible, outputs),
+            menu,
             active,
             failed,
             hud: None,
