@@ -210,6 +210,7 @@ on the same letter.
   `a_failed_re_park_after_a_display_change_is_retried`,
   `a_display_change_leaves_a_held_up_parked_window_alone`,
   `a_display_that_grows_at_the_bottom_re_parks_its_held_up_windows`,
+  `a_failed_re_park_survives_a_second_display_change`,
   `re_parking_a_grown_window_hides_all_of_it`,
   `switching_away_parks_a_window_that_overflows_the_display_edge`,
   `laying_out_a_parked_window_retires_its_stale_recovery_frame`.

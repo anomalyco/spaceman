@@ -243,6 +243,43 @@ fn a_display_that_grows_at_the_bottom_re_parks_its_held_up_windows() {
     }
 }
 
+/// A re-park that fails after a display grows is not forgotten when another
+/// display change arrives before the retry and leaves the new corner in place.
+#[test]
+fn a_failed_re_park_survives_a_second_display_change() {
+    let (mut runtime, hidden) = parked_on_laptop();
+    let cancelled = AtomicBool::new(false);
+    for frames in [
+        &mut runtime.backend.frames,
+        &mut runtime.backend.server_frames,
+    ] {
+        if let Some(frame) = frames.get_mut(&hidden) {
+            frame.y -= 31;
+        }
+    }
+    runtime.recently_parked.clear();
+    let mut grown = main_only().displays().to_vec();
+    grown[0].frame.height += 40;
+    runtime.backend.position_outcome = Some(macos::ApplyOutcome::Unavailable);
+    drop(runtime.cycle(
+        macos::DisplayOutputs::new(grown.clone()).unwrap(),
+        &cancelled,
+    ));
+    assert!(runtime.awaiting_display_repark(&hidden));
+    runtime.backend.position_outcome = None;
+    runtime.backend.parked_writes.clear();
+    let mut left = outputs().displays()[1].clone();
+    left.frame.x = -1000;
+    grown.push(left);
+    let both = macos::DisplayOutputs::new(grown).unwrap();
+
+    runtime.cycle(both.clone(), &cancelled).unwrap();
+
+    assert!(runtime.backend.parked_writes.contains(&hidden));
+    let main = both.main().frame;
+    assert_eq!(runtime.backend.frames[&hidden].y, main.y + main.height - 1);
+}
+
 /// Laptop only: a window sent to workspace 2 while its app stays frontmost on 1.
 fn parked_on_laptop() -> (WorkspaceRuntime<FakeBackend>, crate::PhysicalWindowId) {
     let hidden = app_window(1, 10);

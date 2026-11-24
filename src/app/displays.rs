@@ -30,7 +30,13 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
             .is_some_and(|known| !known.frames().eq(outputs.frames()))
         {
             log_event!("displays changed: re-parking hidden windows");
-            self.displays.previous = self.displays.known.clone();
+            // A window still due a re-park never reached its corner for the last
+            // displays, so they are no baseline: every window is written again.
+            self.displays.previous = if self.displays.repark_pending.is_empty() {
+                self.displays.known.clone()
+            } else {
+                None
+            };
             self.displays.repark_pending = self.parked.keys().cloned().collect();
             self.repark_attempts.clear();
             // macOS moves windows off a removed display, and Spaceman parks and
