@@ -78,6 +78,7 @@ pub(crate) fn blank_fixture() -> Ui {
         error: None,
         spacing_draft: None,
         per_edge: None,
+        shortcut_capture: panes::shortcuts::Capture::Idle,
         fixture: true,
     };
     reset_fixture(&mut ui, Pane::Rules);
@@ -95,6 +96,7 @@ pub(crate) fn reset_fixture(ui: &mut Ui, pane: Pane) {
     ui.displays_at = None;
     ui.highlight_lab = None;
     ui.highlight_feature = None;
+    ui.shortcut_capture = panes::shortcuts::Capture::Idle;
     ui.doc = Doc::parse(include_str!("../fixtures/config.toml"));
     ui.look_up_apps();
     ui.agent = Some(UiAgentSnapshot {
@@ -158,6 +160,9 @@ mod tests {
             "Workspaces/workspaces-four-displays",
             "Workspaces/workspaces-unplugged",
             "Shortcuts/shortcuts",
+            "Shortcuts/shortcuts-recording",
+            "Shortcuts/shortcuts-refused",
+            "Shortcuts/shortcuts-custom",
             "Activity/activity",
             "HUD/hud-switch",
             "HUD/hud-empty",

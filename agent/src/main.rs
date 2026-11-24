@@ -73,6 +73,8 @@ pub struct Ui {
     pub(crate) spacing_draft: Option<spaceman::spacing::Spacing>,
     /// Whether the four edge sliders show, once someone opened or closed them.
     pub(crate) per_edge: Option<bool>,
+    /// Settings › Shortcuts' recorder.
+    pub(crate) shortcut_capture: panes::shortcuts::Capture,
     /// Scenes render fixed data and ignore the live agent and file.
     pub(crate) fixture: bool,
 }
@@ -109,6 +111,7 @@ impl Ui {
             error: None,
             spacing_draft: None,
             per_edge: None,
+            shortcut_capture: panes::shortcuts::Capture::Idle,
             fixture: false,
         };
         ui.look_up_apps();

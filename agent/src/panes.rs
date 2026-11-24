@@ -2,7 +2,7 @@
 
 mod general;
 mod layout;
-mod shortcuts;
+pub mod shortcuts;
 pub(crate) mod workspaces;
 
 use rune::{El, Icon};
@@ -100,7 +100,7 @@ impl Pane {
             Pane::Layout => layout::pane(ui, p),
             Pane::Rules => map::pane(ui, p, layer),
             Pane::Workspaces => workspaces::pane(ui, p),
-            Pane::Shortcuts => shortcuts::pane(p),
+            Pane::Shortcuts => shortcuts::pane(ui, p),
             Pane::Activity => activity::pane(ui, p),
         }
     }
@@ -183,4 +183,16 @@ pub(crate) const SCENES: &[Scene] = &[
         ui.edit(|doc| doc.set_monitor(nine, Some(workspaces::THIRD_FIXTURE_ID)));
     }),
     ("shortcuts", |ui| reset_fixture(ui, Pane::Shortcuts)),
+    ("shortcuts-recording", |ui| {
+        reset_fixture(ui, Pane::Shortcuts);
+        shortcuts::fixture_recording(ui, None);
+    }),
+    ("shortcuts-refused", |ui| {
+        reset_fixture(ui, Pane::Shortcuts);
+        shortcuts::fixture_recording(ui, Some("Used by Next window"));
+    }),
+    ("shortcuts-custom", |ui| {
+        reset_fixture(ui, Pane::Shortcuts);
+        shortcuts::fixture_custom(ui);
+    }),
 ];

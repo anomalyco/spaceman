@@ -1,0 +1,302 @@
+//! The shortcuts Settings › Shortcuts can rebind, each with its built-in chord, and what a
+//! chord does now under `[shortcuts]`.
+
+use spaceman::shortcuts::{self, Chord, Command, Key, Modifiers, Shortcuts};
+
+/// One rebindable shortcut.
+#[derive(Debug, PartialEq, Eq)]
+pub struct Action {
+    /// Stable, for element keys and the recorder.
+    pub id: &'static str,
+    pub title: &'static str,
+    /// In `spaceman ctl` syntax, as `[shortcuts.bindings]` writes it.
+    pub command: &'static str,
+    /// The built-in chord's key, and whether it adds Shift to the base modifier.
+    pub default: Option<(bool, Key)>,
+}
+
+impl Action {
+    pub fn parsed(&self) -> Option<Command> {
+        shortcuts::parse_command(self.command).ok().flatten()
+    }
+
+    /// The built-in chord under `modifier`, if this shortcut has one.
+    pub fn default_chord(&self, modifier: Modifiers) -> Option<Chord> {
+        self.default.map(|(shift, key)| Chord {
+            modifiers: if shift {
+                modifier.with_shift()
+            } else {
+                modifier
+            },
+            key,
+        })
+    }
+
+    /// The built-in chord under `[shortcuts]`'s modifier, while the built-ins are on.
+    pub fn active_default(&self, shortcuts: &Shortcuts) -> Option<Chord> {
+        self.default_chord(shortcuts.modifier)
+            .filter(|_| shortcuts.defaults)
+    }
+
+    /// Every chord that runs this shortcut: its bindings, then its built-in chord unless a
+    /// binding took that over.
+    pub fn chords(&self, shortcuts: &Shortcuts) -> Vec<Chord> {
+        let command = self.parsed();
+        let mut chords = shortcuts
+            .bindings
+            .iter()
+            .filter(|binding| binding.command.is_some() && binding.command == command)
+            .map(|binding| binding.chord)
+            .collect::<Vec<_>>();
+        if let Some(default) = self.active_default(shortcuts)
+            && shortcuts.binding(default).is_none()
+            && !chords.contains(&default)
+        {
+            chords.push(default);
+        }
+        chords
+    }
+}
+
+const fn action(
+    id: &'static str,
+    title: &'static str,
+    command: &'static str,
+    default: Option<(bool, Key)>,
+) -> Action {
+    Action {
+        id,
+        title,
+        command,
+        default,
+    }
+}
+
+const TAB: Key = Key::Code(0x30);
+const SPACE: Key = Key::Code(0x31);
+const fn letter(shift: bool, character: char) -> Option<(bool, Key)> {
+    Some((shift, Key::Character(character)))
+}
+
+pub const WORKSPACE_ACTIONS: &[Action] = &[
+    action(
+        "back-and-forth",
+        "Previous workspace",
+        "back-and-forth",
+        Some((false, TAB)),
+    ),
+    action(
+        "move-workspace",
+        "Move workspace to next display",
+        "move-workspace next",
+        Some((true, TAB)),
+    ),
+];
+
+pub const LAYOUT_ACTIONS: &[Action] = &[
+    action(
+        "focus-next",
+        "Next window",
+        "focus next",
+        letter(false, '`'),
+    ),
+    action("focus-left", "Focus left", "focus left", letter(false, 'h')),
+    action("focus-down", "Focus down", "focus down", letter(false, 'j')),
+    action("focus-up", "Focus up", "focus up", letter(false, 'k')),
+    action(
+        "focus-right",
+        "Focus right",
+        "focus right",
+        letter(false, 'l'),
+    ),
+    action(
+        "move-left",
+        "Move left",
+        "move-direction left",
+        letter(true, 'h'),
+    ),
+    action(
+        "move-down",
+        "Move down",
+        "move-direction down",
+        letter(true, 'j'),
+    ),
+    action("move-up", "Move up", "move-direction up", letter(true, 'k')),
+    action(
+        "move-right",
+        "Move right",
+        "move-direction right",
+        letter(true, 'l'),
+    ),
+    action("layout", "Flip split", "layout", letter(false, '/')),
+    action("shrink", "Shrink tile", "resize shrink", letter(false, '-')),
+    action("grow", "Grow tile", "resize grow", letter(false, '=')),
+    action(
+        "float",
+        "Toggle floating window",
+        "float",
+        Some((true, SPACE)),
+    ),
+    action(
+        "fullscreen",
+        "Fullscreen layout",
+        "fullscreen",
+        letter(true, 'f'),
+    ),
+    action("balance", "Balance layout", "balance", None),
+    action("retile", "Retile", "retile", None),
+];
+
+pub fn all() -> impl Iterator<Item = &'static Action> {
+    WORKSPACE_ACTIONS.iter().chain(LAYOUT_ACTIONS)
+}
+
+pub fn find(id: &str) -> Option<&'static Action> {
+    all().find(|action| action.id == id)
+}
+
+/// What `chord` runs now: a shortcut in the catalog, or another command by its name.
+#[derive(Debug, PartialEq, Eq)]
+pub enum Occupant {
+    Action(&'static Action),
+    Other(String),
+}
+
+impl Occupant {
+    pub fn title(&self) -> &str {
+        match self {
+            Self::Action(action) => action.title,
+            Self::Other(title) => title,
+        }
+    }
+}
+
+/// What `chord` runs under `shortcuts`, if anything.
+pub fn occupant(shortcuts: &Shortcuts, chord: Chord) -> Option<Occupant> {
+    if let Some(bound) = shortcuts.binding(chord) {
+        let command = bound?;
+        return Some(
+            all()
+                .find(|action| action.parsed().as_ref() == Some(command))
+                .map_or_else(
+                    || Occupant::Other(sentence(&command.description())),
+                    Occupant::Action,
+                ),
+        );
+    }
+    if !shortcuts.defaults {
+        return None;
+    }
+    if let Some(action) =
+        all().find(|action| action.default_chord(shortcuts.modifier) == Some(chord))
+    {
+        return Some(Occupant::Action(action));
+    }
+    let Key::Number(number) = chord.key else {
+        return None;
+    };
+    if chord.modifiers == shortcuts.modifier {
+        Some(Occupant::Other(format!("Switch to workspace {number}")))
+    } else if chord.modifiers == shortcuts.modifier.with_shift() {
+        Some(Occupant::Other(format!(
+            "Move window to workspace {number}"
+        )))
+    } else {
+        None
+    }
+}
+
+fn sentence(description: &str) -> String {
+    let mut characters = description.chars();
+    characters.next().map_or_else(String::new, |first| {
+        first.to_uppercase().chain(characters).collect()
+    })
+}
+
+/// The base modifiers Settings offers, with their segment labels.
+pub const PRESETS: [(&str, Modifiers); 3] = [
+    ("⌥ Option", Modifiers::OPTION),
+    (
+        "⌃⌥ Control",
+        Modifiers {
+            command: false,
+            control: true,
+            option: true,
+            shift: false,
+        },
+    ),
+    (
+        "⌃⌥⌘ Hyper",
+        Modifiers {
+            command: true,
+            control: true,
+            option: true,
+            shift: false,
+        },
+    ),
+];
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn parse(bindings: &str) -> Shortcuts {
+        spaceman::config::Config::parse(&format!("version = 1\n[shortcuts.bindings]\n{bindings}"))
+            .unwrap()
+            .shortcuts()
+            .clone()
+    }
+
+    fn chord(source: &str) -> Chord {
+        shortcuts::parse_chord(source).unwrap()
+    }
+
+    #[test]
+    fn every_action_command_parses_and_ids_are_unique() {
+        let mut ids = all().map(|action| action.id).collect::<Vec<_>>();
+        for action in all() {
+            assert!(action.parsed().is_some(), "{}", action.command);
+        }
+        let count = ids.len();
+        ids.sort_unstable();
+        ids.dedup();
+        assert_eq!(ids.len(), count);
+    }
+
+    #[test]
+    fn chords_follow_bindings_and_the_base_modifier() {
+        let focus_left = find("focus-left").unwrap();
+        assert_eq!(focus_left.chords(&Shortcuts::default()), [chord("alt+h")]);
+        let moved = parse("\"alt+h\" = \"none\"\n\"ctrl+alt+h\" = \"focus left\"");
+        assert_eq!(focus_left.chords(&moved), [chord("ctrl+alt+h")]);
+        let taken = parse("\"alt+h\" = \"layout\"");
+        assert!(focus_left.chords(&taken).is_empty());
+        let hyper = Shortcuts {
+            modifier: PRESETS[2].1,
+            ..Shortcuts::default()
+        };
+        let move_left = find("move-left").unwrap();
+        assert_eq!(move_left.chords(&hyper), [chord("ctrl+alt+shift+cmd+h")]);
+        assert!(find("balance").unwrap().chords(&hyper).is_empty());
+    }
+
+    #[test]
+    fn occupant_names_built_ins_bindings_and_workspace_chords() {
+        let defaults = Shortcuts::default();
+        assert_eq!(
+            occupant(&defaults, chord("alt+l")),
+            Some(Occupant::Action(find("focus-right").unwrap()))
+        );
+        assert_eq!(
+            occupant(&defaults, chord("alt+shift+3")).unwrap().title(),
+            "Move window to workspace 3"
+        );
+        assert_eq!(occupant(&defaults, chord("ctrl+alt+l")), None);
+        let bound = parse("\"alt+l\" = \"none\"\n\"ctrl+alt+v\" = \"switch 4\"");
+        assert_eq!(occupant(&bound, chord("alt+l")), None);
+        assert_eq!(
+            occupant(&bound, chord("ctrl+alt+v")).unwrap().title(),
+            "Switch workspace 4"
+        );
+    }
+}

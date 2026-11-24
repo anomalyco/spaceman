@@ -123,6 +123,7 @@ to a command in `spaceman ctl` syntax:
 ```toml
 [shortcuts]
 defaults = true                       # optional (default: true); false registers only these bindings
+modifier = "alt"                      # optional (default: "alt"); every built-in shortcut holds it
 
 [shortcuts.bindings]
 "alt+left" = "move-direction left"     # replaces macOS's Option+arrow word jump everywhere
@@ -132,6 +133,11 @@ defaults = true                       # optional (default: true); false register
 "alt+shift+b" = "balance"
 "alt+h" = "none"                      # unbinds the built-in Option+H
 ```
+
+`modifier` moves every built-in shortcut at once: `"ctrl+alt"` makes Switch to workspace 3
+`Control+Option+3` and Move to workspace 3 `Control+Option+Shift+3`. It takes the same modifier names
+as a chord, needs `alt`, `cmd`, or `ctrl`, and can't include `shift`, which the built-in Move
+shortcuts add. Bindings are exact chords and don't follow it.
 
 A chord is one or more modifiers and one key, joined by `+`, in any order and case:
 
@@ -173,9 +179,19 @@ the same chord, an unknown modifier, key, or command, or a chord without `alt`, 
 config error. A binding whose workspace is not enabled, or that the keyboard layout cannot type, is
 skipped and logged in `agent.log` while the other shortcuts register.
 
-Shortcut changes take effect the next time Spaceman starts (`spaceman ctl restart`); rules, displays,
-and the HUD still reload live. Settings › Shortcuts lists the built-in shortcuts, and the menu-bar
-workspace list keeps showing the built-in `Option`+number/letter hints next to each workspace.
+Shortcut changes apply live: saving `config.toml` registers the new chords within a couple of
+seconds, without a restart. If the new table can't be registered, the previous shortcuts keep working
+and Settings shows `Shortcuts not applied` with the reason. Workspaces enabled by a config edit still
+get their shortcuts on the next start. The menu-bar workspace list keeps showing the built-in
+`Option`+number/letter hints next to each workspace.
+
+Settings › Shortcuts edits the same table. Click a shortcut's keys and press a new chord: it is saved
+to `[shortcuts.bindings]` and registered at once, and the built-in chord it replaces gets `none`.
+While Settings records, every global shortcut is held off so the chord reaches it (for at most a
+minute). `esc` cancels, `⌫` or `Delete` on its own clears the shortcut (`none`), a chord without
+`⌥`, `⌃`, or `⌘` is refused, and so is a chord another shortcut uses, naming it. Base modifier
+sets `modifier`, and Reset to Defaults removes the `[shortcuts]` table. Comments and other bindings
+in the file are kept.
 
 ## Labs
 

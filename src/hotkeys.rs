@@ -122,7 +122,7 @@ impl HotkeyPlan {
             plan.push_binding(binding, enabled);
         }
         if shortcuts.defaults {
-            push_defaults(&mut plan, enabled);
+            push_defaults(&mut plan, enabled, carbon_modifiers(shortcuts.modifier));
         }
         if shortcuts.scratchpad {
             push_scratchpad(&mut plan);
@@ -147,7 +147,8 @@ impl HotkeyPlan {
 }
 
 /// The built-in shortcuts, in priority order.
-fn push_defaults(plan: &mut PlanBuilder<'_>, enabled: &[WorkspaceId]) {
+/// `base` is `[shortcuts] modifier`'s Carbon modifiers; Move shortcuts add Shift to it.
+fn push_defaults(plan: &mut PlanBuilder<'_>, enabled: &[WorkspaceId], base: u32) {
     let claimed_letters = enabled
         .iter()
         .filter_map(|workspace| workspace.letter().map(|letter| letter.to_ascii_lowercase()))
@@ -160,13 +161,13 @@ fn push_defaults(plan: &mut PlanBuilder<'_>, enabled: &[WorkspaceId]) {
         };
         plan.push(
             key,
-            OPTION_KEY,
+            base,
             WorkerAction::SwitchWorkspace(workspace),
             format!("switch workspace {workspace}"),
         );
         plan.push(
             key,
-            OPTION_KEY | SHIFT_KEY,
+            base | SHIFT_KEY,
             WorkerAction::MoveFocused(workspace),
             format!("move window to workspace {workspace}"),
         );
@@ -182,13 +183,13 @@ fn push_defaults(plan: &mut PlanBuilder<'_>, enabled: &[WorkspaceId]) {
         }
         plan.push(
             LogicalKey::Character(character),
-            OPTION_KEY,
+            base,
             WorkerAction::Focus(direction),
             format!("focus {name}"),
         );
         plan.push(
             LogicalKey::Character(character),
-            OPTION_KEY | SHIFT_KEY,
+            base | SHIFT_KEY,
             WorkerAction::Reorder(direction),
             format!("move window {name}"),
         );
@@ -196,49 +197,49 @@ fn push_defaults(plan: &mut PlanBuilder<'_>, enabled: &[WorkspaceId]) {
     for (key, modifiers, action, description) in [
         (
             LogicalKey::Character('f'),
-            OPTION_KEY | SHIFT_KEY,
+            base | SHIFT_KEY,
             WorkerAction::ToggleFullscreenLayout,
             "toggle fullscreen layout",
         ),
         (
             LogicalKey::Semantic(SemanticKey::Space),
-            OPTION_KEY | SHIFT_KEY,
+            base | SHIFT_KEY,
             WorkerAction::ToggleFloat,
             "toggle floating window",
         ),
         (
             LogicalKey::Character('/'),
-            OPTION_KEY,
+            base,
             WorkerAction::ToggleLayout,
             "toggle layout",
         ),
         (
             LogicalKey::Character('`'),
-            OPTION_KEY,
+            base,
             WorkerAction::CycleFocus,
             "cycle workspace windows",
         ),
         (
             LogicalKey::Semantic(SemanticKey::Tab),
-            OPTION_KEY,
+            base,
             WorkerAction::WorkspaceBackAndForth,
             "workspace back-and-forth",
         ),
         (
             LogicalKey::Semantic(SemanticKey::Tab),
-            OPTION_KEY | SHIFT_KEY,
+            base | SHIFT_KEY,
             WorkerAction::MoveWorkspaceToDisplay(DisplayTarget::Next),
             "move workspace to next display",
         ),
         (
             LogicalKey::Character('-'),
-            OPTION_KEY,
+            base,
             WorkerAction::Resize(ResizeDirection::Shrink),
             "shrink layout",
         ),
         (
             LogicalKey::Character('='),
-            OPTION_KEY,
+            base,
             WorkerAction::Resize(ResizeDirection::Grow),
             "grow layout",
         ),
@@ -1076,5 +1077,41 @@ mod tests {
             "{:?}",
             plan.warnings
         );
+    }
+
+    #[test]
+    fn modifier_moves_every_built_in_shortcut_and_keeps_shift_for_move() {
+        let shortcuts = crate::config::Config::parse(
+            "version = 1\n[shortcuts]\nmodifier = \"ctrl+alt\"\n[shortcuts.bindings]\n\"alt+h\" = \"layout\"",
+        )
+        .unwrap()
+        .shortcuts()
+        .clone();
+        let enabled = WorkspaceId::numbered().collect::<Vec<_>>();
+        let plan = HotkeyPlan::from_layout(&enabled, &shortcuts, &layout()).unwrap();
+        let base = CONTROL_KEY | OPTION_KEY;
+        for (description, modifiers) in [
+            ("focus left", base),
+            ("move window left", base | SHIFT_KEY),
+            ("switch workspace 3", base),
+            ("move window to workspace 3", base | SHIFT_KEY),
+            ("toggle floating window", base | SHIFT_KEY),
+            ("cycle workspace windows", base),
+        ] {
+            let found = plan
+                .registrations
+                .iter()
+                .find(|registration| registration.description == description)
+                .unwrap_or_else(|| panic!("missing {description}"));
+            assert_eq!(found.modifiers, modifiers, "{description}");
+        }
+        // A binding is an exact chord: plain Option+H flips the split beside Ctrl+Option+H.
+        assert!(
+            registration(&plan, &WorkerAction::ToggleLayout)
+                .iter()
+                .any(|registration| registration.key_code == 60
+                    && registration.modifiers == OPTION_KEY)
+        );
+        assert!(plan.warnings.is_empty(), "{:?}", plan.warnings);
     }
 }

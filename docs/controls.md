@@ -31,6 +31,9 @@ settings. Four-finger swipes and vertical swipes are left to macOS.
 
 Every shortcut above can be rebound, unbound, or replaced in the config file's `[shortcuts]` table;
 see [Configuration › Shortcuts](configuration.md#shortcuts). The table lists the built-in defaults.
+Settings › Shortcuts shows each shortcut's current chord: click its keys and press a new chord to
+rebind it (`esc` cancels, `⌫` clears it), or pick a Base modifier (`⌥`, `⌃⌥`, or `⌃⌥⌘`) to move
+every built-in shortcut at once. Changes register live, with no restart.
 
 Named workspace shortcuts are registered only when referenced by config. If a configured letter
 overlaps a built-in shortcut, the workspace shortcut takes precedence. A `[shortcuts]` binding claims

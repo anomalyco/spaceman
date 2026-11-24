@@ -12,6 +12,9 @@ use crate::{Direction, DisplaySelector, DisplayTarget, ResizeDirection, Workspac
 pub struct Shortcuts {
     /// Keep the built-in shortcuts that no binding overrides.
     pub defaults: bool,
+    /// The modifiers every built-in shortcut holds (`modifier`, Option by default). The
+    /// built-in Move shortcuts add Shift to it.
+    pub modifier: Modifiers,
     /// User bindings in chord order. Each claims its chord before any built-in shortcut.
     pub bindings: Vec<Binding>,
     /// Register the Scratchpad Lab's shortcuts. Set from `[labs] scratchpad`, not this table.
@@ -22,9 +25,44 @@ impl Default for Shortcuts {
     fn default() -> Self {
         Self {
             defaults: true,
+            modifier: Modifiers::OPTION,
             bindings: Vec::new(),
             scratchpad: false,
         }
+    }
+}
+
+impl Shortcuts {
+    /// Whether `other` registers different hotkeys: the same chords and commands spelled
+    /// another way (`alt+h` or `option+H`) or in another order are no change.
+    #[must_use]
+    pub fn differs_from(&self, other: &Self) -> bool {
+        fn meaning(shortcuts: &Shortcuts) -> Vec<(Chord, Option<String>)> {
+            let mut bindings = shortcuts
+                .bindings
+                .iter()
+                .map(|binding| {
+                    (
+                        binding.chord,
+                        binding.command.as_ref().map(Command::description),
+                    )
+                })
+                .collect::<Vec<_>>();
+            bindings.sort();
+            bindings
+        }
+        self.defaults != other.defaults
+            || self.modifier != other.modifier
+            || meaning(self) != meaning(other)
+    }
+
+    /// The command a binding gives `chord`: `Some(None)` when it is unbound with `none`.
+    #[must_use]
+    pub fn binding(&self, chord: Chord) -> Option<Option<&Command>> {
+        self.bindings
+            .iter()
+            .find(|binding| binding.chord == chord)
+            .map(|binding| binding.command.as_ref())
     }
 }
 
@@ -49,6 +87,133 @@ pub struct Modifiers {
     pub control: bool,
     pub option: bool,
     pub shift: bool,
+}
+
+impl Modifiers {
+    pub const OPTION: Self = Self {
+        command: false,
+        control: false,
+        option: true,
+        shift: false,
+    };
+
+    /// These modifiers with Shift held too.
+    #[must_use]
+    pub const fn with_shift(self) -> Self {
+        Self {
+            shift: true,
+            ..self
+        }
+    }
+
+    /// Whether a chord holding these can be a global shortcut: one of ⌥, ⌘ or ⌃.
+    #[must_use]
+    pub const fn can_bind(self) -> bool {
+        self.option || self.command || self.control
+    }
+
+    /// In `config.toml` spelling, `ctrl+alt+shift+cmd`, without a trailing `+`.
+    #[must_use]
+    pub fn source(self) -> String {
+        [
+            (self.control, "ctrl"),
+            (self.option, "alt"),
+            (self.shift, "shift"),
+            (self.command, "cmd"),
+        ]
+        .into_iter()
+        .filter_map(|(held, name)| held.then_some(name))
+        .collect::<Vec<_>>()
+        .join("+")
+    }
+
+    /// The keycaps macOS prints for them, in its order: ⌃ ⌥ ⇧ ⌘.
+    #[must_use]
+    pub fn keycaps(self) -> Vec<String> {
+        [
+            (self.control, "⌃"),
+            (self.option, "⌥"),
+            (self.shift, "⇧"),
+            (self.command, "⌘"),
+        ]
+        .into_iter()
+        .filter(|(held, _)| *held)
+        .map(|(_, glyph)| glyph.to_owned())
+        .collect()
+    }
+}
+
+impl Chord {
+    /// The chord in `config.toml` spelling, which [`parse_chord`] reads back as the same chord.
+    #[must_use]
+    pub fn source(self) -> String {
+        let key = match self.key {
+            Key::Character(character) => character.to_string(),
+            Key::Number(10) => "0".into(),
+            Key::Number(number) => number.to_string(),
+            Key::Code(code) => code_name(code).unwrap_or_else(|| format!("{code}")),
+        };
+        format!("{}+{key}", self.modifiers.source())
+    }
+
+    /// The chord's keycaps, modifiers first: `⌃ ⌥ H`, `⌥ ⇧ Space`, `⌘ ←`.
+    #[must_use]
+    pub fn keycaps(self) -> Vec<String> {
+        let mut caps = self.modifiers.keycaps();
+        caps.push(match self.key {
+            Key::Character(character) => character.to_uppercase().collect(),
+            Key::Number(10) => "0".into(),
+            Key::Number(number) => number.to_string(),
+            Key::Code(code) => code_keycap(code),
+        });
+        caps
+    }
+}
+
+/// The name `config.toml` uses for a key that types no character.
+fn code_name(code: u16) -> Option<String> {
+    if let Some(index) = FUNCTION_KEY_CODES.iter().position(|known| *known == code) {
+        return Some(format!("f{}", index + 1));
+    }
+    NAMED_KEY_CODES
+        .iter()
+        .find(|(_, known)| *known == code)
+        .map(|(names, _)| names[0].to_owned())
+}
+
+fn code_keycap(code: u16) -> String {
+    let glyph = match code_name(code).as_deref() {
+        Some("left") => "←",
+        Some("right") => "→",
+        Some("down") => "↓",
+        Some("up") => "↑",
+        Some("return") => "↩",
+        Some("tab") => "Tab",
+        Some("space") => "Space",
+        Some("backspace") => "⌫",
+        Some("escape") => "esc",
+        Some("forwarddelete") => "⌦",
+        Some("home") => "↖",
+        Some("end") => "↘",
+        Some("pageup") => "⇞",
+        Some("pagedown") => "⇟",
+        Some(function) => return function.to_uppercase(),
+        None => return format!("#{code}"),
+    };
+    glyph.into()
+}
+
+/// Parses `[shortcuts] modifier`: `alt`, `ctrl+alt` or `ctrl+alt+cmd`. Shift is left for the
+/// built-in Move shortcuts, which add it.
+pub fn parse_modifier(source: &str) -> Result<Modifiers, String> {
+    let chord = parse_chord(&format!("{source}+a"))
+        .map_err(|error| format!("modifier {source:?} {error}"))?;
+    if chord.modifiers.shift {
+        return Err(format!(
+            "modifier {source:?} can't include shift; the built-in Move shortcuts add it"
+        ));
+    }
+    Ok(chord.modifiers)
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, PartialOrd, Ord)]
@@ -88,6 +253,8 @@ pub(crate) struct RawShortcuts {
     #[serde(default = "default_true")]
     defaults: bool,
     #[serde(default)]
+    modifier: Option<String>,
+    #[serde(default)]
     bindings: BTreeMap<String, String>,
 }
 
@@ -99,6 +266,7 @@ impl Default for RawShortcuts {
     fn default() -> Self {
         Self {
             defaults: true,
+            modifier: None,
             bindings: BTreeMap::new(),
         }
     }
@@ -106,6 +274,10 @@ impl Default for RawShortcuts {
 
 impl RawShortcuts {
     pub(crate) fn parse(self) -> Result<Shortcuts, String> {
+        let modifier = match &self.modifier {
+            Some(source) => parse_modifier(source).map_err(|error| format!("shortcuts.{error}"))?,
+            None => Modifiers::OPTION,
+        };
         let mut bindings: Vec<Binding> = Vec::with_capacity(self.bindings.len());
         for (chord_source, command_source) in self.bindings {
             let chord = parse_chord(&chord_source)
@@ -133,6 +305,7 @@ impl RawShortcuts {
         }
         Ok(Shortcuts {
             defaults: self.defaults,
+            modifier,
             bindings,
             scratchpad: false,
         })
@@ -169,7 +342,7 @@ pub fn parse_chord(source: &str) -> Result<Chord, String> {
         }
         *slot = true;
     }
-    if !(modifiers.option || modifiers.command || modifiers.control) {
+    if !modifiers.can_bind() {
         return Err("needs at least one of alt, cmd, or ctrl".into());
     }
     Ok(Chord {
@@ -438,5 +611,80 @@ mod tests {
                 .iter()
                 .any(|binding| binding.source == "alt+h" && binding.command.is_none())
         );
+    }
+
+    #[test]
+    fn chord_source_reads_back_as_the_same_chord() {
+        for source in [
+            "alt+h",
+            "ctrl+alt+shift+cmd+left",
+            "alt+0",
+            "alt+7",
+            "ctrl+f12",
+            "alt+shift+space",
+            "alt+-",
+            "alt++",
+            "cmd+alt+return",
+            "alt+`",
+        ] {
+            let chord = parse_chord(source).unwrap();
+            assert_eq!(parse_chord(&chord.source()).unwrap(), chord, "{source}");
+        }
+        assert_eq!(
+            parse_chord("Shift+Option+H").unwrap().source(),
+            "alt+shift+h"
+        );
+        assert_eq!(parse_chord("option+enter").unwrap().source(), "alt+return");
+    }
+
+    #[test]
+    fn chord_keycaps_follow_macos_order_and_glyphs() {
+        let caps = |source: &str| parse_chord(source).unwrap().keycaps();
+        assert_eq!(caps("cmd+shift+alt+ctrl+h"), ["⌃", "⌥", "⇧", "⌘", "H"]);
+        assert_eq!(caps("alt+shift+space"), ["⌥", "⇧", "Space"]);
+        assert_eq!(caps("alt+left"), ["⌥", "←"]);
+        assert_eq!(caps("alt+0"), ["⌥", "0"]);
+        assert_eq!(caps("ctrl+f5"), ["⌃", "F5"]);
+        assert_eq!(caps("alt+/"), ["⌥", "/"]);
+    }
+
+    #[test]
+    fn modifier_names_the_built_in_shortcuts_base_and_refuses_shift() {
+        let parse = |source: &str| {
+            let raw: RawShortcuts = toml::from_str(source).unwrap();
+            raw.parse()
+        };
+        assert_eq!(parse("").unwrap().modifier, Modifiers::OPTION);
+        let hyper = parse(r#"modifier = "ctrl+alt+cmd""#).unwrap().modifier;
+        assert!(hyper.control && hyper.option && hyper.command && !hyper.shift);
+        for (source, message) in [
+            (r#"modifier = "ctrl+shift""#, "can't include shift"),
+            (r#"modifier = "shift""#, "needs at least one"),
+            (r#"modifier = "hyper""#, "unknown modifier"),
+        ] {
+            let error = parse(source).unwrap_err();
+            assert!(error.contains(message), "{source}: {error}");
+        }
+    }
+
+    #[test]
+    fn shortcuts_differ_only_when_they_register_something_else() {
+        let parse = |source: &str| {
+            let raw: RawShortcuts = toml::from_str(source).unwrap();
+            raw.parse().unwrap()
+        };
+        let base = parse("[bindings]\n\"alt+h\" = \"none\"\n\"alt+v\" = \"float\"");
+        let respelled = parse("[bindings]\n\"option+V\" = \"float\"\n\"alt+H\" = \"none\"");
+        assert!(!base.differs_from(&respelled));
+        assert!(!base.differs_from(&base.clone()));
+        let rebound = parse("[bindings]\n\"alt+h\" = \"none\"\n\"alt+v\" = \"layout\"");
+        assert!(base.differs_from(&rebound));
+        let moved = parse("[bindings]\n\"alt+h\" = \"none\"\n\"ctrl+alt+v\" = \"float\"");
+        assert!(base.differs_from(&moved));
+        let modifier = parse(
+            "modifier = \"ctrl+alt\"\n[bindings]\n\"alt+h\" = \"none\"\n\"alt+v\" = \"float\"",
+        );
+        assert!(base.differs_from(&modifier));
+        assert!(Shortcuts::default().differs_from(&base));
     }
 }

@@ -555,7 +555,8 @@ struct EditableConfig {
     rules: Vec<EditableRule>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     workspaces: Vec<EditableWorkspace>,
-    /// Carried through untouched; Settings never edits shortcuts.
+    /// Carried through untouched; this editor never changes shortcuts (Settings › Shortcuts
+    /// edits them in place with `toml_edit`).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     shortcuts: Option<toml::Table>,
 }

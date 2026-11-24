@@ -7,6 +7,7 @@ mod automatic;
 mod controls;
 mod dispatch;
 mod hotkey_health;
+mod live_shortcuts;
 mod probe;
 
 pub(super) use dispatch::WorkerDispatch;
@@ -76,7 +77,7 @@ pub(super) struct AppLoopInit {
     pub(super) scope: ManagementScope,
     pub(super) events: macos::WindowEventMonitor,
     pub(super) hotkey_workspaces: Vec<WorkspaceId>,
-    /// `[shortcuts]` as loaded at startup; changes apply on the next start.
+    /// `[shortcuts]` as loaded at startup; later changes apply live (`live_shortcuts`).
     pub(super) shortcuts: crate::shortcuts::Shortcuts,
     pub(super) hud: bool,
     pub(super) trusted: bool,
@@ -103,6 +104,10 @@ pub struct MainThreadAgent {
     bridge: UiBridge,
     callbacks: HostCallbacks,
     hotkeys: Option<Hotkeys>,
+    /// Settings is recording a shortcut, since this moment; the hotkeys are off meanwhile.
+    recording_since: Option<Instant>,
+    /// The hotkeys were unregistered for a recording and register again when it ends.
+    hotkeys_held: bool,
     hotkey_delivery: DeliveryWatch,
     last_hotkey_heal: Option<Instant>,
     accessibility: bool,
@@ -202,6 +207,8 @@ impl MainThreadAgent {
             bridge: init.bridge,
             callbacks: init.callbacks,
             hotkeys,
+            recording_since: None,
+            hotkeys_held: false,
             hotkey_delivery: DeliveryWatch::default(),
             last_hotkey_heal: None,
             accessibility: trusted,
@@ -508,6 +515,9 @@ impl MainThreadAgent {
                     if let Some(hud) = probe.hud {
                         self.hud = hud;
                         status_item::set_hud(hud);
+                    }
+                    if let Some(shortcuts) = probe.shortcuts {
+                        self.apply_shortcuts(shortcuts);
                     }
                 }
             }

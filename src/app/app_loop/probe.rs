@@ -4,7 +4,7 @@ use std::{
     time::{Duration, Instant, SystemTime},
 };
 
-use crate::{config::Config, login_item};
+use crate::{config::Config, login_item, shortcuts::Shortcuts};
 
 /// How long a Launch at Login reading stays fresh. Each reading is an XPC round
 /// trip to `smd`; Spaceman's own toggle reports its result directly, so the
@@ -23,6 +23,24 @@ pub(super) struct Probe {
     pub(super) config_stamp: Option<SystemTime>,
     /// The HUD setting read for `config_stamp`, when that config loaded.
     pub(super) hud: Option<bool>,
+    /// `[shortcuts]` read for `config_stamp`, when that config loaded.
+    pub(super) shortcuts: Option<Shortcuts>,
+}
+
+/// What the probe reads from a `config.toml` that loads.
+#[derive(Clone, Debug, PartialEq)]
+pub(super) struct ConfigRead {
+    pub(super) hud: bool,
+    pub(super) shortcuts: Shortcuts,
+}
+
+impl ConfigRead {
+    fn load() -> Option<Self> {
+        Config::load().ok().map(|config| Self {
+            hud: config.hud(),
+            shortcuts: config.shortcuts().clone(),
+        })
+    }
 }
 
 /// The probe thread's results, and a way to ask it for a fresh login status.
@@ -42,7 +60,7 @@ impl Prober {
 /// What the probe thread last read.
 #[derive(Default)]
 struct ProbeState {
-    config: Option<(Option<SystemTime>, Option<bool>)>,
+    config: Option<(Option<SystemTime>, Option<ConfigRead>)>,
     login: Option<(Instant, Result<login_item::Status, String>)>,
 }
 
@@ -54,14 +72,16 @@ impl ProbeState {
         now: Instant,
         forced: bool,
         config_stamp: Option<SystemTime>,
-        load_hud: impl FnOnce() -> Option<bool>,
+        load_config: impl FnOnce() -> Option<ConfigRead>,
         login_status: impl FnOnce() -> Result<login_item::Status, String>,
     ) -> Option<Probe> {
-        let (config_changed, hud) = match self.config {
-            Some((stamp, hud)) if stamp == config_stamp => (false, hud),
-            _ => (true, load_hud()),
+        let (config_changed, read) = match self.config.take() {
+            Some((stamp, read)) if stamp == config_stamp => (false, read),
+            _ => (true, load_config()),
         };
-        self.config = Some((config_stamp, hud));
+        let hud = read.as_ref().map(|read| read.hud);
+        let shortcuts = read.as_ref().map(|read| read.shortcuts.clone());
+        self.config = Some((config_stamp, read));
         let login_due = forced
             || self.login.as_ref().is_none_or(|(read_at, _)| {
                 now.saturating_duration_since(*read_at) >= LOGIN_STATUS_TTL
@@ -79,6 +99,7 @@ impl ProbeState {
             launch_at_login,
             config_stamp,
             hud,
+            shortcuts,
         })
     }
 }
@@ -98,7 +119,7 @@ pub(super) fn spawn(interval: Duration) -> Prober {
                     Instant::now(),
                     forced,
                     crate::config::modified(),
-                    || Config::load().ok().map(|config| config.hud()),
+                    ConfigRead::load,
                     login_item::status,
                 );
                 if let Some(probe) = probe
@@ -139,7 +160,7 @@ mod tests {
             now,
             forced,
             None,
-            || Some(true),
+            || Some(read(true)),
             || {
                 reads.set(reads.get() + 1);
                 Ok(status)
@@ -210,11 +231,19 @@ mod tests {
             start,
             false,
             stamp,
-            || Some(false),
+            || Some(read(false)),
             || unreachable!("login status is still fresh"),
         );
         let probe = probe.expect("config changed");
         assert_eq!(probe.launch_at_login, None);
         assert_eq!(probe.hud, Some(false));
+        assert_eq!(probe.shortcuts, Some(Shortcuts::default()));
+    }
+
+    fn read(hud: bool) -> ConfigRead {
+        ConfigRead {
+            hud,
+            shortcuts: Shortcuts::default(),
+        }
     }
 }
