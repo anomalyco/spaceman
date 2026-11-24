@@ -52,13 +52,13 @@ fn parked_window_in_a_display_gap_is_not_reparked_or_exempted() {
     let outputs = macos::DisplayOutputs::new(displays).unwrap();
     let window = window(10);
     let original = crate::Rect {
-        x: 1100,
-        y: 1000,
+        x: 100,
+        y: 100,
         width: 100,
         height: 100,
     };
     let parked = crate::geometry::parked_frame(
-        outputs.secondary().unwrap().frame,
+        outputs.main().frame,
         &outputs.frames().collect::<Vec<_>>(),
         original,
     );
@@ -78,7 +78,7 @@ fn parked_window_in_a_display_gap_is_not_reparked_or_exempted() {
         backend,
         HashMap::from([(window.clone(), original)]),
     );
-    let workspace = WorkspaceId::new(7).unwrap();
+    let workspace = WorkspaceId::new(2).unwrap();
     bind(&mut runtime, workspace, &window);
     for _ in 0..10 {
         runtime

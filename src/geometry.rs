@@ -84,21 +84,24 @@ pub fn onto_displays(frame: Rect, displays: &[Rect], fallback: Rect) -> Rect {
 
 #[must_use]
 pub fn parked_frame(output: Rect, displays: &[Rect], window: Rect) -> Rect {
-    // Keep a one-pixel strip at an actual display edge so macOS does not
-    // clamp the window back on-screen. Score whole rectangles, not corners:
-    // the nearest output may have a neighbor on both sides.
+    // Keep a one-pixel corner at an actual display's bottom edge so macOS does
+    // not clamp the window back on-screen, without leaving a full-height sliver
+    // down the side (which also causes border overlays like JankyBorders to draw
+    // a full-height line along the screen edge). Score whole rectangles, not
+    // corners: the nearest output may have a neighbor on both sides.
     std::iter::once(&output)
         .chain(displays)
         .flat_map(|display| {
             [true, false].map(|right| {
-                let strip = window.width.clamp(0, 2) / 2;
+                let strip_x = window.width.clamp(0, 2) / 2;
+                let strip_y = window.height.clamp(0, 2) / 2;
                 let frame = Rect {
                     x: if right {
-                        display.x + display.width - strip
+                        display.x + display.width - strip_x
                     } else {
-                        display.x - window.width + strip
+                        display.x - window.width + strip_x
                     },
-                    y: display.y + (display.height - window.height).max(0),
+                    y: display.y + display.height - strip_y,
                     ..window
                 };
                 let distance = (i64::from(display.x) - i64::from(output.x)).abs()
@@ -191,7 +194,62 @@ mod tests {
 
         assert_eq!(parked_frame(left, &[left, right], window).x, -399);
         assert_eq!(parked_frame(right, &[left, right], window).x, 1999);
-        assert_eq!(parked_frame(left, &[left, right], window).y, 500);
+        assert_eq!(parked_frame(left, &[left, right], window).y, 799);
+    }
+
+    #[test]
+    fn parking_in_bottom_corner_limits_overlap_to_one_point_and_avoids_stacked_neighbors() {
+        let main = Rect {
+            x: 0,
+            y: 32,
+            width: 1512,
+            height: 950,
+        };
+        let window = Rect {
+            x: 16,
+            y: 62,
+            width: 1480,
+            height: 904,
+        };
+        let parked = parked_frame(main, &[main], window);
+        assert_eq!(parked.x, 1511);
+        assert_eq!(parked.y, 981);
+        assert!(!shows_on(parked, &[main]));
+        let (overlap_w, overlap_h) = overlap(parked, main);
+        assert_eq!((overlap_w, overlap_h), (1, 1));
+
+        // Stacked displays where the lower display is wider on both sides.
+        let top = Rect {
+            x: 200,
+            y: 0,
+            width: 1000,
+            height: 800,
+        };
+        let bottom = Rect {
+            x: 0,
+            y: 800,
+            width: 1600,
+            height: 900,
+        };
+        let displays = [top, bottom];
+        for output in displays {
+            for (width, height) in [(100, 100), (400, 300), (1480, 904)] {
+                let parked = parked_frame(
+                    output,
+                    &displays,
+                    Rect {
+                        width,
+                        height,
+                        ..Rect::default()
+                    },
+                );
+                assert!(
+                    !shows_on(parked, &displays),
+                    "parked {parked:?} overlaps {displays:?}"
+                );
+                assert!(!displays.iter().any(|d| d.contains_center(parked)));
+            }
+        }
     }
 
     #[test]
