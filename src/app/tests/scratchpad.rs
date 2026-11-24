@@ -649,3 +649,129 @@ fn switching_away_before_delayed_summon_confirmation_remembers_floated_size() {
     assert_eq!(rt.scratchpad.pending_summon(&w), None);
     assert!(!rt.parked.contains_key(&w));
 }
+
+#[test]
+fn scratchpad_actions_honor_and_track_pending_focus_during_activation_lag() {
+    let w = |id: u32| {
+        let mut win = window(id);
+        win.app.pid = id as i32;
+        win
+    };
+    let report = |rt: &mut WorkspaceRuntime<FakeBackend>, id: u32| {
+        rt.backend.focused = Some(w(id));
+        rt.backend.frontmost = Some(w(id).app);
+    };
+    let act = |rt: &mut WorkspaceRuntime<FakeBackend>, action: WorkerAction| {
+        let mut observation = crate::NativeObservation {
+            cycle: 0,
+            mouse_down: false,
+            applications: Vec::new(),
+        };
+        for id in [10, 20, 30] {
+            let win = w(id);
+            let mut part = observation_for_windows(
+                &format!("com.example.App{id}"),
+                &win,
+                &[(win.clone(), rt.backend.frames[&win])],
+            );
+            if rt.backend.focused.as_ref() != Some(&win)
+                && let crate::AppObservation::Complete { focused, .. } = &mut part.applications[0]
+            {
+                *focused = None;
+            }
+            observation.applications.extend(part.applications);
+        }
+        rt.backend.observation = Some(observation);
+        run(rt, action)
+    };
+    let setup = || {
+        let backend = FakeBackend {
+            frames: HashMap::from([
+                (w(10), frame(50)),
+                (w(20), frame(500)),
+                (w(30), frame(1050)),
+            ]),
+            focused: Some(w(10)),
+            frontmost: Some(w(10).app),
+            ..FakeBackend::default()
+        };
+        let mut rt = runtime_with_config(backend, lab());
+        bind(&mut rt, WorkspaceId::ONE, &w(10));
+        bind(&mut rt, WorkspaceId::ONE, &w(20));
+        bind(&mut rt, WorkspaceId::SIX, &w(30));
+        rt
+    };
+    let hidden_ids = |rt: &WorkspaceRuntime<FakeBackend>| {
+        let mut ids: Vec<_> = rt
+            .scratchpad
+            .entries()
+            .filter(|e| e.shown_on.is_none())
+            .map(|e| e.window.window_id)
+            .collect();
+        ids.sort();
+        ids
+    };
+    let shown = || {
+        let mut rt = setup();
+        report(&mut rt, 20);
+        act(&mut rt, WorkerAction::Scratchpad(ScratchpadCommand::Mark)).unwrap();
+        act(&mut rt, WorkerAction::Scratchpad(ScratchpadCommand::Toggle)).unwrap();
+        assert_eq!(
+            rt.scratchpad.entry(&w(20)).unwrap().shown_on,
+            Some(WorkspaceId::ONE)
+        );
+        rt
+    };
+
+    for stale in [true, false] {
+        // 1. Focus right 10 -> 20, then Mark hides 20.
+        let mut rt = setup();
+        act(&mut rt, WorkerAction::Focus(Direction::Right)).unwrap();
+        if stale {
+            report(&mut rt, 10);
+        }
+        act(&mut rt, WorkerAction::Scratchpad(ScratchpadCommand::Mark)).unwrap();
+        assert_eq!(hidden_ids(&rt), vec![20]);
+
+        // 2. Hide 20, focus right 10 -> 30 on secondary, Toggle summons onto ws 6.
+        let mut rt = setup();
+        report(&mut rt, 20);
+        act(&mut rt, WorkerAction::Scratchpad(ScratchpadCommand::Mark)).unwrap();
+        act(&mut rt, WorkerAction::Focus(Direction::Right)).unwrap();
+        if stale {
+            report(&mut rt, 10);
+        }
+        act(&mut rt, WorkerAction::Scratchpad(ScratchpadCommand::Toggle)).unwrap();
+        assert_eq!(
+            rt.scratchpad.entry(&w(20)).unwrap().shown_on,
+            Some(WorkspaceId::SIX)
+        );
+
+        // 3. Summon 20, then Mark tiles 20 instead of hiding 10.
+        let mut rt = shown();
+        if stale {
+            report(&mut rt, 10);
+        }
+        act(&mut rt, WorkerAction::Scratchpad(ScratchpadCommand::Mark)).unwrap();
+        assert!(hidden_ids(&rt).is_empty());
+        assert_eq!(rt.workspaces.workspace_of(&w(20)), Some(WorkspaceId::ONE));
+
+        // 4. Summon 20, then ToggleFloat tiles 20 instead of floating 10.
+        let mut rt = shown();
+        if stale {
+            report(&mut rt, 10);
+        }
+        act(&mut rt, WorkerAction::ToggleFloat).unwrap();
+        assert_eq!(rt.workspaces.workspace_of(&w(20)), Some(WorkspaceId::ONE));
+        assert_eq!(rt.workspaces.floating_workspace_of(&w(10)), None);
+
+        // 5. Hide shown 20 (focuses 10), then Mark hides 10 while AX still reports 20.
+        let mut rt = shown();
+        act(&mut rt, WorkerAction::Scratchpad(ScratchpadCommand::Toggle)).unwrap();
+        if stale {
+            report(&mut rt, 20);
+        }
+        act(&mut rt, WorkerAction::Scratchpad(ScratchpadCommand::Mark)).unwrap();
+        assert_eq!(hidden_ids(&rt), vec![10, 20]);
+    }
+}

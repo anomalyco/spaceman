@@ -36,8 +36,7 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
         cancelled: &AtomicBool,
     ) -> Result<CycleStatus, String> {
         let window = self
-            .backend
-            .focused_window()
+            .current_focus()
             .ok_or("Focused window is unavailable")?;
         if let Some(entry) = self.scratchpad.entry(&window) {
             return match entry.shown_on {
@@ -87,7 +86,7 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
         log_event!("scratchpad: hid {window:?} from workspace {workspace}");
         let layout = self.layout_workspace(workspace, output, cancelled);
         self.persist_workspace_state_if_changed()?;
-        self.focus_after_scratchpad(workspace);
+        self.focus_after_scratchpad(workspace, std::slice::from_ref(&window));
         Ok(self.status(layout.failed, &outputs))
     }
 
@@ -151,7 +150,7 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
                     .find(|resolved| resolved.workspace == workspace)
             })
         };
-        let focused = self.backend.focused_window();
+        let focused = self.current_focus();
         if let Some(resolved) = find(
             focused
                 .as_ref()
@@ -235,7 +234,7 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
                 self.recently_parked.insert(window.clone(), Instant::now());
             }
         }
-        if !self.backend.focus_window(&window) {
+        if !self.focus_scratchpad_target(&window, &[]) {
             log_event!("scratchpad: could not focus {window:?}");
         }
         self.record_focused_workspace(target.workspace);
@@ -323,7 +322,7 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
             }
         }
         self.persist_workspace_state_if_changed()?;
-        self.focus_after_scratchpad(target.workspace);
+        self.focus_after_scratchpad(target.workspace, windows);
         Ok(self.status(failed, outputs))
     }
 
@@ -362,7 +361,11 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
     }
 
     /// Hand focus back to the workspace's tiles once a scratchpad window leaves the screen.
-    fn focus_after_scratchpad(&mut self, workspace: WorkspaceId) {
+    fn focus_after_scratchpad(
+        &mut self,
+        workspace: WorkspaceId,
+        hidden: &[crate::PhysicalWindowId],
+    ) {
         let target = self.workspaces.preferred_focus(workspace).or_else(|| {
             self.workspaces
                 .engine(workspace)
@@ -370,11 +373,50 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
                 .into_iter()
                 .next()
         });
-        if let Some(target) = target
-            && !self.backend.focus_window(&target)
-        {
-            log_event!("scratchpad: could not focus {target:?} on workspace {workspace}");
+        if let Some(target) = target {
+            if !self.focus_scratchpad_target(&target, hidden) {
+                log_event!("scratchpad: could not focus {target:?} on workspace {workspace}");
+            }
+        } else {
+            self.pending_focus = None;
         }
+    }
+
+    /// Requests focus on `target` and records it in `pending_focus` so immediate
+    /// follow-up commands address `target` while Accessibility still reports the
+    /// previous or just-hidden window.
+    fn focus_scratchpad_target(
+        &mut self,
+        target: &crate::PhysicalWindowId,
+        extra_stale: &[crate::PhysicalWindowId],
+    ) -> bool {
+        let reported = self.backend.focused_window();
+        let mut stale: Vec<Option<crate::PhysicalWindowId>> = self
+            .pending_focus
+            .take()
+            .map(|pending| pending.stale)
+            .unwrap_or_default()
+            .into_iter()
+            .filter(|window| window.as_ref() != Some(target))
+            .collect();
+        if reported.as_ref() != Some(target) && !stale.contains(&reported) {
+            stale.push(reported);
+        }
+        for hidden in extra_stale {
+            let entry = Some(hidden.clone());
+            if hidden != target && !stale.contains(&entry) {
+                stale.push(entry);
+            }
+        }
+        if !self.backend.focus_window(target) {
+            return false;
+        }
+        self.pending_focus = Some(super::commands::PendingFocus {
+            target: target.clone(),
+            stale,
+            at: Instant::now(),
+        });
+        true
     }
 
     /// After every worker command: hide windows whose workspace was switched away (i3 keeps them
