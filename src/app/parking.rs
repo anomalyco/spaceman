@@ -566,7 +566,7 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
         if self.parking_exempt.contains(window) {
             return macos::ApplyOutcome::Applied;
         }
-        let frame = match self.backend.frame(window) {
+        let ax_frame = match self.backend.frame(window) {
             Ok(frame) => frame,
             Err(macos::WindowAccessError::Gone) => return macos::ApplyOutcome::Gone,
             Err(macos::WindowAccessError::Unavailable) => {
@@ -576,7 +576,7 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
         // Prefer the window server's frame: Accessibility reads can be stale
         // right after a move, which would misclassify the window and record a
         // wrong recovery frame.
-        let frame = self.backend.window_server_frame(window).unwrap_or(frame);
+        let frame = self.backend.window_server_frame(window).unwrap_or(ax_frame);
         let was_parked = self.parked.contains_key(window);
         let displays = outputs.frames().collect::<Vec<_>>();
         if !crate::geometry::shows_on(frame, &displays) && !was_parked {
@@ -604,7 +604,12 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
         // cross-display write back on-screen. Use the window's current size so
         // a grown window leaves nothing showing.
         let park_output = Self::display_for_frame(frame, &displays).unwrap_or(output);
-        let parked = crate::geometry::parked_frame(park_output, &displays, frame);
+        let park_size = crate::Rect {
+            width: frame.width.max(ax_frame.width),
+            height: frame.height.max(ax_frame.height),
+            ..frame
+        };
+        let parked = crate::geometry::parked_frame(park_output, &displays, park_size);
         let outcome = self.backend.set_position(window, parked);
         log_event!("park: {:?} from {:?} ({:?})", window, recovery, outcome);
         if matches!(outcome, macos::ApplyOutcome::Applied) {

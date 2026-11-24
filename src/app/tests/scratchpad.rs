@@ -490,3 +490,31 @@ fn delayed_scratchpad_summon_stays_centered_when_a_later_cycle_confirms_it() {
     assert!(!runtime.parked.contains_key(&w));
     assert_eq!(runtime.scratchpad.pending_summon(&w), None);
 }
+
+#[test]
+fn second_toggle_supersedes_an_unconfirmed_scratchpad_summon_with_a_park_write() {
+    let mut rt = scratchpad_runtime(lab());
+    let w = window(10);
+    scratchpad(&mut rt, ScratchpadCommand::Mark).unwrap();
+    assert_hidden(&rt, &w);
+
+    let parked = rt.backend.frames[&w];
+    rt.backend.server_frames.insert(w.clone(), parked);
+    rt.backend.frozen_server_frames = true;
+    scratchpad(&mut rt, ScratchpadCommand::Toggle).unwrap();
+    assert!(rt.scratchpad.pending_summon(&w).is_some());
+
+    rt.backend.calls.clear();
+    scratchpad(&mut rt, ScratchpadCommand::Toggle).unwrap();
+    assert!(
+        rt.backend.calls.iter().any(|call| matches!(
+            call,
+            BackendCall::SetPosition(target_window, target)
+                if *target_window == w
+                    && !crate::geometry::shows_on(*target, &outputs().frames().collect::<Vec<_>>())
+        )),
+        "hide must supersede the unconfirmed summon with an off-screen park write"
+    );
+    assert_eq!(rt.scratchpad.pending_summon(&w), None);
+    assert_hidden(&rt, &w);
+}

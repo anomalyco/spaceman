@@ -606,3 +606,57 @@ fn a_recalled_floating_placement_keeps_the_window_floating() {
         Some(WorkspaceId::ONE)
     );
 }
+
+#[test]
+fn bare_executables_without_bundle_ids_do_not_share_placement_memory() {
+    let make = |pid, window_id| crate::PhysicalWindowId {
+        app: AppInstanceId {
+            pid,
+            launched_at: pid as u64,
+        },
+        window_id,
+    };
+    let a = make(2, 10);
+    let b = make(3, 20);
+    let backend = FakeBackend {
+        frames: [(a.clone(), frame(50))].into_iter().collect(),
+        observation: Some(observation_for("unknown", &a, frame(50))),
+        ..FakeBackend::default()
+    };
+    let mut rt = runtime(backend);
+    rt.restore_window_memory(crate::window_memory::WindowMemory::default());
+    rt.memory.started_at = Some(Instant::now() - crate::app::memory::RECALL_WINDOW);
+    let cancel = AtomicBool::new(false);
+    let three = WorkspaceId::new(3).unwrap();
+    rt.switch(three, outputs(), &cancel).unwrap();
+    for _ in 0..3 {
+        rt.cycle(outputs(), &cancel).unwrap();
+    }
+    for (_, since) in rt.memory.pending.values_mut() {
+        *since -= crate::app::memory::MEMORY_SETTLE;
+    }
+    rt.cycle(outputs(), &cancel).unwrap();
+    assert_eq!(rt.workspaces.workspace_of(&a), Some(three));
+    assert!(
+        rt.backend
+            .window_memory
+            .as_ref()
+            .and_then(|memory| memory.get("unknown"))
+            .is_none(),
+        "unknown bare executables must not be stored in shared placement memory"
+    );
+
+    rt.switch(WorkspaceId::ONE, outputs(), &cancel).unwrap();
+    assert!(rt.parked.contains_key(&a));
+
+    rt.backend.frames.insert(b.clone(), frame(120));
+    let mut observation = observation_for("unknown", &a, frame(50));
+    observation
+        .applications
+        .extend(observation_for("unknown", &b, frame(120)).applications);
+    rt.backend.observation = Some(observation);
+    rt.cycle(outputs(), &cancel).unwrap();
+
+    assert_eq!(rt.workspaces.workspace_of(&b), Some(WorkspaceId::ONE));
+    assert!(!rt.parked.contains_key(&b));
+}

@@ -337,6 +337,7 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
     ) -> macos::ApplyOutcome {
         let displays: Vec<_> = outputs.frames().collect();
         let already_hidden = self.parked.contains_key(window)
+            && self.scratchpad.pending_summon(window).is_none()
             && self
                 .backend
                 .window_server_frame(window)

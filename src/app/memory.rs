@@ -180,7 +180,9 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
     /// after is treated as a relaunch.
     pub(super) fn note_departure(&mut self, app: &AppInstanceId) {
         self.memory.considered.remove(app);
-        if let Some(bundle_id) = self.memory.bundles.remove(app) {
+        if let Some(bundle_id) = self.memory.bundles.remove(app)
+            && is_rememberable_bundle_id(&bundle_id)
+        {
             self.memory.departed.insert(bundle_id, Instant::now());
         }
     }
@@ -260,6 +262,7 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
             after_ms: u64::try_from(elapsed.as_millis()).unwrap_or(u64::MAX),
         });
         if placement.source == PlacementSource::Active
+            && is_rememberable_bundle_id(&bundle_id)
             && self.memory.memory.mark_returning(&bundle_id)
         {
             log_event!("{bundle_id} now returns to its remembered workspace on every launch");
@@ -291,6 +294,9 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
     /// has remembered placements it may claim: one seen for the first time
     /// during startup, a relaunch, or any new instance of a returning app.
     fn open_recall(&mut self, app: &crate::ObservedApplication, first_seen: bool) {
+        if !is_rememberable_bundle_id(&app.bundle_id) {
+            return;
+        }
         let startup = first_seen
             && self
                 .memory
@@ -357,12 +363,9 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
             .collect();
         let mut current: BTreeMap<String, Vec<(u32, RememberedWindow)>> = BTreeMap::new();
         let mut add = |window: &crate::PhysicalWindowId, workspace, floating| {
-            let Some(bundle_id) = self
-                .memory
-                .bundles
-                .get(&window.app)
-                .filter(|bundle_id| !bundle_id.is_empty() && !recalling.contains(*bundle_id))
-            else {
+            let Some(bundle_id) = self.memory.bundles.get(&window.app).filter(|bundle_id| {
+                is_rememberable_bundle_id(bundle_id) && !recalling.contains(*bundle_id)
+            }) else {
                 return;
             };
             let Some(frame) = self
@@ -442,4 +445,11 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
             log_event!("failed to persist window memory: {error}");
         }
     }
+}
+
+/// Bare executables without a macOS bundle identifier all observe as `"unknown"`.
+/// Pooling them under one placement-memory key would make unrelated programs recall
+/// each other's workspaces as relaunches.
+fn is_rememberable_bundle_id(bundle_id: &str) -> bool {
+    !bundle_id.is_empty() && bundle_id != "unknown"
 }
