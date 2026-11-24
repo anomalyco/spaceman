@@ -8,7 +8,10 @@ mod recorder;
 
 use rune::{El, Shadow, col, row, text};
 use rune_kit::SegmentedControl;
-use spaceman::shortcuts::{Chord, Modifiers, Shortcuts};
+use spaceman::{
+    WorkspaceId,
+    shortcuts::{Chord, Modifiers, Shortcuts},
+};
 
 pub use recorder::Capture;
 
@@ -25,8 +28,15 @@ const RECORDER_HEIGHT: f32 = keycap::KEY_HEIGHT + 2.0 * keycap::TRAY_PADDING;
 
 pub fn pane(ui: &Ui, p: Paint) -> El {
     let shortcuts = ui.doc.shortcuts();
+    let named = recorder::enabled_named_workspaces(ui);
     let mut workspace_rows = family_rows(p, &shortcuts);
-    workspace_rows.extend(action_rows(ui, p, &shortcuts, catalog::WORKSPACE_ACTIONS));
+    workspace_rows.extend(action_rows(
+        ui,
+        p,
+        &shortcuts,
+        &named,
+        catalog::WORKSPACE_ACTIONS,
+    ));
     workspace_rows.push(fixed_row(
         p,
         "swipe",
@@ -60,7 +70,7 @@ pub fn pane(ui: &Ui, p: Paint) -> El {
                 p,
                 "windows-layout",
                 "Windows & Layout",
-                action_rows(ui, p, &shortcuts, catalog::LAYOUT_ACTIONS),
+                action_rows(ui, p, &shortcuts, &named, catalog::LAYOUT_ACTIONS),
             )),
     )
 }
@@ -182,7 +192,13 @@ fn fixed_row(p: Paint, key: &str, title: &str, caps: Vec<String>) -> El {
     controls::setting_row(p, &format!("{key}-row"), title, None, keys)
 }
 
-fn action_rows(ui: &Ui, p: Paint, shortcuts: &Shortcuts, actions: &'static [Action]) -> Vec<El> {
+fn action_rows(
+    ui: &Ui,
+    p: Paint,
+    shortcuts: &Shortcuts,
+    named: &[WorkspaceId],
+    actions: &'static [Action],
+) -> Vec<El> {
     actions
         .iter()
         .map(|action| {
@@ -191,7 +207,7 @@ fn action_rows(ui: &Ui, p: Paint, shortcuts: &Shortcuts, actions: &'static [Acti
                 &format!("{}-row", action.id),
                 action.title,
                 None,
-                shortcut_button(ui, p, shortcuts, action),
+                shortcut_button(ui, p, shortcuts, named, action),
             )
         })
         .collect()
@@ -199,7 +215,13 @@ fn action_rows(ui: &Ui, p: Paint, shortcuts: &Shortcuts, actions: &'static [Acti
 
 /// A shortcut's keys, pressed to record a new chord; while recording, the recorder in their
 /// place, taking every key until it saves, refuses or cancels.
-fn shortcut_button(ui: &Ui, p: Paint, shortcuts: &Shortcuts, action: &'static Action) -> El {
+fn shortcut_button(
+    ui: &Ui,
+    p: Paint,
+    shortcuts: &Shortcuts,
+    named: &[WorkspaceId],
+    action: &'static Action,
+) -> El {
     let c = &p.k.c;
     let id = action.id;
     let (content, label) = match &ui.shortcut_capture {
@@ -213,7 +235,7 @@ fn shortcut_button(ui: &Ui, p: Paint, shortcuts: &Shortcuts, action: &'static Ac
         ),
         capture => {
             let saved = *capture == Capture::Saved { action: id };
-            let chords = action.chords(shortcuts);
+            let chords = action.chords(shortcuts, named);
             let label = chords
                 .first()
                 .map_or_else(|| "Not set".to_owned(), |chord| chord.keycaps().concat());

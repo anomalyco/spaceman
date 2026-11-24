@@ -4,7 +4,10 @@
 //! shortcut uses, keeps listening and says why.
 
 use rune::{Mods, PhysicalInput, PhysicalKeyCode};
-use spaceman::shortcuts::{self, Chord, Modifiers, Shortcuts};
+use spaceman::{
+    WorkspaceId,
+    shortcuts::{self, Chord, Modifiers, Shortcuts},
+};
 
 use super::catalog::{self, Action, Occupant};
 use crate::Ui;
@@ -211,9 +214,28 @@ fn layout_character(key: PhysicalKeyCode) -> Option<char> {
     }
 }
 
+/// Named workspaces enabled in `config.toml` or active in the live agent snapshot.
+pub fn enabled_named_workspaces(ui: &Ui) -> Vec<WorkspaceId> {
+    let mut named = ui.doc.named_workspaces();
+    if let Some(agent) = &ui.agent {
+        for &workspace in &agent.active_workspaces {
+            if workspace.letter().is_some() && !named.contains(&workspace) {
+                named.push(workspace);
+            }
+        }
+    }
+    named.sort();
+    named
+}
+
 /// Whether `action` may take `chord`: refused while another shortcut runs it.
-pub fn check(shortcuts: &Shortcuts, action: &Action, chord: Chord) -> Result<(), String> {
-    match catalog::occupant(shortcuts, chord) {
+pub fn check(
+    shortcuts: &Shortcuts,
+    named_workspaces: &[WorkspaceId],
+    action: &Action,
+    chord: Chord,
+) -> Result<(), String> {
+    match catalog::occupant(shortcuts, named_workspaces, chord) {
         Some(Occupant::Action(other)) if other.id == action.id => Ok(()),
         Some(occupant) => Err(format!("Used by {}", occupant.title())),
         None => Ok(()),
@@ -276,7 +298,10 @@ pub fn record(ui: &mut Ui, id: &'static str, outcome: Press) {
         return;
     };
     let shortcuts = ui.doc.shortcuts();
-    let default = action.default_chord(shortcuts.modifier);
+    let named = enabled_named_workspaces(ui);
+    let default = action
+        .default_chord(shortcuts.modifier)
+        .filter(|chord| catalog::named_workspace_for_key(&named, chord.key).is_none());
     let refused = match outcome {
         Press::Ignore => return,
         Press::Cancel => {
@@ -289,7 +314,7 @@ pub fn record(ui: &mut Ui, id: &'static str, outcome: Press) {
             });
             return;
         }
-        Press::Chord(chord) => match check(&shortcuts, action, chord) {
+        Press::Chord(chord) => match check(&shortcuts, &named, action, chord) {
             Ok(()) => {
                 save(ui, id, |doc| {
                     doc.set_shortcut(action.command, default, Some(chord));

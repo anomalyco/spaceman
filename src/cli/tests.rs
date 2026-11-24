@@ -788,3 +788,54 @@ fn rules_add_accepts_literal_help_flag_as_title() {
             .is_some_and(|out| out.contains("Manage ordered, first-match window rules"))
     );
 }
+
+#[test]
+fn config_commands_accept_and_preserve_shortcuts_base_modifier() {
+    let temp = TempConfig::new("shortcuts-modifier");
+    temp.write("version = 1\n\n[shortcuts]\nmodifier = \"ctrl+alt\"\n");
+
+    let explicit_path = temp.path.to_str().unwrap();
+    let explicit_check = temp.run(&["config", "check", explicit_path]);
+    assert_eq!(
+        explicit_check.exit_code, 0,
+        "stderr: {:?}",
+        explicit_check.stderr
+    );
+    assert_eq!(
+        explicit_check.stdout.as_deref(),
+        Some("configuration is valid")
+    );
+
+    let implicit_check = temp.run(&["config", "check"]);
+    assert_eq!(
+        implicit_check.exit_code, 0,
+        "stderr: {:?}",
+        implicit_check.stderr
+    );
+    assert_eq!(
+        implicit_check.stdout.as_deref(),
+        Some("configuration is valid")
+    );
+
+    let hud = temp.run(&["config", "get", "hud"]);
+    assert_eq!(hud.exit_code, 0, "stderr: {:?}", hud.stderr);
+    assert_eq!(hud.stdout.as_deref(), Some("true"));
+
+    let set_gap = temp.run(&["config", "set", "gaps.inner", "8"]);
+    assert_eq!(set_gap.exit_code, 0, "stderr: {:?}", set_gap.stderr);
+    assert_eq!(set_gap.stdout.as_deref(), Some("set gaps.inner = 8"));
+
+    let gap = temp.run(&["config", "get", "gaps.inner"]);
+    assert_eq!(gap.exit_code, 0, "stderr: {:?}", gap.stderr);
+    assert_eq!(gap.stdout.as_deref(), Some("8"));
+
+    let recheck = temp.run(&["config", "check"]);
+    assert_eq!(recheck.exit_code, 0, "stderr: {:?}", recheck.stderr);
+
+    let parsed = Config::parse(&temp.read()).expect("saved config stays valid");
+    assert_eq!(parsed.spacing().inner, 8);
+    assert!(parsed.shortcuts().modifier.control);
+    assert!(parsed.shortcuts().modifier.option);
+    assert!(!parsed.shortcuts().modifier.command);
+    assert!(!parsed.shortcuts().modifier.shift);
+}

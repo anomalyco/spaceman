@@ -51,29 +51,35 @@ impl Doc {
     }
 
     /// Sets the modifiers every built-in shortcut holds. A built-in shortcut unbound with
-    /// `none` stays unbound on its new chord.
+    /// `none` stays unbound on its new chord; fixed chords (such as Scratchpad's `alt+\`)
+    /// stay put because they do not follow `modifier`.
     pub fn set_shortcut_modifier(&mut self, modifier: Modifiers) {
-        let old = self.shortcuts().modifier;
+        let shortcuts = self.shortcuts();
+        let old = shortcuts.modifier;
         if old == modifier {
             return;
         }
-        let bindings = self.bindings_mut();
-        let unbound = bound_keys(bindings, |bound| bound.is_none());
-        for key in unbound {
-            let Ok(chord) = shortcuts::parse_chord(&key) else {
-                continue;
-            };
-            let modifiers = if chord.modifiers == old {
-                modifier
-            } else if chord.modifiers == old.with_shift() {
-                modifier.with_shift()
-            } else {
-                continue;
-            };
-            bindings.remove(&key);
-            let moved = Chord { modifiers, ..chord };
-            if find_chord(bindings, moved).is_none() {
-                bindings.insert(&moved.source(), value("none"));
+        if shortcuts.defaults {
+            let named = self.named_workspaces();
+            let bindings = self.bindings_mut();
+            let unbound = bound_keys(bindings, |bound| bound.is_none());
+            for key in unbound {
+                let Ok(chord) = shortcuts::parse_chord(&key) else {
+                    continue;
+                };
+                if !shortcuts::is_built_in_chord(chord, old, &named) {
+                    continue;
+                }
+                let modifiers = if chord.modifiers.shift {
+                    modifier.with_shift()
+                } else {
+                    modifier
+                };
+                bindings.remove(&key);
+                let moved = Chord { modifiers, ..chord };
+                if find_chord(bindings, moved).is_none() {
+                    bindings.insert(&moved.source(), value("none"));
+                }
             }
         }
         let table = self.shortcuts_table_mut();

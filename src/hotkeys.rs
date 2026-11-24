@@ -110,7 +110,7 @@ impl HotkeyPlan {
         Self::from_layout(enabled, shortcuts, &layout)
     }
 
-    fn from_layout(
+    pub(crate) fn from_layout(
         enabled: &[WorkspaceId],
         shortcuts: &Shortcuts,
         layout: &LayoutSnapshot,
@@ -143,6 +143,20 @@ impl HotkeyPlan {
 
     pub(crate) fn matches(&self, hotkeys: &Hotkeys) -> bool {
         self.layout_fingerprint == hotkeys.layout_fingerprint
+    }
+
+    #[cfg(test)]
+    pub(crate) fn has_registration(
+        &self,
+        key_code: u32,
+        modifiers: u32,
+        action: &WorkerAction,
+    ) -> bool {
+        self.registrations.iter().any(|registration| {
+            registration.key_code == key_code
+                && registration.modifiers == modifiers
+                && registration.action == *action
+        })
     }
 }
 
@@ -1113,5 +1127,27 @@ mod tests {
                     && registration.modifiers == OPTION_KEY)
         );
         assert!(plan.warnings.is_empty(), "{:?}", plan.warnings);
+    }
+
+    #[test]
+    fn keeping_fixed_scratchpad_unbind_under_new_base_modifier_keeps_toggle_disabled() {
+        let layout = LayoutSnapshot::for_test(vec![(42, '\\', false, false)], vec![]);
+        let config = crate::config::Config::parse(
+            "version = 1\n[labs]\nscratchpad = true\n[shortcuts]\nmodifier = 'ctrl+alt'\n[shortcuts.bindings]\n'alt+\\' = 'none'\n",
+        )
+        .unwrap();
+        let enabled = [WorkspaceId::new(1).unwrap()];
+        let plan = HotkeyPlan::from_layout(&enabled, config.shortcuts(), &layout).unwrap();
+        assert_eq!(action(&plan, "show or hide the scratchpad"), None);
+        assert_eq!(
+            action(&plan, "move window to or from the scratchpad"),
+            Some(&WorkerAction::Scratchpad(ScratchpadCommand::Mark))
+        );
+        let switch_1 = plan
+            .registrations
+            .iter()
+            .find(|registration| registration.description == "switch workspace 1")
+            .unwrap();
+        assert_eq!(switch_1.modifiers, CONTROL_KEY | OPTION_KEY);
     }
 }

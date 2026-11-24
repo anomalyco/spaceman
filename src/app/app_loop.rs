@@ -106,8 +106,8 @@ pub struct MainThreadAgent {
     hotkeys: Option<Hotkeys>,
     /// Settings is recording a shortcut, since this moment; the hotkeys are off meanwhile.
     recording_since: Option<Instant>,
-    /// The hotkeys were unregistered for a recording and register again when it ends.
-    hotkeys_held: bool,
+    /// The hotkeys were unregistered for a recording, plus any table saved meanwhile.
+    hotkey_hold: live_shortcuts::HotkeyHold,
     hotkey_delivery: DeliveryWatch,
     last_hotkey_heal: Option<Instant>,
     accessibility: bool,
@@ -208,7 +208,7 @@ impl MainThreadAgent {
             callbacks: init.callbacks,
             hotkeys,
             recording_since: None,
-            hotkeys_held: false,
+            hotkey_hold: live_shortcuts::HotkeyHold::None,
             hotkey_delivery: DeliveryWatch::default(),
             last_hotkey_heal: None,
             accessibility: trusted,
@@ -286,6 +286,7 @@ impl MainThreadAgent {
                 Err(TryRecvError::Empty) => break,
                 Err(TryRecvError::Disconnected) => {
                     self.hotkeys = None;
+                    self.release_hotkey_hold_on_stop();
                     self.pending_inputs.clear();
                     self.gesture_tracker.clear();
                     status_item::set_automatic(false);
@@ -314,7 +315,11 @@ impl MainThreadAgent {
                     {
                         log_event!("worker error: {error}");
                     }
-                    self.last_error = result.as_ref().err().cloned();
+                    if let Err(error) = &result {
+                        self.last_error = Some(error.clone());
+                    } else if !self.is_shortcuts_not_applied_error() {
+                        self.last_error = None;
+                    }
                     if let Ok(status) = &result {
                         let opening = opening_recheck(
                             Instant::now(),
@@ -441,6 +446,7 @@ impl MainThreadAgent {
         self.automatic = false;
         self.cancelled.store(true, Ordering::Release);
         self.hotkeys = None;
+        self.release_hotkey_hold_on_stop();
         self.hotkey_delivery.clear();
         self.pending_inputs.clear();
         self.gesture_tracker.clear();

@@ -249,6 +249,14 @@ impl Doc {
             .and_then(|table| string(table, "monitor"))
     }
 
+    /// Named workspaces (`A`–`Z`) enabled by `[[rules]]` or `[[workspaces]]` in this file.
+    pub fn named_workspaces(&self) -> Vec<WorkspaceId> {
+        self.workspaces_with_referenced(std::iter::empty())
+            .into_iter()
+            .filter(|workspace| workspace.letter().is_some())
+            .collect()
+    }
+
     /// `defaults`, followed by any other workspaces referenced in `[[rules]]` or `[[workspaces]]`.
     pub fn workspaces_with_referenced(
         &self,

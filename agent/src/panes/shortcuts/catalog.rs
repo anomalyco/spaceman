@@ -1,7 +1,10 @@
 //! The shortcuts Settings › Shortcuts can rebind, each with its built-in chord, and what a
 //! chord does now under `[shortcuts]`.
 
-use spaceman::shortcuts::{self, Chord, Command, Key, Modifiers, Shortcuts};
+use spaceman::{
+    WorkspaceId,
+    shortcuts::{self, Chord, Command, Key, Modifiers, Shortcuts},
+};
 
 /// One rebindable shortcut.
 #[derive(Debug, PartialEq, Eq)]
@@ -32,15 +35,21 @@ impl Action {
         })
     }
 
-    /// The built-in chord under `[shortcuts]`'s modifier, while the built-ins are on.
-    pub fn active_default(&self, shortcuts: &Shortcuts) -> Option<Chord> {
-        self.default_chord(shortcuts.modifier)
-            .filter(|_| shortcuts.defaults)
+    /// The built-in chord under `[shortcuts]`'s modifier, while the built-ins are on and no
+    /// enabled named workspace claims its letter.
+    pub fn active_default(
+        &self,
+        shortcuts: &Shortcuts,
+        named_workspaces: &[WorkspaceId],
+    ) -> Option<Chord> {
+        self.default_chord(shortcuts.modifier).filter(|chord| {
+            shortcuts.defaults && named_workspace_for_key(named_workspaces, chord.key).is_none()
+        })
     }
 
     /// Every chord that runs this shortcut: its bindings, then its built-in chord unless a
-    /// binding took that over.
-    pub fn chords(&self, shortcuts: &Shortcuts) -> Vec<Chord> {
+    /// binding or enabled named workspace took that over.
+    pub fn chords(&self, shortcuts: &Shortcuts, named_workspaces: &[WorkspaceId]) -> Vec<Chord> {
         let command = self.parsed();
         let mut chords = shortcuts
             .bindings
@@ -48,7 +57,7 @@ impl Action {
             .filter(|binding| binding.command.is_some() && binding.command == command)
             .map(|binding| binding.chord)
             .collect::<Vec<_>>();
-        if let Some(default) = self.active_default(shortcuts)
+        if let Some(default) = self.active_default(shortcuts, named_workspaces)
             && shortcuts.binding(default).is_none()
             && !chords.contains(&default)
         {
@@ -171,8 +180,24 @@ impl Occupant {
     }
 }
 
-/// What `chord` runs under `shortcuts`, if anything.
-pub fn occupant(shortcuts: &Shortcuts, chord: Chord) -> Option<Occupant> {
+/// The enabled named workspace whose letter `key` types, if any.
+pub fn named_workspace_for_key(named_workspaces: &[WorkspaceId], key: Key) -> Option<WorkspaceId> {
+    let Key::Character(character) = key else {
+        return None;
+    };
+    named_workspaces.iter().copied().find(|workspace| {
+        workspace
+            .letter()
+            .is_some_and(|letter| letter.eq_ignore_ascii_case(&character))
+    })
+}
+
+/// What `chord` runs under `shortcuts` and `named_workspaces`, if anything.
+pub fn occupant(
+    shortcuts: &Shortcuts,
+    named_workspaces: &[WorkspaceId],
+    chord: Chord,
+) -> Option<Occupant> {
     if let Some(bound) = shortcuts.binding(chord) {
         let command = bound?;
         return Some(
@@ -201,6 +226,17 @@ pub fn occupant(shortcuts: &Shortcuts, chord: Chord) -> Option<Occupant> {
     }
     if !shortcuts.defaults {
         return None;
+    }
+    // Enabled named workspaces take precedence over built-in letter shortcuts when they overlap.
+    if let Some(workspace) = named_workspace_for_key(named_workspaces, chord.key) {
+        if chord.modifiers == shortcuts.modifier {
+            return Some(Occupant::Other(format!("Switch to workspace {workspace}")));
+        }
+        if chord.modifiers == shortcuts.modifier.with_shift() {
+            return Some(Occupant::Other(format!(
+                "Move window to workspace {workspace}"
+            )));
+        }
     }
     if let Some(action) =
         all().find(|action| action.default_chord(shortcuts.modifier) == Some(chord))
@@ -281,36 +317,47 @@ mod tests {
     #[test]
     fn chords_follow_bindings_and_the_base_modifier() {
         let focus_left = find("focus-left").unwrap();
-        assert_eq!(focus_left.chords(&Shortcuts::default()), [chord("alt+h")]);
+        assert_eq!(
+            focus_left.chords(&Shortcuts::default(), &[]),
+            [chord("alt+h")]
+        );
         let moved = parse("\"alt+h\" = \"none\"\n\"ctrl+alt+h\" = \"focus left\"");
-        assert_eq!(focus_left.chords(&moved), [chord("ctrl+alt+h")]);
+        assert_eq!(focus_left.chords(&moved, &[]), [chord("ctrl+alt+h")]);
         let taken = parse("\"alt+h\" = \"layout\"");
-        assert!(focus_left.chords(&taken).is_empty());
+        assert!(focus_left.chords(&taken, &[]).is_empty());
         let hyper = Shortcuts {
             modifier: PRESETS[2].1,
             ..Shortcuts::default()
         };
         let move_left = find("move-left").unwrap();
-        assert_eq!(move_left.chords(&hyper), [chord("ctrl+alt+shift+cmd+h")]);
-        assert!(find("balance").unwrap().chords(&hyper).is_empty());
+        assert_eq!(
+            move_left.chords(&hyper, &[]),
+            [chord("ctrl+alt+shift+cmd+h")]
+        );
+        assert!(find("balance").unwrap().chords(&hyper, &[]).is_empty());
+        // An enabled named workspace H takes precedence over built-in Focus left.
+        let h = [WorkspaceId::named('H').unwrap()];
+        assert!(focus_left.chords(&Shortcuts::default(), &h).is_empty());
     }
 
     #[test]
     fn occupant_names_built_ins_bindings_and_workspace_chords() {
         let defaults = Shortcuts::default();
         assert_eq!(
-            occupant(&defaults, chord("alt+l")),
+            occupant(&defaults, &[], chord("alt+l")),
             Some(Occupant::Action(find("focus-right").unwrap()))
         );
         assert_eq!(
-            occupant(&defaults, chord("alt+shift+3")).unwrap().title(),
+            occupant(&defaults, &[], chord("alt+shift+3"))
+                .unwrap()
+                .title(),
             "Move window to workspace 3"
         );
-        assert_eq!(occupant(&defaults, chord("ctrl+alt+l")), None);
+        assert_eq!(occupant(&defaults, &[], chord("ctrl+alt+l")), None);
         let bound = parse("\"alt+l\" = \"none\"\n\"ctrl+alt+v\" = \"switch 4\"");
-        assert_eq!(occupant(&bound, chord("alt+l")), None);
+        assert_eq!(occupant(&bound, &[], chord("alt+l")), None);
         assert_eq!(
-            occupant(&bound, chord("ctrl+alt+v")).unwrap().title(),
+            occupant(&bound, &[], chord("ctrl+alt+v")).unwrap().title(),
             "Switch workspace 4"
         );
         let scratchpad = Shortcuts {
@@ -318,9 +365,43 @@ mod tests {
             ..Shortcuts::default()
         };
         assert_eq!(
-            occupant(&scratchpad, chord("alt+\\")).unwrap().title(),
+            occupant(&scratchpad, &[], chord("alt+\\")).unwrap().title(),
             "Show or hide the scratchpad"
         );
-        assert_eq!(occupant(&defaults, chord("alt+\\")), None);
+        assert_eq!(occupant(&defaults, &[], chord("alt+\\")), None);
+    }
+
+    #[test]
+    fn occupant_names_enabled_named_workspaces_and_gives_them_precedence() {
+        let defaults = Shortcuts::default();
+        let named = [
+            WorkspaceId::named('A').unwrap(),
+            WorkspaceId::named('H').unwrap(),
+        ];
+        assert_eq!(
+            occupant(&defaults, &named, chord("alt+a")).unwrap().title(),
+            "Switch to workspace A"
+        );
+        assert_eq!(
+            occupant(&defaults, &named, chord("alt+shift+a"))
+                .unwrap()
+                .title(),
+            "Move window to workspace A"
+        );
+        assert_eq!(occupant(&defaults, &[], chord("alt+a")), None);
+        // Workspace H wins over Focus left on alt+h.
+        assert_eq!(
+            occupant(&defaults, &named, chord("alt+h")).unwrap().title(),
+            "Switch to workspace H"
+        );
+        // Explicit unbind frees the named workspace chord.
+        let unbound = parse("\"alt+a\" = \"none\"");
+        assert_eq!(occupant(&unbound, &named, chord("alt+a")), None);
+        // With defaults = false, built-in named workspace shortcuts are inactive.
+        let no_defaults = Shortcuts {
+            defaults: false,
+            ..Shortcuts::default()
+        };
+        assert_eq!(occupant(&no_defaults, &named, chord("alt+a")), None);
     }
 }

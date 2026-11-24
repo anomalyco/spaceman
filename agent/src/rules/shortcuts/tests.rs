@@ -142,6 +142,30 @@ fn modifier_moves_unbound_built_ins_with_it() {
 }
 
 #[test]
+fn modifier_keeps_fixed_scratchpad_unbinds_in_place() {
+    let mut doc = Doc::parse(
+        "version = 1\n[labs]\nscratchpad = true\n[[workspaces]]\nworkspace = \"A\"\nmonitor = \"main\"\n[shortcuts.bindings]\n'alt+\\' = 'none'\n'alt+shift+\\' = 'none'\n'alt+h' = 'none'\n'alt+a' = 'none'\n",
+    );
+    let ctrl_alt = Modifiers {
+        control: true,
+        option: true,
+        ..Modifiers::default()
+    };
+    doc.set_shortcut_modifier(ctrl_alt);
+    let doc = saved(&doc);
+    // Fixed Scratchpad chords stay on Option+\ and Option+Shift+\.
+    assert_eq!(bound(&doc, "alt+\\"), Some(None));
+    assert_eq!(bound(&doc, "alt+shift+\\"), Some(None));
+    assert_eq!(bound(&doc, "ctrl+alt+\\"), None);
+    assert_eq!(bound(&doc, "ctrl+alt+shift+\\"), None);
+    // Built-in layout and enabled named workspace unbinds still follow the base modifier.
+    assert_eq!(bound(&doc, "ctrl+alt+h"), Some(None));
+    assert_eq!(bound(&doc, "ctrl+alt+a"), Some(None));
+    assert_eq!(bound(&doc, "alt+h"), None);
+    assert_eq!(bound(&doc, "alt+a"), None);
+}
+
+#[test]
 fn reset_removes_the_table_and_keeps_everything_else() {
     let mut doc = Doc::parse(SOURCE);
     doc.set_shortcut_modifier(Modifiers {
