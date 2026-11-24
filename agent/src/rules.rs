@@ -6,7 +6,9 @@ use std::path::PathBuf;
 
 use spaceman::{
     WorkspaceId,
-    config::{HudPosition, HudStyle, LayoutMode, MouseFollowsFocus, UpdateChannel},
+    config::{
+        HudPosition, HudStyle, LabFeature, LabsConfig, LayoutMode, MouseFollowsFocus, UpdateChannel,
+    },
 };
 use toml_edit::{
     Array, ArrayOfTables, DocumentMut, InlineTable, Item, Table, TableLike, Value, value,
@@ -90,6 +92,25 @@ impl Doc {
 
     pub fn reload_pending(&self) -> bool {
         self.pending_reload
+    }
+
+    /// The `[labs]` switches as this document sets them.
+    pub fn labs(&self) -> LabsConfig {
+        LabsConfig {
+            scratchpad: self.lab(LabFeature::Scratchpad),
+            activity: self.lab(LabFeature::Activity),
+        }
+    }
+
+    /// Whether `feature`'s switch is on, read straight from the edited file so a toggle shows
+    /// in Settings without waiting for a reload.
+    pub fn lab(&self, feature: LabFeature) -> bool {
+        self.doc
+            .get("labs")
+            .and_then(Item::as_table_like)
+            .and_then(|labs| labs.get(feature.key()))
+            .and_then(Item::as_bool)
+            .unwrap_or(false)
     }
 
     /// Reloads from this document's path (or the active config path if unset).

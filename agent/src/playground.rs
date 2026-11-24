@@ -178,11 +178,16 @@ mod tests {
 
     #[test]
     fn command_shortcuts_follow_sidebar_pane_order() {
-        assert_eq!(Pane::from_shortcut('0'), None);
+        // Every pane is registered; a Lab pane takes a digit only while its switch is on.
+        let labs = spaceman::config::LabsConfig {
+            activity: true,
+            ..spaceman::config::LabsConfig::default()
+        };
+        assert_eq!(Pane::from_shortcut('0', labs), None);
         for (index, expected) in Pane::ALL.into_iter().enumerate() {
             let digit = char::from_digit((index + 1) as u32, 10).unwrap();
-            assert_eq!(Pane::from_shortcut(digit), Some(expected));
+            assert_eq!(Pane::from_shortcut(digit, labs), Some(expected));
         }
-        assert_eq!(Pane::from_shortcut('7'), None);
+        assert_eq!(Pane::from_shortcut('7', labs), None);
     }
 }

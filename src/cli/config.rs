@@ -2,7 +2,9 @@ use std::path::{Path, PathBuf};
 
 use serde::Serialize;
 use spaceman::{
-    config::{HudPosition, HudStyle, LayoutMode, MouseFollowsFocus, UpdateChannel, load_path},
+    config::{
+        HudPosition, HudStyle, LabFeature, LayoutMode, MouseFollowsFocus, UpdateChannel, load_path,
+    },
     spacing::{self, SpacingKey},
 };
 
@@ -174,6 +176,43 @@ impl SettingKey {
     }
 }
 
+/// A `config.toml` key the CLI can read and write: a `[settings]` key or a `[labs]` switch.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum Key {
+    Setting(SettingKey),
+    Lab(LabFeature),
+}
+
+impl Key {
+    fn parse(raw: &str) -> Result<Self, String> {
+        if let Some(lab) = raw.strip_prefix("labs.") {
+            return LabFeature::parse(lab).map(Self::Lab).ok_or_else(|| {
+                format!("unknown Lab {raw:?}; valid Labs: labs.scratchpad, labs.activity")
+            });
+        }
+        SettingKey::parse(raw).map(Self::Setting)
+    }
+
+    const fn as_str(self) -> &'static str {
+        match self {
+            Self::Setting(key) => key.as_str(),
+            Self::Lab(LabFeature::Scratchpad) => "labs.scratchpad",
+            Self::Lab(LabFeature::Activity) => "labs.activity",
+        }
+    }
+
+    /// What the file asks for, every unset key at its default, as text and as JSON.
+    fn read(self, doc: &ConfigDoc) -> (String, serde_json::Value) {
+        match self {
+            Self::Setting(key) => key.read(&doc.settings),
+            Self::Lab(feature) => {
+                let on = doc.labs.is_some_and(|labs| labs.enabled(feature));
+                (on.to_string(), serde_json::Value::Bool(on))
+            }
+        }
+    }
+}
+
 pub(crate) fn run(executable: &str, args: &[&str], path_override: Option<&Path>) -> Outcome {
     let Some((&sub, rest)) = args.split_first() else {
         return Outcome::usage(help::config_help(executable));
@@ -271,10 +310,10 @@ fn run_get(args: &[&str], path_override: Option<&Path>) -> Result<String, String
     let [raw_key] = positional.as_slice() else {
         return Err("usage: spaceman config get <key> [--json]".into());
     };
-    let key = SettingKey::parse(raw_key)?;
+    let key = Key::parse(raw_key)?;
     let path = resolve_config_path(path_override)?;
     let (doc, _) = ConfigDoc::load_or_default(&path)?;
-    let (text, value) = key.read(&doc.settings);
+    let (text, value) = key.read(&doc);
     if json {
         to_json_pretty(&SettingOutput {
             path: None,
@@ -295,6 +334,7 @@ enum SettingValue {
     MouseFollowsFocus(MouseFollowsFocus),
     Outer(i64),
     Spacing(SpacingKey, i64),
+    Lab(LabFeature, bool),
 }
 
 impl SettingValue {
@@ -361,8 +401,11 @@ fn run_set(args: &[&str], path_override: Option<&Path>) -> Result<String, String
     let [raw_key, raw_value] = positional.as_slice() else {
         return Err("usage: spaceman config set <key> <value> [--json]".into());
     };
-    let key = SettingKey::parse(raw_key)?;
-    let parsed_value = SettingValue::parse(key, raw_value)?;
+    let key = Key::parse(raw_key)?;
+    let parsed_value = match key {
+        Key::Setting(setting) => SettingValue::parse(setting, raw_value)?,
+        Key::Lab(feature) => SettingValue::Lab(feature, parse_switch(key, raw_value)?),
+    };
     let path = resolve_config_path(path_override)?;
 
     let (text, value) = ConfigDoc::edit_locked(&path, |doc| {
@@ -423,6 +466,14 @@ fn run_set(args: &[&str], path_override: Option<&Path>) -> Result<String, String
                     serde_json::Value::from(value),
                 )
             }
+            SettingValue::Lab(feature, on) => {
+                doc.labs_mut().set(feature, on);
+                doc.prune_labs();
+                (
+                    format!("set {} = {on}", key.as_str()),
+                    serde_json::Value::Bool(on),
+                )
+            }
         };
         Ok((output, true))
     })?;
@@ -442,14 +493,29 @@ fn run_reset(args: &[&str], path_override: Option<&Path>) -> Result<String, Stri
     let [raw_key] = positional.as_slice() else {
         return Err("usage: spaceman config reset <key> [--json]".into());
     };
-    let key = SettingKey::parse(raw_key)?;
+    let key = Key::parse(raw_key)?;
     let path = resolve_config_path(path_override)?;
     let (text, value) = ConfigDoc::edit_locked(&path, |doc| {
-        let changed = key.is_set(&doc.settings);
-        if changed {
-            key.clear(&mut doc.settings);
-        }
-        let (effective, value) = key.read(&doc.settings);
+        let changed = match key {
+            Key::Setting(setting) => {
+                let changed = setting.is_set(&doc.settings);
+                if changed {
+                    setting.clear(&mut doc.settings);
+                }
+                changed
+            }
+            Key::Lab(feature) => {
+                let changed = doc.labs.is_some_and(|labs| labs.is_set(feature));
+                if changed {
+                    if let Some(labs) = &mut doc.labs {
+                        labs.set(feature, false);
+                    }
+                    doc.prune_labs();
+                }
+                changed
+            }
+        };
+        let (effective, value) = key.read(doc);
         Ok((
             (format!("reset {} = {effective}", key.as_str()), value),
             changed,
@@ -463,6 +529,18 @@ fn run_reset(args: &[&str], path_override: Option<&Path>) -> Result<String, Stri
         })
     } else {
         Ok(text)
+    }
+}
+
+/// `true` or `false`, the only values a `[labs]` switch takes.
+fn parse_switch(key: Key, raw: &str) -> Result<bool, String> {
+    match raw {
+        "true" => Ok(true),
+        "false" => Ok(false),
+        _ => Err(format!(
+            "invalid value for {}: expected 'true' or 'false', got {raw:?}",
+            key.as_str()
+        )),
     }
 }
 

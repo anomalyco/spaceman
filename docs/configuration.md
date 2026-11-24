@@ -283,6 +283,7 @@ command changes behavior. Unknown keys are config errors.
 ```toml
 [labs]
 scratchpad = false                    # optional (default: false); the i3/sway-style Scratchpad
+activity = false                      # optional (default: false); Settings › Activity
 ```
 
 `scratchpad = true` enables the Scratchpad (see [Controls › Scratchpad](controls.md#scratchpad-lab)) and
@@ -290,6 +291,17 @@ registers its two shortcuts, `Option+\` and `Option+Shift+\`, live without a res
 hotkey registration if tiling is paused); a `[shortcuts]` binding on either chord takes it instead. The
 `spaceman ctl scratchpad` commands follow the switch live. Turning the switch off while windows are
 hidden in the scratchpad brings them back on screen, where they tile again.
+
+`activity = true` adds Settings › Activity, the live arrangement log, journal health, process vitals,
+and Save Snapshot (see [Restarts and Recovery](features/restarts-and-recovery.md)). With it off the pane
+stays out of the Settings sidebar and its `⌘6` shortcut does nothing; `spaceman doctor` and the journal
+keep recording either way. Turning it off while the pane is open returns Settings to General.
+
+```sh
+spaceman config set labs.activity true
+spaceman config get labs.activity
+spaceman config reset labs.activity
+```
 
 ## Remembered Placements
 

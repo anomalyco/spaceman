@@ -201,6 +201,49 @@ pub struct LabsConfig {
     /// The i3/sway-style Scratchpad ([`crate::scratchpad`]) and its `⌥\` / `⌥⇧\` shortcuts.
     #[serde(default)]
     pub scratchpad: bool,
+    /// Settings › Activity: the live arrangement log, doctor diagnostics, and process vitals.
+    #[serde(default)]
+    pub activity: bool,
+}
+
+impl LabsConfig {
+    /// Whether `feature`'s switch is on.
+    #[must_use]
+    pub const fn enabled(self, feature: LabFeature) -> bool {
+        match feature {
+            LabFeature::Scratchpad => self.scratchpad,
+            LabFeature::Activity => self.activity,
+        }
+    }
+}
+
+/// Every `[labs]` switch, one per experimental feature.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum LabFeature {
+    /// The i3/sway-style Scratchpad ([`crate::scratchpad`]) and its `⌥\` / `⌥⇧\` shortcuts.
+    Scratchpad,
+    /// Settings › Activity: the live arrangement log, doctor diagnostics, and process vitals.
+    Activity,
+}
+
+impl LabFeature {
+    /// Every switch, in the order `[labs]` lists them.
+    pub const ALL: [Self; 2] = [Self::Scratchpad, Self::Activity];
+
+    /// The `[labs]` key that turns this feature on.
+    #[must_use]
+    pub const fn key(self) -> &'static str {
+        match self {
+            Self::Scratchpad => "scratchpad",
+            Self::Activity => "activity",
+        }
+    }
+
+    /// Parses a `[labs]` key such as `activity`.
+    #[must_use]
+    pub fn parse(key: &str) -> Option<Self> {
+        Self::ALL.into_iter().find(|feature| feature.key() == key)
+    }
 }
 
 #[derive(Clone, Debug, Default)]
@@ -983,6 +1026,38 @@ monitor = "main"
         );
         assert!(Config::parse("version = 1\n[labs]\nwarp_drive = true\n").is_err());
         assert!(Config::parse("version = 1\n[labs]\nscratchpad = 1\n").is_err());
+    }
+
+    #[test]
+    fn parses_labs_with_activity_off_by_default() {
+        for source in ["version = 1", "version = 1\n[labs]\n"] {
+            let config = Config::parse(source).unwrap();
+            assert!(!config.labs().activity);
+            assert!(!config.labs().enabled(LabFeature::Activity));
+        }
+        assert!(!Config::default().labs().activity);
+        let config = Config::parse("version = 1\n[labs]\nactivity = true\n").unwrap();
+        assert!(config.labs().activity);
+        assert!(config.labs().enabled(LabFeature::Activity));
+        assert!(
+            !config.labs().enabled(LabFeature::Scratchpad),
+            "each switch stands alone"
+        );
+        // Both switches share the table.
+        let both =
+            Config::parse("version = 1\n[labs]\nscratchpad = true\nactivity = true\n").unwrap();
+        assert!(both.labs().enabled(LabFeature::Scratchpad));
+        assert!(both.labs().enabled(LabFeature::Activity));
+    }
+
+    #[test]
+    fn lab_features_round_trip_their_keys() {
+        for feature in LabFeature::ALL {
+            assert_eq!(LabFeature::parse(feature.key()), Some(feature));
+        }
+        assert_eq!(LabFeature::parse("activity").unwrap().key(), "activity");
+        assert_eq!(LabFeature::parse("scroll"), None);
+        assert_eq!(LabFeature::parse(""), None);
     }
 
     #[test]

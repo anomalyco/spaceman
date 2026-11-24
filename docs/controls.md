@@ -132,7 +132,7 @@ The menu-bar control shows active workspace/layout glyphs and runtime errors. It
   `Settings > General > Workspace HUD` picks `Off`, `Icons`, or `Layouts` (`[settings] hud` and `hud_style`, default `Icons`),
   and its `Position` picks `Bottom` or `Top` (`[settings] hud_position`, default `Bottom`) while the HUD is on;
 - `Launch at Login`, shown checked when macOS has enabled the signed app bundle;
-- `Settings...` (`⌘,`), opening the Rune Settings window (`General`, `Layout`, `Rules`, `Workspaces`, `Shortcuts`, and `Activity`, plus `⇧⌘D` Playground);
+- `Settings...` (`⌘,`), opening the Rune Settings window (`General`, `Layout`, `Rules`, `Workspaces`, `Shortcuts`, and, with `[labs] activity = true`, `Activity`, plus `⇧⌘D` Playground);
 - `Check for Updates...`, which checks and opens Settings (its sidebar and `General > Updates` show
   the result), or `Install Spaceman <version> and Restart` once an update is downloaded and verified;
 - `Quit Spaceman` (`⌘Q`).
@@ -246,7 +246,7 @@ Spaceman registers the `spaceman://` URL scheme (and clickable web bounce links 
 `https://anoma.ly/spaceman/open/?to=...`) to open Settings directly onto a pane, feature, or Lab:
 
 - `spaceman://settings` — open Settings
-- `spaceman://settings/<pane>` — open `general`, `rules`, `workspaces`, `shortcuts`, `labs`, `layout`, or `activity` (plus optional `/<focus>`)
+- `spaceman://settings/<pane>` — open `general`, `rules`, `workspaces`, `shortcuts`, `labs`, `layout`, or `activity` (plus optional `/<focus>`); `activity` falls back to `general` while `[labs] activity` is off
 - `spaceman://labs` / `spaceman://labs/<slug>` — open Settings › Labs and highlight `<slug>` (e.g. `scrolling-strip`, `playground`)
 - `spaceman://features/<slug>` — open the Settings pane and highlight for a feature (e.g. `workspaces`, `rules`, `shortcuts`, `gaps`, `hud`)
 

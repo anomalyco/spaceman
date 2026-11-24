@@ -22,8 +22,8 @@ Spaceman currently:
 - persists active workspaces, nested split layouts, tile order and weights, and parked-window recovery
   metadata across Spaceman restarts, and remembers each application's window placements by bundle
   identifier so reboots and startup recovery return windows to their workspaces;
-- journals window arrangements and model/screen disagreements locally, summarized in Settings (`Activity`)
-  and by `spaceman doctor`;
+- journals window arrangements and model/screen disagreements locally, summarized by
+  `spaceman doctor` and, with the `[labs] activity` switch on, in Settings (`Activity`);
 - shows a non-activating Workspace HUD capsule on each display on workspace switches,
   cross-workspace moves, and layout toggles (`[settings] hud = true`): a row of that display's
   workspaces, drawn as numbers and app icons by default or (`hud_style = "layouts"`) as their layouts with app
@@ -118,8 +118,8 @@ Accessibility is missing), `Pause Tiling` (or `Resume Tiling` while paused), `Wo
 `Launch at Login`, `Settings...` (`⌘,`), `Check for Updates...`, and `Quit Spaceman` (`⌘Q`). Settings
 includes `General`, `Layout` (Dwindle or Columns new-window tiling, window gaps, screen-edge padding,
 and a single-window width for wide displays, over a live preview), `Rules`, `Workspaces`,
-`Shortcuts`, and `Activity` (title-free arrangement
-diagnostics and process vitals). If macOS requires approval, the login item action opens **System
+`Shortcuts`, and, with `[labs] activity = true`, `Activity` (title-free arrangement diagnostics and
+process vitals). If macOS requires approval, the login item action opens **System
 Settings > General > Login Items & Extensions**.
 
 ## Everyday Use

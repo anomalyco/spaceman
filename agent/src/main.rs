@@ -159,7 +159,18 @@ impl Ui {
         self.hud_preview = None;
         let pane = match target.pane {
             Some(deep_pane) => match Pane::from_deep_link(deep_pane) {
-                Some(pane) => pane,
+                Some(pane) if pane.visible(self.doc.labs()) => pane,
+                Some(pane) => {
+                    let line = format!(
+                        "spaceman: deep link pane '{}' is behind an off [labs] switch; opening General\n",
+                        pane.key()
+                    );
+                    drop(std::io::Write::write_all(
+                        &mut std::io::stderr().lock(),
+                        line.as_bytes(),
+                    ));
+                    Pane::General
+                }
                 None => {
                     let line = format!(
                         "spaceman: deep link pane '{}' is not registered in this build; opening General\n",
@@ -341,6 +352,17 @@ impl Ui {
         self.doc = self.doc.reloaded();
         self.look_up_apps();
         self.sync_hud_from_doc();
+        self.leave_hidden_lab_pane();
+    }
+
+    /// Moves Settings off a Lab pane whose switch just turned off.
+    pub(crate) fn leave_hidden_lab_pane(&mut self) {
+        if !self.pane.visible(self.doc.labs()) {
+            self.pane = Pane::General;
+            self.navigated = true;
+            self.menu = None;
+            self.drag = None;
+        }
     }
 
     /// Handles a config-changed notification from the agent pump: reloads immediately when
@@ -447,7 +469,7 @@ fn on_key(ui: &mut Ui, event: &KeyEvent, _tx: &mut Tx) -> bool {
         && !event.mods.shift
         && !event.mods.alt
         && let rune::Key::Command(digit) = event.key
-        && let Some(pane) = Pane::from_shortcut(digit)
+        && let Some(pane) = Pane::from_shortcut(digit, ui.doc.labs())
     {
         ui.select_pane(pane);
         return true;
@@ -650,5 +672,56 @@ mod tests {
         // Security invariant: config doc is untouched.
         assert_eq!(ui.doc.hud(), initial_hud);
         assert_eq!(ui.doc.rules().len(), initial_rules);
+    }
+
+    fn doc_with_activity_lab() -> Doc {
+        Doc::parse(concat!(
+            include_str!("../fixtures/config.toml"),
+            "\n[labs]\nactivity = true\n"
+        ))
+    }
+
+    #[test]
+    fn activity_deep_link_opens_its_pane_only_with_the_lab_on() {
+        let activity = parse_url("spaceman://settings/activity").unwrap().resolve();
+
+        let mut ui = playground::blank_fixture();
+        ui.open_target(activity.clone());
+        assert_eq!(ui.pane, Pane::General, "hidden until the Lab is on");
+        // Security invariant: opening a deep link never turns a Lab on.
+        assert!(!ui.doc.labs().activity);
+
+        ui.doc = doc_with_activity_lab();
+        ui.open_target(activity);
+        assert_eq!(ui.pane, Pane::Activity);
+    }
+
+    #[test]
+    fn turning_the_activity_lab_off_leaves_the_pane_for_general() {
+        let mut ui = playground::blank_fixture();
+        ui.doc = doc_with_activity_lab();
+        ui.select_pane(Pane::Activity);
+        ui.leave_hidden_lab_pane();
+        assert_eq!(ui.pane, Pane::Activity, "still open while the Lab is on");
+
+        ui.doc = Doc::parse(include_str!("../fixtures/config.toml"));
+        ui.leave_hidden_lab_pane();
+        assert_eq!(ui.pane, Pane::General);
+    }
+
+    #[test]
+    fn labs_are_read_from_the_edited_document_not_a_reload() {
+        let mut ui = playground::blank_fixture();
+        assert!(!ui.doc.labs().activity);
+        assert!(!ui.doc.labs().scratchpad);
+
+        let doc = Doc::parse(concat!(
+            include_str!("../fixtures/config.toml"),
+            "\n[labs]\nscratchpad = true\nactivity = true\n"
+        ));
+        assert!(doc.lab(spaceman::config::LabFeature::Scratchpad));
+        assert!(doc.lab(spaceman::config::LabFeature::Activity));
+        ui.doc = doc;
+        assert!(ui.doc.labs().activity);
     }
 }

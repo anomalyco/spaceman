@@ -63,7 +63,7 @@ pub fn view(ui: &Ui, cx: &mut Cx<Ui>) -> El {
 
 fn sidebar(ui: &Ui, p: Paint) -> El {
     let mut nav = col().key("nav").role("list").focus_group().focus_follows();
-    for pane in Pane::ALL {
+    for pane in Pane::listed(ui.doc.labs()) {
         nav = nav.child(nav_slot(p, pane, ui.pane == pane));
     }
     col()

@@ -94,6 +94,9 @@ monitor = "main"
 # Labs are experimental features, each off by default. scratchpad = true adds an
 # i3/sway-style Scratchpad: Option+Shift+\ hides the focused window in it and
 # Option+\ summons it centred on the focused display (or hides it again).
+# activity = true adds Settings › Activity, the live arrangement log and
+# doctor diagnostics; with it off the pane stays out of Settings.
 #
 # [labs]
 # scratchpad = false
+# activity = false

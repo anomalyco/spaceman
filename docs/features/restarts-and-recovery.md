@@ -48,7 +48,8 @@ Placement recall (reboot, fresh start, or app relaunch)     // recover.memory
 └── Arrangement changes recorded after holding 10 s (quitting does not shrink the memory)
 
 Diagnose                                                   // recover.doctor
-├── Settings › Activity -> 24h health, recent journal rows, procwatch vitals, Save Snapshot
+├── Settings › Activity ([labs] activity = true) -> 24h health, recent journal rows, procwatch
+│                                vitals, Save Snapshot
 ├── spaceman doctor [hours] -> starts, restorations, recalls, wrong placements, anomalies,
 │                                last arrangement
 ├── spaceman ctl wrong -> marks the journal and snapshots the arrangement right now
@@ -63,7 +64,7 @@ Menu bar: workspaces (switch) | Pause Tiling (pause + restore) | Workspace HUD |
           | Check for Updates... / Install Spaceman <version> and Restart | Quit Spaceman (⌘Q)
 Settings: sidebar foot and General -> Updates (Install & Restart, Switch to Dev/Stable, Download,
           Check Now, Update channel)
-Settings: Activity -> Journal (Show in Finder) | Save Snapshot
+Settings: Activity ([labs] activity = true) -> Journal (Show in Finder) | Save Snapshot
 CLI:      spaceman ctl pause | resume | quit | restart | status | debug
           spaceman doctor [hours]      // reads files directly; works with the agent stopped
           spaceman hud

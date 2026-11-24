@@ -10,6 +10,7 @@ use spaceman::{
     config::{Config, HudPosition, HudStyle, MouseFollowsFocus, WindowDisposition},
 };
 
+mod labs;
 mod regressions;
 
 use super::{Outcome, try_run_with_config_path};

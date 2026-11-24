@@ -6,7 +6,10 @@ pub mod shortcuts;
 pub(crate) mod workspaces;
 
 use rune::{El, Icon};
-use spaceman::app::{UiLaunchAtLogin, UiUpdateStatus};
+use spaceman::{
+    app::{UiLaunchAtLogin, UiUpdateStatus},
+    config::{LabFeature, LabsConfig},
+};
 
 use crate::{
     Ui, activity,
@@ -105,10 +108,24 @@ impl Pane {
         }
     }
 
-    /// Maps `⌘1`..`⌘N` in sidebar order.
-    pub fn from_shortcut(digit: char) -> Option<Pane> {
+    /// Whether Settings lists this pane with `labs` as configured. A Lab pane stays out of the
+    /// sidebar until its `[labs]` switch is on.
+    pub const fn visible(self, labs: LabsConfig) -> bool {
+        match self {
+            Pane::Activity => labs.enabled(LabFeature::Activity),
+            Pane::General | Pane::Layout | Pane::Rules | Pane::Workspaces | Pane::Shortcuts => true,
+        }
+    }
+
+    /// Pane::ALL without the Lab panes whose switch is off, in sidebar order.
+    pub fn listed(labs: LabsConfig) -> impl Iterator<Item = Pane> {
+        Self::ALL.into_iter().filter(move |pane| pane.visible(labs))
+    }
+
+    /// Maps `⌘1`..`⌘N` in the sidebar order `labs` lists, so a hidden Lab pane takes no digit.
+    pub fn from_shortcut(digit: char, labs: LabsConfig) -> Option<Pane> {
         let index = digit.to_digit(10)?.checked_sub(1)? as usize;
-        Self::ALL.get(index).copied()
+        Self::listed(labs).nth(index)
     }
 
     /// Maps a `spaceman://` deep-link pane to a registered Settings pane.
@@ -129,6 +146,9 @@ impl Pane {
         }
     }
 }
+
+#[cfg(test)]
+mod tests;
 
 pub(crate) const SCENES: &[Scene] = &[
     ("general", |ui| reset_fixture(ui, Pane::General)),
