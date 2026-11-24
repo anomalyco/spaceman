@@ -534,7 +534,11 @@ impl MainThreadAgent {
             self.last_ui_refresh = Instant::now();
             while let Ok(probe) = self.probe.results.try_recv() {
                 if let Some(status) = probe.launch_at_login {
-                    self.launch_at_login = UiLaunchAtLogin::from_result(status);
+                    apply_login_probe(
+                        &mut self.launch_at_login,
+                        status,
+                        status_item::set_launch_at_login,
+                    );
                 }
                 if probe.config_stamp != self.config_stamp {
                     config_changed = true;
@@ -636,6 +640,19 @@ pub(super) fn automatic_started_status<'a>(
         *last_error = None;
         automatic_status
     }
+}
+
+/// Applies a fresh background login-item status probe to both the published
+/// Settings snapshot and the menu bar item (when the status read succeeded).
+fn apply_login_probe(
+    launch_at_login: &mut UiLaunchAtLogin,
+    status: Result<login_item::Status, String>,
+    update_menu: impl FnOnce(login_item::Status),
+) {
+    if let Ok(login_status) = status {
+        update_menu(login_status);
+    }
+    *launch_at_login = UiLaunchAtLogin::from_result(status);
 }
 
 fn is_cancelled_error(error: &str) -> bool {
@@ -803,5 +820,33 @@ mod tests {
             "Restore error".into()
         ));
         assert_eq!(empty.as_deref(), Some("Restore error"));
+    }
+
+    #[test]
+    fn login_probe_updates_both_snapshot_and_menu_item() {
+        let mut ui = UiLaunchAtLogin::Off;
+        let mut menu = None;
+        apply_login_probe(&mut ui, Ok(login_item::Status::Enabled), |s| menu = Some(s));
+        assert_eq!(ui, UiLaunchAtLogin::On);
+        assert_eq!(menu, Some(login_item::Status::Enabled));
+
+        menu = None;
+        apply_login_probe(&mut ui, Ok(login_item::Status::RequiresApproval), |s| {
+            menu = Some(s)
+        });
+        assert_eq!(ui, UiLaunchAtLogin::NeedsApproval);
+        assert_eq!(menu, Some(login_item::Status::RequiresApproval));
+
+        menu = None;
+        apply_login_probe(&mut ui, Ok(login_item::Status::Disabled), |s| {
+            menu = Some(s)
+        });
+        assert_eq!(ui, UiLaunchAtLogin::Off);
+        assert_eq!(menu, Some(login_item::Status::Disabled));
+
+        menu = None;
+        apply_login_probe(&mut ui, Err("unknown".into()), |s| menu = Some(s));
+        assert_eq!(ui, UiLaunchAtLogin::Failed("unknown".into()));
+        assert_eq!(menu, None);
     }
 }
