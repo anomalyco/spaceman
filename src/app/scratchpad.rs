@@ -219,11 +219,12 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
         // confirms the window arrived at its centered summon frame; until then its owner's
         // cycles confirm or retry the centered destination rather than the former tile frame.
         if let Some(recovery) = recovery {
+            let expected = self.restore_target(frame);
             if self
                 .backend
                 .window_server_frame(&window)
                 .is_some_and(|actual| {
-                    actual.position_approximately_equals(frame, RESTORE_CONFIRM_TOLERANCE)
+                    actual.position_approximately_equals(expected, RESTORE_CONFIRM_TOLERANCE)
                 })
             {
                 self.scratchpad.set_pending_summon(&window, None);
@@ -260,6 +261,7 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
             self.scratchpad.set_pending_summon(window, None);
             return macos::ApplyOutcome::Applied;
         };
+        let target = self.restore_target(target);
         if self
             .backend
             .window_server_frame(window)
@@ -391,14 +393,20 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
         extra_stale: &[crate::PhysicalWindowId],
     ) -> bool {
         let reported = self.backend.focused_window();
-        let mut stale: Vec<Option<crate::PhysicalWindowId>> = self
-            .pending_focus
-            .take()
-            .map(|pending| pending.stale)
-            .unwrap_or_default()
-            .into_iter()
-            .filter(|window| window.as_ref() != Some(target))
-            .collect();
+        let mut stale: Vec<Option<crate::PhysicalWindowId>> = Vec::new();
+        if let Some(pending) = self.pending_focus.take()
+            && pending.at.elapsed() < super::commands::FOCUS_SETTLE
+        {
+            for window in pending.stale {
+                if window.as_ref() != Some(target) && !stale.contains(&window) {
+                    stale.push(window);
+                }
+            }
+            let previous = Some(pending.target);
+            if previous.as_ref() != Some(target) && !stale.contains(&previous) {
+                stale.push(previous);
+            }
+        }
         if reported.as_ref() != Some(target) && !stale.contains(&reported) {
             stale.push(reported);
         }
