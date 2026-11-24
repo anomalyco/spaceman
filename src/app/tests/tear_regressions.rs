@@ -213,6 +213,34 @@ fn a_display_change_leaves_a_held_up_parked_window_alone() {
     assert_hidden(&runtime, &hidden);
 }
 
+/// A display whose visible frame grows at the bottom (its Dock moved away) moves
+/// a held-up parked window down to the new corner rather than leaving more of
+/// it showing.
+#[test]
+fn a_display_that_grows_at_the_bottom_re_parks_its_held_up_windows() {
+    let (mut runtime, hidden) = parked_on_laptop();
+    let cancelled = AtomicBool::new(false);
+    for frames in [
+        &mut runtime.backend.frames,
+        &mut runtime.backend.server_frames,
+    ] {
+        if let Some(frame) = frames.get_mut(&hidden) {
+            frame.y -= 31;
+        }
+    }
+    runtime.backend.parked_writes.clear();
+    runtime.recently_parked.clear();
+    let mut grown = main_only().displays().to_vec();
+    grown[0].frame.height += 70;
+    let grown = macos::DisplayOutputs::new(grown).unwrap();
+
+    runtime.cycle(grown.clone(), &cancelled).unwrap();
+
+    assert!(runtime.backend.parked_writes.contains(&hidden));
+    let main = grown.main().frame;
+    assert_eq!(runtime.backend.frames[&hidden].y, main.y + main.height - 1);
+}
+
 /// Laptop only: a window sent to workspace 2 while its app stays frontmost on 1.
 fn parked_on_laptop() -> (WorkspaceRuntime<FakeBackend>, crate::PhysicalWindowId) {
     let hidden = app_window(1, 10);

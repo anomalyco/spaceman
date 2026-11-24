@@ -4,6 +4,10 @@
 
 use super::*;
 
+/// How far above its parking corner macOS may hold a window to keep its title
+/// bar on screen, with room to spare over the 66 points a unified toolbar needs.
+const TITLE_BAR_HOLD_LIMIT: i32 = 80;
+
 /// The displays the runtime last saw, and the hidden windows still to re-park
 /// since they changed.
 #[derive(Default)]
@@ -54,6 +58,7 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
             .map(|resolved| resolved.workspace)
             .collect();
         let displays: Vec<_> = outputs.frames().collect();
+        let screens = outputs.screens();
         for window in std::mem::take(&mut self.displays.repark_pending) {
             if !self.parked.contains_key(&window) || self.parking_exempt.contains(&window) {
                 continue;
@@ -74,7 +79,7 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
             } else {
                 continue;
             };
-            if !self.repark_for_displays(&window, output, &displays) {
+            if !self.repark_for_displays(&window, output, &displays, &screens) {
                 self.displays.repark_pending.insert(window);
             }
         }
@@ -86,12 +91,16 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
         window: &crate::PhysicalWindowId,
         output: crate::Rect,
         displays: &[crate::Rect],
+        screens: &[crate::Rect],
     ) -> bool {
         let Some(current) = self.backend.window_server_frame(window) else {
             return false;
         };
-        let target = crate::geometry::parked_frame(output, displays, current);
+        let target = crate::geometry::parked_frame_clear_of(output, displays, screens, current);
+        // Already at its corner, held up only by its title bar. A window held up
+        // further sits where a display that grew at the bottom shows more of it.
         if crate::geometry::parked_at(current, target, 0)
+            && target.y - current.y <= TITLE_BAR_HOLD_LIMIT
             && !crate::geometry::shows_on(current, displays)
         {
             return true;

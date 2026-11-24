@@ -90,8 +90,22 @@ pub fn parked_at(actual: Rect, target: Rect, tolerance: i32) -> bool {
     (actual.x - target.x).abs() <= tolerance && actual.y <= target.y + tolerance
 }
 
+/// [`parked_frame_clear_of`] when the displays' full bounds are their visible frames.
 #[must_use]
 pub fn parked_frame(output: Rect, displays: &[Rect], window: Rect) -> Rect {
+    parked_frame_clear_of(output, displays, displays, window)
+}
+
+/// Where to park `window` beyond an edge of one of `displays` (visible frames),
+/// nearest `output`, clear of every display's full bounds in `screens`
+/// (menu bar and Dock included).
+#[must_use]
+pub fn parked_frame_clear_of(
+    output: Rect,
+    displays: &[Rect],
+    screens: &[Rect],
+    window: Rect,
+) -> Rect {
     // Keep one pixel of a top corner at a display's bottom corner so macOS
     // does not clamp the window back on-screen; a strip along the whole edge
     // would show a sliver of every hidden window. macOS may hold a titled
@@ -127,10 +141,10 @@ pub fn parked_frame(output: Rect, displays: &[Rect], window: Rect) -> Rect {
                 height: frame.y + frame.height - held.y,
                 ..*held
             };
-            !shows_on(swept, displays)
-                && !displays.iter().any(|display| {
-                    display.contains_center(*frame) || display.contains_center(*held)
-                })
+            !shows_on(swept, screens)
+                && !screens
+                    .iter()
+                    .any(|screen| screen.contains_center(*frame) || screen.contains_center(*held))
         })
         .min_by_key(|(_, _, distance)| *distance)
         .map_or(
@@ -258,6 +272,36 @@ mod tests {
                 };
                 assert!(!shows_on(held, &[left, right]), "{held:?}");
             }
+        }
+    }
+
+    #[test]
+    fn a_window_held_up_stays_off_a_neighbors_menu_bar() {
+        let rect = |x, y, width, height| Rect {
+            x,
+            y,
+            width,
+            height,
+        };
+        let screens = [
+            rect(0, 0, 1920, 1080),
+            rect(0, 1080, 1920, 1080),
+            rect(1920, 1443, 1920, 1080),
+        ];
+        let displays = [
+            rect(0, 25, 1920, 1055),
+            rect(0, 1105, 1920, 1055),
+            rect(1920, 1480, 1920, 1043),
+        ];
+        let window = rect(0, 0, 600, 400);
+        let parked = parked_frame_clear_of(displays[0], &displays, &screens, window);
+
+        for held in [0, 31, 65, 399] {
+            let held = Rect {
+                y: parked.y - held,
+                ..parked
+            };
+            assert!(!shows_on(held, &screens), "{held:?}");
         }
     }
 
