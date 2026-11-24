@@ -80,10 +80,14 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
         self.note_outputs(&outputs);
         // Parking is durable before workspace ownership. A crash between those
         // writes must not strand an unowned window behind an otherwise valid state.
+        // Hidden scratchpad windows are unowned on purpose until summoned.
         let unowned = self
             .parked
             .keys()
-            .filter(|window| self.workspaces.workspace_of_any(window).is_none())
+            .filter(|window| {
+                self.workspaces.workspace_of_any(window).is_none()
+                    && !self.scratchpad.contains(window)
+            })
             .cloned()
             .collect::<Vec<_>>();
         let pending = self.restore_windows(unowned);

@@ -18,6 +18,9 @@ pub(crate) struct ConfigDoc {
     pub version: u32,
     #[serde(default, skip_serializing_if = "SettingsDoc::is_empty")]
     pub settings: SettingsDoc,
+    /// `[labs]`, carried through untouched: no CLI command edits it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub labs: Option<LabsDoc>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub rules: Vec<RuleDoc>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
@@ -25,6 +28,13 @@ pub(crate) struct ConfigDoc {
     /// `[shortcuts]`, carried through untouched: no CLI command edits it.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub shortcuts: Option<ShortcutsDoc>,
+}
+
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(deny_unknown_fields)]
+pub(crate) struct LabsDoc {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub scratchpad: Option<bool>,
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
@@ -41,6 +51,7 @@ impl Default for ConfigDoc {
         Self {
             version: 1,
             settings: SettingsDoc::default(),
+            labs: None,
             rules: Vec::new(),
             workspaces: Vec::new(),
             shortcuts: None,

@@ -103,6 +103,8 @@ pub(super) struct WorkspaceRuntime<B = MacWorkspaceBackend> {
     /// Windows the user floated with Toggle Float. They stay floating (and
     /// survive agent restarts) until toggled back, unlike a rule's windows.
     pub(super) manual_floating: HashSet<crate::PhysicalWindowId>,
+    /// The Scratchpad Lab's windows; hidden ones are parked and owned by no workspace.
+    pub(super) scratchpad: crate::scratchpad::ScratchpadState,
     pub(super) config: Config,
     pub(super) foreground_lanes: HashMap<String, DisplaySelector>,
     /// Global focus history across displays: the workspace focused now and the
@@ -194,6 +196,8 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
                     self.note_outputs(outputs);
                 }
                 let requested = self.parked.len();
+                // Restored scratchpad windows are ordinary windows when tiling resumes.
+                self.scratchpad.clear();
                 let failed = self.restore_all();
                 self.journal_restore("restore all", requested, failed);
                 // Pause, quit and restart all restore first; the layout they
@@ -207,6 +211,7 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
                 return None;
             }
         };
+        self.sync_scratchpad(&outputs);
         self.check_arrangement(&outputs);
         Some(WorkerResult::Status {
             result,
@@ -264,6 +269,7 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
             WorkerAction::Balance => rt.balance_focused(outputs, cancelled),
             WorkerAction::ToggleFullscreenLayout => rt.toggle_fullscreen_layout(outputs, cancelled),
             WorkerAction::ToggleFloat => rt.toggle_float(outputs, cancelled),
+            WorkerAction::Scratchpad(command) => rt.scratchpad_command(command, outputs, cancelled),
             WorkerAction::MarkWrong => {
                 rt.mark_wrong();
                 Ok(rt.status(0, &outputs))
@@ -338,6 +344,7 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
             inaccessible_since: HashMap::new(),
             minimum_sizes: HashMap::new(),
             manual_floating,
+            scratchpad: crate::scratchpad::ScratchpadState::default(),
             config,
             foreground_lanes: HashMap::new(),
             last_focused_workspace: None,

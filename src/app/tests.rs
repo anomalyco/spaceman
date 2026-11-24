@@ -14,6 +14,7 @@ mod parking;
 mod reconciliation;
 mod reliability;
 mod rules;
+mod scratchpad;
 mod spacing;
 mod startup;
 mod switching;

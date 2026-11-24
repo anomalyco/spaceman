@@ -25,8 +25,8 @@ The complete example is [config.example.toml](../config.example.toml).
 ## Current Schema
 
 The parser rejects unknown fields. The root must contain `version = 1` and may contain an optional
-`[settings]` table, an optional `[shortcuts]` table (see [Shortcuts](#shortcuts)), plus repeated
-`[[rules]]` and `[[workspaces]]` tables.
+`[settings]` table, an optional `[shortcuts]` table (see [Shortcuts](#shortcuts)), an optional
+`[labs]` table (see [Labs](#labs)), plus repeated `[[rules]]` and `[[workspaces]]` tables.
 
 ```toml
 version = 1
@@ -176,6 +176,23 @@ skipped and logged in `agent.log` while the other shortcuts register.
 Shortcut changes take effect the next time Spaceman starts (`spaceman ctl restart`); rules, displays,
 and the HUD still reload live. Settings › Shortcuts lists the built-in shortcuts, and the menu-bar
 workspace list keeps showing the built-in `Option`+number/letter hints next to each workspace.
+
+## Labs
+
+`[labs]` turns on experimental features one by one. Every switch is off by default, and with all of
+them off Spaceman behaves exactly as if Labs did not exist: no extra shortcuts register and no
+command changes behavior. Unknown keys are config errors.
+
+```toml
+[labs]
+scratchpad = false                    # optional (default: false); the i3/sway-style Scratchpad
+```
+
+`scratchpad = true` enables the Scratchpad (see [Controls › Scratchpad](controls.md#scratchpad-lab)) and
+registers its two shortcuts, `Option+\` and `Option+Shift+\`, the next time Spaceman starts
+(`spaceman ctl restart`); a `[shortcuts]` binding on either chord takes it instead. The
+`spaceman ctl scratchpad` commands follow the switch live. Turning the switch off while windows are
+hidden in the scratchpad brings them back on screen, where they tile again.
 
 ## Remembered Placements
 

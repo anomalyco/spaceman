@@ -124,9 +124,20 @@ impl HudStyle {
     }
 }
 
+/// The `[labs]` table: experimental features, each behind its own switch and off by default.
+/// With every switch off Spaceman behaves exactly as if Labs did not exist.
+#[derive(Clone, Copy, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct LabsConfig {
+    /// The i3/sway-style Scratchpad ([`crate::scratchpad`]) and its `⌥\` / `⌥⇧\` shortcuts.
+    #[serde(default)]
+    pub scratchpad: bool,
+}
+
 #[derive(Clone, Debug, Default)]
 pub struct Config {
     settings: AppSettings,
+    labs: LabsConfig,
     rules: Vec<WindowRule>,
     workspace_monitors: Vec<(WorkspaceId, DisplaySelector)>,
     shortcuts: Shortcuts,
@@ -160,6 +171,8 @@ struct RawConfig {
     version: u32,
     #[serde(default)]
     settings: RawSettings,
+    #[serde(default)]
+    labs: LabsConfig,
     #[serde(default)]
     rules: Vec<RawWindowRule>,
     #[serde(default)]
@@ -306,6 +319,8 @@ impl Config {
             }
             workspace_monitors.push((id, DisplaySelector::parse(&workspace.monitor)));
         }
+        let mut shortcuts = raw.shortcuts.parse()?;
+        shortcuts.scratchpad = raw.labs.scratchpad;
         Ok(Self {
             settings: AppSettings {
                 hud: raw.settings.hud,
@@ -314,9 +329,10 @@ impl Config {
                 mouse_follows_focus: raw.settings.mouse_follows_focus,
                 spacing: raw.settings.spacing()?,
             },
+            labs: raw.labs,
             rules,
             workspace_monitors,
-            shortcuts: raw.shortcuts.parse()?,
+            shortcuts,
         })
     }
 
@@ -324,6 +340,12 @@ impl Config {
     #[must_use]
     pub const fn shortcuts(&self) -> &Shortcuts {
         &self.shortcuts
+    }
+
+    /// The `[labs]` switches: experimental features, all off by default.
+    #[must_use]
+    pub const fn labs(&self) -> LabsConfig {
+        self.labs
     }
 
     #[must_use]
@@ -526,6 +548,9 @@ struct EditableConfig {
     version: u32,
     #[serde(default, skip_serializing_if = "EditableSettings::is_empty")]
     settings: EditableSettings,
+    /// Carried through untouched; editing a workspace never changes a Lab.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    labs: Option<toml::Table>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     rules: Vec<EditableRule>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
@@ -540,6 +565,7 @@ impl Default for EditableConfig {
         Self {
             version: 1,
             settings: EditableSettings::default(),
+            labs: None,
             rules: Vec::new(),
             workspaces: Vec::new(),
             shortcuts: None,
@@ -783,6 +809,43 @@ monitor = "main"
         assert!(Config::parse("version = 1\n[settings]\nhud_style = \"grid\"\n").is_err());
         assert!(Config::parse("version = 1\n[settings]\nhud_style = true\n").is_err());
         assert_eq!(HudStyle::parse("Icons"), None);
+    }
+
+    #[test]
+    fn parses_labs_with_the_scratchpad_off_by_default() {
+        for source in ["version = 1", "version = 1\n[labs]\n"] {
+            let config = Config::parse(source).unwrap();
+            assert!(!config.labs().scratchpad);
+            assert!(!config.shortcuts().scratchpad);
+        }
+        assert!(!Config::default().labs().scratchpad);
+        let config = Config::parse("version = 1\n[labs]\nscratchpad = true\n").unwrap();
+        assert!(config.labs().scratchpad);
+        assert!(
+            config.shortcuts().scratchpad,
+            "the Lab's shortcuts follow its switch"
+        );
+        assert!(Config::parse("version = 1\n[labs]\nwarp_drive = true\n").is_err());
+        assert!(Config::parse("version = 1\n[labs]\nscratchpad = 1\n").is_err());
+    }
+
+    #[test]
+    fn saving_a_workspace_monitor_keeps_the_labs_table() {
+        let directory = std::env::temp_dir().join(format!(
+            "spaceman-labs-{}-{}",
+            std::process::id(),
+            now().as_nanos()
+        ));
+        std::fs::create_dir_all(&directory).unwrap();
+        let path = directory.join("config.toml");
+        std::fs::write(&path, "version = 1\n[labs]\nscratchpad = true\n").unwrap();
+
+        let saved = save_workspace_monitor_at(&path, WorkspaceId::ONE, &DisplaySelector::Secondary)
+            .unwrap();
+
+        assert!(saved.labs().scratchpad);
+        assert!(load_path(&path).unwrap().labs().scratchpad);
+        std::fs::remove_dir_all(directory).unwrap();
     }
 
     #[test]

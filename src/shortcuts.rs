@@ -14,6 +14,8 @@ pub struct Shortcuts {
     pub defaults: bool,
     /// User bindings in chord order. Each claims its chord before any built-in shortcut.
     pub bindings: Vec<Binding>,
+    /// Register the Scratchpad Lab's shortcuts. Set from `[labs] scratchpad`, not this table.
+    pub scratchpad: bool,
 }
 
 impl Default for Shortcuts {
@@ -21,6 +23,7 @@ impl Default for Shortcuts {
         Self {
             defaults: true,
             bindings: Vec::new(),
+            scratchpad: false,
         }
     }
 }
@@ -131,6 +134,7 @@ impl RawShortcuts {
         Ok(Shortcuts {
             defaults: self.defaults,
             bindings,
+            scratchpad: false,
         })
     }
 }

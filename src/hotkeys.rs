@@ -13,6 +13,7 @@ use crate::{
     Direction, DisplayTarget, ResizeDirection, WorkspaceId,
     app::{Action, WorkerAction},
     keyboard_layout::{LayoutFingerprint, LayoutSnapshot, LogicalKey, SemanticKey},
+    scratchpad::ScratchpadCommand,
     shortcuts::{self, Binding, Command, Shortcuts},
 };
 
@@ -114,7 +115,7 @@ impl HotkeyPlan {
         shortcuts: &Shortcuts,
         layout: &LayoutSnapshot,
     ) -> Result<Self, String> {
-        let mut plan = PlanBuilder::new(layout, 16 + enabled.len() * 2 + shortcuts.bindings.len());
+        let mut plan = PlanBuilder::new(layout, 18 + enabled.len() * 2 + shortcuts.bindings.len());
         // `[shortcuts]` bindings claim their chords first, so a built-in shortcut on the same
         // chord quietly gives way instead of colliding.
         for binding in &shortcuts.bindings {
@@ -122,6 +123,9 @@ impl HotkeyPlan {
         }
         if shortcuts.defaults {
             push_defaults(&mut plan, enabled);
+        }
+        if shortcuts.scratchpad {
+            push_scratchpad(&mut plan);
         }
 
         if plan.registrations.is_empty() {
@@ -243,6 +247,30 @@ fn push_defaults(plan: &mut PlanBuilder<'_>, enabled: &[WorkspaceId]) {
             continue;
         }
         plan.push(key, modifiers, action, description);
+    }
+}
+
+/// The Scratchpad Lab's shortcuts, planned only while `[labs] scratchpad` is on so a default
+/// install registers exactly the built-in set.
+fn push_scratchpad(plan: &mut PlanBuilder<'_>) {
+    for (modifiers, command, description) in [
+        (
+            OPTION_KEY,
+            ScratchpadCommand::Toggle,
+            "show or hide the scratchpad",
+        ),
+        (
+            OPTION_KEY | SHIFT_KEY,
+            ScratchpadCommand::Mark,
+            "move window to or from the scratchpad",
+        ),
+    ] {
+        plan.push(
+            LogicalKey::Character('\\'),
+            modifiers,
+            WorkerAction::Scratchpad(command),
+            description,
+        );
     }
 }
 
@@ -633,6 +661,50 @@ mod tests {
         ] {
             assert_eq!(action(&plan, description), Some(&expected), "{description}");
         }
+    }
+
+    #[test]
+    fn scratchpad_shortcuts_register_only_while_the_lab_is_on() {
+        let enabled = WorkspaceId::numbered().collect::<Vec<_>>();
+        let layout = LayoutSnapshot::for_test(vec![(42, '\\', false, false)], vec![]);
+        let scratchpad = |plan: &HotkeyPlan| {
+            plan.registrations
+                .iter()
+                .filter(|registration| matches!(registration.action, WorkerAction::Scratchpad(_)))
+                .map(|registration| {
+                    (
+                        registration.key_code,
+                        registration.modifiers,
+                        registration.action.clone(),
+                    )
+                })
+                .collect::<Vec<_>>()
+        };
+
+        let off = HotkeyPlan::from_layout(&enabled, &Shortcuts::default(), &layout).unwrap();
+        assert!(scratchpad(&off).is_empty());
+
+        let shortcuts = Shortcuts {
+            scratchpad: true,
+            ..Shortcuts::default()
+        };
+        let on = HotkeyPlan::from_layout(&enabled, &shortcuts, &layout).unwrap();
+        assert_eq!(
+            scratchpad(&on),
+            vec![
+                (
+                    42,
+                    OPTION_KEY,
+                    WorkerAction::Scratchpad(ScratchpadCommand::Toggle)
+                ),
+                (
+                    42,
+                    OPTION_KEY | SHIFT_KEY,
+                    WorkerAction::Scratchpad(ScratchpadCommand::Mark)
+                ),
+            ]
+        );
+        assert_eq!(on.registrations.len(), off.registrations.len() + 2);
     }
 
     #[test]

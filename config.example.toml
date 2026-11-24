@@ -78,3 +78,10 @@ monitor = "main"
 # "alt+shift+ctrl+left" = "focus left"
 # "alt+shift+ctrl+right" = "focus right"
 # "alt+shift+b" = "balance"
+
+# Labs are experimental features, each off by default. scratchpad = true adds an
+# i3/sway-style Scratchpad: Option+Shift+\ hides the focused window in it and
+# Option+\ summons it centred on the focused display (or hides it again).
+#
+# [labs]
+# scratchpad = false
