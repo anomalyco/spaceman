@@ -154,7 +154,7 @@ Trackpad: three-finger swipe left/right -> next/previous workspace (turn macOS's
           "Swipe between full-screen applications" off or move it to four fingers)
 CLI: spaceman ctl switch | back-and-forth | move-workspace | move | move-app
 Config: ~/Library/Application Support/Spaceman/config.toml -> [[rules]], [[workspaces]],
-        [settings] workspace_order (edits apply when the file changes; new named-workspace shortcuts register on the next app start)
+        [settings] workspace_order (edits and named-workspace shortcuts apply live when the file changes)
 Menu bar: shows the active workspace glyphs; its menu lists each display's visible workspace (checked)
           and occupied ones with their apps' icons and Option shortcut -> choose one to switch
 Mouse: drop a tile on another display -> moves it to that display's active workspace (see tiling.md)
@@ -339,7 +339,7 @@ on the same letter.
   logs `hotkey: <name> pressed but macOS did not deliver it`, registers every shortcut again (at
   most every 5 s) and runs the missed action. Each delivered press logs `hotkey: <name>`.
 - Config edits (rules, display assignments, and HUD settings) reload automatically before the next
-  command; new named-workspace hotkeys register on the next app start, and `ctl restart` exits
+  command; named-workspace hotkeys reload live, and `ctl restart` exits
   without relaunching.
 - The HUD's first appearance after launch only fades in: its panel has drawn nothing yet for the
   capsule to rise from. Every later one enters with the full motion.
