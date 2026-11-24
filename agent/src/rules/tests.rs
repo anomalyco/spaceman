@@ -270,3 +270,171 @@ fn spacing_ignores_values_the_engine_would_refuse() {
     assert_eq!(doc.spacing().inner, 0);
     assert_eq!(doc.spacing().top, 9);
 }
+
+#[test]
+fn inline_rules_array_reads_adds_moves_and_removes_without_losing_entries() {
+    let variants = [
+        concat!(
+            "version = 1\n",
+            "rules = [\n",
+            "  { bundle_id = \"com.example.First\", action = \"float\" },\n",
+            "  { bundle_id = \"com.example.Second\", action = \"route\", workspace = \"M\" },\n",
+            "]\n",
+        ),
+        concat!(
+            "# Spaceman configuration.\n",
+            "version = 1\n",
+            "\n",
+            "rules = [\n",
+            "  # Keep this comment.\n",
+            "  { bundle_id = \"com.example.First\", action = \"float\" },\n",
+            "  { bundle_id = \"com.example.Second\", action = \"route\", workspace = \"M\" },\n",
+            "]\n",
+        ),
+        "version = 1\nrules = [{ bundle_id = \"com.example.First\", action = \"float\" }, { bundle_id = \"com.example.Second\", action = \"route\", workspace = \"M\" }]\n",
+    ];
+
+    for source in variants {
+        let mut doc = Doc::parse(source);
+        assert_eq!(doc.error, None, "source:\n{source}");
+        let initial = doc.rules();
+        assert_eq!(initial.len(), 2, "source:\n{source}");
+        assert_eq!(initial[0].bundle_id.as_deref(), Some("com.example.First"));
+        assert_eq!(initial[0].place, Place::Float);
+        assert_eq!(initial[1].bundle_id.as_deref(), Some("com.example.Second"));
+        assert_eq!(initial[1].place, Place::Workspace(ws("M")));
+        assert_eq!(doc.named_workspaces(), vec![ws("M")]);
+
+        // Adding a third app keeps both existing inline rules and produces valid TOML.
+        doc.add("com.example.Third", Place::Float);
+        let after_add = doc.source();
+        assert!(
+            spaceman::config::Config::parse(&after_add).is_ok(),
+            "invalid TOML after add:\n{after_add}"
+        );
+        let rules = Doc::parse(&after_add).rules();
+        assert_eq!(rules.len(), 3, "after add:\n{after_add}");
+        assert_eq!(rules[0].bundle_id.as_deref(), Some("com.example.First"));
+        assert_eq!(rules[1].bundle_id.as_deref(), Some("com.example.Second"));
+        assert_eq!(rules[2].bundle_id.as_deref(), Some("com.example.Third"));
+        assert_eq!(rules[2].place, Place::Float);
+
+        // Moving rules updates action/workspace in place without losing the other rules.
+        doc.place(0, Place::Workspace(ws("3")));
+        doc.place(1, Place::Float);
+        let after_move = doc.source();
+        assert!(
+            spaceman::config::Config::parse(&after_move).is_ok(),
+            "invalid TOML after move:\n{after_move}"
+        );
+        let moved = Doc::parse(&after_move).rules();
+        assert_eq!(moved.len(), 3);
+        assert_eq!(moved[0].place, Place::Workspace(ws("3")));
+        assert_eq!(moved[1].place, Place::Float);
+        assert_eq!(moved[2].place, Place::Float);
+
+        // Removing every rule empties the key cleanly.
+        doc.remove(1);
+        assert_eq!(doc.rules().len(), 2);
+        assert!(spaceman::config::Config::parse(&doc.source()).is_ok());
+        doc.remove(1);
+        doc.remove(0);
+        let empty = doc.source();
+        assert!(doc.rules().is_empty());
+        assert!(!empty.contains("rules"), "rules key should drop:\n{empty}");
+        assert!(spaceman::config::Config::parse(&empty).is_ok());
+    }
+}
+
+#[test]
+fn empty_inline_rules_array_supports_adding_an_app() {
+    let mut doc = Doc::parse("version = 1\nrules = []\n");
+    assert_eq!(doc.error, None);
+    assert!(doc.rules().is_empty());
+    doc.add("com.example.Only", Place::Workspace(ws("2")));
+    let saved = doc.source();
+    assert!(
+        spaceman::config::Config::parse(&saved).is_ok(),
+        "invalid TOML:\n{saved}"
+    );
+    let rules = Doc::parse(&saved).rules();
+    assert_eq!(rules.len(), 1);
+    assert_eq!(rules[0].bundle_id.as_deref(), Some("com.example.Only"));
+    assert_eq!(rules[0].place, Place::Workspace(ws("2")));
+}
+
+#[test]
+fn inline_workspaces_array_reads_updates_adds_and_clears_assignments() {
+    let variants = [
+        "version = 1\nworkspaces = [{ workspace = 9, monitor = \"main\" }]\n",
+        concat!(
+            "# Spaceman configuration.\n",
+            "version = 1\n",
+            "\n",
+            "workspaces = [\n",
+            "  # Keep workspace 9 on main.\n",
+            "  { workspace = 9, monitor = \"main\" },\n",
+            "]\n",
+        ),
+    ];
+
+    for source in variants {
+        let mut doc = Doc::parse(source);
+        assert_eq!(doc.error, None, "source:\n{source}");
+        assert_eq!(doc.monitor(ws("9")).as_deref(), Some("main"));
+        assert_eq!(doc.monitor(ws("2")), None);
+
+        // Assigning workspace 2 keeps workspace 9 and writes valid TOML.
+        doc.set_monitor(ws("2"), Some("secondary"));
+        let after_add = doc.source();
+        assert!(
+            spaceman::config::Config::parse(&after_add).is_ok(),
+            "invalid TOML after adding workspace:\n{after_add}"
+        );
+        let reloaded = Doc::parse(&after_add);
+        assert_eq!(reloaded.monitor(ws("9")).as_deref(), Some("main"));
+        assert_eq!(reloaded.monitor(ws("2")).as_deref(), Some("secondary"));
+
+        // Updating an existing entry and declaring a named workspace both round-trip.
+        doc.set_monitor(ws("9"), Some("Studio Display"));
+        doc.set_monitor(ws("D"), Some("secondary"));
+        let after_update = doc.source();
+        assert!(
+            spaceman::config::Config::parse(&after_update).is_ok(),
+            "invalid TOML after update:\n{after_update}"
+        );
+        let reloaded = Doc::parse(&after_update);
+        assert_eq!(reloaded.monitor(ws("9")).as_deref(), Some("Studio Display"));
+        assert_eq!(reloaded.monitor(ws("D")).as_deref(), Some("secondary"));
+        assert_eq!(reloaded.named_workspaces(), vec![ws("D")]);
+
+        // Clearing every entry removes the workspaces key cleanly.
+        doc.set_monitor(ws("2"), None);
+        doc.set_monitor(ws("9"), None);
+        doc.set_monitor(ws("D"), None);
+        let empty = doc.source();
+        assert_eq!(doc.monitor(ws("9")), None);
+        assert!(
+            !empty.contains("workspaces"),
+            "workspaces key should drop:\n{empty}"
+        );
+        assert!(spaceman::config::Config::parse(&empty).is_ok());
+    }
+}
+
+#[test]
+fn empty_inline_workspaces_array_supports_assigning_a_display() {
+    let mut doc = Doc::parse("version = 1\nworkspaces = []\n");
+    assert_eq!(doc.error, None);
+    assert_eq!(doc.monitor(ws("2")), None);
+    doc.set_monitor(ws("2"), Some("secondary"));
+    let saved = doc.source();
+    assert!(
+        spaceman::config::Config::parse(&saved).is_ok(),
+        "invalid TOML:\n{saved}"
+    );
+    assert_eq!(
+        Doc::parse(&saved).monitor(ws("2")).as_deref(),
+        Some("secondary")
+    );
+}

@@ -267,7 +267,7 @@ pub(crate) fn ctl_help(executable: &str) -> String {
         "  open-accessibility         Open Accessibility onboarding / System Settings",
         "  check-for-updates          Check for Spaceman updates",
         "  toggle-launch-at-login     Toggle Launch at Login registration",
-        "  restart | quit             Restore windows and restart or quit the agent",
+        "  restart | quit             Restore parked windows and exit the agent (does not relaunch)",
     ]
     .join("\n")
 }

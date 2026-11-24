@@ -8,7 +8,9 @@ use spaceman::{
     WorkspaceId,
     config::{HudStyle, MouseFollowsFocus, UpdateChannel},
 };
-use toml_edit::{ArrayOfTables, DocumentMut, Item, Table, value};
+use toml_edit::{
+    Array, ArrayOfTables, DocumentMut, InlineTable, Item, Table, TableLike, Value, value,
+};
 
 const EMPTY: &str = "# Spaceman configuration.\nversion = 1\n";
 
@@ -72,47 +74,67 @@ impl Doc {
     }
 
     pub fn rules(&self) -> Vec<Rule> {
-        let Some(rules) = self.doc.get("rules").and_then(Item::as_array_of_tables) else {
-            return Vec::new();
-        };
-        rules
-            .iter()
-            .enumerate()
-            .filter_map(|(index, table)| {
-                let place = match table.get("action").and_then(Item::as_str)? {
-                    "float" => Place::Float,
-                    "ignore" => Place::Ignore,
-                    "route" => Place::Workspace(workspace(table.get("workspace")?)?),
-                    _ => return None,
-                };
-                Some(Rule {
-                    index,
-                    bundle_id: string(table, "bundle_id"),
-                    title: string(table, "title"),
-                    place,
-                })
-            })
-            .collect()
+        match self.doc.get("rules") {
+            Some(Item::ArrayOfTables(rules)) => rules
+                .iter()
+                .enumerate()
+                .filter_map(|(index, table)| read_rule(index, table))
+                .collect(),
+            Some(Item::Value(Value::Array(rules))) => rules
+                .iter()
+                .enumerate()
+                .filter_map(|(index, item)| read_rule(index, item.as_inline_table()?))
+                .collect(),
+            _ => Vec::new(),
+        }
     }
 
     /// Sends rule `index`'s windows to `place`.
     pub fn place(&mut self, index: usize, place: Place) {
-        if let Some(table) = self.rule_tables().get_mut(index) {
-            set_place(table, place);
+        match self.doc.get_mut("rules") {
+            Some(Item::ArrayOfTables(rules)) => {
+                if let Some(table) = rules.get_mut(index) {
+                    set_place(table, place);
+                }
+            }
+            Some(Item::Value(Value::Array(rules))) => {
+                if let Some(table) = rules.get_mut(index).and_then(Value::as_inline_table_mut) {
+                    set_place(table, place);
+                }
+            }
+            _ => {}
         }
     }
 
     pub fn remove(&mut self, index: usize) {
-        let rules = self.rule_tables();
-        if index < rules.len() {
-            rules.remove(index);
-        }
-        if rules.is_empty() {
+        let emptied = match self.doc.get_mut("rules") {
+            Some(Item::ArrayOfTables(rules)) => {
+                if index < rules.len() {
+                    rules.remove(index);
+                }
+                rules.is_empty()
+            }
+            Some(Item::Value(Value::Array(rules))) => {
+                if index < rules.len() {
+                    rules.remove(index);
+                }
+                rules.is_empty()
+            }
+            _ => false,
+        };
+        if emptied {
             self.doc.remove("rules");
         }
     }
 
     pub fn add(&mut self, bundle_id: &str, place: Place) {
+        if let Some(Item::Value(Value::Array(rules))) = self.doc.get_mut("rules") {
+            let mut table = InlineTable::new();
+            table.insert("bundle_id", Value::from(bundle_id));
+            set_place(&mut table, place);
+            push_inline_table(rules, table);
+            return;
+        }
         let mut table = Table::new();
         table.insert("bundle_id", value(bundle_id));
         set_place(&mut table, place);
@@ -239,14 +261,20 @@ impl Doc {
         }
     }
 
-    /// The display a workspace asks for in `[[workspaces]]`, if it names one.
+    /// The display a workspace asks for in `[[workspaces]]` or `workspaces = [...]`, if it names one.
     pub fn monitor(&self, workspace: WorkspaceId) -> Option<String> {
-        self.doc
-            .get("workspaces")?
-            .as_array_of_tables()?
-            .iter()
-            .find(|table| table.get("workspace").and_then(self::workspace) == Some(workspace))
-            .and_then(|table| string(table, "monitor"))
+        match self.doc.get("workspaces")? {
+            Item::ArrayOfTables(tables) => tables
+                .iter()
+                .find(|table| table_workspace(*table) == Some(workspace))
+                .and_then(|table| string(table, "monitor")),
+            Item::Value(Value::Array(entries)) => entries
+                .iter()
+                .filter_map(Value::as_inline_table)
+                .find(|table| table_workspace(*table) == Some(workspace))
+                .and_then(|table| string(table, "monitor")),
+            _ => None,
+        }
     }
 
     /// Named workspaces (`A`–`Z`) enabled by `[[rules]]` or `[[workspaces]]` in this file.
@@ -283,16 +311,58 @@ impl Doc {
 
     /// Sets the display a workspace asks for; `None` removes its entry, back to the default.
     pub fn set_monitor(&mut self, workspace: WorkspaceId, monitor: Option<&str>) {
-        let tables = self
+        if let Some(Item::Value(Value::Array(entries))) = self.doc.get_mut("workspaces") {
+            let found = entries.iter().position(|item| {
+                item.as_inline_table()
+                    .and_then(|table| table_workspace(table))
+                    == Some(workspace)
+            });
+            match (found, monitor) {
+                (Some(index), Some(monitor)) => {
+                    if let Some(table) = entries.get_mut(index).and_then(Value::as_inline_table_mut)
+                    {
+                        table.insert("monitor", Value::from(monitor));
+                    }
+                }
+                (Some(index), None) => {
+                    entries.remove(index);
+                }
+                (None, Some(monitor)) => {
+                    let mut table = InlineTable::new();
+                    TableLike::insert(&mut table, "workspace", workspace_value(workspace));
+                    table.insert("monitor", Value::from(monitor));
+                    push_inline_table(entries, table);
+                }
+                (None, None) => {}
+            }
+            if entries.is_empty() {
+                self.doc.remove("workspaces");
+            }
+            return;
+        }
+        if monitor.is_none()
+            && !self
+                .doc
+                .get("workspaces")
+                .is_some_and(Item::is_array_of_tables)
+        {
+            return;
+        }
+        if !self
             .doc
-            .entry("workspaces")
-            .or_insert_with(|| Item::ArrayOfTables(ArrayOfTables::new()));
-        let Some(tables) = tables.as_array_of_tables_mut() else {
+            .get("workspaces")
+            .is_some_and(Item::is_array_of_tables)
+        {
+            self.doc.remove("workspaces");
+            self.doc
+                .insert("workspaces", Item::ArrayOfTables(ArrayOfTables::new()));
+        }
+        let Some(Item::ArrayOfTables(tables)) = self.doc.get_mut("workspaces") else {
             return;
         };
         let found = tables
             .iter()
-            .position(|table| table.get("workspace").and_then(self::workspace) == Some(workspace));
+            .position(|table| table_workspace(table) == Some(workspace));
         match (found, monitor) {
             (Some(index), Some(monitor)) => {
                 if let Some(table) = tables.get_mut(index) {
@@ -316,14 +386,12 @@ impl Doc {
     }
 
     fn rule_tables(&mut self) -> &mut ArrayOfTables {
-        let entry = self
-            .doc
-            .entry("rules")
-            .or_insert_with(|| Item::ArrayOfTables(ArrayOfTables::new()));
-        if !entry.is_array_of_tables() {
-            *entry = Item::ArrayOfTables(ArrayOfTables::new());
+        if !self.doc.get("rules").is_some_and(Item::is_array_of_tables) {
+            self.doc.remove("rules");
+            self.doc
+                .insert("rules", Item::ArrayOfTables(ArrayOfTables::new()));
         }
-        let Item::ArrayOfTables(tables) = entry else {
+        let Some(Item::ArrayOfTables(tables)) = self.doc.get_mut("rules") else {
             unreachable!()
         };
         tables
@@ -359,16 +427,64 @@ impl Doc {
     }
 }
 
-fn string(table: &Table, key: &str) -> Option<String> {
+fn read_rule(index: usize, table: &dyn TableLike) -> Option<Rule> {
+    let place = match table.get("action").and_then(Item::as_str)? {
+        "float" => Place::Float,
+        "ignore" => Place::Ignore,
+        "route" => Place::Workspace(workspace(table.get("workspace")?)?),
+        _ => return None,
+    };
+    Some(Rule {
+        index,
+        bundle_id: string(table, "bundle_id"),
+        title: string(table, "title"),
+        place,
+    })
+}
+
+fn table_workspace(table: &dyn TableLike) -> Option<WorkspaceId> {
+    table.get("workspace").and_then(workspace)
+}
+
+fn push_inline_table(array: &mut Array, mut table: InlineTable) {
+    table.fmt();
+    let mut item = Value::InlineTable(table);
+    if let Some(prefix) = array
+        .iter()
+        .last()
+        .and_then(|last| last.decor().prefix())
+        .and_then(|raw| raw.as_str())
+        .and_then(multiline_indent_prefix)
+    {
+        item.decor_mut().set_prefix(prefix);
+        array.push_formatted(item);
+    } else {
+        array.push(item);
+    }
+}
+
+fn multiline_indent_prefix(prefix: &str) -> Option<String> {
+    let newline = prefix.rfind('\n')?;
+    let start = if newline > 0 && prefix.as_bytes()[newline - 1] == b'\r' {
+        newline - 1
+    } else {
+        newline
+    };
+    let indent = &prefix[newline + 1..];
+    indent
+        .chars()
+        .all(|ch| ch == ' ' || ch == '\t')
+        .then(|| prefix[start..].to_owned())
+}
+
+fn string(table: &dyn TableLike, key: &str) -> Option<String> {
     table.get(key).and_then(Item::as_str).map(str::to_owned)
 }
 
 fn workspace(item: &Item) -> Option<WorkspaceId> {
     match item.as_value()? {
-        toml_edit::Value::Integer(number) => {
-            WorkspaceId::new(u8::try_from(*number.value()).ok()?).ok()
-        }
-        toml_edit::Value::String(name) => WorkspaceId::parse(name.value()).ok(),
+        Value::Integer(number) => WorkspaceId::new(u8::try_from(*number.value()).ok()?).ok(),
+        Value::String(name) => WorkspaceId::parse(name.value()).ok(),
         _ => None,
     }
 }
@@ -380,7 +496,7 @@ fn workspace_value(workspace: WorkspaceId) -> Item {
     }
 }
 
-fn set_place(table: &mut Table, place: Place) {
+fn set_place(table: &mut dyn TableLike, place: Place) {
     match place {
         Place::Workspace(workspace) => {
             table.insert("action", value("route"));

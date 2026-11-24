@@ -839,3 +839,105 @@ fn config_commands_accept_and_preserve_shortcuts_base_modifier() {
     assert!(!parsed.shortcuts().modifier.command);
     assert!(!parsed.shortcuts().modifier.shift);
 }
+
+#[cfg(target_os = "macos")]
+#[test]
+fn ctl_help_describes_restart_as_exit_without_relaunch() {
+    let outcome = run_cli(&["ctl", "--help"], None);
+    assert_eq!(outcome.exit_code, 0);
+    let stdout = outcome.stdout.expect("ctl --help stdout");
+    assert!(
+        !stdout.contains("restart or quit"),
+        "ctl --help should not promise relaunch:\n{stdout}"
+    );
+    assert!(
+        stdout.contains("does not relaunch"),
+        "ctl --help should state restart exits without relaunching:\n{stdout}"
+    );
+}
+
+#[test]
+fn workspaces_clear_keeps_solely_declared_named_workspace_on_main() {
+    let temp = TempConfig::new("workspaces-clear-named");
+    temp.write("version = 1\n[[workspaces]]\nworkspace = \"D\"\nmonitor = \"secondary\"\n");
+
+    let clear_d = temp.run(&["workspaces", "clear", "D"]);
+    assert_eq!(clear_d.exit_code, 0, "stderr: {:?}", clear_d.stderr);
+    assert_eq!(
+        clear_d.stdout.as_deref(),
+        Some("cleared workspace D (default: main)")
+    );
+
+    let after_clear: Value = serde_json::from_str(
+        temp.run(&["workspaces", "list", "--json"])
+            .stdout
+            .as_deref()
+            .unwrap(),
+    )
+    .unwrap();
+    let d_entry = after_clear["workspaces"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|entry| entry["workspace"] == "D")
+        .expect("solely declared named workspace D must remain listed");
+    assert_eq!(d_entry["monitor"], "main");
+    assert_eq!(d_entry["configured"], true);
+
+    let parsed = Config::parse(&temp.read()).unwrap();
+    let d = WorkspaceId::named('D').unwrap();
+    assert_eq!(parsed.named_workspaces().collect::<Vec<_>>(), vec![d]);
+
+    // Clearing again is idempotent and still preserves D on main.
+    let clear_again = temp.run(&["workspaces", "clear", "D", "--json"]);
+    assert_eq!(clear_again.exit_code, 0);
+    let clear_again_json: Value = serde_json::from_str(&clear_again.stdout.unwrap()).unwrap();
+    assert_eq!(clear_again_json["cleared"], false);
+    assert_eq!(clear_again_json["monitor"], "main");
+    assert_eq!(
+        Config::parse(&temp.read())
+            .unwrap()
+            .named_workspaces()
+            .collect::<Vec<_>>(),
+        vec![d]
+    );
+
+    // Clearing an unconfigured named workspace does not declare it.
+    let clear_z = temp.run(&["workspaces", "clear", "Z", "--json"]);
+    assert_eq!(clear_z.exit_code, 0);
+    let clear_z_json: Value = serde_json::from_str(&clear_z.stdout.unwrap()).unwrap();
+    assert_eq!(clear_z_json["cleared"], false);
+    assert_eq!(
+        Config::parse(&temp.read())
+            .unwrap()
+            .named_workspaces()
+            .collect::<Vec<_>>(),
+        vec![d]
+    );
+
+    // When a route rule also references D, clearing removes the redundant [[workspaces]] entry.
+    assert_eq!(
+        temp.run(&[
+            "rules",
+            "add",
+            "--app",
+            "com.example.App",
+            "--workspace",
+            "D"
+        ])
+        .exit_code,
+        0
+    );
+    let clear_routed = temp.run(&["workspaces", "clear", "D", "--json"]);
+    assert_eq!(clear_routed.exit_code, 0);
+    let clear_routed_json: Value = serde_json::from_str(&clear_routed.stdout.unwrap()).unwrap();
+    assert_eq!(clear_routed_json["cleared"], true);
+    assert!(!temp.read().contains("[[workspaces]]"));
+    assert_eq!(
+        Config::parse(&temp.read())
+            .unwrap()
+            .named_workspaces()
+            .collect::<Vec<_>>(),
+        vec![d]
+    );
+}
