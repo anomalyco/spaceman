@@ -545,7 +545,7 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
         for (window, target) in &routes {
             if !affinity_policy.visible_workspaces.contains(target) {
                 let target_output = output_for(&self.workspaces, *target, outputs);
-                match self.park_window(window, target_output, outputs) {
+                match self.park_window_across(window, output, target_output, outputs) {
                     macos::ApplyOutcome::Applied => {}
                     macos::ApplyOutcome::Gone => {
                         self.forget_window(workspace, window);

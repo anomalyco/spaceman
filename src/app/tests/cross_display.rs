@@ -252,3 +252,68 @@ fn move_app_moves_floating_windows_too() {
         Some(WorkspaceId::ONE)
     );
 }
+
+#[test]
+fn cross_display_route_and_recall_park_off_source_display_when_target_edge_is_refused() {
+    use crate::window_memory::{RememberedWindow, WindowMemory};
+
+    let target = WorkspaceId::new(2).unwrap();
+    for recall in [false, true] {
+        let id = window(20);
+        let backend = FakeBackend {
+            frames: [(id.clone(), frame(1050))].into_iter().collect(),
+            observation: Some(observation(&id, frame(1050))),
+            focused: Some(id.clone()),
+            refuses_position: Some(|rect: crate::Rect| rect.x < 0),
+            ..FakeBackend::default()
+        };
+        let config = if recall {
+            Config::default()
+        } else {
+            Config::parse(
+                "version = 1
+[[rules]]
+bundle_id = 'com.example.Test'
+action = 'route'
+workspace = 2",
+            )
+            .unwrap()
+        };
+        let mut rt = runtime_with_config(backend, config);
+        if recall {
+            let mut memory = WindowMemory::default();
+            memory.record(
+                "com.example.Test",
+                vec![RememberedWindow {
+                    workspace: target,
+                    frame: frame(1050),
+                    floating: false,
+                }],
+                1,
+            );
+            rt.restore_window_memory(memory);
+        }
+
+        let status = rt.cycle(outputs(), &AtomicBool::new(false)).unwrap();
+        assert_eq!(
+            status.failed, 0,
+            "recall={recall}: parking should succeed off source display"
+        );
+        assert_eq!(
+            rt.workspaces.workspace_of(&id),
+            Some(target),
+            "recall={recall}: window should transfer to hidden target workspace"
+        );
+        assert!(
+            rt.parked.contains_key(&id),
+            "recall={recall}: recovery frame must be persisted"
+        );
+        assert!(
+            !crate::geometry::shows_on(
+                rt.backend.frames[&id],
+                &outputs().frames().collect::<Vec<_>>(),
+            ),
+            "recall={recall}: window should be parked off-screen"
+        );
+    }
+}
