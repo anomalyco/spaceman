@@ -5,7 +5,7 @@ use serde::{Deserialize, Serialize};
 use crate::{
     DisplaySelector, ObservedWindow, WorkspaceId, Workspaces,
     shortcuts::{RawShortcuts, Shortcuts},
-    spacing::{Spacing, SpacingKey},
+    spacing::{Spacing, SpacingKey, check_outer},
 };
 
 #[derive(Clone, Copy, Debug)]
@@ -215,21 +215,18 @@ impl Default for RawSettings {
 #[derive(Default, Deserialize)]
 #[serde(deny_unknown_fields)]
 struct RawGaps {
-    #[serde(default)]
-    inner: i64,
-    #[serde(default)]
-    top: i64,
-    #[serde(default)]
-    bottom: i64,
-    #[serde(default)]
-    left: i64,
-    #[serde(default)]
-    right: i64,
+    inner: Option<i64>,
+    outer: Option<i64>,
+    top: Option<i64>,
+    bottom: Option<i64>,
+    left: Option<i64>,
+    right: Option<i64>,
 }
 
 impl RawSettings {
     fn spacing(&self) -> Result<Spacing, String> {
         let gaps = &self.gaps;
+        let outer = gaps.outer.map(check_outer).transpose()?;
         let mut spacing = Spacing::default();
         for (key, value) in [
             (SpacingKey::Inner, gaps.inner),
@@ -239,10 +236,14 @@ impl RawSettings {
             (SpacingKey::Right, gaps.right),
             (
                 SpacingKey::SingleWindowMaxWidth,
-                self.single_window_max_width,
+                Some(self.single_window_max_width),
             ),
         ] {
-            key.set(&mut spacing, key.check(value)?);
+            let value = match value {
+                Some(value) => key.check(value)?,
+                None => key.fallback(outer),
+            };
+            key.set(&mut spacing, value);
         }
         Ok(spacing)
     }
@@ -1026,8 +1027,65 @@ right = 128
             let error = Config::parse(&format!("version = 1\n{source}\n")).unwrap_err();
             assert_eq!(error, message);
         }
-        assert!(Config::parse("version = 1\n[settings.gaps]\nouter = 4\n").is_err());
+        assert!(Config::parse("version = 1\n[settings.gaps]\nvertical = 4\n").is_err());
         assert!(Config::parse("version = 1\n[settings.gaps]\ninner = 1.5\n").is_err());
+    }
+
+    /// Top, bottom, left and right as `gaps` (the keys under `[settings.gaps]`) resolve them.
+    fn edges(gaps: &str) -> [i32; 4] {
+        let source = format!("version = 1\n[settings.gaps]\n{gaps}\n");
+        let spacing = Config::parse(&source).unwrap().spacing();
+        SpacingKey::EDGES.map(|key| key.get(&spacing))
+    }
+
+    #[test]
+    fn outer_pads_only_the_edges_the_file_leaves_out() {
+        assert_eq!(edges("inner = 6\nouter = 8\ntop = 0"), [0, 8, 8, 8]);
+        assert_eq!(edges("outer = 8"), [8, 8, 8, 8]);
+        assert_eq!(edges("outer = 128"), [128, 128, 128, 128]);
+        assert_eq!(
+            edges("outer = 8\ntop = 1\nbottom = 2\nleft = 3\nright = 4"),
+            [1, 2, 3, 4]
+        );
+        assert_eq!(
+            edges("outer = 8\ntop = 0\nbottom = 0\nleft = 0\nright = 0"),
+            [0, 0, 0, 0]
+        );
+        // It pads edges only, and an unset or zero `outer` leaves them where they were.
+        let gaps = "version = 1\n[settings.gaps]\nouter = 8\n";
+        let spacing = Config::parse(gaps).unwrap().spacing();
+        assert_eq!((spacing.inner, spacing.single_window_max_width), (0, 0));
+        assert_eq!(edges("top = 32\nright = 12"), [32, 0, 0, 12]);
+        assert_eq!(edges("outer = 0\ntop = 32\nright = 12"), [32, 0, 0, 12]);
+    }
+
+    #[test]
+    fn outer_takes_the_same_range_as_an_edge() {
+        for (gaps, message) in [
+            (
+                "outer = -1",
+                "settings.gaps.outer must be between 0 and 128 px, got -1",
+            ),
+            (
+                "outer = 129",
+                "settings.gaps.outer must be between 0 and 128 px, got 129",
+            ),
+            (
+                "outer = 129\ntop = 1\nbottom = 2\nleft = 3\nright = 4",
+                "settings.gaps.outer must be between 0 and 128 px, got 129",
+            ),
+            (
+                "outer = 8\ntop = 129",
+                "settings.gaps.top must be between 0 and 128 px, got 129",
+            ),
+        ] {
+            let error = Config::parse(&format!("version = 1\n[settings.gaps]\n{gaps}\n"));
+            assert_eq!(error.unwrap_err(), message);
+        }
+        for outer in ["8.0", "\"8\"", "true"] {
+            let source = format!("version = 1\n[settings.gaps]\nouter = {outer}\n");
+            assert!(Config::parse(&source).is_err(), "{source}");
+        }
     }
 
     #[test]
@@ -1041,7 +1099,7 @@ right = 128
         let path = dir.join("config.toml");
         std::fs::write(
             &path,
-            "version = 1\n[settings]\nsingle_window_max_width = 1440\n[settings.gaps]\ninner = 6\nleft = 20\n",
+            "version = 1\n[settings]\nsingle_window_max_width = 1440\n[settings.gaps]\ninner = 6\nouter = 8\ntop = 0\nleft = 20\n",
         )
         .unwrap();
         let saved = save_workspace_monitor_at(&path, WorkspaceId::TWO, &DisplaySelector::Secondary)
@@ -1049,6 +1107,13 @@ right = 128
         assert_eq!(saved.spacing().inner, 6);
         assert_eq!(saved.spacing().left, 20);
         assert_eq!(saved.spacing().single_window_max_width, 1440);
+        let written = std::fs::read_to_string(&path).unwrap();
+        let written: toml::Table = toml::from_str(&written).unwrap();
+        assert_eq!(
+            serde_json::to_value(&written["settings"]["gaps"]).unwrap(),
+            serde_json::json!({ "inner": 6, "outer": 8, "top": 0, "left": 20 }),
+            "the shorthand stays a shorthand"
+        );
         drop(std::fs::remove_dir_all(dir));
     }
 

@@ -14,6 +14,9 @@ use crate::Rect;
 pub const INNER_MAX: i32 = 48;
 /// Largest outer padding on one screen edge, in points.
 pub const EDGE_MAX: i32 = 128;
+/// The padding of every screen edge `config.toml` leaves out. Only the file has it: [`Spacing`]
+/// holds the four edges it resolves to.
+pub const OUTER: &str = "gaps.outer";
 /// Outer padding gives way before the usable rect gets narrower or shorter than this.
 pub const MIN_USABLE: (i32, i32) = (320, 240);
 /// Largest `single_window_max_width`, in points.
@@ -82,6 +85,26 @@ impl SpacingKey {
         }
     }
 
+    const fn is_edge(self) -> bool {
+        matches!(self, Self::Top | Self::Bottom | Self::Left | Self::Right)
+    }
+
+    /// The value while `config.toml` leaves the key out: [`OUTER`], if set, at a screen edge.
+    #[must_use]
+    pub const fn fallback(self, outer: Option<i32>) -> i32 {
+        match outer {
+            Some(outer) if self.is_edge() => outer,
+            _ => 0,
+        }
+    }
+
+    /// Whether `value` needs its key in `config.toml`. Zero is the default and does without,
+    /// except at an edge while [`OUTER`] is set, which would pad that edge again.
+    #[must_use]
+    pub const fn is_written(self, value: i32, outer: Option<i32>) -> bool {
+        value != 0 || (outer.is_some() && self.is_edge())
+    }
+
     #[must_use]
     pub fn parse(raw: &str) -> Option<Self> {
         let raw = raw.strip_prefix("settings.").unwrap_or(raw);
@@ -129,13 +152,22 @@ impl SpacingKey {
                 ));
             }
         };
-        if (0..=i64::from(max)).contains(&value) {
-            Ok(value as i32)
-        } else {
-            Err(format!(
-                "settings.{key} must be between 0 and {max} px, got {value}"
-            ))
-        }
+        check_points(key, value, max)
+    }
+}
+
+/// `value` as [`OUTER`] accepts it, or why it doesn't.
+pub fn check_outer(value: i64) -> Result<i32, String> {
+    check_points(OUTER, value, EDGE_MAX)
+}
+
+fn check_points(key: &str, value: i64, max: i32) -> Result<i32, String> {
+    if (0..=i64::from(max)).contains(&value) {
+        Ok(value as i32)
+    } else {
+        Err(format!(
+            "settings.{key} must be between 0 and {max} px, got {value}"
+        ))
     }
 }
 

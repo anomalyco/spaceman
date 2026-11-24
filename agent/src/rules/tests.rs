@@ -270,3 +270,181 @@ fn spacing_ignores_values_the_engine_would_refuse() {
     assert_eq!(doc.spacing().inner, 0);
     assert_eq!(doc.spacing().top, 9);
 }
+
+/// Settings › Layout's view of `[settings.gaps]` with `gaps` inside it.
+fn gaps(gaps: &str) -> Doc {
+    let doc = Doc::parse(&format!("# Mine.\nversion = 1\n\n[settings.gaps]\n{gaps}"));
+    assert_eq!(doc.error, None);
+    doc
+}
+
+/// What the running agent would tile with once `doc` is saved.
+fn saved_spacing(doc: &Doc) -> spaceman::spacing::Spacing {
+    spaceman::config::Config::parse(&doc.source())
+        .unwrap()
+        .spacing()
+}
+
+#[test]
+fn spacing_shows_the_edges_outer_resolves_to() {
+    use spaceman::spacing::Spacing;
+    let doc = gaps("inner = 6\nouter = 8\ntop = 0\n");
+    assert_eq!(
+        doc.spacing(),
+        Spacing {
+            inner: 6,
+            top: 0,
+            ..Spacing::NONE.with_edges(8)
+        }
+    );
+    assert_eq!(doc.spacing(), saved_spacing(&doc));
+}
+
+#[test]
+fn unrelated_edits_keep_outer_and_its_explicit_edges() {
+    use spaceman::spacing::Spacing;
+    for source in [
+        "inner = 6\nouter = 8 # Everywhere.\ntop = 0\nleft = 8\n",
+        "inner = 6\nouter = 0\ntop = 0\nleft = 8\n",
+    ] {
+        let mut doc = gaps(source);
+        let before = doc.spacing();
+        doc.set_spacing(before);
+        doc.set_hud(false);
+        doc.set_hud(true);
+        doc.set_monitor(ws("M"), Some("secondary"));
+        doc.set_monitor(ws("M"), None);
+        assert_eq!(doc.source(), gaps(source).source());
+
+        doc.set_spacing(Spacing {
+            inner: 10,
+            ..before
+        });
+        assert_eq!(
+            doc.source(),
+            gaps(&source.replace("inner = 6", "inner = 10")).source()
+        );
+        doc.set_spacing(Spacing {
+            single_window_max_width: 1680,
+            ..doc.spacing()
+        });
+        assert!(
+            doc.source()
+                .contains(&source.replace("inner = 6", "inner = 10"))
+        );
+        assert_eq!(
+            saved_spacing(&doc),
+            Spacing {
+                inner: 10,
+                single_window_max_width: 1680,
+                ..before
+            }
+        );
+    }
+}
+
+#[test]
+fn an_edge_set_to_zero_does_not_fall_back_to_outer() {
+    use spaceman::spacing::{Spacing, SpacingKey};
+    for key in SpacingKey::EDGES {
+        let mut doc = gaps("outer = 8\n");
+        let mut spacing = doc.spacing();
+        key.set(&mut spacing, 0);
+        doc.set_spacing(spacing);
+        assert_eq!(
+            doc.source(),
+            gaps(&format!("outer = 8\n{} = 0\n", key.gap_name().unwrap())).source()
+        );
+        assert_eq!(saved_spacing(&doc), spacing);
+
+        // Another slider's save leaves it at zero, and it can be raised again.
+        let inner = Spacing {
+            inner: 4,
+            ..doc.spacing()
+        };
+        doc.set_spacing(inner);
+        assert_eq!(saved_spacing(&doc), inner);
+        doc.set_spacing(Spacing::NONE.with_edges(8));
+        assert_eq!(saved_spacing(&doc), Spacing::NONE.with_edges(8));
+    }
+
+    let mut doc = gaps("inner = 6\nouter = 8\n");
+    doc.set_spacing(Spacing::NONE);
+    assert_eq!(
+        doc.source(),
+        gaps("outer = 8\ntop = 0\nbottom = 0\nleft = 0\nright = 0\n").source()
+    );
+    assert_eq!(saved_spacing(&doc), Spacing::NONE);
+}
+
+#[test]
+fn editing_one_edge_leaves_the_others_following_outer() {
+    use spaceman::spacing::Spacing;
+    let mut doc = gaps("inner = 6\nouter = 8\n");
+    doc.set_spacing(Spacing {
+        top: 30,
+        ..doc.spacing()
+    });
+    assert_eq!(
+        doc.source(),
+        gaps("inner = 6\nouter = 8\ntop = 30\n").source()
+    );
+    // Every edge together still overrides, and the shorthand is there once they go.
+    doc.set_spacing(doc.spacing().with_edges(12));
+    assert_eq!(saved_spacing(&doc).uniform_edges(), Some(12));
+    assert!(doc.source().contains("outer = 8\n"), "{}", doc.source());
+}
+
+#[test]
+fn inline_settings_keep_outer_when_something_else_changes() {
+    use spaceman::spacing::Spacing;
+    for source in [
+        "version = 1\n[settings]\nhud = true\ngaps = { inner = 6, outer = 8, top = 0 }\n",
+        "version = 1\nsettings = { hud = true, gaps = { inner = 6, outer = 8, top = 0 } }\n",
+        "version = 1\n[settings]\nhud = true\ngaps.inner = 6\ngaps.outer = 8\ngaps.top = 0\n",
+        "version = 1\nsettings.hud = true\nsettings.gaps.inner = 6\nsettings.gaps.outer = 8\nsettings.gaps.top = 0\n",
+    ] {
+        let mut doc = Doc::parse(source);
+        assert_eq!(doc.error, None);
+        let before = doc.spacing();
+        assert_eq!(before, saved_spacing(&doc));
+        let wider = Spacing {
+            inner: 10,
+            ..before
+        };
+        doc.set_spacing(wider);
+        assert_eq!(doc.source(), source.replace("inner = 6", "inner = 10"));
+        doc.set_hud(false);
+        assert_eq!(saved_spacing(&doc), wider, "{}", doc.source());
+        assert!(
+            !spaceman::config::Config::parse(&doc.source())
+                .unwrap()
+                .hud()
+        );
+        doc.set_spacing(Spacing { left: 0, ..wider });
+        assert_eq!(saved_spacing(&doc), Spacing { left: 0, ..wider });
+        doc.set_spacing(Spacing::NONE);
+        assert_eq!(saved_spacing(&doc), Spacing::NONE, "{}", doc.source());
+        assert!(doc.source().contains("outer = 8"), "{}", doc.source());
+    }
+
+    let mut doc = Doc::parse("version = 1\nsettings = { hud = false }\n");
+    let spacing = Spacing::NONE.with_edges(8);
+    doc.set_spacing(spacing);
+    assert_eq!(saved_spacing(&doc), spacing, "{}", doc.source());
+    assert!(!doc.hud());
+    doc.set_spacing(Spacing::NONE);
+    doc.set_hud(true);
+    assert_eq!(doc.source(), "version = 1\n");
+}
+
+#[test]
+fn spacing_without_outer_still_drops_zeros() {
+    use spaceman::spacing::Spacing;
+    let mut doc = gaps("inner = 6\ntop = 0\nleft = 20\n");
+    let before = doc.spacing();
+    doc.set_spacing(Spacing { left: 0, ..before });
+    assert_eq!(doc.source(), gaps("inner = 6\n").source());
+    doc.set_spacing(Spacing::NONE);
+    assert_eq!(doc.source(), "# Mine.\nversion = 1\n");
+}

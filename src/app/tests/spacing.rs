@@ -53,6 +53,30 @@ fn layout_applies_gaps_padding_and_the_single_window_width() {
 }
 
 #[test]
+fn layout_pads_the_edges_outer_covers_and_skips_the_one_set_to_zero() {
+    let (left, right) = (window(10), window(11));
+    let mut backend = FakeBackend::default();
+    backend.frames.insert(left.clone(), frame(0));
+    backend.frames.insert(right.clone(), frame(0));
+    let config =
+        Config::parse("version = 1\n[settings.gaps]\ninner = 6\nouter = 8\ntop = 0\n").unwrap();
+    let mut runtime = runtime_with_config(backend, config);
+    bind(&mut runtime, WorkspaceId::ONE, &left);
+    bind(&mut runtime, WorkspaceId::ONE, &right);
+    runtime.layout_workspace(
+        WorkspaceId::ONE,
+        outputs().main().frame,
+        &AtomicBool::new(false),
+    );
+    let (a, b) = (
+        runtime.backend.frames[&left],
+        runtime.backend.frames[&right],
+    );
+    assert_eq!((a.x, a.y, a.width, a.height), (8, 0, 489, 792));
+    assert_eq!((b.x, b.y, b.width, b.height), (503, 0, 489, 792));
+}
+
+#[test]
 fn a_config_without_spacing_tiles_edge_to_edge() {
     let (left, right) = (window(10), window(11));
     let mut backend = FakeBackend::default();

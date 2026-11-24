@@ -8,7 +8,7 @@ use serde::{Deserialize, Serialize};
 use spaceman::{
     DisplaySelector, WorkspaceId, Workspaces,
     config::{Config, HudStyle, MouseFollowsFocus, UpdateChannel, config_path},
-    spacing::{Spacing, SpacingKey},
+    spacing::{Spacing, SpacingKey, check_outer},
     state_file::write_atomic,
 };
 
@@ -95,6 +95,8 @@ pub(crate) struct GapsDoc {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub inner: Option<i64>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub outer: Option<i64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub top: Option<i64>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub bottom: Option<i64>,
@@ -107,6 +109,7 @@ pub(crate) struct GapsDoc {
 impl GapsDoc {
     fn is_empty(&self) -> bool {
         self.inner.is_none()
+            && self.outer.is_none()
             && self.top.is_none()
             && self.bottom.is_none()
             && self.left.is_none()
@@ -135,21 +138,41 @@ impl SettingsDoc {
         }
     }
 
-    /// The spacing the file asks for, every unset key at its default `0`.
+    fn outer(&self) -> Option<i32> {
+        self.gaps.outer.and_then(|value| check_outer(value).ok())
+    }
+
+    /// `gaps.outer` as the file sets it, whatever the edges are.
+    pub(crate) fn effective_outer(&self) -> i32 {
+        self.outer().unwrap_or(0)
+    }
+
+    /// Sets `gaps.outer` after checking its range; `0` removes it. Edges keep their own keys.
+    pub(crate) fn set_outer(&mut self, value: i64) -> Result<i32, String> {
+        let checked = check_outer(value)?;
+        self.gaps.outer = (checked != 0).then_some(i64::from(checked));
+        Ok(checked)
+    }
+
+    /// The spacing the file asks for, every unset key at its fallback.
     pub(crate) fn effective_spacing(&self) -> Spacing {
         let mut doc = *self;
         let mut spacing = Spacing::NONE;
         for key in SpacingKey::ALL {
-            let value = doc.spacing_slot(key).unwrap_or(0);
-            key.set(&mut spacing, i32::try_from(value).unwrap_or(0));
+            let value = match *doc.spacing_slot(key) {
+                Some(value) => i32::try_from(value).unwrap_or(0),
+                None => key.fallback(self.outer()),
+            };
+            key.set(&mut spacing, value);
         }
         spacing
     }
 
-    /// Sets one spacing key after checking its range; `0` removes it, back to the default.
+    /// Sets one spacing key after checking its range, or removes it when its value needs no key.
     pub(crate) fn set_spacing(&mut self, key: SpacingKey, value: i64) -> Result<i32, String> {
         let checked = key.check(value)?;
-        *self.spacing_slot(key) = (checked != 0).then_some(i64::from(checked));
+        let written = key.is_written(checked, self.outer());
+        *self.spacing_slot(key) = written.then_some(i64::from(checked));
         Ok(checked)
     }
 

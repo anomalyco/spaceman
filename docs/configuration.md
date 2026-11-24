@@ -40,7 +40,8 @@ single_window_max_width = 0           # optional (default: 0, off); or 320 throu
 
 [settings.gaps]                       # optional; every key defaults to 0
 inner = 0                             # points between tiled windows, 0 through 48
-top = 0                               # outer padding at each screen edge, 0 through 128
+outer = 0                             # padding at every screen edge left out below, 0 through 128
+top = 0                               # one edge's own padding in place of outer, 0 through 128
 bottom = 0
 left = 0
 right = 0
@@ -95,25 +96,46 @@ and at every nesting level; `top`, `bottom`, `left`, and `right` pad the tiled a
 screen edge (for example, room for a custom menu bar on top). Outer padding gives way before the
 tiled area would get smaller than 320 × 240 points. Equal weights still give equal windows with gaps.
 
+`outer` is shorthand for the four edges: it pads every edge without a key of its own. An edge that
+has one uses it instead, even at `0`. This leaves 6 points between windows, 8 at the left, right,
+and bottom, and none at the top:
+
+```toml
+[settings.gaps]
+inner = 6
+outer = 8
+top = 0
+```
+
 `single_window_max_width` caps the width of a window that is alone on its display, either the only
 tiled window of a workspace or any window in Fullscreen Layout. The window is centered at that width
 inside the padded area; on a display that is narrower, it fills the area as before. It suits wide and
 ultrawide displays, where one full-width window is hard to read.
 
 Out-of-range values are rejected with a message naming the key and its range, like any other invalid
-configuration. Every key defaults to `0`, so a file without them tiles exactly as before.
+configuration. Every key defaults to `0` (an edge to `outer`, itself `0`), so a file without them
+tiles exactly as before.
 
 Settings › Layout edits the same keys over a live miniature of the result. One **Window gaps**
 slider sets `inner` and all four edges together; **Customize separately** (open on its own when the
-file's gaps differ) sets between windows, all screen edges, and each edge on its own.
+file's gaps differ) sets between windows, all screen edges, and each edge on its own. It shows the
+padding each edge resolves to and leaves `outer` as the file has it: an edge you move there gets its
+own key, and the rest keep following `outer`.
+
 `spaceman config` reads and writes them by dotted key:
 
 ```sh
 spaceman config set gaps.inner 8
+spaceman config set gaps.outer 8
 spaceman config set gaps.top 32
 spaceman config set single_window_max_width 1680
 spaceman config get gaps.inner
 ```
+
+`get gaps.outer` prints `outer` itself (`0` while it is unset), `get` on an edge and `config show` the
+resolved padding. Setting `gaps.outer` leaves every edge that has its own key alone. Setting a key to
+`0` removes it from the file, except for an edge while `outer` is set: that edge keeps an explicit
+`0`. To make an edge follow `outer` again, delete its key from the file.
 
 ## Shortcuts
 

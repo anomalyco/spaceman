@@ -17,13 +17,15 @@ update_channel = "stable"
 single_window_max_width = 0
 
 # Optional spacing in points, all 0 by default: inner (0-48) between tiled windows, and
-# top, bottom, left and right (0-128) as padding at each screen edge.
+# outer (0-128) as padding at every screen edge. top, bottom, left and right (0-128) each
+# override outer for their edge, a 0 included, so leave out the edges that should follow it.
 [settings.gaps]
 inner = 0
-top = 0
-bottom = 0
-left = 0
-right = 0
+outer = 0
+# top = 0
+# bottom = 0
+# left = 0
+# right = 0
 
 # Rules are optional, ordered, and first-match wins. Every matcher present in a
 # rule must match exactly. Valid actions are "float", "route", and "ignore".
