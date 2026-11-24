@@ -297,7 +297,8 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
         self.omitted_windows
             .retain(|window, _| match self.workspaces.workspace_of(window) {
                 Some(owner) => owner != workspace || !observed.contains(window),
-                None => false,
+                // An omitted float's settle is tracked by affinity freezing.
+                None => self.workspaces.floating_workspace_of(window).is_some(),
             });
         let now = Instant::now();
         for app_observation in &mut observation.applications {

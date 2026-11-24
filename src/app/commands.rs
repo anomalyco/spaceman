@@ -446,15 +446,23 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
         outputs: macos::DisplayOutputs,
         cancelled: &AtomicBool,
     ) -> Result<CycleStatus, String> {
-        let (focused, workspace) = self.focused_active_workspace(&outputs, cancelled, true)?;
+        let (focused, workspace) = self.focused_owner_workspace(&outputs, cancelled)?;
         let windows = self.workspaces.engine(workspace).bound_windows();
-        let Some(index) = windows.iter().position(|window| window == &focused) else {
-            return Ok(self.status(0, &outputs));
+        let target = match windows.iter().position(|window| window == &focused) {
+            Some(_) if windows.len() < 2 => return Ok(self.status(0, &outputs)),
+            Some(index) => windows[(index + 1) % windows.len()].clone(),
+            // A float of this workspace has no place in the tile order (#178):
+            // step onto the remembered tile, or the first one.
+            None => match self
+                .workspaces
+                .preferred_focus(workspace)
+                .filter(|window| windows.contains(window))
+                .or_else(|| windows.first().cloned())
+            {
+                Some(target) => target,
+                None => return Ok(self.status(0, &outputs)),
+            },
         };
-        if windows.len() < 2 {
-            return Ok(self.status(0, &outputs));
-        }
-        let target = windows[(index + 1) % windows.len()].clone();
         self.focus_tile(Some(focused), &target, &outputs)?;
         Ok(self.status(0, &outputs))
     }
@@ -703,7 +711,8 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
 }
 
 /// Floating windows restored from the last run keep floating until toggled,
-/// so an agent restart does not silently re-tile them.
+/// so an agent restart does not silently re-tile them. One a float rule
+/// matches is handed back to the rule on its first observation.
 pub(super) fn restored_floating(workspaces: &Workspaces) -> HashSet<crate::PhysicalWindowId> {
     workspaces
         .floating_entries()

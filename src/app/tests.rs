@@ -3,6 +3,7 @@ mod cross_display;
 mod dispatch;
 mod display_disconnect;
 mod float;
+mod float_regressions;
 mod focus;
 mod fullscreen;
 mod gestures;

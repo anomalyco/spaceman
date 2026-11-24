@@ -52,6 +52,8 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
         // one terminated.
         self.note_absent_departures(observation);
         let mut affinities = HashMap::new();
+        // Read once, and only if a Complete snapshot omits an owned float.
+        let mut onscreen_frames = None;
         for application in &observation.applications {
             let crate::AppObservation::Complete { app, windows, .. } = application else {
                 continue;
@@ -59,11 +61,14 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
             if has_floating {
                 let floating_windows = self.workspaces.floating_windows_for_app(&app.id);
                 for window in floating_windows {
-                    if !windows.iter().any(|observed| observed.id == window)
-                        && !self.parked.contains_key(&window)
+                    if windows.iter().any(|observed| observed.id == window)
+                        || self.parked.contains_key(&window)
                     {
+                        self.omitted_windows.remove(&window);
+                    } else if !self.omitted_float_is_settling(&window, &mut onscreen_frames) {
                         log_event!("forget floating {:?}: not observed and not parked", window);
                         self.workspaces.forget_floating(&window);
+                        self.omitted_windows.remove(&window);
                     }
                 }
             }
@@ -79,6 +84,15 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
                     }
                     affinities.insert(window.id.clone(), FrozenWindowAffinity::Ignored);
                     continue;
+                }
+                // A float rule, not a manual override, floats this window. An
+                // agent restart seeds every restored float as manual because the
+                // saved state does not say why it floated, so hand it back to the
+                // rule: removing the rule then tiles it again (#160).
+                if disposition == WindowDisposition::Floating
+                    && !self.scratchpad.contains(&window.id)
+                {
+                    self.manual_floating.remove(&window.id);
                 }
                 // A window that already holds a tile keeps it while it temporarily
                 // looks non-resizable (for example while an attached window-modal
