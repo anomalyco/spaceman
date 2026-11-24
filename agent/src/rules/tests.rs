@@ -163,6 +163,37 @@ fn hud_style_round_trips_and_leaves_the_default_out() {
 }
 
 #[test]
+fn hud_position_round_trips_and_leaves_bottom_out() {
+    use spaceman::config::{Config, HudPosition};
+    let mut doc = Doc::parse(SOURCE);
+    assert_eq!(doc.hud_position(), HudPosition::Bottom);
+    doc.set_hud_position(HudPosition::Top);
+    assert_eq!(doc.hud_position(), HudPosition::Top);
+    let top = doc.source();
+    assert!(top.contains("# OpenCode Browser's agent window."));
+    assert!(top.contains("hud_position = \"top\""));
+    assert_eq!(
+        Config::parse(&top).unwrap().hud_position(),
+        HudPosition::Top
+    );
+
+    doc.set_hud(false);
+    doc.set_hud_style(HudStyle::Layouts);
+    doc.set_hud_position(HudPosition::Bottom);
+    let bottom = doc.source();
+    assert!(!bottom.contains("hud_position"), "{bottom}");
+    assert!(bottom.contains("hud_style = \"layouts\""), "{bottom}");
+    assert_eq!(
+        Config::parse(&bottom).unwrap().hud_position(),
+        HudPosition::Bottom
+    );
+
+    doc.set_hud(true);
+    doc.set_hud_style(HudStyle::Icons);
+    assert!(!doc.source().contains("[settings]"));
+}
+
+#[test]
 fn update_channel_round_trips_and_leaves_stable_out() {
     use spaceman::config::{Config, UpdateChannel};
     let mut doc = Doc::parse(SOURCE);

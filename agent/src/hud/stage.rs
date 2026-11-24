@@ -6,7 +6,7 @@ use rune::{El, Play, Playground, col, el};
 use spaceman::{
     Rect, WorkspaceId,
     app::{UiHudDisplay, UiHudTile, UiHudWorkspace},
-    config::HudStyle,
+    config::{HudPosition, HudStyle},
 };
 
 use super::{FRESH_MS, HudFlow, Icons, LEAVE_MS, grow, pill};
@@ -182,12 +182,12 @@ pub fn stage(preview: &HudPreview, p: Paint, reduce_motion: bool) -> El {
             windows = windows.child(stage_window(tile.key, frame, p));
         }
     }
-    let capsule = |key: &str, style| {
-        el().key(key).w_full().children(
-            view.as_ref()
-                .map(|view| pill::slot(view, style, &preview.icons, STAGE_W, p)),
-        )
-    };
+    let capsule =
+        |key: &str, style| {
+            el().key(key).w_full().children(view.as_ref().map(|view| {
+                pill::slot(view, HudPosition::Bottom, style, &preview.icons, STAGE_W, p)
+            }))
+        };
     let mock = col()
         .key("desktop-mock")
         .w(STAGE_W)

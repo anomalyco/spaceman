@@ -6,9 +6,39 @@ use spaceman::{
 use crate::rules::Place;
 
 use super::{
-    FRESH_MS, HOLD_MS, HudFlow, HudTick, HudTransition, LEAVE_MS, RESUME_HOLD_MS, assign_panels,
-    grow, icons, menu,
+    FRESH_MS, HOLD_MS, HudFlow, HudTick, HudTransition, LEAVE_MS, OVERLAY_MARGIN, OVERLAY_SIZE,
+    RESUME_HOLD_MS, assign_panels, grow, icons, menu, panel_edge, pill,
 };
+
+#[test]
+fn the_capsule_sits_sixty_points_inside_the_edge_it_picks() {
+    use rune::ScreenEdge;
+    use spaceman::config::HudPosition;
+
+    assert_eq!(panel_edge(HudPosition::Bottom), ScreenEdge::Bottom);
+    assert_eq!(panel_edge(HudPosition::Top), ScreenEdge::Top);
+    // The panel is the capsule plus its shadow above and below, so the capsule's centre is one
+    // shadow reach in from the panel's edge, and the panel itself `OVERLAY_MARGIN` in.
+    let panel_inset = OVERLAY_MARGIN + pill::SHADOW_REACH;
+    assert_eq!(panel_inset, pill::CAPSULE_INSET);
+    assert_eq!(panel_inset, 60.0);
+    let capsule_top = OVERLAY_MARGIN + (OVERLAY_SIZE.1 - pill::PILL_HEIGHT) / 2.0;
+    assert_eq!(capsule_top, pill::CAPSULE_INSET);
+}
+
+#[test]
+fn a_top_capsule_drops_into_place_and_a_bottom_one_rises() {
+    use spaceman::config::HudPosition;
+
+    // Away from its resting place, the capsule starts 6 pt outside the display edge it sits on.
+    assert_eq!(pill::enter_offset(HudPosition::Bottom, false, false), 6.0);
+    assert_eq!(pill::enter_offset(HudPosition::Top, false, false), -6.0);
+    // Shown, or under Reduce Motion, it rests exactly where it is drawn.
+    assert_eq!(pill::enter_offset(HudPosition::Top, true, false), 0.0);
+    assert_eq!(pill::enter_offset(HudPosition::Bottom, true, false), 0.0);
+    assert_eq!(pill::enter_offset(HudPosition::Top, false, true), 0.0);
+    assert_eq!(pill::enter_offset(HudPosition::Bottom, false, true), 0.0);
+}
 
 fn id(number: u8) -> WorkspaceId {
     WorkspaceId::new(number).unwrap()

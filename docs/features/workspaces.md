@@ -94,16 +94,18 @@ Displays                                                    // ws.displays
 
 Workspace HUD ([settings] hud, on by default)               // ws.hud
 ├── A switch, a window moved to another workspace, a split-axis or Fullscreen Layout toggle
-│   -> a capsule near the bottom of every display, each with its own row: every workspace on that
+│   -> a capsule on every display, each with its own row: every workspace on that
 │      display holding windows, plus the visible one, in order; a marker on the visible one
+├── hud_position = "bottom" (default) -> the capsule rests 60 pt above each display's bottom edge,
+│   clear of the Dock; "top" -> 60 pt below its top edge, clear of the menu bar
 ├── hud_style = "icons" (default) -> each workspace as its number and its apps' icons (one per app,
 │   │  tile order); the visible group bright, the others dimmed; nothing changes size
 │   └── "layouts" -> each workspace as its layout with an app icon per tile, the visible one larger
 │      (others .62×, dimmed); an empty one is a dot; Fullscreen Layout is one tile with the front
 │      app's icon and the others smaller beside it
 ├── No text but workspace numbers, and never a window title; icons are looked up by bundle ID
-├── Appears: fades in, scales from .96 and rises 6 pt; stays 1.15 s after the last event; leaves
-│   the same way back in about 0.17 s
+├── Appears: fades in, scales from .96 and moves 6 pt into place (a bottom capsule rises, a top
+│   one drops); stays 1.15 s after the last event; leaves the same way back in about 0.17 s
 ├── Interactive without stealing focus (OverlayInput::Regions, KeyPolicy::None):
 │   ├── Hover over the capsule -> pauses auto-dismiss (and rescues a mid-exit capsule); resumes
 │   │   0.6 s after the pointer leaves
@@ -254,8 +256,9 @@ on the same letter.
 - Unit, `src/app/tests/dispatch.rs` and `src/app/tests/switching.rs`: the HUD event's rows per
   display, the visible workspace on each, and `from` only on the display that switched.
 - Unit, `agent/src/hud/tests.rs`: when the HUD shows, holds, leaves and comes back, a fresh show
-  starting on the workspace the switch left, the Layouts row's width, the Icons apps, and which
-  panel each display keeps as displays come and go. `agent/src/hud/motion_tests.rs` steps the
+  starting on the workspace the switch left, the Layouts row's width, the Icons apps, which
+  panel each display keeps as displays come and go, and the top/bottom geometry (the panel's
+  edge, the capsule's 60 pt inset, and the 6 pt entry offset's direction). `agent/src/hud/motion_tests.rs` steps the
   overlay's own view at 120 Hz on a virtual clock, for both styles, and reads back each frame's
   presented rects, opacity and scale: a burst of switches, a hide and a show pass Rune's motion
   gate (no pop, jump, cut fade or overshoot); the marker goes one way per switch, its leading

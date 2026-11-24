@@ -7,7 +7,7 @@ use std::{
 use serde_json::Value;
 use spaceman::{
     AppInstanceId, ObservedWindow, PhysicalWindowId, Rect, WorkspaceId,
-    config::{Config, HudStyle, MouseFollowsFocus, WindowDisposition},
+    config::{Config, HudPosition, HudStyle, MouseFollowsFocus, WindowDisposition},
 };
 
 mod regressions;
@@ -281,6 +281,77 @@ fn config_gets_sets_and_shows_mouse_follows_focus() {
             .unwrap()
             .contains("expected 'off', 'display', or 'window'")
     );
+}
+
+#[test]
+fn config_gets_sets_and_resets_hud_position() {
+    let temp = TempConfig::new("config-hud-position");
+    temp.write("# Mine.\nversion = 1\n[settings]\nhud_style = \"layouts\"\n");
+    assert_eq!(
+        temp.run(&["config", "get", "hud_position"])
+            .stdout
+            .as_deref(),
+        Some("bottom")
+    );
+    assert_eq!(
+        temp.run(&["config", "get", "settings.hud_position"])
+            .stdout
+            .as_deref(),
+        Some("bottom")
+    );
+
+    let set_top = temp.run(&["config", "set", "settings.hud_position", "top"]);
+    assert_eq!(set_top.exit_code, 0);
+    assert_eq!(set_top.stdout.as_deref(), Some("set hud_position = top"));
+    assert_eq!(
+        Config::parse(&temp.read()).unwrap().hud_position(),
+        HudPosition::Top
+    );
+    assert!(temp.read().contains("hud_style = \"layouts\""));
+
+    assert_eq!(
+        temp.run(&["config", "get", "hud_position"])
+            .stdout
+            .as_deref(),
+        Some("top")
+    );
+    let show: Value = serde_json::from_str(
+        temp.run(&["config", "show", "--json"])
+            .stdout
+            .as_deref()
+            .unwrap(),
+    )
+    .unwrap();
+    assert_eq!(show["settings"]["hud_position"], "top");
+    assert_eq!(show["settings"]["hud_style"], "layouts");
+
+    let reset = temp.run(&["config", "reset", "hud_position"]);
+    assert_eq!(reset.exit_code, 0);
+    assert_eq!(reset.stdout.as_deref(), Some("reset hud_position = bottom"));
+    let source = temp.read();
+    assert!(!source.contains("hud_position"), "{source}");
+    assert!(source.contains("hud_style = \"layouts\""), "{source}");
+    assert_eq!(
+        Config::parse(&source).unwrap().hud_position(),
+        HudPosition::Bottom
+    );
+
+    // Resetting the only key also removes the table it emptied.
+    temp.write("version = 1\n[settings]\nhud_position = \"top\"\n");
+    let reset_json: Value = serde_json::from_str(
+        temp.run(&["config", "reset", "settings.hud_position", "--json"])
+            .stdout
+            .as_deref()
+            .unwrap(),
+    )
+    .unwrap();
+    assert_eq!(reset_json["key"], "hud_position");
+    assert_eq!(reset_json["value"], "bottom");
+    assert!(!temp.read().contains("[settings]"), "{}", temp.read());
+
+    let bad = temp.run(&["config", "set", "hud_position", "center"]);
+    assert_eq!(bad.exit_code, 1);
+    assert!(bad.stderr.unwrap().contains("expected 'bottom' or 'top'"));
 }
 
 #[test]
