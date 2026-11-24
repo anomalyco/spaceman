@@ -82,9 +82,17 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
                 return Ok(status);
             }
             let frontmost = self.backend.frontmost_application();
+            let prior_stale = self.take_pending_focus_stale();
             // A tile of this workspace that already has focus keeps it; only
             // focus elsewhere moves to the remembered tile.
-            let outcome = self.focus_workspace_entry(workspace, &windows, focused, frontmost, true);
+            let outcome = self.focus_workspace_entry(
+                workspace,
+                &windows,
+                focused,
+                frontmost,
+                true,
+                prior_stale,
+            );
             self.follow_pointer_for_workspace(workspace, output, outcome, &outputs);
             // Selecting a workspace that is already up still moves focus there
             // when it lives on another display, so it belongs in the history.
@@ -99,7 +107,7 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
         // focus_workspace_entry still suppresses the stale window AX reports.
         let reported_focused_before = self.backend.focused_window();
         let focused_before = self.resolve_focus(reported_focused_before.clone());
-        self.pending_focus = None;
+        let prior_stale = self.take_pending_focus_stale();
         let switch_started = Instant::now();
         let mut outgoing = self.workspaces.windows(previous);
         self.order_back_to_front(&mut outgoing, |window| window.window_id);
@@ -238,12 +246,16 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
         self.workspaces.switch(workspace);
         self.record_focused_workspace(workspace);
         self.foreground_lanes.insert(display_id, selector);
+        // Re-read incoming windows after reveal/layout so a tile retired as Gone
+        // during restore is never chosen over a surviving tile (#308).
+        let live_incoming = self.workspaces.windows(workspace);
         let outcome = self.focus_workspace_entry(
             workspace,
-            &incoming,
+            &live_incoming,
             reported_focused_before,
             frontmost_before,
             true,
+            prior_stale,
         );
         if self.warp_context == WarpContext::Explicit
             || (self.warp_context == WarpContext::Direct && !focus_already_in_workspace)
@@ -280,6 +292,7 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
         focused: Option<crate::PhysicalWindowId>,
         frontmost: Option<crate::AppInstanceId>,
         keep_reported: bool,
+        mut prior_stale: Vec<Option<crate::PhysicalWindowId>>,
     ) -> WorkspaceFocusOutcome {
         let reported_window = focused.as_ref().filter(|window| windows.contains(window));
         let reported_inside = reported_window.is_some();
@@ -303,9 +316,15 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
             if self.backend.focus_window(&window) {
                 self.pending_fullscreen_focus_restore.remove(&workspace);
                 if !reported_inside {
+                    prior_stale.retain(|entry| entry.as_ref() != Some(&window));
+                    if stale_window.as_ref() != Some(&window)
+                        && !prior_stale.contains(&stale_window)
+                    {
+                        prior_stale.push(stale_window.clone());
+                    }
                     self.pending_focus = Some(PendingFocus {
                         target: window.clone(),
-                        stale: vec![stale_window.clone()],
+                        stale: prior_stale,
                         at: Instant::now(),
                     });
                 }
@@ -551,8 +570,15 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
         if !windows.is_empty() {
             let focused = self.backend.focused_window();
             let frontmost = self.backend.frontmost_application();
-            let outcome =
-                self.focus_workspace_entry(workspace, &windows, focused, frontmost, false);
+            let prior_stale = self.take_pending_focus_stale();
+            let outcome = self.focus_workspace_entry(
+                workspace,
+                &windows,
+                focused,
+                frontmost,
+                false,
+                prior_stale,
+            );
             self.follow_pointer_for_workspace(workspace, output, outcome, outputs);
             self.record_focused_workspace(workspace);
             log_event!(

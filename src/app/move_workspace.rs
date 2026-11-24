@@ -26,7 +26,7 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
         let reported_focused = self.backend.focused_window();
         let (source_resolved, focused_window) =
             self.focused_visible_workspace(&visible, &outputs)?;
-        self.pending_focus = None;
+        let prior_stale = self.take_pending_focus_stale();
         let moved_ws = source_resolved.workspace;
         let source_display_id = source_resolved.display_id;
         let source_output = source_resolved.output;
@@ -432,6 +432,7 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
             reported_focused,
             frontmost_before,
             false,
+            prior_stale,
         );
         self.follow_pointer_for_workspace(moved_ws, target_output, outcome, &outputs);
         self.persist_workspace_state_if_changed()?;

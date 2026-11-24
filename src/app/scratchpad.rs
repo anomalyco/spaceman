@@ -409,20 +409,8 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
         extra_stale: &[crate::PhysicalWindowId],
     ) -> bool {
         let reported = self.backend.focused_window();
-        let mut stale: Vec<Option<crate::PhysicalWindowId>> = Vec::new();
-        if let Some(pending) = self.pending_focus.take()
-            && pending.at.elapsed() < super::commands::FOCUS_SETTLE
-        {
-            for window in pending.stale {
-                if window.as_ref() != Some(target) && !stale.contains(&window) {
-                    stale.push(window);
-                }
-            }
-            let previous = Some(pending.target);
-            if previous.as_ref() != Some(target) && !stale.contains(&previous) {
-                stale.push(previous);
-            }
-        }
+        let mut stale = self.take_pending_focus_stale();
+        stale.retain(|window| window.as_ref() != Some(target));
         if reported.as_ref() != Some(target) && !stale.contains(&reported) {
             stale.push(reported);
         }
