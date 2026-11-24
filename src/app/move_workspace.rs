@@ -368,6 +368,13 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
             .set_workspace_monitor(moved_ws, target_selector.clone());
         self.workspaces
             .move_to_display(moved_ws, target_selector.clone(), source_replacement);
+        // The target lane's own active workspace may not be the one shown: a
+        // UUID selector and `secondary` can name the same display.
+        if let Some(shown) =
+            displaced.filter(|shown| self.workspaces.assignment(*shown) != &target_selector)
+        {
+            self.workspaces.set_previous(target_selector.clone(), shown);
+        }
         self.foreground_lanes
             .insert(target_display_id, target_selector);
         if let Some(replacement) = source_replacement {
@@ -428,9 +435,17 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
                 return Ok((resolved.clone(), Some(window.clone())));
             }
         }
+        // No visible window has focus, as on an empty workspace: the one
+        // switched to last is the focused one, wherever it shows.
+        let last_focused = self.last_focused_workspace;
         visible
             .iter()
-            .find(|entry| entry.display_id == outputs.main().id)
+            .find(|entry| Some(entry.workspace) == last_focused)
+            .or_else(|| {
+                visible
+                    .iter()
+                    .find(|entry| entry.display_id == outputs.main().id)
+            })
             .or_else(|| visible.first())
             .cloned()
             .map(|resolved| (resolved, focused))

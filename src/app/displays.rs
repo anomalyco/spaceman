@@ -29,6 +29,11 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
         {
             log_event!("displays changed: re-parking hidden windows");
             self.displays.repark_pending = self.parked.keys().cloned().collect();
+            // macOS moves windows off a removed display, and Spaceman parks and
+            // restores them: a frame read back against a target applied before
+            // the change says nothing about what the app accepts, so it must
+            // not freeze the tile as refused.
+            self.applied.iter_mut().for_each(HashMap::clear);
         }
         self.displays.known = Some(outputs.clone());
     }

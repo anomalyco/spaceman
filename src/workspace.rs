@@ -525,7 +525,9 @@ impl Workspaces {
             }
         }
         if self.previous.get(&source).is_some_and(|candidate| {
-            *candidate == workspace || self.active.get(&source) == Some(candidate)
+            *candidate == workspace
+                || Some(*candidate) == source_replacement
+                || self.active.get(&source) == Some(candidate)
         }) {
             self.previous.remove(&source);
         }
@@ -548,6 +550,12 @@ impl Workspaces {
             self.active.insert(display, workspace);
         }
         active
+    }
+
+    /// Records `shown` as `display`'s previous workspace: a move covered it
+    /// there though another selector naming the same display assigns it.
+    pub fn set_previous(&mut self, display: DisplaySelector, shown: WorkspaceId) {
+        self.previous.insert(display, shown);
     }
 
     #[must_use]

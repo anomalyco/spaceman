@@ -32,8 +32,10 @@ Back-and-forth                                             // ws.back-and-forth
 Move workspace to another display                          // ws.move-workspace
 ├── Option+Shift+Tab / ctl move-workspace [next|prev|<display>]
 ├── Orders displays left-to-right; wraps around for next/prev; persists assignment to config.toml
+├── With no visible window focused (an empty workspace), moves the workspace switched to last
 ├── Reveals & lays out source display's previous workspace -> lays out moved workspace on target
-│   -> parks target's displaced workspace (which is only that display's lane history)
+│   -> parks target's displaced workspace (which is only that display's lane history, even when
+│   another selector for the same display, such as a UUID, assigns it)
 └── Preserves Fullscreen Layout and focus on the moved workspace (focus history untouched); HUD on both displays
 
 Move window without switching                              // ws.move-window
@@ -180,7 +182,11 @@ on the same letter.
   `move_workspace_single_display_is_a_noop`,
   `move_workspace_preserves_fullscreen_layout_and_focused_tile`,
   `move_workspace_persisted_assignment_survives_config_reload`,
-  `move_workspace_replaces_unplugged_assignment_and_rolls_back_on_error`.
+  `move_workspace_replaces_unplugged_assignment_and_rolls_back_on_error`;
+  `src/app/tests/empty_workspace_move.rs` (an empty workspace on a non-main display, issue 201);
+  `src/app/tests/dual_selector_move.rs` (a display with a UUID and a `secondary` selector, issue 202).
+- Unit (FakeBackend), `src/app/tests/reconnect_unsettled.rs`: a tile whose display disconnects
+  before its layout settles returns to its tile on reconnect, and a refusing app stays frozen (issue 203).
 - Unit (FakeBackend), `src/app/tests/tear_regressions.rs` (sequences found by model-based testing):
   `switch_after_moving_a_window_there_survives_async_activation`,
   `frontmost_app_with_a_visible_floating_window_does_not_switch_away`,
