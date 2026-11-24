@@ -328,7 +328,7 @@ impl MainThreadAgent {
                             .map_err(String::as_str),
                     );
                     let now = Instant::now();
-                    if matches!(&result, Err(error) if error.ends_with("cancelled")) {
+                    if matches!(&result, Err(error) if is_cancelled_error(error)) {
                         self.cancelled_retry_until = Some(now + CANCELLED_CYCLE_RETRY);
                     }
                     let cancelled_retry = cancelled_cycle_recheck(now, self.cancelled_retry_until);

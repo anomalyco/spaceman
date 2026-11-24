@@ -1,6 +1,9 @@
 use super::switching::RepeatSwitch;
 use super::*;
 
+mod debug;
+pub(super) use debug::RuntimeDebug;
+
 pub(super) struct CycleStatus {
     pub(super) missing_frontmost_window: Option<AppInstanceId>,
     pub(super) close_recheck: Option<Instant>,
@@ -9,47 +12,6 @@ pub(super) struct CycleStatus {
     pub(super) menu: Vec<status_item::DisplayWorkspaces>,
     pub(super) failed: usize,
     pub(super) hud: Option<UiHudEvent>,
-}
-
-#[derive(Clone, Debug, serde::Serialize)]
-pub(super) struct RuntimeDebug {
-    frontmost: Option<AppInstanceId>,
-    focused: Option<crate::PhysicalWindowId>,
-    active_workspaces: Vec<WorkspaceId>,
-    displays: Vec<DebugDisplay>,
-    tiles: Vec<NavigationTile>,
-    floating: Vec<DebugFloatingWindow>,
-    /// Managed windows left visible across workspace switches because they
-    /// repeatedly reject parking positions.
-    parking_exempt: Vec<crate::PhysicalWindowId>,
-    targets: DebugTargets,
-}
-
-#[derive(Clone, Debug, serde::Serialize)]
-struct DebugFloatingWindow {
-    window: crate::PhysicalWindowId,
-    workspace: WorkspaceId,
-    /// Present exactly when the window is parked off-screen.
-    parked_original_frame: Option<crate::Rect>,
-}
-
-#[derive(Clone, Debug, serde::Serialize)]
-struct DebugDisplay {
-    id: String,
-    name: String,
-    frame: crate::Rect,
-    workspace: WorkspaceId,
-    axis: crate::Axis,
-    fullscreen_layout: bool,
-    layout: Vec<crate::Rect>,
-}
-
-#[derive(Clone, Debug, serde::Serialize)]
-struct DebugTargets {
-    left: Option<crate::PhysicalWindowId>,
-    down: Option<crate::PhysicalWindowId>,
-    up: Option<crate::PhysicalWindowId>,
-    right: Option<crate::PhysicalWindowId>,
 }
 
 pub(super) struct LayoutStatus {
@@ -566,66 +528,6 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
             }));
         }
         tiles
-    }
-
-    pub(super) fn debug_state(&mut self, outputs: &macos::DisplayOutputs) -> RuntimeDebug {
-        let visible = self.visible_workspaces(outputs);
-        let tiles = self.navigation_tiles_for(&visible);
-        let focused = self.backend.focused_window();
-        let target = |direction| {
-            focused.as_ref().and_then(|focused| {
-                crate::navigation::target(&tiles, focused, direction)
-                    .map(|tile| tile.window.clone())
-            })
-        };
-        let targets = DebugTargets {
-            left: target(Direction::Left),
-            down: target(Direction::Down),
-            up: target(Direction::Up),
-            right: target(Direction::Right),
-        };
-        let floating = self
-            .workspaces
-            .floating_entries()
-            .map(|(window, workspace)| DebugFloatingWindow {
-                parked_original_frame: self.parked.get(window).copied(),
-                window: window.clone(),
-                workspace,
-            })
-            .collect();
-        RuntimeDebug {
-            frontmost: self.backend.frontmost_application(),
-            focused,
-            active_workspaces: visible.iter().map(|resolved| resolved.workspace).collect(),
-            displays: visible
-                .into_iter()
-                .filter_map(|resolved| {
-                    let display = outputs
-                        .displays()
-                        .iter()
-                        .find(|display| display.id == resolved.display_id)?;
-                    Some(DebugDisplay {
-                        id: display.id.clone(),
-                        name: display.name.clone(),
-                        frame: display.frame,
-                        workspace: resolved.workspace,
-                        axis: self.workspaces.engine(resolved.workspace).root_axis(),
-                        fullscreen_layout: self
-                            .workspaces
-                            .uses_fullscreen_layout(resolved.workspace),
-                        layout: self.preview_layout(resolved.workspace, HUD_PREVIEW_RECT),
-                    })
-                })
-                .collect(),
-            tiles,
-            floating,
-            parking_exempt: {
-                let mut windows: Vec<_> = self.parking_exempt.iter().cloned().collect();
-                windows.sort_by_key(|window| (window.app.pid, window.window_id));
-                windows
-            },
-            targets,
-        }
     }
 
     pub(super) fn layout_workspace(

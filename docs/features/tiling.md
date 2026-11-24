@@ -87,13 +87,14 @@ pause, quit, or hotkey loss.
   neighbor), which `src/macos/tests.rs` hit-tests by resize-border reach.
 - Unit (FakeBackend), `src/app/tests/reconciliation.rs`:
   `early_open_event_rechecks_until_the_new_window_can_split_its_sibling`,
+  `closed_window_its_app_keeps_ordered_out_gives_up_its_tile` (an app closes its window by ordering it out),
+  `workspace_whose_windows_all_leave_the_screen_keeps_its_tiles` (another Space is showing).
+  `src/app/tests/ordered_out.rs`:
   `confirmed_last_window_close_reflows_the_sibling_in_the_same_cycle`,
   `uncertain_close_requests_one_early_retry`,
   `recheck_reflows_when_the_ordered_out_surface_disappears`,
   `a_possible_tab_replacement_or_incomplete_snapshot_keeps_its_tile`,
-  `closed_window_its_app_keeps_ordered_out_gives_up_its_tile` (an app closes its window by ordering it out),
-  `workspace_whose_windows_all_leave_the_screen_keeps_its_tiles` (another Space is showing).
-  `src/app/tests/set_aside.rs`: `hidden_or_minimized_window_reflows_the_sibling_in_the_same_cycle`,
+  `hidden_or_minimized_window_reflows_the_sibling_in_the_same_cycle`,
   `an_app_keeps_its_tiles_while_one_of_its_windows_is_still_settling`,
   `a_parked_window_keeps_its_tile_through_the_settle`.
 - Unit (FakeBackend), `src/app/tests/minimums.rs`: a window that refuses its tile width gets a wider
