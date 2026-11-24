@@ -500,3 +500,73 @@ fn moving_a_floating_window_dragged_to_a_third_display_restores_it_on_the_target
     );
     assert_eq!(visible_rt.backend.frames[&visible_id], frame(500));
 }
+
+#[test]
+fn moving_floating_window_back_before_cross_display_park_settles_restores_on_main() {
+    let w = window(10);
+    let backend = FakeBackend {
+        frames: HashMap::from([(w.clone(), frame(50))]),
+        server_frames: HashMap::from([(w.clone(), frame(50))]),
+        focused: Some(w.clone()),
+        frontmost: Some(w.app.clone()),
+        observation: Some(observation(&w, frame(50))),
+        ..FakeBackend::default()
+    };
+    let mut rt = runtime(backend);
+    bind(&mut rt, WorkspaceId::ONE, &w);
+    rt.memory
+        .bundles
+        .insert(w.app.clone(), "com.example.Test".into());
+    let run_action = |rt: &mut WorkspaceRuntime<FakeBackend>, action: WorkerAction| {
+        let Some(WorkerResult::Status { result, .. }) = rt.execute(
+            WorkerCommand::Action(action, outputs()),
+            &AtomicBool::new(false),
+        ) else {
+            panic!("missing action status");
+        };
+        assert_eq!(result.unwrap().failed, 0);
+    };
+    run_action(&mut rt, WorkerAction::ToggleFloat);
+    assert_eq!(
+        rt.workspaces.floating_workspace_of(&w),
+        Some(WorkspaceId::ONE)
+    );
+    rt.backend.frozen_server_frames = true;
+
+    // Move to hidden workspace 7 on Secondary while park stays in flight.
+    run_action(
+        &mut rt,
+        WorkerAction::MoveApp("com.example.Test".into(), WorkspaceId::new(7).unwrap()),
+    );
+    let park = rt.backend.frames[&w];
+    assert_eq!(rt.parked[&w], frame(1050));
+    rt.backend.frames.insert(w.clone(), frame(50));
+    rt.backend.focused = None;
+
+    // Move back to visible workspace 1 on Main before the park write settles.
+    run_action(
+        &mut rt,
+        WorkerAction::MoveApp("com.example.Test".into(), WorkspaceId::ONE),
+    );
+    let newer = rt.backend.frames[&w];
+    assert_eq!(newer, frame(50));
+
+    // Delayed park lands first, then the newer restore supersedes it on Main.
+    rt.backend.frozen_server_frames = false;
+    rt.backend.server_frames.insert(w.clone(), park);
+    rt.backend.server_frames.insert(w.clone(), newer);
+    rt.recently_parked
+        .insert(w.clone(), Instant::now() - Duration::from_secs(3));
+    rt.backend.observation = Some(observation(&w, newer));
+    assert_eq!(
+        rt.cycle(outputs(), &AtomicBool::new(false)).unwrap().failed,
+        0
+    );
+    assert_eq!(
+        rt.workspaces.floating_workspace_of(&w),
+        Some(WorkspaceId::ONE)
+    );
+    assert!(!rt.parked.contains_key(&w));
+    assert_eq!(rt.backend.server_frames[&w], frame(50));
+    assert_eq!(rt.backend.frames[&w], frame(50));
+}

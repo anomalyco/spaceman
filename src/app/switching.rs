@@ -712,18 +712,33 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
             failed += layout.failed;
         }
         if target_is_active {
-            if self.parked.contains_key(&window)
-                && !matches!(
+            let was_parked = self.parked.contains_key(&window);
+            if was_parked {
+                if is_floating && let Some(&recovery) = self.parked.get(&window) {
+                    let displays: Vec<_> = outputs.frames().collect();
+                    let recovery_output =
+                        Self::display_for_frame(recovery, &displays).unwrap_or(source_output);
+                    if recovery_output != target_output {
+                        let relocated = super::move_workspace::translate_frame_to_output(
+                            recovery,
+                            recovery_output,
+                            target_output,
+                        );
+                        let _: bool = self.record_recovery(&window, relocated);
+                    }
+                }
+                if !matches!(
                     self.restore_window(&window),
                     macos::ApplyOutcome::Applied | macos::ApplyOutcome::Gone
-                )
-            {
-                failed += 1;
+                ) {
+                    failed += 1;
+                }
             }
             if !is_floating {
                 let layout = self.layout_workspace(target, target_output, cancelled);
                 failed += layout.failed;
-            } else if window_output != target_output
+            } else if !was_parked
+                && window_output != target_output
                 && !self.carry_floating_window(&window, window_output, target_output)
             {
                 failed += 1;

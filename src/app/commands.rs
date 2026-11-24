@@ -688,7 +688,15 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
         // Reconciliation adopts a window it observes but does not own, which is
         // exactly how a relaunched or moved window joins the tiles.
         let result = self.cycle(outputs, cancelled);
-        if self.workspaces.workspace_of(&window).is_some() {
+        if let Some(owner) = self.workspaces.workspace_of(&window) {
+            if self.parked.contains_key(&window)
+                && let Some(tile_frame) = self.applied[owner.index()]
+                    .get(&window)
+                    .map(|applied| applied.target)
+                    .or_else(|| self.backend.frame(&window).ok())
+            {
+                let _: bool = self.record_recovery(&window, tile_frame);
+            }
             return result;
         }
         self.workspaces.own_floating(window.clone(), workspace);

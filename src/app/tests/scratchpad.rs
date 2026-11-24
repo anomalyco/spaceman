@@ -585,3 +585,37 @@ fn background_bounds_reassertion_reparks_hidden_scratchpad_window_while_frontmos
         Some(WorkspaceId::ONE)
     );
 }
+
+#[test]
+fn tiling_an_unconfirmed_scratchpad_summon_keeps_tiles_separate_after_arrival() {
+    let mut rt = scratchpad_runtime(lab());
+    let w = window(10);
+    let sibling = window(20);
+    scratchpad(&mut rt, ScratchpadCommand::Mark).unwrap();
+    assert_hidden(&rt, &w);
+    rt.backend
+        .server_frames
+        .insert(w.clone(), rt.backend.frames[&w]);
+    rt.backend.frozen_server_frames = true;
+    scratchpad(&mut rt, ScratchpadCommand::Toggle).unwrap();
+    assert!(rt.scratchpad.pending_summon(&w).is_some());
+
+    // Tile while the summon is still unconfirmed.
+    run(&mut rt, WorkerAction::ToggleFloat).unwrap();
+    assert_eq!(rt.workspaces.workspace_of(&w), Some(WorkspaceId::ONE));
+    assert!(!rt.scratchpad.contains(&w));
+    let tile_frame = rt.backend.frames[&w];
+    assert_ne!(tile_frame, rt.backend.frames[&sibling]);
+
+    // Delayed tile move arrives and retry throttle expires: later cycle must not
+    // overwrite the tile with its pre-summon recovery frame.
+    rt.backend.server_frames.insert(w.clone(), tile_frame);
+    rt.backend.frozen_server_frames = false;
+    rt.recently_parked
+        .insert(w.clone(), Instant::now() - Duration::from_secs(5));
+    run(&mut rt, WorkerAction::Retile).unwrap();
+    assert_eq!(rt.backend.frames[&w], tile_frame);
+    assert_ne!(rt.backend.frames[&w], rt.backend.frames[&sibling]);
+    assert!(!rt.parked.contains_key(&w));
+    assert!(!rt.backend.persisted.contains_key(&w));
+}
