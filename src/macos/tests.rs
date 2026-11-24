@@ -5,7 +5,7 @@ use crate::{AppInstanceId, DisplaySelector, PhysicalWindowId, Rect};
 use super::{
     DisplayOutput, DisplayOutputs,
     apply::{group_placements_by_app, position_matches},
-    ax::{WindowServerWindow, should_ignore_missing_window_id, top_window_at_point},
+    ax::{WindowServerWindow, should_ignore_missing_window_id, windows_reaching_point},
     events::running_application_instances,
     frontmost_application, is_process_incarnation_running, process_start_time,
 };
@@ -40,9 +40,48 @@ fn pointer_hit_testing_uses_front_to_back_geometry_without_ax_focus() {
         },
     };
     let windows = [front, behind];
-    assert_eq!(top_window_at_point(&windows, (-900, -100)).unwrap().id, 10);
-    assert_eq!(top_window_at_point(&windows, (-500, -100)).unwrap().id, 20);
-    assert!(top_window_at_point(&windows, (100, 100)).is_none());
+    let ids = |point| {
+        windows_reaching_point(&windows, point)
+            .map(|window| window.id)
+            .collect::<Vec<_>>()
+    };
+    assert_eq!(ids((-900, -100)), [10, 20]);
+    assert_eq!(ids((-500, -100)), [20]);
+    assert!(ids((100, 100)).is_empty());
+}
+
+#[test]
+fn pointer_hit_testing_includes_windows_whose_resize_border_reaches_a_gap() {
+    let left = WindowServerWindow {
+        pid: 1,
+        id: 10,
+        frame: Rect {
+            x: 0,
+            y: 0,
+            width: 500,
+            height: 800,
+        },
+    };
+    // An 8-point gap: the pointer at x 504 is over neither window.
+    let right = WindowServerWindow {
+        pid: 2,
+        id: 20,
+        frame: Rect {
+            x: 508,
+            ..left.frame
+        },
+    };
+    let windows = [right, left];
+    let ids = |point| {
+        windows_reaching_point(&windows, point)
+            .map(|window| window.id)
+            .collect::<Vec<_>>()
+    };
+    assert_eq!(ids((504, 400)), [20, 10]);
+    // Just past the left window's edge, inside the right one.
+    assert_eq!(ids((509, 400)), [20, 10]);
+    assert_eq!(ids((300, 400)), [10]);
+    assert!(ids((540, 900)).is_empty());
 }
 
 #[test]
