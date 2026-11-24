@@ -49,17 +49,26 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
             .collect();
         let displays: Vec<_> = outputs.frames().collect();
         for window in std::mem::take(&mut self.displays.repark_pending) {
-            // Unowned windows are restored by the cycle, visible ones revealed.
-            let Some(owner) = self.workspaces.workspace_of_any(&window) else {
-                continue;
-            };
-            if !self.parked.contains_key(&window)
-                || visible.contains(&owner)
-                || self.parking_exempt.contains(&window)
-            {
+            if !self.parked.contains_key(&window) || self.parking_exempt.contains(&window) {
                 continue;
             }
-            if !self.repark_for_displays(&window, owner, outputs, &displays) {
+            // Hidden scratchpad windows intentionally have no workspace owner, but still need to
+            // stay parked off-screen when a newly connected display covers their parking edge.
+            let output = if let Some(owner) = self.workspaces.workspace_of_any(&window) {
+                if visible.contains(&owner) {
+                    continue;
+                }
+                output_for(&self.workspaces, owner, outputs)
+            } else if self
+                .scratchpad
+                .entry(&window)
+                .is_some_and(|entry| entry.shown_on.is_none())
+            {
+                outputs.main().frame
+            } else {
+                continue;
+            };
+            if !self.repark_for_displays(&window, output, &displays) {
                 self.displays.repark_pending.insert(window);
             }
         }
@@ -69,14 +78,12 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
     fn repark_for_displays(
         &mut self,
         window: &crate::PhysicalWindowId,
-        owner: WorkspaceId,
-        outputs: &macos::DisplayOutputs,
+        output: crate::Rect,
         displays: &[crate::Rect],
     ) -> bool {
         let Some(current) = self.backend.window_server_frame(window) else {
             return false;
         };
-        let output = output_for(&self.workspaces, owner, outputs);
         let target = crate::geometry::parked_frame(output, displays, current);
         if (target.x, target.y) == (current.x, current.y) {
             return true;

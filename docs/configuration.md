@@ -205,8 +205,8 @@ scratchpad = false                    # optional (default: false); the i3/sway-s
 ```
 
 `scratchpad = true` enables the Scratchpad (see [Controls › Scratchpad](controls.md#scratchpad-lab)) and
-registers its two shortcuts, `Option+\` and `Option+Shift+\`, the next time Spaceman starts
-(`spaceman ctl restart`); a `[shortcuts]` binding on either chord takes it instead. The
+registers its two shortcuts, `Option+\` and `Option+Shift+\`, live without a restart (or on the next
+hotkey registration if tiling is paused); a `[shortcuts]` binding on either chord takes it instead. The
 `spaceman ctl scratchpad` commands follow the switch live. Turning the switch off while windows are
 hidden in the scratchpad brings them back on screen, where they tile again.
 

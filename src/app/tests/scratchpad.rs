@@ -369,3 +369,77 @@ fn an_empty_scratchpad_toggle_is_a_clean_no_op() {
     );
     assert!(runtime.backend.calls.is_empty());
 }
+
+#[test]
+fn adding_a_display_reparks_hidden_scratchpad_windows_without_dropping_membership() {
+    let single = macos::DisplayOutputs::new(vec![outputs().main().clone()]).unwrap();
+    let mut runtime = scratchpad_runtime(lab());
+
+    let Some(WorkerResult::Status { result, .. }) = runtime.execute(
+        WorkerCommand::Action(WorkerAction::Retile, single.clone()),
+        &AtomicBool::new(false),
+    ) else {
+        panic!("expected retile status");
+    };
+    result.unwrap();
+
+    let Some(WorkerResult::Status { result, .. }) = runtime.execute(
+        WorkerCommand::Action(
+            WorkerAction::Scratchpad(ScratchpadCommand::Mark),
+            single.clone(),
+        ),
+        &AtomicBool::new(false),
+    ) else {
+        panic!("expected mark status");
+    };
+    result.unwrap();
+    assert!(runtime.scratchpad.hidden().contains(&window(10)));
+    assert!(
+        !crate::geometry::shows_on(
+            runtime.backend.frames[&window(10)],
+            &single.frames().collect::<Vec<_>>(),
+        ),
+        "window should be parked off the single display"
+    );
+
+    // Connect a second display over the right parking edge: hidden scratchpad window stays hidden.
+    let Some(WorkerResult::Status { result, .. }) = runtime.execute(
+        WorkerCommand::Action(WorkerAction::Retile, outputs()),
+        &AtomicBool::new(false),
+    ) else {
+        panic!("expected retile status after display add");
+    };
+    result.unwrap();
+
+    let all_displays: Vec<_> = outputs().frames().collect();
+    assert!(
+        !crate::geometry::shows_on(runtime.backend.frames[&window(10)], &all_displays),
+        "hidden scratchpad window leaked onto newly added display: {:?}",
+        runtime.backend.frames[&window(10)]
+    );
+    assert!(runtime.scratchpad.hidden().contains(&window(10)));
+    assert_eq!(runtime.workspaces.workspace_of_any(&window(10)), None);
+    assert!(runtime.parked.contains_key(&window(10)));
+
+    // Summoning it still reveals it cleanly.
+    let Some(WorkerResult::Status { result, .. }) = runtime.execute(
+        WorkerCommand::Action(
+            WorkerAction::Scratchpad(ScratchpadCommand::Toggle),
+            outputs(),
+        ),
+        &AtomicBool::new(false),
+    ) else {
+        panic!("expected toggle status");
+    };
+    result.unwrap();
+    assert!(
+        runtime
+            .scratchpad
+            .entry(&window(10))
+            .is_some_and(|entry| entry.shown_on.is_some())
+    );
+    assert!(crate::geometry::shows_on(
+        runtime.backend.frames[&window(10)],
+        &all_displays
+    ));
+}
