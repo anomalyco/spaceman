@@ -693,7 +693,7 @@ fn display_pointer_follow_uses_dragged_floats_actual_display() {
         rt.backend.frames.insert(window(30), frame(1050));
         run(
             &mut rt,
-            WorkerCommand::Gesture(FinalGesture::Drop(window(30), (1250, 30)), false, outputs()),
+            WorkerCommand::Gesture(FinalGesture::drop(window(30), (1250, 30)), false, outputs()),
         );
         rt.backend.calls.clear();
         rt

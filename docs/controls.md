@@ -74,10 +74,15 @@ other window. Press `Option+Shift+Space` again to put it back on the tiles, wher
 stable order. Windows that a `float` rule keeps floating, or that their application will not let
 Spaceman resize, stay floating; toggle them after removing the rule instead.
 
-Dragging a managed tile over a sibling swaps it. Dropping near a tile edge can create a nested split;
-dropping onto another display can move it to that display's active workspace. Resizing a managed
-window with the pointer updates the relevant split weights. Spaceman previews the rest of the layout
-during the gesture and applies the final result on mouse-up.
+Dragging a managed tile over a sibling swaps it. Dropping near a tile edge creates a nested split;
+dropping inside a band along the display's left or right edge (including any outer gap, once the
+pointer has been outside that band since the drag began) docks the window into a full-height,
+half-width column on that side and keeps the remaining tiles' arrangement in the other half.
+Dropping onto another display moves the window to that display's active workspace. Resizing a
+managed window with the pointer updates the relevant split weights. Spaceman previews the rest of
+the layout non-destructively against the layout at drag start and commits only on mouse-up, so
+crossing a sibling or leaving a drop zone restores the preview and never leaves an intermediate edit
+behind.
 
 While the worker is busy, keyboard commands and completed pointer gestures are queued in arrival
 order. Repeated relative commands (resize, focus, move, and toggles) are not discarded. The queue holds

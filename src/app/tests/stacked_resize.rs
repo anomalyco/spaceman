@@ -91,7 +91,7 @@ fn swap_retains_requested_row(pointer: bool) {
     let command = if pointer {
         let target = runtime.backend.frames[b];
         WorkerCommand::Gesture(
-            FinalGesture::Drop(
+            FinalGesture::drop(
                 a.clone(),
                 (target.x + target.width / 2, target.y + target.height / 2),
             ),
@@ -193,7 +193,7 @@ fn drop_on(
     preview: bool,
 ) {
     let command = WorkerCommand::Gesture(
-        FinalGesture::Drop(window.clone(), point),
+        FinalGesture::drop(window.clone(), point),
         preview,
         outputs(),
     );
@@ -235,8 +235,7 @@ fn b_beside_a_over_c(
 /// Dropping a tile near a stacked tile's edge nests it in the requested
 /// layout: `| A | B | C |` shown as `| A | B/C |`, A dragged to C's top edge
 /// saves `| B | A/C |`, not the temporary stack with A inside it. The preview
-/// already makes that edit, without persisting it; the drop then lands in A's
-/// own tile and saves it.
+/// shows it without mutating or persisting the layout, and mouse-up commits it.
 #[test]
 fn drag_nest_into_a_temporary_stack_keeps_the_requested_layout() {
     let (mut runtime, [a, b, c]) = three_with_minimums([400, 250, 450]);
@@ -333,14 +332,13 @@ fn drag_nest_without_a_preview_keeps_the_requested_layout() {
     );
 }
 
-/// Each preview re-lays out the tiles, so a stationary pointer can end up
-/// over another tile: A held on B's top edge in `| A | B/C |` first nests
-/// above B, the row then fits and puts C under the pointer, and the drop
-/// saves `| B | A/C |`. This pins today's outcome.
+/// Previews evaluate against the gesture-start layout (#340), so holding A on
+/// B's top edge in `| A | B/C |` keeps targeting B across repeated previews
+/// and commits `| A/B | C |`, matching a drop there with no previews.
 #[test]
-fn drag_nest_on_the_other_stacked_tile_follows_the_preview() {
+fn drag_nest_on_the_other_stacked_tile_commits_against_gesture_start() {
     let (mut runtime, windows) = three_with_minimums([400, 250, 450]);
-    let [a, b, _] = &windows;
+    let [a, b, c] = &windows;
     let target = runtime.backend.frames[b];
     let point = (target.x + target.width / 2, target.y + 10);
 
@@ -351,11 +349,18 @@ fn drag_nest_on_the_other_stacked_tile_follows_the_preview() {
 
     assert_eq!(requested_axis(&runtime), crate::Axis::Horizontal);
     runtime.layout_workspace(WorkspaceId::ONE, WIDE, &AtomicBool::new(false));
-    assert!(
-        b_beside_a_over_c(&runtime, &windows),
-        "{:?}",
-        runtime.backend.frames
+    let frames = &runtime.backend.frames;
+    assert_eq!(
+        frames[c],
+        crate::Rect {
+            x: 700,
+            width: 700,
+            ..WIDE
+        }
     );
+    assert_eq!(frames[a].x, 0);
+    assert_eq!(frames[b].x, 0);
+    assert!(frames[a].y < frames[b].y, "{frames:?}");
 }
 
 /// A fit that only reweights the row: a drag-nest keeps the requested

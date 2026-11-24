@@ -67,6 +67,8 @@ Focus follows                                              // ws.focus-follow
 │   -> that workspace becomes active, with focus on that window (not its remembered tile)
 │   └── Switch interrupted by that same activation -> retiles every 40 ms for 500 ms and follows it
 │       as soon as Accessibility catches up
+│   └── Activation slides macOS to another Space (Cmd+Tab out of a native fullscreen app)
+│       -> follows once the slide settles; a follow the slide made fail is retried, not re-homed
 ├── Focusing a window on another display's visible workspace -> no switch; Option+Tab remembers it
 └── No focused window reported -> follows the frontmost app only when all its windows, tiled
     or floating, are on one workspace
@@ -294,6 +296,12 @@ on the same letter.
 - Unit (FakeBackend), `src/app/tests/reconciliation.rs`:
   `an_app_that_quits_while_hidden_releases_its_tiles_and_recovery_metadata` (an app that quits
   while its windows are parked frees their tiles without the workspace being shown).
+- Unit (FakeBackend), `src/app/tests/space_transitions.rs`:
+  `cmd_tab_out_of_native_fullscreen_lands_on_the_target_workspace`,
+  `a_focus_follow_a_space_slide_interrupts_is_retried` and
+  `a_failed_focus_follow_without_a_space_change_stays_suppressed` (focus follow across a Space
+  slide), and `a_space_slide_holds_layout_until_it_settles`. When macOS posts the Space change
+  relative to the slide is not covered.
 - Unit: `src/hotkeys/delivery.rs` pairs Option presses seen by the key tap with Carbon deliveries
   in either order and reports a press still undelivered after 750 ms. The tap
   (`src/macos/keys.rs`) and the re-registration in `src/app/app_loop/hotkey_health.rs` are not

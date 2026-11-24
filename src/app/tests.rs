@@ -2,6 +2,7 @@ mod benchmarks;
 mod cross_display;
 mod dispatch;
 mod display_disconnect;
+mod drag_path;
 mod dual_selector_move;
 mod dwindle;
 mod empty_workspace_move;
@@ -22,6 +23,7 @@ mod reconnect_unsettled;
 mod reliability;
 mod rules;
 mod scratchpad;
+mod space_transitions;
 mod spacing;
 mod stacked_resize;
 mod startup;
@@ -96,6 +98,11 @@ struct FakeBackend {
     persisted_monitors: Vec<(WorkspaceId, DisplaySelector)>,
     pointer: Option<(i32, i32)>,
     mouse_down: bool,
+    /// When macOS last changed the active Space.
+    space_changed_at: Option<Instant>,
+    /// The next position write starts a Space slide (Cmd+Tab out of a
+    /// native fullscreen app while a focus follow runs).
+    space_change_on_position: bool,
 }
 
 impl WorkspaceBackend for FakeBackend {
@@ -216,6 +223,9 @@ impl WorkspaceBackend for FakeBackend {
     ) -> macos::ApplyOutcome {
         self.calls
             .push(BackendCall::SetPosition(window.clone(), target));
+        if std::mem::take(&mut self.space_change_on_position) {
+            self.space_changed_at = Some(Instant::now());
+        }
         if let Some(cancelled) = self.cancel_on_position.take() {
             cancelled.store(true, Ordering::Release);
         }
@@ -245,6 +255,10 @@ impl WorkspaceBackend for FakeBackend {
 
     fn frontmost_application(&mut self) -> Option<AppInstanceId> {
         self.frontmost.clone()
+    }
+
+    fn active_space_changed_at(&mut self) -> Option<Instant> {
+        self.space_changed_at
     }
 
     fn raise_window(&mut self, window: &crate::PhysicalWindowId) -> bool {

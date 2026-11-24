@@ -14,6 +14,8 @@ Pause / quit / update / macOS asks Spaceman to terminate   // recover.restore-on
 │   └── that frame's display unplugged -> moved onto the main display instead
 ├── Recovery entry removed only after the window server confirms arrival
 │   └── Accessibility says "gone" but the window server still lists it -> entry kept, retried
+│       for as long as it lasts (a window on another macOS desktop restores once that desktop
+│       is shown); only the window server dropping it or its app quitting retires the entry
 └── Restoration fails -> exit blocked, menu shows "Restoring windows · N failed", retries
 
 Install & restart (in-app update)                          // recover.update
@@ -88,7 +90,9 @@ See [Recovery](../recovery.md) for the safe manual procedure; never delete `park
   `startup.rs` `invalid_startup_metadata_falls_back_so_parked_recovery_can_start`;
   `tear_regressions.rs` `restore_all_keeps_recovery_for_a_window_the_window_server_still_lists`,
   `restore_all_after_unplugging_lands_windows_on_a_connected_display`,
-  `restore_all_command_moves_recovery_frames_onto_the_current_displays`.
+  `restore_all_command_moves_recovery_frames_onto_the_current_displays`;
+  `space_transitions.rs` `restore_keeps_recovery_for_a_parked_window_on_another_desktop` (kept
+  past the Accessibility grace, restored once reachable; a closed window still lets exit finish).
 - Unit (FakeBackend), `memory.rs`: startup recall by frame then order, no recall for instances that
   already own windows, route precedence, recall expiry, recall closing when the app quits,
   mid-session launches opening on the active workspace, mid-session relaunches (quit first or

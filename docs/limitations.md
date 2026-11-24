@@ -21,7 +21,9 @@ Spaceman is an experimental public preview, not a broadly qualified release.
   exits safely but does not relaunch.
 - Spaceman assumes one macOS Space per display. Windows on another Space are adopted into the active
   workspace when that Space is shown, and tiles whose windows are ordered out while it is shown may
-  be released.
+  be released. Layout waits about 0.7 s after each Space slide so the two Spaces' windows are not
+  tiled together. Accessibility cannot reach a parked window on a Space that isn't showing, so
+  pausing or quitting there waits, with its recovery entry kept, until that Space is shown.
 - `secondary` selects the first non-main display; display ordering and duplicate names may surprise.
 - Global shortcuts may collide with other applications or fail on keyboard layouts that cannot
   produce required characters.

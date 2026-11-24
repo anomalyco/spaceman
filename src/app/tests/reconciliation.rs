@@ -771,7 +771,7 @@ fn varying_constrained_rejections_freeze_and_clear_on_user_gesture() {
     runtime.backend.managed_outcome = None;
     let _ = runtime.execute(
         WorkerCommand::Gesture(
-            FinalGesture::Drop(stubborn.clone(), (750, 400)),
+            FinalGesture::drop(stubborn.clone(), (750, 400)),
             false,
             outputs.clone(),
         ),
