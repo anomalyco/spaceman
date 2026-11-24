@@ -430,50 +430,171 @@ fn cross_display_focus_then_move_workspace_targets_pending_workspace_during_lag(
     }
 }
 
+fn distinct_window(n: u32) -> crate::PhysicalWindowId {
+    let mut w = window(n);
+    w.app.pid = n as i32;
+    w
+}
+
+fn report_focus(rt: &mut WorkspaceRuntime<FakeBackend>, window: &crate::PhysicalWindowId) {
+    rt.backend.focused = Some(window.clone());
+    rt.backend.frontmost = Some(window.app.clone());
+}
+
+fn cross_display_entry_fixture(park_secondary_on_seven: bool) -> WorkspaceRuntime<FakeBackend> {
+    let (w10, w30, w40) = (
+        distinct_window(10),
+        distinct_window(30),
+        distinct_window(40),
+    );
+    let backend = FakeBackend {
+        focused: Some(w10.clone()),
+        frontmost: Some(w10.app.clone()),
+        frames: HashMap::from([
+            (w10.clone(), frame(50)),
+            (w30.clone(), frame(1050)),
+            (w40.clone(), main_parked_frame(frame(200))),
+        ]),
+        ..FakeBackend::default()
+    };
+    let mut rt = runtime_with_parked(backend, [(w40.clone(), frame(200))]);
+    bind(&mut rt, WorkspaceId::ONE, &w10);
+    if park_secondary_on_seven {
+        let displays = outputs().frames().collect::<Vec<_>>();
+        let parked = crate::geometry::parked_frame(displays[1], &displays, frame(1050));
+        rt.backend.frames.insert(w30.clone(), parked);
+        rt.parked.insert(w30.clone(), frame(1050));
+        bind(&mut rt, WorkspaceId::new(7).unwrap(), &w30);
+    } else {
+        bind(&mut rt, WorkspaceId::SIX, &w30);
+    }
+    bind(&mut rt, WorkspaceId::TWO, &w40);
+    rt.workspaces.switch(WorkspaceId::ONE);
+    rt.foreground_lanes
+        .insert("main-id".into(), DisplaySelector::Main);
+    rt.workspaces.switch(WorkspaceId::SIX);
+    rt.foreground_lanes
+        .insert("secondary-id".into(), DisplaySelector::Secondary);
+    rt
+}
+
 #[test]
 fn workspace_switch_keeps_superseded_cross_display_focus_target_stale() {
-    let id = |n: u32| {
-        let mut w = window(n);
-        w.app.pid = n as i32;
-        w
-    };
-    let (w10, w30, w40) = (id(10), id(30), id(40));
+    let (w10, w30, w40) = (
+        distinct_window(10),
+        distinct_window(30),
+        distinct_window(40),
+    );
+    let entries = [
+        WorkerAction::SwitchWorkspace(WorkspaceId::TWO),
+        WorkerAction::SelectWorkspace(WorkspaceId::TWO),
+        WorkerAction::Swipe(crate::swipe::Swipe::Left, (500, 400)),
+    ];
+    for entry in entries {
+        for reported in [10, 30, 40] {
+            let mut rt = cross_display_entry_fixture(false);
+            press(&mut rt, WorkerAction::Focus(Direction::Right));
+            assert_eq!(rt.backend.focused, Some(w30.clone()));
+            report_focus(&mut rt, &w10);
+            press(&mut rt, entry.clone());
+            assert_eq!(rt.backend.focused, Some(w40.clone()));
+            let rep = distinct_window(reported);
+            report_focus(&mut rt, &rep);
+            press(&mut rt, WorkerAction::ToggleFloat);
+            assert_eq!(
+                rt.workspaces.floating_workspace_of(&w40),
+                Some(WorkspaceId::TWO),
+                "entry={entry:?} reported={reported}"
+            );
+            assert_eq!(
+                rt.workspaces.floating_workspace_of(&w30),
+                None,
+                "entry={entry:?} reported={reported}"
+            );
+        }
+    }
+}
+
+#[test]
+fn workspace_back_and_forth_keeps_superseded_focus_target_stale() {
+    let (w10, w30, w40) = (
+        distinct_window(10),
+        distinct_window(30),
+        distinct_window(40),
+    );
+    let seven = WorkspaceId::new(7).unwrap();
     for reported in [10, 30, 40] {
-        let backend = FakeBackend {
-            focused: Some(w10.clone()),
-            frontmost: Some(w10.app.clone()),
-            frames: HashMap::from([
-                (w10.clone(), frame(50)),
-                (w30.clone(), frame(1050)),
-                (w40.clone(), main_parked_frame(frame(200))),
-            ]),
-            ..FakeBackend::default()
-        };
-        let mut rt = runtime_with_parked(backend, [(w40.clone(), frame(200))]);
-        bind(&mut rt, WorkspaceId::ONE, &w10);
-        bind(&mut rt, WorkspaceId::SIX, &w30);
-        bind(&mut rt, WorkspaceId::TWO, &w40);
-        rt.workspaces.switch(WorkspaceId::ONE);
-        rt.foreground_lanes
-            .insert("main-id".into(), DisplaySelector::Main);
-        rt.workspaces.switch(WorkspaceId::SIX);
-        rt.foreground_lanes
-            .insert("secondary-id".into(), DisplaySelector::Secondary);
-        press(&mut rt, WorkerAction::Focus(Direction::Right));
-        rt.backend.focused = Some(w10.clone());
-        rt.backend.frontmost = Some(w10.app.clone());
+        let mut rt = cross_display_entry_fixture(true);
         press(&mut rt, WorkerAction::SwitchWorkspace(WorkspaceId::TWO));
         assert_eq!(rt.backend.focused, Some(w40.clone()));
-        let rep = id(reported);
-        rt.backend.focused = Some(rep.clone());
-        rt.backend.frontmost = Some(rep.app);
+        report_focus(&mut rt, &w10);
+        press(&mut rt, WorkerAction::SwitchWorkspace(seven));
+        assert_eq!(rt.backend.focused, Some(w30.clone()));
+        report_focus(&mut rt, &w10);
+        press(&mut rt, WorkerAction::WorkspaceBackAndForth);
+        assert_eq!(rt.backend.focused, Some(w40.clone()));
+        let rep = distinct_window(reported);
+        report_focus(&mut rt, &rep);
         press(&mut rt, WorkerAction::ToggleFloat);
         assert_eq!(
             rt.workspaces.floating_workspace_of(&w40),
-            Some(WorkspaceId::TWO)
+            Some(WorkspaceId::TWO),
+            "reported={reported}"
         );
-        assert_eq!(rt.workspaces.floating_workspace_of(&w30), None);
+        assert_eq!(
+            rt.workspaces.floating_workspace_of(&w30),
+            None,
+            "reported={reported}"
+        );
     }
+}
+
+#[test]
+fn workspace_selection_keeps_raw_report_departure_policy_and_drops_expired_stale() {
+    let (w10, w20, w30, w40) = (
+        distinct_window(10),
+        distinct_window(20),
+        distinct_window(30),
+        distinct_window(40),
+    );
+    // Raw-report departure policy control: SelectWorkspace remembers reported
+    // focus (10), while SwitchWorkspace remembers pending focus (20).
+    for keyboard in [false, true] {
+        let mut rt = cross_display_entry_fixture(false);
+        rt.backend.frames.insert(w20.clone(), frame(500));
+        bind(&mut rt, WorkspaceId::ONE, &w20);
+        press(&mut rt, WorkerAction::Focus(Direction::Right));
+        assert_eq!(rt.backend.focused, Some(w20.clone()));
+        report_focus(&mut rt, &w10);
+        press(
+            &mut rt,
+            if keyboard {
+                WorkerAction::SwitchWorkspace(WorkspaceId::TWO)
+            } else {
+                WorkerAction::SelectWorkspace(WorkspaceId::TWO)
+            },
+        );
+        assert_eq!(
+            rt.workspaces.preferred_focus(WorkspaceId::ONE),
+            Some(if keyboard { w20.clone() } else { w10.clone() })
+        );
+    }
+
+    // Expired prior pending_focus must not be carried into the new entry request.
+    let mut rt = cross_display_entry_fixture(false);
+    press(&mut rt, WorkerAction::Focus(Direction::Right));
+    assert_eq!(rt.backend.focused, Some(w30.clone()));
+    rt.pending_focus.as_mut().unwrap().at -= FOCUS_SETTLE;
+    report_focus(&mut rt, &w10);
+    press(&mut rt, WorkerAction::SelectWorkspace(WorkspaceId::TWO));
+    assert_eq!(rt.backend.focused, Some(w40.clone()));
+    report_focus(&mut rt, &w30);
+    press(&mut rt, WorkerAction::ToggleFloat);
+    assert_eq!(
+        rt.workspaces.floating_workspace_of(&w30),
+        Some(WorkspaceId::SIX)
+    );
+    assert_eq!(rt.workspaces.floating_workspace_of(&w40), None);
 }
 
 #[test]
