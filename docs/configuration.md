@@ -112,8 +112,10 @@ spaceman config get settings.hud_position
 spaceman config reset settings.hud_position
 ```
 
-Settings › General shows **Position** under **Workspace HUD** while the HUD is not **Off**, and
-`spaceman config reset` removes any settings key, back to its default.
+In Settings › General, **Workspace HUD** picks `Off`, `Icons` or `Layouts`. While it is not
+`Off`, **Customize…** beside it opens a sheet: a live miniature of the capsule over **Position**
+(`Bottom` or `Top`) and a link to Settings › Workspaces, which decides the workspaces each display's
+capsule lists. `spaceman config reset` removes any settings key, back to its default.
 
 ## New-Window Layout
 
@@ -164,7 +166,8 @@ tiles exactly as before.
 
 Settings › Layout edits the same keys over a live miniature of the result. One **Window gaps**
 slider sets `inner` and all four edges together; **Customize separately** (open on its own when the
-file's gaps differ) sets between windows, all screen edges, and each edge on its own. It shows the
+file's gaps differ) sets between windows, all screen edges, and each edge on its own (**Top edge**, **Bottom edge**,
+**Left edge**, **Right edge**). It shows the
 padding each edge resolves to and leaves `outer` as the file has it: an edge you move there gets its
 own key, and the rest keep following `outer`.
 
@@ -264,14 +267,16 @@ Shortcut changes apply live: saving `config.toml` registers the new chords withi
 seconds, without a restart. If the new table can't be registered, the previous shortcuts keep working
 and Settings shows `Shortcuts not applied` with the reason. Workspaces enabled by a config edit still
 get their shortcuts on the next start. The menu-bar workspace list keeps showing the built-in
-`Option`+number/letter hints next to each workspace.
+`Option`+number/letter hints next to each workspace. Settings › Workspaces names workspace 10's
+keys from `[shortcuts]` (`Workspace 10 (⌃⌥0)` with a `ctrl+alt` base), and none when no shortcut
+switches to it.
 
 Settings › Shortcuts edits the same table. Click a shortcut's keys and press a new chord: it is saved
 to `[shortcuts.bindings]` and registered at once, and the built-in chord it replaces gets `none`.
 While Settings records, every global shortcut is held off so the chord reaches it (for at most a
 minute). `esc` cancels, `⌫` or `Delete` on its own clears the shortcut (`none`), a chord without
 `⌥`, `⌃`, or `⌘` is refused, and so is a chord another shortcut uses, naming it. Base modifier
-sets `modifier`, and Reset to Defaults removes the `[shortcuts]` table. Comments and other bindings
+sets `modifier`, and Reset to defaults removes the `[shortcuts]` table. Comments and other bindings
 in the file are kept.
 
 ## Labs
@@ -293,7 +298,7 @@ hotkey registration if tiling is paused); a `[shortcuts]` binding on either chor
 hidden in the scratchpad brings them back on screen, where they tile again.
 
 `activity = true` adds Settings › Activity, the live arrangement log, journal health, process vitals,
-and Save Snapshot (see [Restarts and Recovery](features/restarts-and-recovery.md)). With it off the pane
+and Save snapshot (see [Restarts and Recovery](features/restarts-and-recovery.md)). With it off the pane
 stays out of the Settings sidebar and its `⌘6` shortcut does nothing; `spaceman doctor` and the journal
 keep recording either way. Turning it off while the pane is open returns Settings to General.
 
@@ -361,7 +366,10 @@ visible again.
 
 Settings › Workspaces offers every connected display. With two displays the choices are `Main`
 and `Secondary`; with three or more, Main stays `Main` and every other display is named after
-itself, numbered when two share a name (`Studio Display 1`, `Studio Display 2`). Assigning a
+itself, numbered when two share a name (`Studio Display 1`, `Studio Display 2`). A display's card
+always carries its own name. Its picker segment says `Display 3` instead, by its position, when the
+name is longer than 16 characters (`Built-in Retina Display`) or four or more displays share the
+picker, and the card's caption repeats that number. Assigning a
 display past Secondary writes its UUID (the same selector `Option+Shift+Tab` persists), and a
 saved UUID renders back as that display's name, in the same words as its picker segment and
 card. A row set to a display other than its built-in default says which default it differs

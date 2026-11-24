@@ -130,7 +130,8 @@ The menu-bar control shows active workspace/layout glyphs and runtime errors. It
 - `Pause Tiling`, or `Resume Tiling` while paused;
 - `Workspace HUD`, checked while the non-activating workspace capsule (`[settings] hud = true`) is enabled;
   `Settings > General > Workspace HUD` picks `Off`, `Icons`, or `Layouts` (`[settings] hud` and `hud_style`, default `Icons`),
-  and its `Position` picks `Bottom` or `Top` (`[settings] hud_position`, default `Bottom`) while the HUD is on;
+  and, while the HUD is on, `Customize…` beside it opens a sheet whose `Position` picks `Bottom` or `Top`
+  (`[settings] hud_position`, default `Bottom`) under a live miniature of the capsule;
 - `Launch at Login`, shown checked when macOS has enabled the signed app bundle;
 - `Settings...` (`⌘,`), opening the Rune Settings window (`General`, `Layout`, `Rules`, `Workspaces`, `Shortcuts`, and, with `[labs] activity = true`, `Activity`, plus `⇧⌘D` Playground);
 - `Check for Updates...`, which checks and opens Settings (its sidebar and `General > Updates` show

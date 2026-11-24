@@ -8,6 +8,9 @@ use spaceman::macos::DisplayOutputs;
 pub(crate) const MAIN: &str = "main";
 /// The built-in selector for the first non-main display.
 pub(crate) const SECONDARY: &str = "secondary";
+/// The longest display name a picker segment shows. A longer one ("Built-in Retina Display")
+/// gets its position in the segment and keeps its name in its card's heading.
+const SEGMENT_NAME_MAX: usize = 16;
 
 /// One connected display, read from `spaceman::macos::outputs`.
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -53,9 +56,11 @@ pub(crate) fn connected(outputs: &DisplayOutputs) -> Vec<ConnectedDisplay> {
 pub(crate) struct Choice {
     /// The selector written to `config.toml` when this choice is picked.
     pub selector: String,
-    /// The picker segment's label, kept short so segments never overflow.
+    /// The picker segment's label, kept short so segments never overflow: the display's name,
+    /// or its position ("Display 3") when the name is long or four displays share the picker.
     pub label: String,
-    /// The section heading above the workspaces assigned to it.
+    /// The section heading above the workspaces assigned to it: the display's own name at any
+    /// length, so a numbered segment always has a card that says which screen it is.
     pub title: String,
     /// How a row's `Default:` note names this display: the built-in word (`Main`, `Secondary`)
     /// while the picker uses it, else the display's own name, so the note points at a card the
@@ -125,14 +130,15 @@ pub(crate) fn choices(displays: &[ConnectedDisplay]) -> Vec<Choice> {
         .filter(|display| !display.is_built_in())
         .collect();
     for display in &extras {
-        let title = extra_name(choices.len() + 1, display, &ordered);
-        let label = extra_label(choices.len() + 1, &title, ordered.len());
+        let position = choices.len() + 1;
+        let title = extra_name(position, display, &ordered);
+        let label = extra_label(position, &title, ordered.len());
         choices.push(Choice {
             selector: display.selector.clone(),
             title: title.clone(),
             note: title,
             label,
-            caption: format!("Display {}", choices.len() + 1),
+            caption: format!("Display {position}"),
             id: Some(display.id.clone()),
             name: Some(display.name.clone()),
             connected: true,
@@ -146,10 +152,13 @@ pub(crate) fn choices(displays: &[ConnectedDisplay]) -> Vec<Choice> {
         && let Some(display) = secondary
     {
         let title = extra_name(2, display, &ordered);
-        choices[1].label = extra_label(2, &title, ordered.len());
+        let label = extra_label(2, &title, ordered.len());
+        // A numbered segment is found by its number, so the card says the number too.
+        let role = if label == title { "Secondary" } else { &label };
+        choices[1].caption = format!("{role} · Default for 6–10");
+        choices[1].label = label;
         choices[1].note = title.clone();
         choices[1].title = title;
-        choices[1].caption = "Secondary · Default for 6–10".to_owned();
     }
     choices
 }
@@ -182,8 +191,8 @@ fn built_in(
     }
 }
 
-/// The heading for a display past Secondary: its own name, "Studio Display 2" when two monitors
-/// share one, and its position ("Display 3") for a long or missing name.
+/// The heading for a display past Main: its own name at any length, "Studio Display 2" when
+/// two monitors share one, and its position ("Display 3") only when it has no name. Issue 349.
 fn extra_name(
     position: usize,
     display: &ConnectedDisplay,
@@ -202,17 +211,18 @@ fn extra_name(
             + 1;
         return format!("{name} {ordinal}");
     }
-    if name.is_empty() || name.chars().count() > 16 {
+    if name.is_empty() {
         format!("Display {position}")
     } else {
         name.to_owned()
     }
 }
 
-/// The picker segment for a display past Secondary. With four or more displays even short names
-/// crowd the segmented control, so those get their position and the heading keeps the name.
+/// The picker segment for a display past Main. A long name, or any name once four displays
+/// share the segmented control, would crowd the row's title, so the segment gets the display's
+/// position and the heading keeps the name.
 fn extra_label(position: usize, name: &str, displays: usize) -> String {
-    if displays > 3 {
+    if displays > 3 || name.chars().count() > SEGMENT_NAME_MAX {
         format!("Display {position}")
     } else {
         name.to_owned()
@@ -277,6 +287,20 @@ pub(crate) fn fixture_three() -> Vec<ConnectedDisplay> {
             is_secondary: false,
         },
     ]
+}
+
+/// Three displays where a MacBook's own screen is the third: a Studio Display as main, an LG
+/// as Secondary, and "Built-in Retina Display", whose name is too long for a segment.
+pub(crate) fn fixture_long_name() -> Vec<ConnectedDisplay> {
+    let mut displays = fixture_three();
+    for (display, name) in displays.iter_mut().zip([
+        "Studio Display",
+        "LG UltraFine 5K",
+        "Built-in Retina Display",
+    ]) {
+        name.clone_into(&mut display.name);
+    }
+    displays
 }
 
 /// Four displays: the three-display pair plus a differently named external on the right.

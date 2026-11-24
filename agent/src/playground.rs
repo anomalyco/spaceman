@@ -9,9 +9,7 @@ use spaceman::{
     app::{UiAgentSnapshot, UiLaunchAtLogin, UiUpdateStatus},
 };
 
-use crate::{
-    MIN_WINDOW_SIZE, Pane, Ui, WINDOW_SIZE, activity, apps, hud, map, onboarding, panes, rules::Doc,
-};
+use crate::{Pane, Ui, activity, apps, controls::WINDOW, hud, map, onboarding, panes, rules::Doc};
 
 pub(crate) type Scene = (&'static str, fn(&mut Ui));
 
@@ -29,8 +27,8 @@ pub fn attach(app: App<Ui>) -> App<Ui> {
         .bar(false)
         .scenes(|name| name.contains('/'))
         .sizes(&[
-            ("Spaceman window", WINDOW_SIZE),
-            ("Smallest window", MIN_WINDOW_SIZE),
+            ("Spaceman window", WINDOW.size),
+            ("Smallest window", WINDOW.min),
             ("Wide window", (1200.0, 840.0)),
         ]);
     app.playground(hud::triggers(playground))
@@ -76,6 +74,8 @@ pub(crate) fn blank_fixture() -> Ui {
         tour: None,
         drag: None,
         menu: None,
+        sheet: None,
+        card_w: WINDOW.card_w(render_width()),
         running: Vec::new(),
         displays: panes::workspaces::fixture_pair(),
         displays_at: None,
@@ -91,10 +91,26 @@ pub(crate) fn blank_fixture() -> Ui {
     ui
 }
 
+/// The window width a headless render asked for (`--size 1200x840`), else the width Settings
+/// opens at. A snap draws one frame, before the pane's layout has reported its cards' width.
+fn render_width() -> f32 {
+    let mut args = std::env::args().skip(1);
+    while let Some(arg) = args.next() {
+        if arg == "--size" {
+            let width = args
+                .next()
+                .and_then(|size| size.split_once('x')?.0.parse::<f32>().ok());
+            return width.unwrap_or(WINDOW.size.0).max(WINDOW.min.0);
+        }
+    }
+    WINDOW.size.0
+}
+
 pub(crate) fn reset_fixture(ui: &mut Ui, pane: Pane) {
     ui.fixture = true;
     ui.pane = pane;
     ui.tour = None;
+    ui.sheet = None;
     ui.hud_preview = None;
     ui.spacing_draft = None;
     ui.per_edge = None;
@@ -156,6 +172,9 @@ mod tests {
             "Onboarding/onboarding-sandbox-complete",
             "General/general",
             "General/general-setup",
+            "General/general-hud-off",
+            "General/hud-customize",
+            "General/hud-customize-top",
             "Layout/layout",
             "Layout/layout-spaced",
             "Rules/rules",
@@ -163,6 +182,8 @@ mod tests {
             "Rules/rules-add",
             "Workspaces/workspaces",
             "Workspaces/workspaces-three-displays",
+            "Workspaces/workspaces-long-name",
+            "Workspaces/workspaces-custom-modifier",
             "Workspaces/workspaces-four-displays",
             "Workspaces/workspaces-unplugged",
             "Shortcuts/shortcuts",

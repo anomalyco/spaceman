@@ -28,8 +28,8 @@ from `https://anoma.ly/release/spaceman/files/`, and is used only once its size 
 manifest and the `Spaceman.app` inside it is `anomaly.spaceman`, passes
 `codesign --verify --deep --strict` against Anomaly's notarized Developer ID requirement
 (`app/update-requirement.txt`), and carries team `5NZ4Q7NXJ4`. Automatic installation is off: the
-update waits for `Install & Restart` or a quit, either of which restores every parked window before
-the bundle is swapped (`renamex_np`); only `Install & Restart` relaunches. Downloads, the install's
+update waits for `Install & restart` or a quit, either of which restores every parked window before
+the bundle is swapped (`renamex_np`); only `Install & restart` relaunches. Downloads, the install's
 rollout bucket (a random 0–99 that never leaves the Mac) and `installed.json` (which release the
 updater last installed) live in `~/Library/Application Support/Spaceman/updates/`. Builds from
 source never check. An install in a location the user can't write to checks, but only offers the

@@ -20,6 +20,8 @@ pub const GROUP_GAP: f32 = 18.0;
 pub const PAD: f32 = 9.0;
 pub const MARKER_H: f32 = 30.0;
 pub const MARKER_RADIUS: f32 = MARKER_H / 2.0;
+/// From the capsule's outside edge to the marker: the capsule's radius less this is the marker's.
+pub const MARKER_INSET: f32 = (super::pill::PILL_HEIGHT - MARKER_H) / 2.0;
 const NUMBER_MIN_W: f32 = 10.0;
 /// Keeps an empty workspace's active marker at least circular (`MARKER_H` wide).
 const EMPTY_MIN_W: f32 = MARKER_H - 2.0 * PAD;

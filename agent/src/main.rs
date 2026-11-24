@@ -9,6 +9,8 @@ static ALLOCATOR: procwatch::alloc::Counting = procwatch::alloc::Counting::syste
 mod activity;
 mod apps;
 mod controls;
+#[cfg(test)]
+mod design_tokens;
 #[cfg(target_os = "macos")]
 mod host;
 mod hud;
@@ -27,12 +29,12 @@ use rules::{Doc, Place};
 use rune::{AppSpec, KeyEvent, PointerPress, Tx, Waker};
 use spaceman::app::{UiAction, UiAgentSnapshot, UiBridge};
 
-/// The smallest Settings window: every pane fits it, so no resize can clip a row.
-pub const MIN_WINDOW_SIZE: (f32, f32) = (860.0, 580.0);
-
-/// The size Settings opens at, with room past the smallest: more of a long pane's rows
-/// show before it scrolls.
-pub const WINDOW_SIZE: (f32, f32) = (920.0, 620.0);
+/// The one modal sheet that is open.
+#[derive(Clone, Debug)]
+pub enum Sheet {
+    /// The Workspace HUD's Customize sheet, with the demo desktop its miniature shows.
+    Hud(hud::HudPreview),
+}
 
 /// The one anchored menu that is open.
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -60,6 +62,9 @@ pub struct Ui {
     pub tour: Option<onboarding::Tour>,
     pub drag: Option<map::Drag>,
     pub menu: Option<Menu>,
+    pub sheet: Option<Sheet>,
+    /// The width cards have in the pane on screen, as last laid out.
+    pub(crate) card_w: f32,
     pub running: Vec<apps::Running>,
     /// Every connected display, as Settings › Workspaces offers them.
     pub(crate) displays: Vec<panes::workspaces::ConnectedDisplay>,
@@ -107,6 +112,8 @@ impl Ui {
             tour: None,
             drag: None,
             menu: None,
+            sheet: None,
+            card_w: controls::WINDOW.card_w(controls::WINDOW.size.0),
             running: Vec::new(),
             displays: Vec::new(),
             displays_at: None,
@@ -128,7 +135,20 @@ impl Ui {
         ui
     }
 
+    /// Opens the Workspace HUD's Customize sheet. With the HUD off there is nothing to customize.
+    pub fn open_hud_sheet(&mut self) {
+        if self.doc.hud() {
+            self.menu = None;
+            self.sheet = Some(Sheet::Hud(hud::HudPreview::sample()));
+        }
+    }
+
+    pub fn close_sheet(&mut self) {
+        self.sheet = None;
+    }
+
     pub fn start_tour(&mut self) {
+        self.sheet = None;
         self.menu = None;
         self.drag = None;
         self.flush_pending_reload();
@@ -144,6 +164,7 @@ impl Ui {
         self.pane = pane;
         self.navigated = true;
         self.menu = None;
+        self.sheet = None;
         self.drag = None;
         self.flush_pending_reload();
         self.highlight_lab = None;
@@ -331,6 +352,7 @@ impl Ui {
                 }
             }
             self.look_up_apps();
+            self.sync_hud_from_doc();
             return;
         }
         match self.doc.edit_and_save(edit) {
@@ -341,7 +363,11 @@ impl Ui {
         self.look_up_apps();
     }
 
-    fn sync_hud_from_doc(&self) {
+    fn sync_hud_from_doc(&mut self) {
+        if !self.doc.hud() {
+            // The HUD went off, here or in config.toml: its Customize sheet has nothing to show.
+            self.sheet = None;
+        }
         if let Some(driver) = &self.hud_driver {
             driver.set_enabled(self.doc.hud());
             driver.set_style(self.doc.hud_style());
@@ -365,6 +391,7 @@ impl Ui {
             self.pane = Pane::General;
             self.navigated = true;
             self.menu = None;
+            self.sheet = None;
             self.drag = None;
         }
     }
@@ -457,6 +484,10 @@ fn poll(ui: &mut Ui, clock: f64, tx: &mut Tx) -> bool {
 
 fn on_key(ui: &mut Ui, event: &KeyEvent, _tx: &mut Tx) -> bool {
     if event.key == rune::Key::Escape {
+        if ui.sheet.is_some() && ui.tour.is_none() {
+            ui.close_sheet();
+            return true;
+        }
         if ui.drag.is_some() || ui.menu.is_some() {
             ui.drag = None;
             ui.menu = None;
@@ -470,6 +501,7 @@ fn on_key(ui: &mut Ui, event: &KeyEvent, _tx: &mut Tx) -> bool {
     }
     if ui.tour.is_none()
         && ui.hud_preview.is_none()
+        && ui.sheet.is_none()
         && !event.mods.shift
         && !event.mods.alt
         && let rune::Key::Command(digit) = event.key
@@ -484,6 +516,7 @@ fn on_key(ui: &mut Ui, event: &KeyEvent, _tx: &mut Tx) -> bool {
 fn on_close(ui: &mut Ui, _tx: &mut Tx) {
     ui.drag = None;
     ui.menu = None;
+    ui.sheet = None;
     ui.flush_pending_reload();
     // Closing the setup window dismisses the tour, so a first-run tour starts
     // tiling now rather than holding it behind a window nobody can see.
@@ -523,8 +556,8 @@ fn on_open_url(ui: &mut Ui, link: &str, _tx: &mut Tx) {
 fn spec() -> AppSpec<Ui> {
     AppSpec {
         title: "Spaceman",
-        size: WINDOW_SIZE,
-        min_size: Some(MIN_WINDOW_SIZE),
+        size: controls::WINDOW.size,
+        min_size: Some(controls::WINDOW.min),
         init: playground::blank_fixture,
         view: view::view,
         scenes: playground::scenes(),
@@ -536,11 +569,11 @@ fn spec() -> AppSpec<Ui> {
     }
 }
 
-/// Settings resizes freely, but never below `MIN_WINDOW_SIZE`: a titlebar double click or a
+/// Settings resizes freely, but never below `WINDOW.min`: a titlebar double click or a
 /// dragged edge can then make the window bigger, while every row keeps fitting.
 fn window_options() -> rune::WindowOptions {
     rune::WindowOptions {
-        min_size: Some(MIN_WINDOW_SIZE),
+        min_size: Some(controls::WINDOW.min),
         resizable: true,
         ..Default::default()
     }
@@ -636,15 +669,15 @@ mod tests {
         // Workspaces rows. It resizes freely now, with a floor every pane fits in.
         let options = window_options();
         assert!(options.resizable, "a bigger window shows more of a pane");
-        assert_eq!(options.min_size, Some(MIN_WINDOW_SIZE));
+        assert_eq!(options.min_size, Some(controls::WINDOW.min));
         assert_eq!(options.max_size, None, "no ceiling to grow into");
         assert!(
             !options.borderless,
             "a titled window keeps its traffic lights"
         );
-        assert!(WINDOW_SIZE.0 >= MIN_WINDOW_SIZE.0 && WINDOW_SIZE.1 >= MIN_WINDOW_SIZE.1);
-        assert_eq!(spec().size, WINDOW_SIZE);
-        assert_eq!(spec().min_size, Some(MIN_WINDOW_SIZE));
+        // It opens at 920 × 660, where General, Layout and Rules show whole.
+        assert_eq!(spec().size, (920.0, 660.0));
+        assert_eq!(spec().min_size, Some((860.0, 580.0)));
     }
 
     #[test]

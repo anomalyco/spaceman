@@ -5,7 +5,7 @@
 mod preview;
 mod slider;
 
-use rune::{Color, El, Tx, col, icon, row, text};
+use rune::{El, Tx, icon, text};
 use rune_kit::SegmentedControl;
 use spaceman::{
     config::LayoutMode,
@@ -60,11 +60,13 @@ const EDGES: Channel = Channel {
     max: SLIDER_MAX,
 };
 
+/// Each edge on its own. They are rows like any other, on the card's one text rail, so each
+/// names the edge whole rather than leaning on an indent.
 const EDGE_CHANNELS: [(SpacingKey, &str, Channel); 4] = [
-    (SpacingKey::Top, "Top", edge(SpacingKey::Top)),
-    (SpacingKey::Bottom, "Bottom", edge(SpacingKey::Bottom)),
-    (SpacingKey::Left, "Left", edge(SpacingKey::Left)),
-    (SpacingKey::Right, "Right", edge(SpacingKey::Right)),
+    (SpacingKey::Top, "Top edge", edge(SpacingKey::Top)),
+    (SpacingKey::Bottom, "Bottom edge", edge(SpacingKey::Bottom)),
+    (SpacingKey::Left, "Left edge", edge(SpacingKey::Left)),
+    (SpacingKey::Right, "Right edge", edge(SpacingKey::Right)),
 ];
 
 const fn edge(key: SpacingKey) -> Channel {
@@ -118,19 +120,8 @@ fn highlight_target(ui: &Ui) -> Option<Highlight> {
     }
 }
 
-fn highlight_style(
-    p: Paint,
-    target: Option<Highlight>,
-    wanted: Highlight,
-) -> Option<(Color, f32, Color)> {
-    (target == Some(wanted)).then_some((p.k.c.layer_02, p.hair, p.k.c.border_focus))
-}
-
 fn apply_highlight(el: El, p: Paint, target: Option<Highlight>, wanted: Highlight) -> El {
-    match highlight_style(p, target, wanted) {
-        Some((fill, width, border)) => el.fill(fill).border(width, border),
-        None => el,
-    }
+    controls::highlight(p, el, target == Some(wanted))
 }
 
 pub fn pane(ui: &Ui, p: Paint) -> El {
@@ -160,25 +151,19 @@ pub fn pane(ui: &Ui, p: Paint) -> El {
             .key("layout-mode-picker"),
         )],
     );
-    let gaps_card = apply_highlight(
-        controls::card(p, "card", gap_rows(p, &spacing, open)),
-        p,
-        target,
-        Highlight::Gaps,
-    );
-    let gaps = col()
-        .key("gaps")
-        .gap(8.0)
-        .child(controls::heading(p, "header", "Gaps", None))
-        .child(gaps_card);
+    // A deep link to the gaps lights every row of their card.
+    let gap_rows = gap_rows(p, &spacing, open)
+        .into_iter()
+        .map(|row| apply_highlight(row, p, target, Highlight::Gaps))
+        .collect();
+    let gaps = controls::section(p, "gaps", "Gaps", gap_rows);
     let width = apply_highlight(
         controls::setting_row(
             p,
             "single-width",
             "Single-window width",
             Some((
-                "A window alone on its display, and Fullscreen Layout, is centered at this width."
-                    .to_owned(),
+                "Centers a lone window, and Fullscreen Layout, at this width".to_owned(),
                 p.muted(),
             )),
             width_picker(p, spacing.single_window_max_width),
@@ -189,13 +174,15 @@ pub fn pane(ui: &Ui, p: Paint) -> El {
     );
     scroll_body(
         "layout-body",
-        col()
-            .key("sections")
-            .gap(24.0)
-            .child(preview::card(p, layout, spacing))
-            .child(new_windows)
-            .child(gaps)
-            .child(controls::section(p, "wide", "Wide displays", vec![width])),
+        controls::page(
+            "sections",
+            vec![
+                preview::card(p, layout, spacing),
+                new_windows,
+                gaps,
+                controls::section(p, "wide", "Wide displays", vec![width]),
+            ],
+        ),
     )
 }
 
@@ -215,7 +202,7 @@ fn gap_rows(p: Paint, spacing: &Spacing, open: bool) -> Vec<El> {
             p,
             "all",
             "Window gaps",
-            (!uniform(spacing)).then(|| ("Dragging evens out every gap.".to_owned(), p.muted())),
+            (!uniform(spacing)).then(|| ("Dragging evens out every gap".to_owned(), p.muted())),
             slider(p, "all-slider", "Window gaps", (ALL.get)(spacing), ALL),
         )
     };
@@ -230,7 +217,7 @@ fn gap_rows(p: Paint, spacing: &Spacing, open: bool) -> Vec<El> {
         spacing
             .uniform_edges()
             .is_none()
-            .then(|| ("Each edge is set on its own.".to_owned(), p.muted())),
+            .then(|| ("Each edge is set on its own".to_owned(), p.muted())),
         slider(
             p,
             "edges-slider",
@@ -249,43 +236,39 @@ fn gap_rows(p: Paint, spacing: &Spacing, open: bool) -> Vec<El> {
             slider(
                 p,
                 &format!("{name}-slider"),
-                &format!("{title} edge"),
+                title,
                 (channel.get)(spacing),
                 *channel,
             ),
         )
-        .pl(28.0)
     }));
     rows
 }
 
-/// The quiet row that shows or hides the separate gap controls.
+/// The pressable row that shows or hides the separate gap controls: a row like the rest, with
+/// its chevron on the control rail.
 fn disclosure(p: Paint, open: bool) -> El {
     let chevron = if open {
         p.k.glyph.chevron_down
     } else {
         p.k.glyph.caret_right
     };
-    row()
-        .key("customize")
+    controls::row_frame("customize", false)
         .role("button")
         .label("Customize separately")
-        .h(32.0)
-        .px(12.0)
-        .gap(6.0)
-        .center_y()
-        .radius(p.k.radius.md)
+        .expanded(open)
+        .justify_between()
         .press(p.k.c.pressed)
         .focusable(true)
         .focus_ring(2.0, -2.0, p.k.c.border_focus)
         .on_press(move |ui: &mut Ui| ui.per_edge = Some(!open))
-        .child(icon(chevron, 12.0).key("chevron").color(p.k.c.icon_muted))
         .child(
             text("Customize separately")
                 .key("label")
-                .font(p.k.ty.small)
+                .font(p.row_title())
                 .color(p.muted()),
         )
+        .child(icon(chevron, 12.0).key("chevron").color(p.k.c.icon_muted))
 }
 
 /// Off, the common widths, and a width only `config.toml` set when it holds one.
@@ -381,21 +364,12 @@ mod tests {
 
         ui.open_target(parse_url("spaceman://features/gaps").unwrap().resolve());
         assert_eq!(ui.pane, crate::Pane::Layout);
-        let target = highlight_target(&ui);
-        assert_eq!(target, Some(Highlight::Gaps));
-        assert_eq!(
-            highlight_style(p, target, Highlight::Gaps),
-            Some((p.k.c.layer_02, p.hair, p.k.c.border_focus))
-        );
-        assert_eq!(highlight_style(p, target, Highlight::MaxWidth), None);
+        assert_eq!(highlight_target(&ui), Some(Highlight::Gaps));
         let _ = pane(&ui, p);
 
         ui.open_target(parse_url("spaceman://settings/layout").unwrap().resolve());
         assert_eq!(ui.pane, crate::Pane::Layout);
-        let target = highlight_target(&ui);
-        assert_eq!(target, None);
-        assert_eq!(highlight_style(p, target, Highlight::Gaps), None);
-        assert_eq!(highlight_style(p, target, Highlight::MaxWidth), None);
+        assert_eq!(highlight_target(&ui), None);
         let _ = pane(&ui, p);
 
         ui.open_target(
@@ -404,13 +378,7 @@ mod tests {
                 .resolve(),
         );
         assert_eq!(ui.pane, crate::Pane::Layout);
-        let target = highlight_target(&ui);
-        assert_eq!(target, Some(Highlight::MaxWidth));
-        assert_eq!(highlight_style(p, target, Highlight::Gaps), None);
-        assert_eq!(
-            highlight_style(p, target, Highlight::MaxWidth),
-            Some((p.k.c.layer_02, p.hair, p.k.c.border_focus))
-        );
+        assert_eq!(highlight_target(&ui), Some(Highlight::MaxWidth));
         let _ = pane(&ui, p);
     }
 

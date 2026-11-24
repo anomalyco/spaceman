@@ -37,13 +37,14 @@ use flow::FRESH_MS;
 #[cfg(test)]
 use flow::{HOLD_MS, RESUME_HOLD_MS};
 pub use flow::{HudFlow, HudTick, HudTransition, LEAVE_MS};
+pub use icons::{MARKER_INSET, MARKER_RADIUS};
 pub use menu::HudSink;
 #[cfg(target_os = "macos")]
 pub use menu::LiveHudSink;
 #[cfg(test)]
 use menu::NoopHudSink;
-pub use pill::Icons;
-pub(crate) use stage::{HudPreview, SCENES, stage, triggers};
+pub use pill::{Icons, PILL_HEIGHT};
+pub(crate) use stage::{HudPreview, SCENES, miniature, stage, triggers};
 
 use crate::{apps, controls::Paint};
 

@@ -250,9 +250,14 @@ on the same letter.
   shows no `Default:` note while the third display names it as the default it differs from —
   issue 337), one display (Secondary still offered), an unplugged display (an extra `Not
   connected` segment, its `config.toml` entry kept), and four displays (numbered segments
-  `Display 2`/`Display 3`/`Display 4`, names kept in the headings). Section cards and segments
+  `Display 2`/`Display 3`/`Display 4`, names kept in the headings), a name too long for a segment
+  (`a_long_display_name_stays_in_its_heading_and_only_its_segment_is_numbered`,
+  `two_long_names_that_macos_suffixed_keep_their_names_and_an_unnamed_display_its_position` —
+  issue 349), and workspace 10's title naming the keys `[shortcuts]` gives it
+  (`workspace_10_names_the_keys_that_really_switch_to_it` — issue 350). Section cards and segments
   themselves are seen in the Playground
-  (`Workspaces/workspaces-three-displays`, `Workspaces/workspaces-four-displays`,
+  (`Workspaces/workspaces-three-displays`, `Workspaces/workspaces-long-name`,
+  `Workspaces/workspaces-custom-modifier`, `Workspaces/workspaces-four-displays`,
   `Workspaces/workspaces-unplugged`), not by a test.
 - Unit, `src/macos/displays.rs`: `selector_for` (`main`/`secondary`/UUID) and `ordered` (left to
   right), shared with `Option+Shift+Tab`.

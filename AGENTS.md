@@ -38,6 +38,10 @@ This file is the current engineering contract. README and `docs/` describe curre
   Settings window (`General`, `Layout`, `Rules`, `Workspaces`, `Shortcuts`, `Activity`), first-run onboarding
   tour (`agent/src/onboarding.rs`), non-activating Workspace HUD overlay (`agent/src/hud.rs`),
   Playground (`⇧⌘D` / `--playground`), and the worker boundary.
+- `agent/src/controls.rs`, `agent/src/controls/`, `agent/src/design_tokens.rs`: the Settings design
+  system — layout tokens (`METRICS`, `WINDOW`, `MODAL`, `KEYS`), `Paint` type roles, cards and
+  rows, `modal_panel`, shortcut keycaps, and the ratchet test that keeps hand-typed measurements
+  out of the panes. Rules, tables and how to render scenes: [docs/design-system.md](docs/design-system.md).
 - `src/app/runtime.rs`, `src/app/cycle.rs`, `src/app/cycle/affinity.rs`, `src/app/switching.rs`,
   `src/app/parking.rs`, `src/app/commands.rs`, `src/app/backend.rs`: the worker-thread
   `WorkspaceRuntime` — observation cycles and affinity, workspace switches, durable
@@ -153,6 +157,9 @@ This file is the current engineering contract. README and `docs/` describe curre
 scripts/check            # fmt, file-size, folder-shape, metadata, clippy, tests, audit, CA roots, replay, config, website
 scripts/check --no-web   # the same without the website
 ```
+
+A Settings UI change also renders its scenes before and after with `scripts/snap-set.sh` (see
+[docs/design-system.md](docs/design-system.md#verification)); look at every image.
 
 Run `./scripts/live-ghostty-tabs.sh` and `./scripts/live-workspaces.sh` only when the change reaches
 their live behavior, AeroSpace is initially enabled, and the other safety conditions above are

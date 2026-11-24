@@ -9,7 +9,7 @@ use spaceman::app::UiLaunchAtLogin;
 use super::{Input, Step, desk, flow::View, input, sandbox::Sandbox};
 use crate::{
     Ui,
-    controls::{self, ButtonKind, DESCRIPTION, Paint},
+    controls::{self, ButtonKind, Paint},
 };
 
 const WIDTH: f32 = 520.0;
@@ -21,7 +21,7 @@ const STEP_EXIT: Spring = Spring::new(0.25, 0.0);
 static ACCESSIBILITY_ICON: Icon = Icon {
     name: "spaceman-accessibility",
     view: 16.0,
-    body: include_str!("../../assets/workspaces.svg"),
+    body: include_str!("../../assets/layout.svg"),
 };
 
 /// Two overlapping windows, for the calm "another window manager is running" card.
@@ -125,7 +125,7 @@ fn footer(p: Paint, view: &View, tiling: bool, width: f32) -> El {
         Step::Welcome => ("Get started", true, true),
         Step::Setup => ("Continue", view.ready, true),
         // A first-run tour holds automatic tiling, so its last button starts it.
-        Step::Done if !view.manual && !tiling => ("Start Tiling", true, false),
+        Step::Done if !view.manual && !tiling => ("Start tiling", true, false),
         Step::Done => ("Done", true, false),
     };
     let mut btn = Button::new(label)
@@ -332,7 +332,7 @@ fn conflict_notice(p: Paint, conflicts: &[String]) -> Option<El> {
                                 "Two window managers fight over the same windows and shortcuts. Quit the other one before you start tiling.",
                             )
                             .key("detail")
-                            .font(DESCRIPTION)
+                            .font(p.description())
                             .color(p.muted())
                             .wrap(),
                         ),
@@ -388,7 +388,7 @@ fn setup(ui: &Ui, p: Paint, view: &View) -> El {
         p,
         "setup-login",
         &glyphs::SPARKLE,
-        "Launch at Login",
+        "Launch at login",
         Some(login_desc),
         view.launch_at_login,
         |ui| input(ui, Input::ToggleLaunchAtLogin),

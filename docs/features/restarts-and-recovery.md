@@ -16,7 +16,7 @@ Pause / quit / update / macOS asks Spaceman to terminate   // recover.restore-on
 │   └── Accessibility says "gone" but the window server still lists it -> entry kept, retried
 └── Restoration fails -> exit blocked, menu shows "Restoring windows · N failed", retries
 
-Install & Restart (in-app update)                          // recover.update
+Install & restart (in-app update)                          // recover.update
 ├── Update downloaded and verified first (size, SHA-256, anomaly.spaceman, Developer ID, team)
 ├── Same exit as quit: tiling stops, every parked window restored
 ├── Only after restoration fully succeeds -> signature re-checked, bundles swapped, relaunch
@@ -49,7 +49,7 @@ Placement recall (reboot, fresh start, or app relaunch)     // recover.memory
 
 Diagnose                                                   // recover.doctor
 ├── Settings › Activity ([labs] activity = true) -> 24h health, recent journal rows, procwatch
-│                                vitals, Save Snapshot
+│                                vitals, Save snapshot
 ├── spaceman doctor [hours] -> starts, restorations, recalls, wrong placements, anomalies,
 │                                last arrangement
 ├── spaceman ctl wrong -> marks the journal and snapshots the arrangement right now
@@ -62,13 +62,14 @@ Diagnose                                                   // recover.doctor
 ```ts
 Menu bar: workspaces (switch) | Pause Tiling (pause + restore) | Workspace HUD | Settings... (⌘,)
           | Check for Updates... / Install Spaceman <version> and Restart | Quit Spaceman (⌘Q)
-Settings: sidebar foot and General -> Updates (Install & Restart, Switch to Dev/Stable, Download,
-          Check Now, Update channel)
-Settings: Activity ([labs] activity = true) -> Journal (Show in Finder) | Save Snapshot
+Settings: sidebar foot -> version, Check for updates, Install & restart
+          General -> Updates (Update channel; plus one row only when there is something to act
+          on: Install & restart, Switch to Dev/Stable, Download, Check again)
+Settings: Activity ([labs] activity = true) -> Journal (Show in Finder) | Save snapshot
 CLI:      spaceman ctl pause | resume | quit | restart | status | debug
           spaceman doctor [hours]      // reads files directly; works with the agent stopped
           spaceman hud
-Implicit: macOS restart/log out/shutdown, Install & Restart, quitting with an update ready,
+Implicit: macOS restart/log out/shutdown, Install & restart, quitting with an update ready,
           reopening Spaceman.app after a crash
 Files:    ~/Library/Application Support/Spaceman/
           ├── workspace-state.json   parked-windows.json   window-memory.json

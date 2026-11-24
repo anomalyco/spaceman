@@ -98,6 +98,14 @@ pub fn active_chords(
     chords
 }
 
+/// The keys that switch to `workspace` as one run of keycaps ("⌃⌥0"), from the first chord
+/// that does it; `None` when no shortcut does.
+pub fn switch_keys(shortcuts: &Shortcuts, workspace: WorkspaceId) -> Option<String> {
+    active_chords(shortcuts, WorkspaceKind::Switch, workspace)
+        .first()
+        .map(|chord| chord.keycaps().concat())
+}
+
 /// All workspace rows for the Workspaces card in Settings › Shortcuts: numbered Switch and Move,
 /// then named Switch and Move.
 pub fn rows(shortcuts: &Shortcuts, named: &[WorkspaceId]) -> Vec<WorkspaceRow> {

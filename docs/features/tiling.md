@@ -59,7 +59,7 @@ Keyboard: Option+H/J/K/L, Option+Shift+H/J/K/L, Option+`, Option+-, Option+=, Op
 Pointer:  drag a managed window (reorder/nest/move display), drag its edge (resize)
 CLI:      spaceman ctl focus | move-direction | resize shrink|grow|width|height | balance | layout | retile
 Shortcut: [shortcuts.bindings] can bind any of those, e.g. "ctrl+alt+w" = "resize width 1200"
-Settings: Settings › Layout -> New windows (Dwindle | Columns), Window gaps (Customize separately: Between windows, Screen edges, Top/Bottom/Left/Right), Single-window width
+Settings: Settings › Layout -> New windows (Dwindle | Columns), Window gaps (Customize separately: Between windows, Screen edges, Top/Bottom/Left/Right edge), Single-window width
 Config:   spaceman config set layout dwindle|columns; spaceman config set gaps.inner|gaps.outer|gaps.top|gaps.bottom|gaps.left|gaps.right|single_window_max_width <points>
 ```
 

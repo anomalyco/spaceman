@@ -3,16 +3,18 @@
 mod displays;
 
 pub(crate) use displays::{
-    ConnectedDisplay, THIRD_FIXTURE_ID, fixture_pair, fixture_quad, fixture_three,
+    ConnectedDisplay, THIRD_FIXTURE_ID, fixture_long_name, fixture_pair, fixture_quad,
+    fixture_three,
 };
 
-use rune::{El, Tx, col, row, text};
+use rune::{El, Tx, text};
 use rune_kit::SegmentedControl;
-use spaceman::WorkspaceId;
+use spaceman::{WorkspaceId, shortcuts::Shortcuts};
 
 use crate::{
     Pane, Ui,
     controls::{self, Paint},
+    panes::shortcuts::switch_keys,
     rules::Doc,
     view::scroll_body,
 };
@@ -120,6 +122,7 @@ fn sections(doc: &Doc, choices: &[Choice], workspaces: Vec<WorkspaceId>) -> Vec<
 
 pub fn pane(ui: &Ui, p: Paint) -> El {
     let choices = displays::choices(&ui.displays);
+    let shortcuts = ui.doc.shortcuts();
     let sections = sections(
         &ui.doc,
         &choices,
@@ -136,41 +139,29 @@ pub fn pane(ui: &Ui, p: Paint) -> El {
                     .iter()
                     .map(|workspace| {
                         let target = effective_monitor(&ui.doc, *workspace);
-                        monitor_row(p, &choices, *workspace, &target)
+                        monitor_row(p, &choices, &shortcuts, *workspace, &target)
                     })
                     .collect()
             };
-            col()
-                .key(section.key.clone())
-                .gap(8.0)
-                .child(controls::heading(
-                    p,
-                    "header",
-                    &section.title,
-                    Some(&section.caption),
-                ))
-                .child(controls::card(p, "card", rows))
+            controls::section_with(
+                p,
+                &section.key,
+                &section.title,
+                controls::caption(p, &section.caption),
+                rows,
+            )
         })
         .collect();
-    scroll_body(
-        "workspaces-body",
-        col().key("sections").gap(24.0).children(cards),
-    )
+    scroll_body("workspaces-body", controls::page("sections", cards))
 }
 
 fn empty_display_row(p: Paint) -> El {
-    row()
-        .key("empty")
-        .min_h(44.0)
-        .px(12.0)
-        .py(8.0)
-        .center_y()
-        .child(
-            text("No workspaces assigned")
-                .key("label")
-                .font(p.k.ty.ui)
-                .color(p.faint()),
-        )
+    controls::row_frame("empty", false).child(
+        text("No workspaces assigned")
+            .key("label")
+            .font(p.row_title())
+            .color(p.faint()),
+    )
 }
 
 /// The `config.toml` override picking `chosen` writes; `None` clears it, so picking a
@@ -220,7 +211,26 @@ fn picker(choices: &[Choice], effective: &str) -> (Vec<String>, usize) {
     (labels, selected)
 }
 
-fn monitor_row(p: Paint, choices: &[Choice], workspace: WorkspaceId, effective: &str) -> El {
+/// A row's title. Workspace 10 also names the keys that switch to it, because its key is `0`,
+/// not its number. They are read from `[shortcuts]`, so they follow the base modifier and a
+/// rebinding, and the title says nothing when no shortcut switches to it. Issue 350.
+fn row_title(shortcuts: &Shortcuts, workspace: WorkspaceId) -> String {
+    let keys = (workspace.number() == Some(10))
+        .then(|| switch_keys(shortcuts, workspace))
+        .flatten();
+    match keys {
+        Some(keys) => format!("Workspace {workspace} ({keys})"),
+        None => format!("Workspace {workspace}"),
+    }
+}
+
+fn monitor_row(
+    p: Paint,
+    choices: &[Choice],
+    shortcuts: &Shortcuts,
+    workspace: WorkspaceId,
+    effective: &str,
+) -> El {
     let (labels, selected) = picker(choices, effective);
     let selectors: Vec<String> = choices
         .iter()
@@ -237,12 +247,8 @@ fn monitor_row(p: Paint, choices: &[Choice], workspace: WorkspaceId, effective: 
         })
         .build(p.k)
         .key("monitor");
-    let title = match workspace.number() {
-        Some(10) => "Workspace 10 (⌥0)".to_owned(),
-        Some(_) => format!("Workspace {workspace}"),
-        None => format!("Workspace {workspace} (named)"),
-    };
-    let description = row_description(choices, workspace, effective).map(|copy| (copy, p.faint()));
+    let title = row_title(shortcuts, workspace);
+    let description = row_description(choices, workspace, effective).map(|copy| (copy, p.muted()));
     controls::setting_row(
         p,
         &format!("workspace-{workspace}"),
@@ -255,7 +261,7 @@ fn monitor_row(p: Paint, choices: &[Choice], workspace: WorkspaceId, effective: 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use displays::{FOURTH_FIXTURE_ID, choices, index_of};
+    use displays::{FOURTH_FIXTURE_ID, choices, fixture_long_name, index_of};
 
     #[test]
     fn workspace_monitor_defaults_split_main_and_secondary() {
@@ -506,6 +512,125 @@ mod tests {
         assert_eq!(
             picker(&choices, SECONDARY).0,
             ["Main".to_owned(), "Secondary".to_owned()]
+        );
+    }
+
+    #[test]
+    fn a_long_display_name_stays_in_its_heading_and_only_its_segment_is_numbered() {
+        // Issue 349: "Built-in Retina Display" as the third of three displays lost its name
+        // everywhere on the pane.
+        let displays = fixture_long_name();
+        let choices = choices(&displays);
+        let seen: Vec<(&str, &str, &str)> = choices
+            .iter()
+            .map(|choice| {
+                (
+                    choice.title.as_str(),
+                    choice.label.as_str(),
+                    choice.caption.as_str(),
+                )
+            })
+            .collect();
+        assert_eq!(
+            seen,
+            [
+                ("Main display", "Main", "Studio Display · Default for 1–5"),
+                // Control: a name that fits keeps its segment.
+                (
+                    "LG UltraFine 5K",
+                    "LG UltraFine 5K",
+                    "Secondary · Default for 6–10"
+                ),
+                // The caption ties the numbered segment to the card that names the screen.
+                ("Built-in Retina Display", "Display 3", "Display 3"),
+            ]
+        );
+        // A row that differs from this display names it, as its card does.
+        let mut swapped = displays;
+        swapped[1].name = "Built-in Retina Display".to_owned();
+        swapped[2].name = "Studio Display".to_owned();
+        swapped[0].name = "LG UltraFine 5K".to_owned();
+        let choices = super::displays::choices(&swapped);
+        assert_eq!(choices[1].title, "Built-in Retina Display");
+        assert_eq!(choices[1].label, "Display 2");
+        assert_eq!(choices[1].caption, "Display 2 · Default for 6–10");
+        assert_eq!(choices[2].title, "Studio Display");
+        assert_eq!(choices[2].label, "Studio Display");
+        assert_eq!(
+            row_description(&choices, WorkspaceId::new(9).unwrap(), MAIN).as_deref(),
+            Some("Default: Built-in Retina Display")
+        );
+        // A saved UUID or name still resolves to the display whatever its segment says.
+        assert_eq!(index_of(&choices, "Built-in Retina Display"), Some(1));
+        assert_eq!(picker(&choices, THIRD_FIXTURE_ID).1, 2);
+    }
+
+    #[test]
+    fn two_long_names_that_macos_suffixed_keep_their_names_and_an_unnamed_display_its_position() {
+        // macOS tells two identical monitors apart itself ("Studio Display (1)"), which makes
+        // each name unique and longer than a segment holds.
+        let mut displays = fixture_three();
+        displays[1].name = "Studio Display (1)".to_owned();
+        displays[2].name = "Studio Display (2)".to_owned();
+        let suffixed = choices(&displays);
+        assert_eq!(suffixed[1].title, "Studio Display (1)");
+        assert_eq!(suffixed[2].title, "Studio Display (2)");
+        assert_eq!(
+            picker(&suffixed, MAIN).0,
+            ["Main", "Display 2", "Display 3"].map(str::to_owned)
+        );
+
+        // Control: a display that reports no name has only its position to show.
+        displays[2].name = String::new();
+        let unnamed = choices(&displays);
+        assert_eq!(unnamed[2].title, "Display 3");
+        assert_eq!(unnamed[2].label, "Display 3");
+
+        // Control: four displays number every segment past Main and keep every name.
+        let quad = choices(&fixture_quad());
+        assert_eq!(quad[1].caption, "Display 2 · Default for 6–10");
+        assert_eq!(quad[3].title, "LG UltraFine 5K");
+        assert_eq!(quad[3].label, "Display 4");
+    }
+
+    #[test]
+    fn workspace_10_names_the_keys_that_really_switch_to_it() {
+        // Issue 350: the title said "(⌥0)" whatever `[shortcuts]` said.
+        let shortcuts = |body: &str| Doc::parse(&format!("version = 1\n{body}")).shortcuts();
+        let ten = WorkspaceId::new(10).unwrap();
+        // Control: the default base.
+        assert_eq!(row_title(&shortcuts(""), ten), "Workspace 10 (⌥0)");
+        assert_eq!(
+            row_title(&shortcuts("[shortcuts]\nmodifier = \"ctrl+alt\"\n"), ten),
+            "Workspace 10 (⌃⌥0)"
+        );
+        // Rebound: the chord that does it now.
+        assert_eq!(
+            row_title(
+                &shortcuts(
+                    "[shortcuts.bindings]\n\"alt+0\" = \"none\"\n\"cmd+alt+0\" = \"switch 10\"\n"
+                ),
+                ten
+            ),
+            "Workspace 10 (⌥⌘0)"
+        );
+        // Nothing switches to it: unbound, taken by another command, or no built-ins at all.
+        for body in [
+            "[shortcuts.bindings]\n\"alt+0\" = \"none\"\n",
+            "[shortcuts.bindings]\n\"alt+0\" = \"switch 1\"\n",
+            "[shortcuts]\ndefaults = false\n[shortcuts.bindings]\n\"alt+1\" = \"switch 1\"\n",
+        ] {
+            assert_eq!(row_title(&shortcuts(body), ten), "Workspace 10", "{body}");
+        }
+        // Every other workspace's key is its own name, so its title stays bare.
+        let base = shortcuts("[shortcuts]\nmodifier = \"ctrl+alt\"\n");
+        assert_eq!(
+            row_title(&base, WorkspaceId::new(9).unwrap()),
+            "Workspace 9"
+        );
+        assert_eq!(
+            row_title(&base, WorkspaceId::named('M').unwrap()),
+            "Workspace M"
         );
     }
 
