@@ -94,9 +94,7 @@ impl<'a> Summary<'a> {
                             open.insert(key, line.t);
                         }
                         AnomalyState::End => {
-                            if open.remove(&key).is_some()
-                                || summary.anomalies.contains_key(&anomaly.kind)
-                            {
+                            if open.remove(&key).is_some() {
                                 let kind = summary.anomalies.entry(anomaly.kind).or_default();
                                 let duration = duration_ms.unwrap_or_default();
                                 kind.total_ms += duration;
@@ -158,7 +156,15 @@ impl<'a> Summary<'a> {
 pub fn summarize(lines: &[JournalLine], since_ms: u64, now_ms: u64, skipped: usize) -> String {
     let summary = Summary::new(lines, since_ms, now_ms);
     let (Some(first), Some(last)) = (summary.lines.first(), summary.lines.last()) else {
-        return "No journal events in this period.".into();
+        let mut out = "No journal events in this period.".to_owned();
+        if skipped > 0 {
+            out.push_str(&format!(" ({skipped} unreadable lines skipped)"));
+        }
+        if let Some(arrangement) = &summary.arrangement {
+            out.push('\n');
+            append_arrangement(&mut out, arrangement);
+        }
+        return out.trim_end().to_owned();
     };
     let mut out = format!(
         "{} events from {} to {}",
@@ -285,32 +291,36 @@ pub fn summarize(lines: &[JournalLine], since_ms: u64, now_ms: u64, skipped: usi
     }
 
     if let Some(arrangement) = &summary.arrangement {
-        out.push_str(&format!(
-            "\nLast known arrangement: active {}\n",
-            arrangement
-                .active
-                .iter()
-                .map(ToString::to_string)
-                .collect::<Vec<_>>()
-                .join(", ")
-        ));
-        let mut workspaces: BTreeMap<WorkspaceId, Vec<&ArrangedWindow>> = BTreeMap::new();
-        let mut loose = Vec::new();
-        for window in &arrangement.windows {
-            match window.owner {
-                Some(owner) => workspaces.entry(owner).or_default().push(window),
-                None if window.role == WindowRole::Unowned => loose.push(window),
-                None => {}
-            }
-        }
-        for (workspace, windows) in workspaces {
-            out.push_str(&format!("  {workspace}: {}\n", describe(&windows)));
-        }
-        if !loose.is_empty() {
-            out.push_str(&format!("  unowned: {}\n", describe(&loose)));
-        }
+        append_arrangement(&mut out, arrangement);
     }
     out.trim_end().to_owned()
+}
+
+fn append_arrangement(out: &mut String, arrangement: &Arrangement) {
+    out.push_str(&format!(
+        "\nLast known arrangement: active {}\n",
+        arrangement
+            .active
+            .iter()
+            .map(ToString::to_string)
+            .collect::<Vec<_>>()
+            .join(", ")
+    ));
+    let mut workspaces: BTreeMap<WorkspaceId, Vec<&ArrangedWindow>> = BTreeMap::new();
+    let mut loose = Vec::new();
+    for window in &arrangement.windows {
+        match window.owner {
+            Some(owner) => workspaces.entry(owner).or_default().push(window),
+            None if window.role == WindowRole::Unowned => loose.push(window),
+            None => {}
+        }
+    }
+    for (workspace, windows) in workspaces {
+        out.push_str(&format!("  {workspace}: {}\n", describe(&windows)));
+    }
+    if !loose.is_empty() {
+        out.push_str(&format!("  unowned: {}\n", describe(&loose)));
+    }
 }
 
 /// The four most frequent bundles, most frequent first: `a (3), b (1)`.
