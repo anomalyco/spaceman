@@ -65,7 +65,8 @@ Mouse follows focus ([settings] mouse_follows_focus)       // ws.mouse-follows-f
 Focus follows                                              // ws.focus-follow
 ├── Focusing a window that lives on a hidden workspace (Dock, Cmd+Tab, notification)
 │   -> that workspace becomes active, with focus on that window (not its remembered tile)
-│   └── Switch interrupted by that same activation -> the next cycle follows it again
+│   └── Switch interrupted by that same activation -> retiles every 40 ms for 500 ms and follows it
+│       as soon as Accessibility catches up
 ├── Focusing a window on another display's visible workspace -> no switch; Option+Tab remembers it
 └── No focused window reported -> follows the frontmost app only when all its windows, tiled
     or floating, are on one workspace
@@ -295,6 +296,9 @@ on the same letter.
   `agent.log` gets `switch focus failed: workspace <ws> window <id>` (never a title).
 - macOS keeps a parked window's title bar on screen, so a one-pixel-wide slice of it stays at the
   display's bottom corner: about 32 px tall for a plain title bar, 66 px with a unified toolbar.
+- Some apps (Arc) answer `AXFrontmost` with success and still stay behind the app focus left.
+  After focusing, Spaceman polls the frontmost app every 10 ms and repeats the focus every 50 ms,
+  at most three times (200 ms bound).
 - Panels and non-standard windows are never parked, so they show on every workspace; an empty
   workspace exposes whatever unmanaged windows sit behind managed ones.
 - macOS can stop delivering Carbon hotkeys to a running agent (seen twice on Nov 9, 2026, cause

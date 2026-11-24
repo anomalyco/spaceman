@@ -269,7 +269,7 @@ fn omission_settling_ends_when_the_window_is_observed_again() {
     );
 }
 
-fn studio_display() -> macos::DisplayOutputs {
+pub(super) fn studio_display() -> macos::DisplayOutputs {
     macos::DisplayOutputs::new(vec![macos::DisplayOutput {
         id: "studio-display-id".into(),
         name: "Studio Display".into(),
@@ -284,7 +284,7 @@ fn studio_display() -> macos::DisplayOutputs {
     .unwrap()
 }
 
-fn column(x: i32, width: i32) -> crate::Rect {
+pub(super) fn column(x: i32, width: i32) -> crate::Rect {
     crate::Rect {
         x,
         y: 30,
@@ -320,7 +320,7 @@ fn apps_observation(
     }
 }
 
-fn app_window(pid: i32, launched_at: u64, window_id: u32) -> crate::PhysicalWindowId {
+pub(super) fn app_window(pid: i32, launched_at: u64, window_id: u32) -> crate::PhysicalWindowId {
     crate::PhysicalWindowId {
         app: AppInstanceId { pid, launched_at },
         window_id,
@@ -382,7 +382,7 @@ fn early_open_event_rechecks_until_the_new_window_can_split_its_sibling() {
 
 /// Two apps share a display. The second app disappears from the observation
 /// while Core Graphics still lists its former surface off screen.
-fn ordered_out_pair(
+pub(super) fn ordered_out_pair(
     bundle: &str,
 ) -> (
     WorkspaceRuntime<FakeBackend>,

@@ -2,6 +2,7 @@ use std::{
     cell::RefCell,
     collections::{HashMap, HashSet},
     ptr::NonNull,
+    time::Duration,
 };
 
 use objc2::rc::autoreleasepool;
@@ -322,6 +323,47 @@ fn warp_sequence(
 /// route an assistive app is granted, so it brings the app forward; the AppKit
 /// call stays as reinforcement for releases before macOS 14.
 pub fn focus_window(id: &PhysicalWindowId) -> bool {
+    let focused = focus_window_once(id);
+    if focused {
+        confirm_frontmost(
+            || super::frontmost_application().is_some_and(|app| app.pid == id.app.pid),
+            || {
+                let _: bool = focus_window_once(id);
+            },
+            std::thread::sleep,
+        );
+    }
+    focused
+}
+
+const FRONTMOST_POLL: Duration = Duration::from_millis(10);
+const FRONTMOST_REASSERT_EVERY: u32 = 5;
+const FRONTMOST_REASSERTS: u32 = 3;
+
+/// Some apps (Arc) answer `AXFrontmost` with success yet stay behind while the
+/// app focus left keeps the keyboard. Poll the frontmost app briefly and
+/// repeat the focus every `FRONTMOST_REASSERT_EVERY` polls, at most
+/// `FRONTMOST_REASSERTS` times. Returns how many repeats were needed.
+fn confirm_frontmost(
+    mut is_frontmost: impl FnMut() -> bool,
+    mut reassert: impl FnMut(),
+    mut sleep: impl FnMut(Duration),
+) -> u32 {
+    let mut reasserts = 0;
+    for poll in 1..=FRONTMOST_REASSERT_EVERY * (FRONTMOST_REASSERTS + 1) {
+        sleep(FRONTMOST_POLL);
+        if is_frontmost() {
+            break;
+        }
+        if poll % FRONTMOST_REASSERT_EVERY == 0 && reasserts < FRONTMOST_REASSERTS {
+            reasserts += 1;
+            reassert();
+        }
+    }
+    reasserts
+}
+
+fn focus_window_once(id: &PhysicalWindowId) -> bool {
     autoreleasepool(|_| {
         focus_sequence(
             || raise_window_with_focus(id, true),
@@ -573,6 +615,19 @@ fn with_managed_window_result<T>(
     Err(WindowAccessError::Gone)
 }
 
+/// Reads `AXMinimized` from the cached handle only, with a short timeout, so
+/// an unresponsive app cannot hold up the cycle; no handle means no evidence.
+pub(super) fn cached_window_is_minimized(id: &PhysicalWindowId) -> bool {
+    let Some(window) = MANAGED_WINDOWS.with(|windows| windows.borrow().get(id).cloned()) else {
+        return false;
+    };
+    // SAFETY: `window` is a live cached `AXUIElement`; the timeout is restored below.
+    let _: AXError = unsafe { window.set_messaging_timeout(0.05) };
+    let minimized = optional_bool_attribute(&window, "AXMinimized").unwrap_or(false);
+    set_ax_timeout(&window);
+    minimized
+}
+
 pub(super) fn cache_managed_window(id: &PhysicalWindowId, window: &AXUIElement) {
     // SAFETY: `window` is a valid `AXUIElement` reference backed by Core Foundation refcounting.
     let retained = unsafe { CFRetained::retain(NonNull::from(window)) };
@@ -607,7 +662,10 @@ mod tests {
 
     use objc2_application_services::AXError;
 
-    use super::{focus_sequence, warp_sequence, write_frame};
+    use super::{
+        FRONTMOST_POLL, FRONTMOST_REASSERTS, confirm_frontmost, focus_sequence, warp_sequence,
+        write_frame,
+    };
 
     #[test]
     fn focus_raises_the_window_before_bringing_its_app_forward() {
@@ -648,6 +706,41 @@ mod tests {
             || false
         ));
         assert!(!focus_sequence(|| false, || AXError::Success, || true));
+    }
+
+    #[test]
+    fn an_app_that_comes_forward_needs_no_repeat() {
+        let polls = RefCell::new(0);
+        let repeats = confirm_frontmost(
+            || {
+                *polls.borrow_mut() += 1;
+                *polls.borrow() >= 2
+            },
+            || panic!("no repeat expected"),
+            |_| {},
+        );
+        assert_eq!(repeats, 0);
+        assert_eq!(*polls.borrow(), 2);
+    }
+
+    #[test]
+    fn an_app_that_stays_behind_gets_the_focus_repeated() {
+        // Arc accepts `AXFrontmost` and stays behind; a repeat brings it forward.
+        let repeats = RefCell::new(0);
+        let count = confirm_frontmost(
+            || *repeats.borrow() >= 1,
+            || *repeats.borrow_mut() += 1,
+            |_| {},
+        );
+        assert_eq!(count, 1);
+    }
+
+    #[test]
+    fn an_app_that_never_comes_forward_stops_after_a_bounded_wait() {
+        let waited = RefCell::new(std::time::Duration::ZERO);
+        let count = confirm_frontmost(|| false, || {}, |step| *waited.borrow_mut() += step);
+        assert_eq!(count, FRONTMOST_REASSERTS);
+        assert!(*waited.borrow() <= FRONTMOST_POLL * 20);
     }
 
     #[test]
