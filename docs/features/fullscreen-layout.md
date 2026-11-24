@@ -57,7 +57,7 @@ persisted mode, and which window Spaceman asks to focus or raise; none observes 
 ## How To Get To It (User POV)
 
 ```ts
-Focus a window on the target workspace
+Focus a window on the target workspace (a tile or a floating window it owns)
 ├── Option+Shift+F / spaceman ctl fullscreen -> toggle
 └── Option+/                          -> exits (and flips the axis); there is no "exit only" key besides Option+Shift+F
 ```
@@ -67,6 +67,8 @@ independently.
 
 ## Existing Checks
 
+- `float.rs` `workspace_layout_commands_accept_a_focused_floating_window` (issue 135): entering and
+  both exits work with a floating window focused.
 - Unit tests listed above. Only `fullscreen_layout_activates_persisted_cross_app_focus_after_restart`
   exercises persistence through `WorkspaceState`; it does not restart a real process.
 - No live harness covers Fullscreen Layout. The back-to-front test proves the order of park requests

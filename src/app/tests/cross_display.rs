@@ -210,3 +210,45 @@ fn move_app_moves_every_managed_window_of_the_app() {
         Some(WorkspaceId::ONE)
     );
 }
+
+/// #136: move-app takes the app's floating windows along with its tiles, and
+/// finds an app whose only window floats.
+#[test]
+fn move_app_moves_floating_windows_too() {
+    let (tile, floating) = (window(10), window(11));
+    let mut backend = FakeBackend::default();
+    backend.frames.insert(tile.clone(), frame(50));
+    backend.frames.insert(floating.clone(), frame(500));
+    let mut runtime = runtime(backend);
+    bind(&mut runtime, WorkspaceId::ONE, &tile);
+    runtime
+        .workspaces
+        .own_floating(floating.clone(), WorkspaceId::ONE);
+    runtime
+        .memory
+        .bundles
+        .insert(tile.app.clone(), "com.example.Test".into());
+    let cancelled = AtomicBool::new(false);
+
+    runtime
+        .move_app("com.example.Test", WorkspaceId::SIX, outputs(), &cancelled)
+        .unwrap();
+    assert_eq!(
+        runtime.workspaces.workspace_of(&tile),
+        Some(WorkspaceId::SIX)
+    );
+    assert_eq!(
+        runtime.workspaces.floating_workspace_of(&floating),
+        Some(WorkspaceId::SIX)
+    );
+
+    // Only the float left: it is still the app's window to move.
+    runtime.forget_window(WorkspaceId::SIX, &tile);
+    runtime
+        .move_app("com.example.Test", WorkspaceId::ONE, outputs(), &cancelled)
+        .unwrap();
+    assert_eq!(
+        runtime.workspaces.floating_workspace_of(&floating),
+        Some(WorkspaceId::ONE)
+    );
+}

@@ -591,9 +591,17 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
         status.ok_or_else(|| format!("No managed window found for {bundle_id}"))
     }
 
+    /// Every window of the bundle Spaceman owns: its tiles, then its floats.
     fn windows_for_bundle(&self, bundle_id: &str) -> Vec<crate::PhysicalWindowId> {
+        let mut floating: Vec<_> = self
+            .workspaces
+            .floating_entries()
+            .map(|(window, _)| window.clone())
+            .collect();
+        floating.sort();
         WorkspaceId::all()
             .flat_map(|workspace| self.workspaces.engine(workspace).bound_windows())
+            .chain(floating)
             .filter(|window| self.bundle_id(&window.app) == Some(bundle_id))
             .collect()
     }

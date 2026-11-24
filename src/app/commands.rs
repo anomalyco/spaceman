@@ -473,6 +473,31 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
         Ok((window, workspace))
     }
 
+    /// The visible workspace that owns the focused window, as a tile or a
+    /// float, for commands that act on the whole workspace.
+    fn focused_owner_workspace(
+        &mut self,
+        outputs: &macos::DisplayOutputs,
+        cancelled: &AtomicBool,
+    ) -> Result<(crate::PhysicalWindowId, WorkspaceId), String> {
+        let window = self
+            .current_focus()
+            .ok_or("Focused window is unavailable")?;
+        if self.workspaces.workspace_of_any(&window).is_none() {
+            self.with_warp_context(WarpContext::Suppressed, |rt| {
+                rt.cycle(outputs.clone(), cancelled)
+            })?;
+        }
+        let workspace = self
+            .workspaces
+            .workspace_of_any(&window)
+            .ok_or("Focused window is not managed by Spaceman")?;
+        if !self.is_visible(workspace, outputs) {
+            return Err("Focused window is not on an active workspace".into());
+        }
+        Ok((window, workspace))
+    }
+
     fn active_workspace_of(
         &mut self,
         window: &crate::PhysicalWindowId,
@@ -516,7 +541,7 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
         outputs: macos::DisplayOutputs,
         cancelled: &AtomicBool,
     ) -> Result<CycleStatus, String> {
-        let (_, workspace) = self.focused_active_workspace(&outputs, cancelled, false)?;
+        let (_, workspace) = self.focused_owner_workspace(&outputs, cancelled)?;
         if self.workspaces.uses_fullscreen_layout(workspace) {
             self.workspaces.set_fullscreen_layout(workspace, false);
             self.pending_fullscreen_focus_restore.remove(&workspace);
@@ -575,7 +600,7 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
         outputs: macos::DisplayOutputs,
         cancelled: &AtomicBool,
     ) -> Result<CycleStatus, String> {
-        let (window, workspace) = self.focused_active_workspace(&outputs, cancelled, true)?;
+        let (window, workspace) = self.focused_owner_workspace(&outputs, cancelled)?;
         self.workspaces.remember_focus(workspace, &window);
         let enabled = !self.workspaces.uses_fullscreen_layout(workspace);
         self.workspaces.set_fullscreen_layout(workspace, enabled);
