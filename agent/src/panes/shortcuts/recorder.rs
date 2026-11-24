@@ -323,17 +323,17 @@ pub fn record(ui: &mut Ui, id: &'static str, outcome: Press) {
             });
             return;
         }
-        Press::Chord(chord) => match check(&shortcuts, &named, action, chord)
-            .and_then(|()| lab_check(ui, chord))
-        {
-            Ok(()) => {
-                save(ui, id, |doc| {
-                    doc.set_shortcut(action.command, default, Some(chord));
-                });
-                return;
+        Press::Chord(chord) => {
+            match check(&shortcuts, &named, action, chord).and_then(|()| lab_check(ui, chord)) {
+                Ok(()) => {
+                    save(ui, id, |doc| {
+                        doc.set_shortcut(action.command, default, Some(chord));
+                    });
+                    return;
+                }
+                Err(message) => message,
             }
-            Err(message) => message,
-        },
+        }
         Press::Refused(message) => message.to_owned(),
     };
     if let Capture::Listening { message, .. } = &mut ui.shortcut_capture {

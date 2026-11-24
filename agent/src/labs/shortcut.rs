@@ -22,6 +22,8 @@ pub(super) fn row(ui: &Ui, p: Paint, feature: LabFeature) -> El {
 
 const fn shortcut_description(feature: LabFeature) -> &'static str {
     match feature {
-        LabFeature::ScrollingStrip => "Turns the strip on or off for the workspace in front of you.",
+        LabFeature::ScrollingStrip => {
+            "Turns the strip on or off for the workspace in front of you."
+        }
     }
 }
