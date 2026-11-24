@@ -245,12 +245,12 @@ on the same letter.
   drift back, honoring windows that keep un-parking (parking exemption, working tree), and keeping
   slots when Accessibility briefly cannot find a hidden window.
 - Unit, `src/geometry.rs`: `parking_leaves_a_single_corner_pixel_on_screen`,
-  `a_window_held_above_its_parking_corner_is_still_parked` and
-  `a_window_held_up_by_its_title_bar_stays_off_a_shorter_neighbor` and
-  `a_window_held_up_stays_off_a_neighbors_menu_bar` and `a_side_dock_moves_parking_to_the_other_corner`
-  (parking targets a bottom corner, accepts macOS
-  holding the window up by its title bar, and keeps every held-up position off other displays, menu
-  bar and Dock included). How far macOS holds it up is not covered.
+  `a_window_held_above_its_parking_corner_is_still_parked`,
+  `a_window_held_up_by_its_title_bar_stays_off_a_shorter_neighbor`,
+  `a_window_held_up_stays_off_a_neighbors_menu_bar`, and
+  `a_side_dock_moves_parking_to_the_other_corner`: parking targets a bottom corner, accepts macOS
+  holding the window up by its title bar, and keeps every held-up position off other displays and
+  off menu bars and Docks. How far macOS holds it up is not covered.
 - Unit (FakeBackend), `src/app/tests/reconciliation.rs`:
   `an_app_that_quits_while_hidden_releases_its_tiles_and_recovery_metadata` (an app that quits
   while its windows are parked frees their tiles without the workspace being shown).
