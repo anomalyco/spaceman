@@ -77,8 +77,10 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
 
     pub(super) fn follow_pointer_to(
         &mut self,
+        target_display_id: &str,
         output: crate::Rect,
         focused_window: Option<crate::Rect>,
+        outputs: &macos::DisplayOutputs,
     ) {
         let mode = self.config.mouse_follows_focus();
         if mode == crate::config::MouseFollowsFocus::Off
@@ -88,16 +90,17 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
             return;
         }
         let target_rect = focused_window.unwrap_or(output);
-        let containment = match mode {
-            crate::config::MouseFollowsFocus::Off => return,
-            crate::config::MouseFollowsFocus::Display => output,
-            crate::config::MouseFollowsFocus::Window => target_rect,
-        };
-        if self
+        let already_there = self
             .backend
             .pointer_location()
-            .is_some_and(|(x, y)| containment.contains(x, y))
-        {
+            .is_some_and(|(x, y)| match mode {
+                crate::config::MouseFollowsFocus::Off => true,
+                crate::config::MouseFollowsFocus::Display => outputs
+                    .display_at((x, y))
+                    .is_some_and(|display| display.id == target_display_id),
+                crate::config::MouseFollowsFocus::Window => target_rect.contains(x, y),
+            });
+        if already_there {
             return;
         }
         let _: bool = self.backend.warp_pointer(rect_center(target_rect));
@@ -108,13 +111,20 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
         workspace: WorkspaceId,
         output: crate::Rect,
         outcome: WorkspaceFocusOutcome,
+        outputs: &macos::DisplayOutputs,
     ) {
+        let target_display_id = outputs
+            .resolve(self.workspaces.assignment(workspace))
+            .id
+            .as_str();
         match outcome {
             WorkspaceFocusOutcome::Focused(window) => {
                 let frame = self.focus_window_frame(&window, workspace, output);
-                self.follow_pointer_to(output, frame);
+                self.follow_pointer_to(target_display_id, output, frame, outputs);
             }
-            WorkspaceFocusOutcome::Empty => self.follow_pointer_to(output, None),
+            WorkspaceFocusOutcome::Empty => {
+                self.follow_pointer_to(target_display_id, output, None, outputs);
+            }
             WorkspaceFocusOutcome::Failed => {}
         }
     }
@@ -412,9 +422,10 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
         });
         if let Some(workspace) = self.workspaces.workspace_of(target) {
             self.remember_fullscreen_focus(workspace, target)?;
-            let output = output_for(&self.workspaces, workspace, outputs);
+            let display = outputs.resolve(self.workspaces.assignment(workspace));
+            let output = display.frame;
             let frame = self.focus_window_frame(target, workspace, output);
-            self.follow_pointer_to(output, frame);
+            self.follow_pointer_to(&display.id, output, frame, outputs);
         }
         Ok(())
     }

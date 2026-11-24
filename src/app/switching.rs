@@ -39,7 +39,7 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
                 self.record_focused_workspace(workspace);
                 self.pending_fullscreen_focus_restore.remove(&workspace);
                 let frame = self.focus_window_frame(focused, workspace, output);
-                self.follow_pointer_to(output, frame);
+                self.follow_pointer_to(&display_id, output, frame, &outputs);
                 self.persist_workspace_state_if_changed()?;
                 let mut status = self.status(0, &outputs);
                 status.hud = Some(self.hud_for(workspace, UiHudKind::Workspace, None, &outputs));
@@ -49,7 +49,7 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
             // A tile of this workspace that already has focus keeps it; only
             // focus elsewhere moves to the remembered tile.
             let outcome = self.focus_workspace_entry(workspace, &windows, focused, frontmost, true);
-            self.follow_pointer_for_workspace(workspace, output, outcome);
+            self.follow_pointer_for_workspace(workspace, output, outcome, &outputs);
             // Selecting a workspace that is already up still moves focus there
             // when it lives on another display, so it belongs in the history.
             self.record_focused_workspace(workspace);
@@ -208,7 +208,7 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
         if self.warp_context == WarpContext::Explicit
             || (self.warp_context == WarpContext::Direct && !focus_already_in_workspace)
         {
-            self.follow_pointer_for_workspace(workspace, output, outcome);
+            self.follow_pointer_for_workspace(workspace, output, outcome, &outputs);
         }
         self.persist_workspace_state_if_changed()?;
         log_event!(
@@ -501,14 +501,18 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
             let frontmost = self.backend.frontmost_application();
             let outcome =
                 self.focus_workspace_entry(workspace, &windows, focused, frontmost, false);
-            self.follow_pointer_for_workspace(workspace, output, outcome);
+            self.follow_pointer_for_workspace(workspace, output, outcome, outputs);
             self.record_focused_workspace(workspace);
             log_event!(
                 "back-and-forth: focused visible workspace {} without switching",
                 workspace
             );
         } else {
-            self.follow_pointer_to(output, None);
+            let target_display_id = outputs
+                .resolve(self.workspaces.assignment(workspace))
+                .id
+                .as_str();
+            self.follow_pointer_to(target_display_id, output, None, outputs);
         }
         let mut status = self.status(0, outputs);
         status.hud = Some(self.hud_for(workspace, UiHudKind::Workspace, from, outputs));
@@ -525,13 +529,7 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
         cancelled: &AtomicBool,
     ) -> Result<CycleStatus, String> {
         self.synchronize_foreground(&outputs);
-        let display_id = outputs
-            .displays()
-            .iter()
-            .find(|display| display.frame.contains(point.0, point.1))
-            .unwrap_or_else(|| outputs.main())
-            .id
-            .clone();
+        let display_id = outputs.display_for_point(point).id.clone();
         let current = self
             .visible_workspaces(&outputs)
             .into_iter()
@@ -689,7 +687,11 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
                 // elsewhere; Option+Tab goes back to where it came from.
                 self.record_focused_workspace(target);
                 let frame = self.focus_window_frame(&window, target, target_output);
-                self.follow_pointer_to(target_output, frame);
+                let target_display_id = outputs
+                    .resolve(self.workspaces.assignment(target))
+                    .id
+                    .as_str();
+                self.follow_pointer_to(target_display_id, target_output, frame, &outputs);
             } else {
                 log_event!("move focus follow failed for {:?}", window);
             }

@@ -228,6 +228,7 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
         if matches!(
             action,
             WorkerAction::SwitchWorkspace(_)
+                | WorkerAction::SelectWorkspace(_)
                 | WorkerAction::WorkspaceBackAndForth
                 | WorkerAction::MoveWorkspaceToDisplay(_)
                 | WorkerAction::Swipe(..)
@@ -251,7 +252,9 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
         };
         self.with_warp_context(warp_context, |rt| match action {
             WorkerAction::Retile => rt.cycle(outputs, cancelled),
-            WorkerAction::SwitchWorkspace(workspace) => rt.switch(workspace, outputs, cancelled),
+            WorkerAction::SwitchWorkspace(workspace) | WorkerAction::SelectWorkspace(workspace) => {
+                rt.switch(workspace, outputs, cancelled)
+            }
             WorkerAction::WorkspaceBackAndForth => rt.workspace_back_and_forth(outputs, cancelled),
             WorkerAction::MoveWorkspaceToDisplay(target) => {
                 rt.move_workspace_to_display(target, outputs, cancelled)

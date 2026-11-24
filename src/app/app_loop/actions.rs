@@ -40,12 +40,12 @@ impl MainThreadAgent {
         }
         self.listen_for_input();
         self.automatic = true;
-        self.last_error = None;
         self.cancelled.store(false, Ordering::Release);
         self.events.invalidate();
         self.ui_dirty = true;
         status_item::set_automatic(true);
-        status_item::set_status(self.scope.automatic_status());
+        let status = automatic_started_status(&mut self.last_error, self.scope.automatic_status());
+        status_item::set_status(status);
     }
 
     pub(super) fn drain_actions(&mut self) {
@@ -139,6 +139,7 @@ impl MainThreadAgent {
                     self.ui_dirty = true;
                 }
                 Action::CheckForUpdates => {
+                    self.clear_update_failed_error();
                     self.updater.check_now();
                     self.ui_dirty = true;
                 }
@@ -146,14 +147,16 @@ impl MainThreadAgent {
                     status_item::set_status("No update is ready to install");
                 }
                 Action::ConfirmUpdateSwitch => {
+                    self.clear_update_failed_error();
                     self.updater.confirm_switch();
                     self.ui_dirty = true;
                 }
-                Action::DownloadUpdate => {
-                    if let Err(error) = self.updater.open_download() {
+                Action::DownloadUpdate => match self.updater.open_download() {
+                    Ok(()) => self.clear_update_failed_error(),
+                    Err(error) => {
                         status_item::set_status(&format!("Could not open the update: {error}"));
                     }
-                }
+                },
                 Action::ToggleLaunchAtLogin => {
                     let result = login_item::toggle();
                     self.launch_at_login = UiLaunchAtLogin::from_result(result.clone());

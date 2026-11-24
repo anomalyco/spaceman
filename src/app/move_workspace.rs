@@ -392,7 +392,7 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
             frontmost_before,
             false,
         );
-        self.follow_pointer_for_workspace(moved_ws, target_output, outcome);
+        self.follow_pointer_for_workspace(moved_ws, target_output, outcome, &outputs);
         self.persist_workspace_state_if_changed()?;
         log_event!(
             "move-workspace complete: workspace {} -> {} in {}ms",

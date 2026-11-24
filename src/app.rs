@@ -83,6 +83,8 @@ use runtime::*;
 use worker::spawn_worker;
 
 pub const TICK_INTERVAL: Duration = Duration::from_millis(25);
+/// Prefix on `UiAgentSnapshot::last_error` when installing a staged update fails.
+pub const UPDATE_FAILED_PREFIX: &str = "Update failed: ";
 /// Retile without an event this often while the user is active...
 const FALLBACK_REFRESH_INTERVAL: Duration = Duration::from_secs(1);
 /// ...and this often once nothing has happened for `RECENT_ACTIVITY`. Each
@@ -212,6 +214,9 @@ pub(crate) enum Action {
 pub(crate) enum WorkerAction {
     Retile,
     SwitchWorkspace(WorkspaceId),
+    /// Pointer-initiated workspace selection from the status menu or Workspace HUD:
+    /// switches and focuses without triggering mouse-follows-focus warping.
+    SelectWorkspace(WorkspaceId),
     WorkspaceBackAndForth,
     MoveWorkspaceToDisplay(DisplayTarget),
     /// A trackpad swipe, stepping through the occupied workspaces of the display
@@ -238,7 +243,9 @@ impl WorkerAction {
     fn queued_acknowledgement(&self) -> String {
         match self {
             Self::Retile => "retile queued".into(),
-            Self::SwitchWorkspace(workspace) => format!("switch to workspace {workspace} queued"),
+            Self::SwitchWorkspace(workspace) | Self::SelectWorkspace(workspace) => {
+                format!("switch to workspace {workspace} queued")
+            }
             Self::WorkspaceBackAndForth => "workspace back-and-forth queued".into(),
             Self::MoveWorkspaceToDisplay(_) => "move workspace to display queued".into(),
             Self::Swipe(..) => "swipe queued".into(),
