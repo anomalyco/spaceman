@@ -287,6 +287,11 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
             .cloned()
             .or_else(|| {
                 self.workspaces
+                    .preferred_float_focus(workspace)
+                    .filter(|window| windows.contains(window))
+            })
+            .or_else(|| {
+                self.workspaces
                     .preferred_focus(workspace)
                     .filter(|window| windows.contains(window))
             })

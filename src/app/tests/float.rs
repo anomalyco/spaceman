@@ -305,10 +305,11 @@ fn workspace_layout_commands_accept_a_focused_floating_window() {
     assert_eq!(runtime.backend.frames[&dialog], dialog_frame);
 }
 
-/// #138: leaving a workspace while one of its floats has focus keeps the
-/// remembered tile, so coming back focuses it rather than the first tile.
+/// #138 & #240: leaving a workspace while one of its floats has focus
+/// remembers that float for returning AND preserves the remembered tile as a
+/// fallback once the float closes, moves, or tiles.
 #[test]
-fn leaving_with_a_float_focused_keeps_the_remembered_tile() {
+fn leaving_with_a_float_focused_refocuses_it_and_keeps_the_remembered_tile() {
     let (first, remembered, floating) = (window(10), window(20), window(30));
     let mut backend = FakeBackend::default();
     backend.frames.insert(first.clone(), frame(50));
@@ -332,10 +333,51 @@ fn leaving_with_a_float_focused_keeps_the_remembered_tile() {
         runtime.workspaces.preferred_focus(WorkspaceId::ONE),
         Some(remembered.clone())
     );
+    assert_eq!(
+        runtime.workspaces.preferred_float_focus(WorkspaceId::ONE),
+        Some(floating.clone())
+    );
 
+    // Coming back refocuses the floating window that had focus when leaving (#240).
+    runtime.backend.focused = None;
+    runtime
+        .switch(WorkspaceId::ONE, outputs(), &cancelled)
+        .unwrap();
+    assert_eq!(runtime.backend.focused, Some(floating.clone()));
+
+    // Once that float leaves the workspace, coming back falls back to the
+    // remembered tile rather than the first tile (#138).
+    runtime.backend.focused = Some(floating.clone());
+    runtime.switch(two, outputs(), &cancelled).unwrap();
+    runtime.workspaces.forget_floating(&floating);
     runtime.backend.focused = None;
     runtime
         .switch(WorkspaceId::ONE, outputs(), &cancelled)
         .unwrap();
     assert_eq!(runtime.backend.focused, Some(remembered));
+}
+
+#[test]
+fn floats_only_workspace_refocuses_the_float_that_had_focus_before_leaving() {
+    let (first, second) = (window(10), window(20));
+    let mut backend = FakeBackend::default();
+    backend.frames.insert(first.clone(), frame(50));
+    backend.frames.insert(second.clone(), frame(300));
+    let mut runtime = runtime(backend);
+    runtime
+        .workspaces
+        .own_floating(first.clone(), WorkspaceId::ONE);
+    runtime
+        .workspaces
+        .own_floating(second.clone(), WorkspaceId::ONE);
+    let cancelled = AtomicBool::new(false);
+    let two = WorkspaceId::new(2).unwrap();
+
+    runtime.backend.focused = Some(second.clone());
+    runtime.switch(two, outputs(), &cancelled).unwrap();
+    runtime.backend.focused = None;
+    runtime
+        .switch(WorkspaceId::ONE, outputs(), &cancelled)
+        .unwrap();
+    assert_eq!(runtime.backend.focused, Some(second));
 }

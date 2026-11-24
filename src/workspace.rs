@@ -297,6 +297,7 @@ pub struct Workspaces {
     floating_owners: HashMap<PhysicalWindowId, WorkspaceId>,
     enabled: HashSet<WorkspaceId>,
     last_focused: [Option<crate::SlotId>; WorkspaceId::COUNT],
+    last_focused_float: [Option<PhysicalWindowId>; WorkspaceId::COUNT],
     fullscreen_layout: [bool; WorkspaceId::COUNT],
 }
 
@@ -315,6 +316,7 @@ impl Default for Workspaces {
             floating_owners: HashMap::new(),
             enabled: WorkspaceId::numbered().collect(),
             last_focused: std::array::from_fn(|_| None),
+            last_focused_float: std::array::from_fn(|_| None),
             fullscreen_layout: [false; WorkspaceId::COUNT],
         }
     }
@@ -623,7 +625,12 @@ impl Workspaces {
     }
 
     pub(crate) fn own_floating(&mut self, window: PhysicalWindowId, workspace: WorkspaceId) {
-        self.floating_owners.insert(window, workspace);
+        if let Some(previous) = self.floating_owners.insert(window.clone(), workspace)
+            && previous != workspace
+            && self.last_focused_float[previous.index()].as_ref() == Some(&window)
+        {
+            self.last_focused_float[previous.index()] = None;
+        }
     }
 
     /// The workspace's tiles in stable tile order, then its floats in a stable
@@ -688,7 +695,11 @@ impl Workspaces {
     }
 
     pub(crate) fn forget_floating(&mut self, window: &PhysicalWindowId) {
-        self.floating_owners.remove(window);
+        if let Some(workspace) = self.floating_owners.remove(window)
+            && self.last_focused_float[workspace.index()].as_ref() == Some(window)
+        {
+            self.last_focused_float[workspace.index()] = None;
+        }
     }
 
     /// The one enabled workspace holding the app's windows, tiled or floating;
@@ -736,12 +747,24 @@ impl Workspaces {
         self.prune_intents(workspace);
     }
 
-    /// Remember `window` as the workspace's focused tile. A window without a
-    /// tile (a float) leaves the remembered tile alone.
+    /// Remember `window` as the workspace's focused tile or float. Focusing a
+    /// float records it without overwriting the remembered tile (#138, #240).
     pub(crate) fn remember_focus(&mut self, workspace: WorkspaceId, window: &PhysicalWindowId) {
         if let Some(slot) = self.engine(workspace).slot_for_window(window) {
             self.last_focused[workspace.index()] = Some(slot);
+            self.last_focused_float[workspace.index()] = None;
+        } else if self.floating_workspace_of(window) == Some(workspace) {
+            self.last_focused_float[workspace.index()] = Some(window.clone());
         }
+    }
+
+    /// The workspace's most recently focused floating window, if it still
+    /// belongs to `workspace`.
+    pub(crate) fn preferred_float_focus(&self, workspace: WorkspaceId) -> Option<PhysicalWindowId> {
+        self.last_focused_float[workspace.index()]
+            .as_ref()
+            .filter(|window| self.floating_workspace_of(window) == Some(workspace))
+            .cloned()
     }
 
     pub(crate) fn preferred_focus(&self, workspace: WorkspaceId) -> Option<PhysicalWindowId> {
