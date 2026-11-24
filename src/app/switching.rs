@@ -616,6 +616,27 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
         self.move_window(window, target, outputs, cancelled)
     }
 
+    pub(super) fn move_focused_follow(
+        &mut self,
+        target: WorkspaceId,
+        outputs: macos::DisplayOutputs,
+        cancelled: &AtomicBool,
+    ) -> Result<CycleStatus, String> {
+        let window = self
+            .backend
+            .focused_window()
+            .ok_or("Focused window is unavailable")?;
+        let was_visible = self.is_visible(target, &outputs);
+        let moved = self.move_window(window.clone(), target, outputs.clone(), cancelled)?;
+        if was_visible {
+            return Ok(moved);
+        }
+        self.workspaces.remember_focus(target, &window);
+        let mut switched = self.switch(target, outputs, cancelled)?;
+        switched.failed += moved.failed;
+        Ok(switched)
+    }
+
     pub(super) fn move_app(
         &mut self,
         bundle_id: &str,

@@ -240,7 +240,7 @@ pub(crate) fn ctl_help(executable: &str) -> String {
         "  back-and-forth             Toggle between the current and previous workspace",
         "  move-workspace [next|prev|<display>]",
         "                             Move the focused workspace to another display (default: next)",
-        "  move <workspace>           Move the focused window to a workspace",
+        "  move <workspace> [--follow] Move the focused window to a workspace (and switch with --follow)",
         "  move-app <bundle-id> <ws>  Move an application's windows to a workspace",
         "",
         "Windows & layout:",

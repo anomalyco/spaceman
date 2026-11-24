@@ -167,6 +167,7 @@ spaceman ctl move-workspace
 spaceman ctl move-workspace prev
 spaceman ctl move-workspace secondary
 spaceman ctl move 7
+spaceman ctl move 7 --follow
 spaceman ctl move-app com.tinyspeck.slackmacgap 6
 spaceman ctl focus left
 spaceman ctl focus next

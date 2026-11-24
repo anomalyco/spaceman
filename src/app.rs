@@ -223,6 +223,7 @@ pub(crate) enum WorkerAction {
     /// under the pointer.
     Swipe(Swipe, (i32, i32)),
     MoveFocused(WorkspaceId),
+    MoveFocusedFollow(WorkspaceId),
     MoveApp(String, WorkspaceId),
     CycleFocus,
     /// Option-Shift-backtick: the same ring as `CycleFocus`, walked backward.
@@ -252,6 +253,9 @@ impl WorkerAction {
             Self::MoveWorkspaceToDisplay(_) => "move workspace to display queued".into(),
             Self::Swipe(..) => "swipe queued".into(),
             Self::MoveFocused(workspace) => format!("move to workspace {workspace} queued"),
+            Self::MoveFocusedFollow(workspace) => {
+                format!("move and switch to workspace {workspace} queued")
+            }
             Self::MoveApp(_, workspace) => format!("move app to workspace {workspace} queued"),
             Self::CycleFocus => "focus cycle queued".into(),
             Self::CycleFocusPrevious => "reverse focus cycle queued".into(),

@@ -235,6 +235,7 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
                 | WorkerAction::WorkspaceBackAndForth
                 | WorkerAction::Swipe(..)
                 | WorkerAction::MoveFocused(_)
+                | WorkerAction::MoveFocusedFollow(_)
                 | WorkerAction::MoveApp(..)
         ) {
             self.pending_focus = None;
@@ -248,6 +249,7 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
                 | WorkerAction::CycleFocusPrevious
                 | WorkerAction::Focus(_)
                 | WorkerAction::MoveFocused(_)
+                | WorkerAction::MoveFocusedFollow(_)
         ) {
             super::commands::WarpContext::Explicit
         } else {
@@ -283,6 +285,9 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
             }
             WorkerAction::Swipe(swipe, point) => rt.swipe(swipe, point, outputs, cancelled),
             WorkerAction::MoveFocused(workspace) => rt.move_focused(workspace, outputs, cancelled),
+            WorkerAction::MoveFocusedFollow(workspace) => {
+                rt.move_focused_follow(workspace, outputs, cancelled)
+            }
             WorkerAction::MoveApp(bundle_id, workspace) => {
                 rt.move_app(&bundle_id, workspace, outputs, cancelled)
             }

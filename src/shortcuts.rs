@@ -270,6 +270,7 @@ pub enum Key {
 pub enum Command {
     Switch(WorkspaceId),
     Move(WorkspaceId),
+    MoveFollow(WorkspaceId),
     BackAndForth,
     MoveWorkspace(DisplayTarget),
     Focus(Direction),
@@ -284,7 +285,7 @@ pub enum Command {
     Retile,
 }
 
-pub const COMMAND_USAGE: &str = "switch WORKSPACE|move WORKSPACE|back-and-forth|move-workspace [next|prev|DISPLAY]|focus DIR|focus next|focus prev|move-direction DIR|layout|fullscreen|float|resize shrink|resize grow|balance|retile|none";
+pub const COMMAND_USAGE: &str = "switch WORKSPACE|move WORKSPACE [--follow]|back-and-forth|move-workspace [next|prev|DISPLAY]|focus DIR|focus next|focus prev|move-direction DIR|layout|fullscreen|float|resize shrink|resize grow|balance|retile|none";
 
 /// `[shortcuts]` as written.
 #[derive(Deserialize)]
@@ -460,6 +461,9 @@ pub fn parse_command(source: &str) -> Result<Option<Command>, String> {
         ["none"] => return Ok(None),
         ["switch", workspace] => Command::Switch(WorkspaceId::parse(workspace)?),
         ["move", workspace] => Command::Move(WorkspaceId::parse(workspace)?),
+        ["move", workspace, "--follow"] | ["move", "--follow", workspace] => {
+            Command::MoveFollow(WorkspaceId::parse(workspace)?)
+        }
         ["back-and-forth"] => Command::BackAndForth,
         ["focus", "next"] => Command::FocusNext,
         ["focus", "prev"] => Command::FocusPrev,
@@ -486,7 +490,9 @@ impl Command {
     #[must_use]
     pub const fn workspace(&self) -> Option<WorkspaceId> {
         match self {
-            Self::Switch(workspace) | Self::Move(workspace) => Some(*workspace),
+            Self::Switch(workspace) | Self::Move(workspace) | Self::MoveFollow(workspace) => {
+                Some(*workspace)
+            }
             _ => None,
         }
     }
@@ -497,6 +503,9 @@ impl Command {
         match self {
             Self::Switch(workspace) => format!("switch workspace {workspace}"),
             Self::Move(workspace) => format!("move window to workspace {workspace}"),
+            Self::MoveFollow(workspace) => {
+                format!("move window to workspace {workspace} and follow")
+            }
             Self::BackAndForth => "workspace back-and-forth".into(),
             Self::MoveWorkspace(DisplayTarget::Next) => "move workspace to next display".into(),
             Self::MoveWorkspace(DisplayTarget::Prev) => "move workspace to previous display".into(),
@@ -593,6 +602,8 @@ mod tests {
         for (source, expected) in [
             ("switch 3", Some(Command::Switch(three))),
             ("move S", Some(Command::Move(s))),
+            ("move S --follow", Some(Command::MoveFollow(s))),
+            ("move --follow 3", Some(Command::MoveFollow(three))),
             ("focus left", Some(Command::Focus(Direction::Left))),
             ("focus next", Some(Command::FocusNext)),
             ("focus prev", Some(Command::FocusPrev)),
