@@ -856,3 +856,58 @@ fn swipe_in_secondary_menu_bar_or_dock_targets_secondary_display() {
         [WorkspaceId::TWO, WorkspaceId::SIX]
     );
 }
+
+#[test]
+fn focus_next_and_prev_follow_pointer_onto_floating_windows() {
+    for backward in [false, true] {
+        let windows = [
+            (window(10), frame(50)),
+            (window(20), frame(500)),
+            (window(30), frame(700)),
+        ];
+        let backend = FakeBackend {
+            frames: windows.iter().cloned().collect(),
+            focused: Some(window(30)),
+            frontmost: Some(window(30).app),
+            pointer: Some((100, 100)),
+            observation: Some(observation_for_windows(
+                "com.example.Test",
+                &window(30),
+                &windows,
+            )),
+            ..FakeBackend::default()
+        };
+        let mut rt = WorkspaceRuntime::with_backend_and_config(
+            ManagementScope::Both,
+            backend,
+            HashMap::new(),
+            config_with_mouse_follows_focus("window"),
+        );
+        let run = |rt: &mut WorkspaceRuntime<FakeBackend>, action: WorkerAction| {
+            let Some(WorkerResult::Status { result, .. }) = rt.execute(
+                WorkerCommand::Action(action, outputs()),
+                &AtomicBool::new(false),
+            ) else {
+                panic!("expected worker status");
+            };
+            result.unwrap();
+        };
+        run(&mut rt, WorkerAction::Retile);
+        run(&mut rt, WorkerAction::ToggleFloat);
+        rt.backend.calls.clear();
+        rt.backend.focused = Some(window(if backward { 10 } else { 20 }));
+
+        let target = rt.backend.frames[&window(30)];
+        let expected = (target.x + target.width / 2, target.y + target.height / 2);
+        run(
+            &mut rt,
+            if backward {
+                WorkerAction::CycleFocusPrevious
+            } else {
+                WorkerAction::CycleFocus
+            },
+        );
+        assert_eq!(rt.backend.focused, Some(window(30)));
+        assert_eq!(warp_calls(&rt), vec![expected]);
+    }
+}

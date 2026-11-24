@@ -431,6 +431,8 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
         });
         if let Some(workspace) = self.workspaces.workspace_of(target) {
             self.remember_fullscreen_focus(workspace, target)?;
+        }
+        if let Some(workspace) = self.workspaces.workspace_of_any(target) {
             let display = outputs.resolve(self.workspaces.assignment(workspace));
             let output = display.frame;
             let frame = self.focus_window_frame(target, workspace, output);
