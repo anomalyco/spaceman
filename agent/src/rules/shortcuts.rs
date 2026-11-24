@@ -37,18 +37,31 @@ impl Doc {
         let ours = bound_keys(bindings, |bound| bound == Some(&target));
         let mut vacated_built_ins = Vec::new();
         for key in ours {
-            if let Ok(old) = shortcuts::parse_chord(&key)
-                && default != Some(old)
-                && chord != Some(old)
-                && is_implicit_shortcut(old, &shortcuts, &named)
-            {
-                vacated_built_ins.push(old);
+            if let Ok(old) = shortcuts::parse_chord(&key) {
+                let keep_as_none = chord != Some(old)
+                    && (default == Some(old) || is_implicit_shortcut(old, &shortcuts, &named));
+                if keep_as_none {
+                    super::set_table_item(bindings, &key, value("none"));
+                    continue;
+                }
+                if default != Some(old)
+                    && chord != Some(old)
+                    && is_implicit_shortcut(old, &shortcuts, &named)
+                {
+                    vacated_built_ins.push(old);
+                }
+                if chord == Some(old) && default != Some(old) {
+                    continue;
+                }
             }
             bindings.remove(&key);
         }
         if let Some(chord) = chord {
-            remove_chord(bindings, chord);
-            if default != Some(chord) {
+            if default == Some(chord) {
+                remove_chord(bindings, chord);
+            } else if let Some(existing) = find_chord(bindings, chord) {
+                super::set_table_item(bindings, &existing, value(command));
+            } else {
                 bindings.insert(&chord.source(), value(command));
             }
         }

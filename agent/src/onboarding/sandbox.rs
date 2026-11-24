@@ -249,7 +249,7 @@ impl Sandbox {
     /// The focus keys that move something on the visible workspace.
     pub fn focus_keys(&self) -> [Key; 2] {
         let desk = self.desk(self.workspace);
-        if desk.split == Split::Stacked && desk.tiles == 2 {
+        if desk.split == Split::Stacked && (desk.tiles == 2 || desk.focus == 0) {
             [Key::Up, Key::Down]
         } else {
             [Key::Left, Key::Right]

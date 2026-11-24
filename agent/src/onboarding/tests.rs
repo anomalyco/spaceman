@@ -277,3 +277,21 @@ fn practice_presses_play_only_on_the_done_step() {
     // Practising never ends the tour; Done stays the only way out.
     assert_eq!(tour.flow.step(), Step::Done);
 }
+
+#[test]
+fn flipped_three_tile_practice_workspace_shows_working_vertical_focus_keys() {
+    let mut sandbox = Sandbox::default();
+    sandbox.press(Key::Workspace(2));
+    sandbox.press(Key::Flip);
+    assert_eq!(sandbox.workspace, 2);
+    assert_eq!(sandbox.split(2), Split::Stacked);
+    assert_eq!(sandbox.focus(2), 0);
+    assert_eq!(sandbox.focus_keys(), [Key::Up, Key::Down]);
+
+    // Pressing Down from the full-width top tile moves focus and completes the Focus lesson.
+    sandbox.press(Key::Down);
+    assert_ne!(sandbox.focus(2), 0);
+    assert!(sandbox.done(Lesson::Focus));
+    // Now on the side-by-side bottom row, horizontal keys work.
+    assert_eq!(sandbox.focus_keys(), [Key::Left, Key::Right]);
+}

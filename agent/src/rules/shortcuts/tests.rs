@@ -210,3 +210,32 @@ fn vacating_a_borrowed_built_in_or_scratchpad_chord_leaves_none() {
     let doc = saved(&doc);
     assert_eq!(bound(&doc, "alt+\\"), Some(None));
 }
+
+#[test]
+fn clearing_or_rebinding_explicit_built_in_shortcut_preserves_retained_key_comment() {
+    let source = "version = 1\n\n# Shortcut section.\n[shortcuts.bindings]\n# Focus note.\n\"alt+h\" = \"focus left\"\n# Balance note.\n\"alt+shift+b\" = \"balance\"\n";
+    let default = parse_chord("alt+h").unwrap();
+
+    // Clearing keeps alt+h = "none" and its comment.
+    let mut cleared = Doc::parse(source);
+    cleared.set_shortcut("focus left", Some(default), None);
+    let saved = cleared.source();
+    assert!(spaceman::config::Config::parse(&saved).is_ok());
+    assert!(saved.contains("\"alt+h\" = \"none\""));
+    assert!(saved.contains("# Focus note."));
+    assert!(saved.contains("# Balance note."));
+
+    // Rebinding to another chord keeps alt+h = "none" and its comment.
+    let mut rebound = Doc::parse(source);
+    rebound.set_shortcut(
+        "focus left",
+        Some(default),
+        Some(parse_chord("ctrl+cmd+h").unwrap()),
+    );
+    let saved = rebound.source();
+    assert!(spaceman::config::Config::parse(&saved).is_ok());
+    assert!(saved.contains("\"alt+h\" = \"none\""));
+    assert!(saved.contains("\"ctrl+cmd+h\" = \"focus left\""));
+    assert!(saved.contains("# Focus note."));
+    assert!(saved.contains("# Balance note."));
+}
