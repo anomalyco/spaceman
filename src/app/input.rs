@@ -7,6 +7,49 @@ use crate::{PhysicalWindowId, Rect};
 
 const MAX_PENDING_INPUTS: usize = 64;
 
+/// Axis-aligned bounding box of every pointer sample seen during a drag.
+/// A rectangle contains every sampled point iff it contains this box, so a
+/// display edge band has been left at least once iff `!entirely_inside(band)`.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(super) struct PointerBounds {
+    pub(super) min_x: i32,
+    pub(super) max_x: i32,
+    pub(super) min_y: i32,
+    pub(super) max_y: i32,
+}
+
+impl PointerBounds {
+    pub(super) const fn point((x, y): (i32, i32)) -> Self {
+        Self {
+            min_x: x,
+            max_x: x,
+            min_y: y,
+            max_y: y,
+        }
+    }
+
+    pub(super) fn extend(&mut self, (x, y): (i32, i32)) {
+        self.min_x = self.min_x.min(x);
+        self.max_x = self.max_x.max(x);
+        self.min_y = self.min_y.min(y);
+        self.max_y = self.max_y.max(y);
+    }
+
+    pub(super) fn merge(&mut self, other: Self) {
+        self.min_x = self.min_x.min(other.min_x);
+        self.max_x = self.max_x.max(other.max_x);
+        self.min_y = self.min_y.min(other.min_y);
+        self.max_y = self.max_y.max(other.max_y);
+    }
+
+    pub(super) const fn entirely_inside(self, rect: Rect) -> bool {
+        self.min_x >= rect.x
+            && self.max_x < rect.x + rect.width
+            && self.min_y >= rect.y
+            && self.max_y < rect.y + rect.height
+    }
+}
+
 pub(super) fn is_window_drag(start: Rect, current: Rect) -> bool {
     let moved = (start.x - current.x).abs().max((start.y - current.y).abs()) >= 6;
     let resized = (start.width - current.width)
@@ -84,6 +127,7 @@ struct Gesture {
     /// follow this window, and that must not take the gesture over.
     chosen: Option<usize>,
     last_preview: Option<FinalGesture>,
+    bounds: Option<PointerBounds>,
 }
 
 struct Candidate {
@@ -95,7 +139,18 @@ struct Candidate {
 
 impl GestureTracker {
     /// `candidates` are front to back, each with its frame at mouse-down.
+    #[cfg(test)]
     pub(super) fn begin(&mut self, candidates: Vec<(PhysicalWindowId, Rect)>) {
+        self.begin_at(candidates, None);
+    }
+
+    /// `candidates` are front to back, each with its frame at mouse-down, and
+    /// `start_point` is the pointer location at mouse-down when known.
+    pub(super) fn begin_at(
+        &mut self,
+        candidates: Vec<(PhysicalWindowId, Rect)>,
+        start_point: Option<(i32, i32)>,
+    ) {
         self.active = (!candidates.is_empty()).then(|| Gesture {
             candidates: candidates
                 .into_iter()
@@ -108,7 +163,19 @@ impl GestureTracker {
                 .collect(),
             chosen: None,
             last_preview: None,
+            bounds: start_point.map(PointerBounds::point),
         });
+    }
+
+    /// Record a pointer sample while the gesture is active, even when the
+    /// worker is too busy to accept a preview tick.
+    pub(super) fn observe_point(&mut self, point: (i32, i32)) {
+        if let Some(gesture) = self.active.as_mut() {
+            match &mut gesture.bounds {
+                Some(bounds) => bounds.extend(point),
+                None => gesture.bounds = Some(PointerBounds::point(point)),
+            }
+        }
     }
 
     pub(super) fn is_active(&self) -> bool {
@@ -151,9 +218,13 @@ impl Gesture {
         frame_of: impl Fn(&PhysicalWindowId) -> Option<Rect>,
         point: Option<(i32, i32)>,
     ) -> Option<FinalGesture> {
+        if let (Some(bounds), Some(point)) = (&mut self.bounds, point) {
+            bounds.extend(point);
+        }
+        let bounds = self.bounds;
         if let Some(index) = self.chosen {
             let candidate = &mut self.candidates[index];
-            return candidate.classify(frame_of(&candidate.window)?, point);
+            return candidate.classify(frame_of(&candidate.window)?, point, bounds);
         }
         // Until a preview is sent nothing has moved the candidates but the
         // user, so the first one that changed is the one being dragged.
@@ -161,7 +232,7 @@ impl Gesture {
             let Some(frame) = frame_of(&candidate.window) else {
                 continue;
             };
-            if let Some(gesture) = candidate.classify(frame, point) {
+            if let Some(gesture) = candidate.classify(frame, point, bounds) {
                 self.chosen = Some(index);
                 return Some(gesture);
             }
@@ -171,13 +242,22 @@ impl Gesture {
 }
 
 impl Candidate {
-    fn classify(&mut self, frame: Rect, point: Option<(i32, i32)>) -> Option<FinalGesture> {
+    fn classify(
+        &mut self,
+        frame: Rect,
+        point: Option<(i32, i32)>,
+        bounds: Option<PointerBounds>,
+    ) -> Option<FinalGesture> {
         self.resized |= is_window_resize(self.start, frame);
         self.dragged |= is_window_drag(self.start, frame);
         if self.resized {
             Some(FinalGesture::Resize(self.window.clone(), frame))
         } else if self.dragged {
-            point.map(|point| FinalGesture::Drop(self.window.clone(), point))
+            point.map(|point| FinalGesture::Drop {
+                window: self.window.clone(),
+                point,
+                bounds,
+            })
         } else {
             None
         }
@@ -377,7 +457,7 @@ mod tests {
             let expected = if end.width != start().width {
                 FinalGesture::Resize(window(), end)
             } else {
-                FinalGesture::Drop(window(), (1700, 100))
+                FinalGesture::drop(window(), (1700, 100))
             };
             assert_eq!(completed, expected);
             queue.push(QueuedInput::Gesture(completed)).unwrap();
@@ -413,7 +493,7 @@ mod tests {
         queue.push(QueuedInput::Gesture(drop)).unwrap();
         assert_eq!(
             queue.pop(),
-            Some(QueuedInput::Gesture(FinalGesture::Drop(
+            Some(QueuedInput::Gesture(FinalGesture::drop(
                 window(),
                 (1700, 400)
             )))
@@ -493,7 +573,7 @@ mod tests {
         let moved = Rect { x: 200, ..start() };
         assert_eq!(
             tracker.finish(frame(moved), Some((260, 40))),
-            Some(FinalGesture::Drop(window(), (260, 40)))
+            Some(FinalGesture::drop(window(), (260, 40)))
         );
         assert!(!should_ignore_swipe(false, false, tracker.is_active()));
     }
@@ -514,5 +594,44 @@ mod tests {
             queue.push(QueuedInput::Action(swipe.clone())).unwrap();
         }
         assert_eq!(queue.pop(), Some(QueuedInput::Action(swipe)));
+    }
+
+    #[test]
+    fn gesture_tracker_records_pointer_bounds_even_when_worker_is_busy() {
+        let band = Rect {
+            x: 0,
+            y: 0,
+            width: 64,
+            height: 800,
+        };
+        let moved = Rect { x: 60, ..start() };
+
+        // Grabbed inside the band and nudged inside it -> bounds stay inside the band.
+        let mut tracker = GestureTracker::default();
+        tracker.begin_at(vec![(window(), start())], Some((10, 40)));
+        tracker.observe_point((18, 40));
+        let Some(FinalGesture::Drop {
+            bounds: Some(nudge_bounds),
+            ..
+        }) = tracker.finish(frame(moved), Some((20, 40)))
+        else {
+            panic!("expected tracked drop");
+        };
+        assert!(nudge_bounds.entirely_inside(band));
+
+        // Grabbed inside the band, dragged outside while worker was busy (no preview),
+        // then returned inside -> bounds extend outside the band.
+        let mut tracker = GestureTracker::default();
+        tracker.begin_at(vec![(window(), start())], Some((10, 40)));
+        tracker.observe_point((300, 40));
+        tracker.observe_point((15, 40));
+        let Some(FinalGesture::Drop {
+            bounds: Some(armed_bounds),
+            ..
+        }) = tracker.finish(frame(moved), Some((15, 40)))
+        else {
+            panic!("expected tracked drop");
+        };
+        assert!(!armed_bounds.entirely_inside(band));
     }
 }

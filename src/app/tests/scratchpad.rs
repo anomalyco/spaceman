@@ -915,7 +915,7 @@ fn settled_scratchpad_summon_confirms_translated_target_after_display_removal() 
     rt.backend.frontmost = Some(w.app.clone());
     let gesture = rt.execute(
         WorkerCommand::Gesture(
-            FinalGesture::Drop(w.clone(), (150, 200)),
+            FinalGesture::drop(w.clone(), (150, 200)),
             false,
             main_only.clone(),
         ),

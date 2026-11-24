@@ -458,6 +458,7 @@ impl Workspaces {
             target,
             crate::config::LayoutMode::Columns,
             crate::Rect::default(),
+            crate::Rect::default(),
         )
     }
 
@@ -466,7 +467,8 @@ impl Workspaces {
         window: &PhysicalWindowId,
         target: WorkspaceId,
         mode: crate::config::LayoutMode,
-        output: crate::Rect,
+        source_output: crate::Rect,
+        target_output: crate::Rect,
     ) -> Option<WorkspaceId> {
         let source = self.workspace_of(window)?;
         let source_index = source.index();
@@ -485,8 +487,8 @@ impl Workspaces {
             let (before, after) = self.engines.split_at_mut(source_index);
             (&mut after[0], &mut before[target_index])
         };
-        let slot = source_engine.take_slot(window)?;
-        target_engine.insert_slot_with(slot, mode, output, anchor);
+        let slot = source_engine.take_slot_with(window, mode, source_output)?;
+        target_engine.insert_slot_with(slot, mode, target_output, anchor);
         self.prune_intents(source);
         Some(source)
     }
@@ -561,12 +563,16 @@ impl Workspaces {
             || self.floating_owners.keys().any(|window| &window.app == app)
     }
 
-    pub(crate) fn forget_app(
+    pub(crate) fn forget_app_with(
         &mut self,
         workspace: WorkspaceId,
         app: &crate::AppInstanceId,
+        mode: crate::config::LayoutMode,
+        output: crate::Rect,
     ) -> bool {
-        let removed = self.engine_mut(workspace).forget_app(app);
+        let removed = self
+            .engine_mut(workspace)
+            .forget_app_with(app, mode, output);
         if removed {
             self.prune_intents(workspace);
         }
@@ -640,7 +646,23 @@ impl Workspaces {
     }
 
     pub fn forget_window(&mut self, workspace: WorkspaceId, window: &PhysicalWindowId) {
-        self.engine_mut(workspace).take_slot(window);
+        self.forget_window_with(
+            workspace,
+            window,
+            crate::config::LayoutMode::Columns,
+            crate::Rect::default(),
+        );
+    }
+
+    pub(crate) fn forget_window_with(
+        &mut self,
+        workspace: WorkspaceId,
+        window: &PhysicalWindowId,
+        mode: crate::config::LayoutMode,
+        output: crate::Rect,
+    ) {
+        self.engine_mut(workspace)
+            .take_slot_with(window, mode, output);
         self.prune_intents(workspace);
     }
 

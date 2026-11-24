@@ -2,6 +2,7 @@ mod benchmarks;
 mod cross_display;
 mod dispatch;
 mod display_disconnect;
+mod drag_path;
 mod dual_selector_move;
 mod dwindle;
 mod empty_workspace_move;

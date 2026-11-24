@@ -106,12 +106,7 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
                 workspace
             );
             self.workspaces.own_floating(window.clone(), workspace);
-        } else if let Some(source) = self.workspaces.move_window_with(
-            window,
-            workspace,
-            self.config.layout(),
-            self.layout_settings(target.output).canvas(),
-        ) {
+        } else if let Some(source) = self.move_tiled_to(window, workspace, target.output) {
             self.exit_fullscreen_if_split(workspace);
             self.clear_fullscreen_restore_if_inactive(source);
             self.clear_relocation_evidence(source, workspace, window);

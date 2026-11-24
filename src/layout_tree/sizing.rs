@@ -218,7 +218,7 @@ impl LayoutTree {
         path: &[usize],
     ) -> Option<(Rect, &mut Axis, &mut Vec<Child>)> {
         let frame = output_at(&self.root, output, path);
-        let Node::Split { axis, children } = node_at_mut(&mut self.root, path)? else {
+        let Node::Split { axis, children, .. } = node_at_mut(&mut self.root, path)? else {
             return None;
         };
         Some((frame, axis, children))
@@ -242,7 +242,7 @@ fn resize_candidate(
     path: Vec<usize>,
     drag_axis: Axis,
 ) -> Option<ResizeCandidate> {
-    let Node::Split { axis, children } = node else {
+    let Node::Split { axis, children, .. } = node else {
         return None;
     };
     let frames = partition_children(frame, *axis, children);
@@ -365,6 +365,7 @@ fn nearest_split_on(
     let Node::Split {
         axis: split_axis,
         children,
+        ..
     } = node
     else {
         return None;
@@ -400,7 +401,7 @@ fn output_at(root: &Node, output: Rect, path: &[usize]) -> Rect {
     let mut node = root;
     let mut frame = output;
     for &index in path {
-        let Node::Split { axis, children } = node else {
+        let Node::Split { axis, children, .. } = node else {
             break;
         };
         frame = partition_children(frame, *axis, children)[index];
@@ -441,6 +442,7 @@ fn minimum_extent(node: &Node, axis: Axis) -> i32 {
         Node::Split {
             axis: split_axis,
             children,
+            ..
         } if *split_axis == axis => children
             .iter()
             .map(|child| minimum_extent(&child.node, axis))
@@ -457,7 +459,7 @@ fn minimum_extent(node: &Node, axis: Axis) -> i32 {
 const MINIMUM_TOLERANCE: i32 = 2;
 
 fn fit_node(node: &mut Node, frame: Rect, minimums: &HashMap<SlotId, (i32, i32)>) -> bool {
-    let Node::Split { axis, children } = node else {
+    let Node::Split { axis, children, .. } = node else {
         return false;
     };
     let extents = partition_children(frame, *axis, children)
@@ -498,6 +500,7 @@ pub(super) fn required_extent(
         Node::Split {
             axis: split_axis,
             children,
+            ..
         } if *split_axis == axis => children
             .iter()
             .map(|child| required_extent(&child.node, axis, minimums))

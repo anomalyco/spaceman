@@ -87,6 +87,7 @@ pub(super) struct WorkspaceRuntime<B = MacWorkspaceBackend> {
     pub(super) pending_focus: Option<super::commands::PendingFocus>,
     /// When the latest focus follow that failed (not cancelled) began.
     pub(super) failed_follow_at: Option<Instant>,
+    pub(super) drag_session: Option<super::commands::DragSession>,
     pub(super) warp_context: super::commands::WarpContext,
     pub(super) pending_fullscreen_focus_restore: HashSet<WorkspaceId>,
     pub(super) exact_spacing_workspaces: HashSet<WorkspaceId>,
@@ -130,6 +131,18 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
             self.synchronize_foreground(outputs);
             self.follow_displays(outputs);
         }
+        if !matches!(
+            command,
+            WorkerCommand::Gesture(FinalGesture::Drop { .. }, _, _)
+        ) && let Some(session) = self.drag_session.take()
+            && let WorkerCommand::Action(action, outputs) = &command
+            && !matches!(action, WorkerAction::Retile)
+            && !self.backend.mouse_down()
+            && self.is_visible(session.workspace, outputs)
+        {
+            let output = output_for(&self.workspaces, session.workspace, outputs);
+            let _ = self.layout_workspace(session.workspace, output, cancelled);
+        }
         let (result, outputs) = match command {
             WorkerCommand::Action(action, outputs) => (
                 self.execute_action(action, outputs.clone(), cancelled),
@@ -137,7 +150,7 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
             ),
             WorkerCommand::Gesture(gesture, preview, outputs) => {
                 let window = match &gesture {
-                    FinalGesture::Drop(window, _) | FinalGesture::Resize(window, _) => window,
+                    FinalGesture::Drop { window, .. } | FinalGesture::Resize(window, _) => window,
                 };
                 for attempts in &mut self.apply_attempts {
                     attempts.remove(window);
@@ -145,9 +158,18 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
                 let result =
                     self.with_warp_context(super::commands::WarpContext::Suppressed, |rt| {
                         match gesture {
-                            FinalGesture::Drop(window, point) => {
-                                rt.drop_window(window, point, preview, outputs.clone(), cancelled)
-                            }
+                            FinalGesture::Drop {
+                                window,
+                                point,
+                                bounds,
+                            } => rt.drop_window_tracked(
+                                window,
+                                point,
+                                bounds,
+                                preview,
+                                outputs.clone(),
+                                cancelled,
+                            ),
                             FinalGesture::Resize(window, frame) => {
                                 rt.resize_window(window, frame, preview, outputs.clone(), cancelled)
                             }
@@ -371,6 +393,7 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
             suppressed_app: None,
             pending_focus: None,
             failed_follow_at: None,
+            drag_session: None,
             warp_context: super::commands::WarpContext::Direct,
             pending_fullscreen_focus_restore,
             exact_spacing_workspaces: WorkspaceId::all().filter(|_| has_spacing).collect(),
@@ -614,7 +637,18 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
         workspace: WorkspaceId,
         window: &crate::PhysicalWindowId,
     ) {
-        self.workspaces.forget_window(workspace, window);
+        let canvas = self.known_workspace_canvas(workspace);
+        self.forget_window_on(workspace, window, canvas);
+    }
+
+    pub(super) fn forget_window_on(
+        &mut self,
+        workspace: WorkspaceId,
+        window: &crate::PhysicalWindowId,
+        canvas: crate::Rect,
+    ) {
+        self.workspaces
+            .forget_window_with(workspace, window, self.config.layout(), canvas);
         self.clear_fullscreen_restore_if_inactive(workspace);
         self.workspaces.forget_floating(window);
         self.constrained[workspace.index()].remove(window);

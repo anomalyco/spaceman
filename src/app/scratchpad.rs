@@ -71,15 +71,16 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
         let output = output_for(&self.workspaces, workspace, &outputs);
         // Parked while its workspace still owns it: the recovery frame is durable before the
         // window leaves the screen, and a crash before ownership changes restores it in place.
+        let canvas = self.layout_settings(output).canvas();
         match self.park_window(&window, output, &outputs) {
             macos::ApplyOutcome::Applied if self.parked.contains_key(&window) => {}
             macos::ApplyOutcome::Gone => {
-                self.forget_window(workspace, &window);
+                self.forget_window_on(workspace, &window, canvas);
                 return Err("Focused window has closed".into());
             }
             _ => return Err("Focused window could not be moved off-screen".into()),
         }
-        self.forget_window(workspace, &window);
+        self.forget_window_on(workspace, &window, canvas);
         // Forgetting drops parking bookkeeping, but the park still has to settle.
         self.recently_parked.insert(window.clone(), Instant::now());
         self.scratchpad.insert(window.clone(), size);

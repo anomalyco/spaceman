@@ -123,7 +123,7 @@ fn gesture_dispatch_preserves_preview_and_final_semantics() {
     for preview in [true, false] {
         compare_dispatch(
             WorkerCommand::Gesture(
-                FinalGesture::Drop(window(10), (1500, 100)),
+                FinalGesture::drop(window(10), (1500, 100)),
                 preview,
                 outputs(),
             ),
@@ -173,7 +173,7 @@ fn dispatch_classifies_cancellation_before_worker_receipt() {
         .collect::<Vec<_>>();
     for preview in [true, false] {
         commands.push((
-            WorkerCommand::Gesture(FinalGesture::Drop(window(10), (50, 50)), preview, outputs()),
+            WorkerCommand::Gesture(FinalGesture::drop(window(10), (50, 50)), preview, outputs()),
             preview,
         ));
         commands.push((

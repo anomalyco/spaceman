@@ -324,8 +324,23 @@ impl WorkerCommand {
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 enum FinalGesture {
-    Drop(crate::PhysicalWindowId, (i32, i32)),
+    Drop {
+        window: crate::PhysicalWindowId,
+        point: (i32, i32),
+        bounds: Option<input::PointerBounds>,
+    },
     Resize(crate::PhysicalWindowId, crate::Rect),
+}
+
+impl FinalGesture {
+    #[cfg(test)]
+    const fn drop(window: crate::PhysicalWindowId, point: (i32, i32)) -> Self {
+        Self::Drop {
+            window,
+            point,
+            bounds: None,
+        }
+    }
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]

@@ -237,6 +237,7 @@ fn fitting_minimums_reaches_into_nested_splits_and_leaves_impossible_splits_alon
     let mut layout = LayoutTree {
         root: Node::Split {
             axis: Axis::Horizontal,
+            auto_axis: false,
             children: vec![
                 Child {
                     weight: 1,
@@ -246,6 +247,7 @@ fn fitting_minimums_reaches_into_nested_splits_and_leaves_impossible_splits_alon
                     weight: 1,
                     node: Node::Split {
                         axis: Axis::Vertical,
+                        auto_axis: false,
                         children: vec![
                             Child {
                                 weight: 1,
@@ -850,8 +852,9 @@ fn dwindle_splits_focused_anchor_and_collapses_on_close() {
         ]
     );
 
-    // Closing tile 2 unwraps the surviving vertical split (1 / 3) directly to root so
-    // toggle_root_axis immediately flips it horizontally.
+    // Closing tile 2 promotes the surviving auto-chosen split (1 / 3) into the
+    // landscape root and re-orients it to two columns (1 | 3); toggle_root_axis
+    // then flips it to rows.
     tree.sync_near(
         Axis::Horizontal,
         &[bound_slot(1), bound_slot(3)],
@@ -859,7 +862,7 @@ fn dwindle_splits_focused_anchor_and_collapses_on_close() {
         crate::config::LayoutMode::Dwindle,
         output,
     );
-    assert_eq!(tree.root_axis(), Axis::Vertical);
+    assert_eq!(tree.root_axis(), Axis::Horizontal);
     assert_eq!(
         tree.placements(output),
         vec![
@@ -868,25 +871,25 @@ fn dwindle_splits_focused_anchor_and_collapses_on_close() {
                 Rect {
                     x: 0,
                     y: 0,
-                    width: 1280,
-                    height: 400
+                    width: 640,
+                    height: 800
                 }
             ),
             (
                 SlotId(3),
                 Rect {
-                    x: 0,
-                    y: 400,
-                    width: 1280,
-                    height: 400
+                    x: 640,
+                    y: 0,
+                    width: 640,
+                    height: 800
                 }
             ),
         ]
     );
     tree.toggle_root_axis();
-    assert_eq!(tree.root_axis(), Axis::Horizontal);
-    assert_eq!(tree.placements(output)[0].1.width, 640);
-    assert_eq!(tree.placements(output)[1].1.width, 640);
+    assert_eq!(tree.root_axis(), Axis::Vertical);
+    assert_eq!(tree.placements(output)[0].1.height, 400);
+    assert_eq!(tree.placements(output)[1].1.height, 400);
 }
 
 #[test]

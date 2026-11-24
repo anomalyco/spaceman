@@ -122,7 +122,12 @@ Settings › General shows **Position** under **Workspace HUD** while the HUD is
 - `"dwindle"` (the default): binary space partition. The first window fills the display, the second
   splits along the display's longer side (side by side on landscape, top and bottom on portrait),
   and each further window splits the focused (or most recently added) tile along that tile's longer
-  side. Closing any window collapses its split so the surviving sibling re-expands.
+  side. Closing, moving away, or floating a window collapses its split so the surviving tiles
+  re-expand, and any auto-chosen splits inside the space that grew re-orient outermost first to
+  match their new longer side while keeping tile order and weights. Splits arranged by the user
+  (`Option+/`, pointer drops, or perpendicular moves) keep their direction across closes and
+  restarts; splits loaded from earlier saved state without a recorded origin are treated as
+  user-arranged and keep their direction.
 - `"columns"`: each new window joins the focused tile's split as an equal sibling.
 
 ```sh

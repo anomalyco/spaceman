@@ -438,10 +438,17 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
                     }
                 }
             }
+            let source_canvas = self.layout_settings(output).canvas();
             let target_canvas = self.layout_settings(target_output).canvas();
             if self
                 .workspaces
-                .move_window_with(window, *target, self.config.layout(), target_canvas)
+                .move_window_with(
+                    window,
+                    *target,
+                    self.config.layout(),
+                    source_canvas,
+                    target_canvas,
+                )
                 .is_none()
             {
                 continue;
