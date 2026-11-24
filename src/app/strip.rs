@@ -10,7 +10,7 @@ mod motion;
 use motion::StripPlan;
 pub(super) use motion::{MAX_PRESENT_LAG, StripCommand, StripViews, ViewportCamera};
 
-use super::commands::FOCUS_SETTLE;
+use super::commands::{FOCUS_SETTLE, WarpContext};
 use super::parking::RESTORE_CONFIRM_TOLERANCE;
 
 /// How far a peeking column may sit from its sliver, in points, before it is put back.
@@ -564,8 +564,7 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
         if !self.config.labs().scrolling_strip {
             return Err(LabFeature::ScrollingStrip.off_message());
         }
-        let (window, workspace) = self.focused_active_workspace(&outputs, cancelled, true)?;
-        self.workspaces.remember_focus(workspace, &window);
+        let workspace = self.strip_toggle_target(&outputs, cancelled)?;
         let enabled = !self.workspaces.uses_strip_layout(workspace);
         self.workspaces.set_strip_layout(workspace, enabled);
         self.strip_views.reset(workspace);
@@ -580,6 +579,46 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
         let layout = self.layout_strip_workspace(workspace, &outputs, cancelled);
         self.persist_workspace_state_if_changed()?;
         Ok(self.status(layout.failed, &outputs))
+    }
+
+    /// The workspace the strip toggle acts on: the focused tile's when it is on screen, otherwise
+    /// the workspace showing on the pointer's display (or the main display). Settings, a float,
+    /// an unmanaged app or an empty desktop having focus never makes the shortcut a no-op.
+    fn strip_toggle_target(
+        &mut self,
+        outputs: &macos::DisplayOutputs,
+        cancelled: &AtomicBool,
+    ) -> Result<WorkspaceId, String> {
+        let focused = self.current_focus();
+        if let Some(window) = &focused
+            && self.workspaces.workspace_of_any(window).is_none()
+        {
+            // A window that just opened may not be adopted yet.
+            self.with_warp_context(WarpContext::Suppressed, |rt| {
+                rt.cycle(outputs.clone(), cancelled)
+            })?;
+        }
+        if let Some(window) = &focused
+            && let Some(workspace) = self.workspaces.workspace_of_any(window)
+            && self.is_visible(workspace, outputs)
+        {
+            if self.workspaces.workspace_of(window) == Some(workspace) {
+                self.workspaces.remember_focus(workspace, window);
+            }
+            return Ok(workspace);
+        }
+        let display_id = self
+            .backend
+            .pointer_location()
+            .and_then(|point| outputs.display_at(point))
+            .unwrap_or_else(|| outputs.main())
+            .id
+            .clone();
+        self.visible_workspaces(outputs)
+            .into_iter()
+            .find(|resolved| resolved.display_id == display_id)
+            .map(|resolved| resolved.workspace)
+            .ok_or_else(|| "No workspace is showing on this display".into())
     }
 
     /// The strip's meaning for the focus, move, resize and cycle keys, when the focused window

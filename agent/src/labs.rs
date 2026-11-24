@@ -9,7 +9,6 @@ mod shortcut;
 mod tuning;
 
 use rune::{El, Icon, col, row, text};
-use rune_kit::ShortcutRecorderState;
 use spaceman::labs::LabFeature;
 
 use crate::{
@@ -31,10 +30,10 @@ pub(crate) static INFO_ICON: Icon = Icon {
     body: include_str!("../assets/info.svg"),
 };
 
-/// What Settings › Labs keeps between frames: a shortcut being recorded and an open dialog.
+/// What Settings › Labs keeps between frames: an open dialog. Its shortcut records through
+/// `Ui::shortcut_capture`, as Settings › Shortcuts' do.
 #[derive(Default)]
 pub(crate) struct LabsView {
-    pub(crate) recorder: ShortcutRecorderState,
     pub(crate) explained: Option<LabFeature>,
 }
 
@@ -78,10 +77,8 @@ fn card(ui: &Ui, p: Paint, feature: LabFeature) -> El {
         feature.name(),
         Some((feature.summary().into(), p.muted())),
         ui.doc.lab(feature),
-        move |ui| {
-            let next = !ui.doc.lab(feature);
-            ui.set_lab(feature, next);
-        },
+        // Flips what the file says now, not a copy read before another edit landed.
+        move |ui| ui.edit(|doc| doc.set_lab(feature, !doc.lab(feature))),
     );
     let explain = controls::icon_row(
         p,

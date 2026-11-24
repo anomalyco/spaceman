@@ -132,8 +132,8 @@ fn ribbon(p: Paint) -> El {
         .child(
             text("Your display")
                 .key("caption")
-                .font(p.k.ty.small)
-                .color(p.faint()),
+                .font(p.k.ty.small_medium)
+                .color(p.muted()),
         );
     let waiting = |key: &str, opacity: f32| {
         column(key, "", c.layer_02, p.faint(), 132.0)
@@ -145,7 +145,8 @@ fn ribbon(p: Paint) -> El {
         .w_full()
         .gap(GAP)
         .items_start()
-        .clip_soft(24.0)
+        // Only the strip's two ends fade; the display's caption underneath stays crisp.
+        .clip_fade(24.0, 0.0, 24.0, 0.0)
         .child(
             el().key("sliver")
                 .w(10.0)

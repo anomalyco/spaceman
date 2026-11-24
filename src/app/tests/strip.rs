@@ -153,6 +153,47 @@ fn lab_off_refuses_the_strip_and_tiles_as_usual_until_it_is_turned_on() {
     assert_strip(&runtime, &windows, &strip);
 }
 
+/// Settings, a float or another unmanaged app having focus still toggles the strip: the press
+/// falls back to the workspace showing on the pointer's display.
+#[test]
+fn toggle_without_a_managed_focus_acts_on_the_workspace_under_the_pointer() {
+    let (mut runtime, _) = four_windows(LAB_ON);
+    let settings = window(99);
+    runtime.backend.focused = Some(settings.clone());
+    runtime.backend.frontmost = Some(settings.app.clone());
+    runtime.backend.pointer = Some((400, 300));
+
+    press(&mut runtime, WorkerAction::ToggleStrip).unwrap();
+    assert!(runtime.workspaces.uses_strip_layout(WorkspaceId::ONE));
+    press(&mut runtime, WorkerAction::ToggleStrip).unwrap();
+    assert!(!runtime.workspaces.uses_strip_layout(WorkspaceId::ONE));
+
+    // Pointer on the second display: its own workspace toggles, workspace 1 stays as it is.
+    let secondary = runtime
+        .visible_workspaces(&outputs())
+        .into_iter()
+        .find(|resolved| resolved.display_id == "secondary-id")
+        .map(|resolved| resolved.workspace)
+        .expect("the second display shows a workspace");
+    assert_ne!(secondary, WorkspaceId::ONE);
+    runtime.backend.pointer = Some((1400, 300));
+    press(&mut runtime, WorkerAction::ToggleStrip).unwrap();
+    assert!(runtime.workspaces.uses_strip_layout(secondary));
+    assert!(!runtime.workspaces.uses_strip_layout(WorkspaceId::ONE));
+}
+
+/// No focused window and no pointer reading (an empty desktop): the main display's workspace.
+#[test]
+fn toggle_with_nothing_focused_acts_on_the_main_display() {
+    let (mut runtime, _) = four_windows(LAB_ON);
+    runtime.backend.focused = None;
+    runtime.backend.frontmost = None;
+    runtime.backend.pointer = None;
+
+    press(&mut runtime, WorkerAction::ToggleStrip).unwrap();
+    assert!(runtime.workspaces.uses_strip_layout(WorkspaceId::ONE));
+}
+
 #[test]
 fn stepping_along_the_strip_peeks_parks_and_reveals_columns_durably() {
     let (mut runtime, windows) = four_windows(LAB_ON);

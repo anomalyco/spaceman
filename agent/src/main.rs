@@ -286,20 +286,6 @@ impl Ui {
         }
     }
 
-    /// Switches a Labs feature in `config.toml`; the agent reloads it from there.
-    pub fn set_lab(&mut self, feature: spaceman::labs::LabFeature, enabled: bool) {
-        self.edit(|doc| doc.set_lab(feature, enabled));
-    }
-
-    /// Sets a Labs feature's shortcut in `config.toml`; the agent registers it from there.
-    pub fn set_lab_shortcut(
-        &mut self,
-        feature: spaceman::labs::LabFeature,
-        shortcut: spaceman::labs::LabShortcut,
-    ) {
-        self.edit(|doc| doc.set_lab_shortcut(feature, shortcut));
-    }
-
     pub fn mark_wrong(&self) {
         self.send_action(UiAction::MarkWrong);
     }

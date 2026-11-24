@@ -201,8 +201,13 @@ fn shortcut_button(
     named: &[WorkspaceId],
     action: &'static Action,
 ) -> El {
+    recorder_button(ui, p, action.id, &action.chords(shortcuts, named))
+}
+
+/// The recorder for shortcut `id` showing `chords` at rest: the same keycap trays, hug and
+/// edge inset everywhere a shortcut is recorded (Settings › Shortcuts and Labs).
+pub(crate) fn recorder_button(ui: &Ui, p: Paint, id: &'static str, chords: &[Chord]) -> El {
     let c = &p.k.c;
-    let id = action.id;
     let (content, label) = match &ui.shortcut_capture {
         Capture::Listening {
             action: active,
@@ -214,12 +219,11 @@ fn shortcut_button(
         ),
         capture => {
             let saved = *capture == Capture::Saved { action: id };
-            let chords = action.chords(shortcuts, named);
             let label = chords
                 .first()
                 .map_or_else(|| "Not set".to_owned(), |chord| chord.keycaps().concat());
             (
-                keys_face(p, &chords, saved),
+                keys_face(p, chords, saved),
                 format!("Change shortcut, {label}"),
             )
         }
