@@ -689,3 +689,39 @@ fn edits_preserve_other_sections_and_named_rule_workspaces_appear_in_list() {
     assert_eq!(w_entry["monitor"], "main");
     assert_eq!(w_entry["configured"], false);
 }
+
+#[test]
+fn rules_add_accepts_literal_help_flag_as_title() {
+    let config = TempConfig::new("rules-add-help-title");
+
+    let added = config.run(&[
+        "rules",
+        "add",
+        "--app",
+        "com.example.Editor",
+        "--title",
+        "--help",
+        "--float",
+        "--json",
+    ]);
+    assert_eq!(added.exit_code, 0, "stderr: {:?}", added.stderr);
+    let parsed: Value =
+        serde_json::from_str(added.stdout.as_deref().unwrap()).expect("valid json output");
+    assert_eq!(parsed["rule"]["title"], "--help");
+    assert_eq!(parsed["rule"]["action"], "float");
+
+    let listed = config.run(&["rules", "list", "--json"]);
+    assert_eq!(listed.exit_code, 0);
+    let list_json: Value =
+        serde_json::from_str(listed.stdout.as_deref().unwrap()).expect("valid json list");
+    assert_eq!(list_json["rules"][0]["title"], "--help");
+
+    let help_only = config.run(&["rules", "add", "--help"]);
+    assert_eq!(help_only.exit_code, 0);
+    assert!(
+        help_only
+            .stdout
+            .as_deref()
+            .is_some_and(|out| out.contains("Manage ordered, first-match window rules"))
+    );
+}

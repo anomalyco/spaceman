@@ -54,7 +54,13 @@ pub(crate) fn run(executable: &str, args: &[&str], path_override: Option<&Path>)
     let Some((&sub, rest)) = args.split_first() else {
         return Outcome::usage(help::rules_help(executable));
     };
-    if help::is_help_flag(sub) || sub == "help" || rest.iter().any(|arg| help::is_help_flag(arg)) {
+    if help::is_help_flag(sub)
+        || sub == "help"
+        || match sub {
+            "add" => add_requests_help(rest),
+            _ => rest.iter().any(|arg| help::is_help_flag(arg)),
+        }
+    {
         return Outcome::ok(help::rules_help(executable));
     }
 
@@ -103,6 +109,25 @@ fn run_list(args: &[&str], path_override: Option<&Path>) -> Result<String, Strin
         .map(|(index, rule)| format!("{}. {}", index + 1, format_rule_summary(rule)))
         .collect::<Vec<_>>();
     Ok(lines.join("\n"))
+}
+
+fn add_requests_help(args: &[&str]) -> bool {
+    let mut index = 0;
+    while index < args.len() {
+        let arg = args[index];
+        if help::is_help_flag(arg) {
+            return true;
+        }
+        if matches!(
+            arg,
+            "--app" | "--bundle-id" | "--title" | "--workspace" | "--position"
+        ) {
+            index += 2;
+        } else {
+            index += 1;
+        }
+    }
+    false
 }
 
 fn parse_add_options(args: &[&str]) -> Result<AddOptions, String> {
