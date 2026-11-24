@@ -249,6 +249,22 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
         Ok(status)
     }
 
+    /// Confirms an arrived scratchpad summon or promotes its pending target over
+    /// the stale pre-summon tile recovery frame before moving the float to another
+    /// workspace so its floating position is preserved (#304).
+    pub(super) fn settle_pending_summon_for_move(&mut self, window: &crate::PhysicalWindowId) {
+        let Some(summon) = self.scratchpad.pending_summon(window) else {
+            return;
+        };
+        let expected = self.restore_target(summon);
+        if self.parked.contains_key(window) {
+            let _: macos::ApplyOutcome = self.finish_scratchpad_summon(window, summon, true);
+            if self.parked.contains_key(window) {
+                let _: bool = self.record_recovery(window, expected);
+            }
+        }
+    }
+
     /// Confirms or retries a summoned scratchpad window's centered destination without
     /// replacing it with the old parked recovery frame.
     pub(super) fn finish_scratchpad_summon(

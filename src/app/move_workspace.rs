@@ -397,20 +397,31 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
         }
 
         // Translate any floating window still waiting on a pending recovery frame
-        // from the old display onto the new display so restore lands there (#286).
+        // from the old display onto the new display so restore lands there (#286, #304).
         for window in &moved_floating {
             let Some(&recovery) = self.parked.get(window) else {
                 continue;
             };
-            if source_output.contains_center(recovery) {
-                let relocated = translate_frame_to_output(recovery, source_output, target_output);
+            let current = self
+                .scratchpad
+                .pending_summon(window)
+                .map(|summon| self.restore_target(summon))
+                .unwrap_or(recovery);
+            if source_output.contains_center(current) {
+                let relocated = translate_frame_to_output(current, source_output, target_output);
                 let _: bool = self.record_recovery(window, relocated);
+                if self.scratchpad.pending_summon(window).is_some() {
+                    self.scratchpad.set_pending_summon(window, Some(relocated));
+                }
             }
             if !matches!(
                 self.restore_window(window),
                 macos::ApplyOutcome::Applied | macos::ApplyOutcome::Gone
             ) {
                 failed += 1;
+            }
+            if !self.parked.contains_key(window) {
+                self.scratchpad.set_pending_summon(window, None);
             }
         }
 

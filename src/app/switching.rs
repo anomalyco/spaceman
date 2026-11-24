@@ -678,6 +678,9 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
             return Ok(self.status(0, &outputs));
         }
         let is_floating = self.workspaces.floating_workspace_of(&window).is_some();
+        if is_floating {
+            self.settle_pending_summon_for_move(&window);
+        }
         let source_output = output_for(&self.workspaces, source, &outputs);
         let target_output = output_for(&self.workspaces, target, &outputs);
         let window_output = if is_floating {

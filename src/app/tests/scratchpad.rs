@@ -934,3 +934,59 @@ fn settled_scratchpad_summon_confirms_translated_target_after_display_removal() 
     ));
     assert_eq!(rt.backend.frames[&w], dragged);
 }
+
+#[test]
+fn moving_unconfirmed_scratchpad_float_preserves_summoned_position() {
+    for target in [WorkspaceId::SIX, WorkspaceId::new(7).unwrap()] {
+        for arrived in [true, false] {
+            let mut rt = scratchpad_runtime(lab());
+            let w = window(10);
+            scratchpad(&mut rt, ScratchpadCommand::Mark).unwrap();
+            rt.backend
+                .server_frames
+                .insert(w.clone(), rt.backend.frames[&w]);
+            rt.backend.frozen_server_frames = true;
+            assert_eq!(
+                scratchpad(&mut rt, ScratchpadCommand::Toggle)
+                    .unwrap()
+                    .failed,
+                0
+            );
+            let summoned = rt.backend.frames[&w];
+            assert!(rt.scratchpad.pending_summon(&w).is_some());
+            rt.backend.frozen_server_frames = false;
+            if arrived {
+                rt.backend.server_frames.insert(w.clone(), summoned);
+            }
+            assert_eq!(
+                run(&mut rt, WorkerAction::MoveFocused(target))
+                    .unwrap()
+                    .failed,
+                0
+            );
+            assert!(!rt.scratchpad.contains(&w));
+            assert_eq!(rt.workspaces.floating_workspace_of(&w), Some(target));
+            if !rt.is_visible(target, &outputs()) {
+                assert_eq!(
+                    run(&mut rt, WorkerAction::SwitchWorkspace(target))
+                        .unwrap()
+                        .failed,
+                    0
+                );
+            }
+            rt.recently_parked
+                .insert(w.clone(), Instant::now() - Duration::from_secs(5));
+            for _ in 0..2 {
+                assert_eq!(run(&mut rt, WorkerAction::Retile).unwrap().failed, 0);
+            }
+            let expected = super::super::move_workspace::translate_frame_to_output(
+                summoned,
+                outputs().main().frame,
+                outputs().secondary().unwrap().frame,
+            );
+            assert_eq!(rt.backend.frames[&w], expected);
+            assert!(!rt.parked.contains_key(&w));
+            assert!(!rt.backend.persisted.contains_key(&w));
+        }
+    }
+}
