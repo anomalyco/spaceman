@@ -38,19 +38,26 @@ pub struct Doc {
     doc: DocumentMut,
     /// Why the file couldn't be read, while it can't; saving is refused until it can.
     pub error: Option<String>,
+    /// True when an external config change arrived while a drag deferred reloading.
+    pending_reload: bool,
 }
 
 impl Doc {
     pub fn load() -> Doc {
-        let path = spaceman::config::config_path();
-        let source = match path.as_ref().map(std::fs::read_to_string) {
-            Some(Ok(source)) => source,
-            Some(Err(error)) if error.kind() == std::io::ErrorKind::NotFound => EMPTY.into(),
-            Some(Err(error)) => return Doc::broken(path, format!("Couldn't read config: {error}")),
-            None => return Doc::broken(None, "HOME is unavailable".into()),
+        match spaceman::config::config_path() {
+            Some(path) => Doc::load_from(path),
+            None => Doc::broken(None, "HOME is unavailable".into()),
+        }
+    }
+
+    pub fn load_from(path: PathBuf) -> Doc {
+        let source = match std::fs::read_to_string(&path) {
+            Ok(source) => source,
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => EMPTY.into(),
+            Err(error) => return Doc::broken(Some(path), format!("Couldn't read config: {error}")),
         };
         let mut doc = Doc::parse(&source);
-        doc.path = path;
+        doc.path = Some(path);
         doc
     }
 
@@ -60,6 +67,7 @@ impl Doc {
                 path: None,
                 doc,
                 error: spaceman::config::Config::parse(source).err(),
+                pending_reload: false,
             },
             Err(error) => Doc::broken(None, error.to_string()),
         }
@@ -70,6 +78,23 @@ impl Doc {
             path,
             doc: DocumentMut::new(),
             error: Some(error),
+            pending_reload: false,
+        }
+    }
+
+    pub fn mark_reload_pending(&mut self) {
+        self.pending_reload = true;
+    }
+
+    pub fn reload_pending(&self) -> bool {
+        self.pending_reload
+    }
+
+    /// Reloads from this document's path (or the active config path if unset).
+    pub fn reloaded(&self) -> Doc {
+        match &self.path {
+            Some(path) => Doc::load_from(path.clone()),
+            None => Doc::load(),
         }
     }
 
@@ -125,6 +150,43 @@ impl Doc {
         if emptied {
             self.doc.remove("rules");
         }
+    }
+
+    /// Moves the rule matching `expected` to `place`, or reports a conflict if an
+    /// external edit modified, removed, or ambiguously shifted it.
+    pub fn place_matching(&mut self, expected: &Rule, place: Place) -> Result<(), String> {
+        let index = self.resolve_rule_index(expected).ok_or_else(|| {
+            "config.toml changed externally while editing this rule; reloaded current settings"
+                .to_owned()
+        })?;
+        self.place(index, place);
+        Ok(())
+    }
+
+    /// Removes the rule matching `expected`, or reports a conflict if an external
+    /// edit modified, removed, or ambiguously shifted it.
+    pub fn remove_matching(&mut self, expected: &Rule) -> Result<(), String> {
+        let index = self.resolve_rule_index(expected).ok_or_else(|| {
+            "config.toml changed externally while editing this rule; reloaded current settings"
+                .to_owned()
+        })?;
+        self.remove(index);
+        Ok(())
+    }
+
+    fn resolve_rule_index(&self, expected: &Rule) -> Option<usize> {
+        let rules = self.rules();
+        let same_rule = |rule: &Rule| {
+            rule.bundle_id == expected.bundle_id
+                && rule.title == expected.title
+                && rule.place == expected.place
+        };
+        if rules.get(expected.index).is_some_and(same_rule) {
+            return Some(expected.index);
+        }
+        let mut matches = rules.iter().filter(|rule| same_rule(rule));
+        let matched = matches.next()?;
+        matches.next().is_none().then_some(matched.index)
     }
 
     pub fn add(&mut self, bundle_id: &str, place: Place) {
@@ -309,8 +371,16 @@ impl Doc {
         out
     }
 
-    /// Sets the display a workspace asks for; `None` removes its entry, back to the default.
+    fn has_workspace_route(&self, workspace: WorkspaceId) -> bool {
+        self.rules()
+            .into_iter()
+            .any(|rule| rule.place == Place::Workspace(workspace))
+    }
+
+    /// Sets the display a workspace asks for; `None` clears the override back to the default,
+    /// retaining a solely declared named workspace on `"main"` so it stays enabled.
     pub fn set_monitor(&mut self, workspace: WorkspaceId, monitor: Option<&str>) {
+        let keep_named = workspace.letter().is_some() && !self.has_workspace_route(workspace);
         if let Some(Item::Value(Value::Array(entries))) = self.doc.get_mut("workspaces") {
             let found = entries.iter().position(|item| {
                 item.as_inline_table()
@@ -322,6 +392,12 @@ impl Doc {
                     if let Some(table) = entries.get_mut(index).and_then(Value::as_inline_table_mut)
                     {
                         table.insert("monitor", Value::from(monitor));
+                    }
+                }
+                (Some(index), None) if keep_named => {
+                    if let Some(table) = entries.get_mut(index).and_then(Value::as_inline_table_mut)
+                    {
+                        table.insert("monitor", Value::from("main"));
                     }
                 }
                 (Some(index), None) => {
@@ -367,6 +443,11 @@ impl Doc {
             (Some(index), Some(monitor)) => {
                 if let Some(table) = tables.get_mut(index) {
                     table.insert("monitor", value(monitor));
+                }
+            }
+            (Some(index), None) if keep_named => {
+                if let Some(table) = tables.get_mut(index) {
+                    table.insert("monitor", value("main"));
                 }
             }
             (Some(index), None) => {
@@ -422,8 +503,55 @@ impl Doc {
         let Some(path) = &self.path else {
             return Ok(());
         };
-        spaceman::state_file::write_atomic(path, source.as_bytes())
+        let _lock = spaceman::config::lock_config(path)
+            .map_err(|error| format!("failed to lock {}: {error}", path.display()))?;
+        spaceman::config::write_config_atomic(path, source.as_bytes())
             .map_err(|error| error.to_string())
+    }
+
+    /// Reloads the current file under the config lock, applies `edit`, validates, and writes
+    /// atomically so external edits survive. On a conflict or error the document reflects the
+    /// current file on disk so the user can retry without losing external changes.
+    pub fn edit_and_save(
+        &mut self,
+        edit: impl FnOnce(&mut Doc) -> Result<(), String>,
+    ) -> Result<(), String> {
+        let Some(path) = self.path.clone() else {
+            let before = self.clone();
+            if let Err(error) = edit(self) {
+                *self = before;
+                return Err(error);
+            }
+            if let Err(error) = self.save() {
+                *self = before;
+                return Err(error);
+            }
+            return Ok(());
+        };
+        let _lock = spaceman::config::lock_config(&path)
+            .map_err(|error| format!("failed to lock {}: {error}", path.display()))?;
+        let mut fresh = Doc::load_from(path.clone());
+        if let Some(error) = &fresh.error {
+            let message = format!("config.toml has an error to fix first: {error}");
+            *self = fresh;
+            return Err(message);
+        }
+        let loaded = fresh.clone();
+        if let Err(error) = edit(&mut fresh) {
+            *self = loaded;
+            return Err(error);
+        }
+        let source = fresh.source();
+        if let Err(error) = spaceman::config::Config::parse(&source) {
+            *self = loaded;
+            return Err(error);
+        }
+        if let Err(error) = spaceman::config::write_config_atomic(&path, source.as_bytes()) {
+            *self = loaded;
+            return Err(error.to_string());
+        }
+        *self = fresh;
+        Ok(())
     }
 }
 

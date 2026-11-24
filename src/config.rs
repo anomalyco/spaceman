@@ -621,6 +621,83 @@ struct EditableWorkspace {
     monitor: String,
 }
 
+/// Exclusive advisory lock guarding read-modify-write updates to a config file.
+///
+/// Locks the resolved target's parent directory via `flock(2)` so atomic renames
+/// of the config file never swap the locked inode and no sidecar lock file is
+/// left behind (for example inside a dotfiles repository).
+pub struct ConfigLock {
+    _dir: std::fs::File,
+}
+
+/// Resolves symbolic links at `path` so config locking and atomic saves operate
+/// on the target file instead of replacing the symbolic link itself.
+pub fn resolve_write_target(path: &Path) -> std::io::Result<PathBuf> {
+    const MAX_SYMLINK_DEPTH: usize = 40;
+    match std::fs::symlink_metadata(path) {
+        Ok(meta) if !meta.file_type().is_symlink() => return Ok(path.to_path_buf()),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+            return Ok(path.to_path_buf());
+        }
+        Err(error) => return Err(error),
+        Ok(_) => {}
+    }
+    match std::fs::canonicalize(path) {
+        Ok(resolved) => return Ok(resolved),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+        Err(error) => return Err(error),
+    }
+    let mut current = path.to_path_buf();
+    for _ in 0..MAX_SYMLINK_DEPTH {
+        match std::fs::symlink_metadata(&current) {
+            Ok(meta) if meta.file_type().is_symlink() => {
+                let target = std::fs::read_link(&current)?;
+                current = if target.is_absolute() {
+                    target
+                } else {
+                    let parent = current
+                        .parent()
+                        .filter(|parent| !parent.as_os_str().is_empty())
+                        .unwrap_or_else(|| Path::new("."));
+                    let base =
+                        std::fs::canonicalize(parent).unwrap_or_else(|_| parent.to_path_buf());
+                    base.join(target)
+                };
+            }
+            Ok(_) => return Ok(current),
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(current),
+            Err(error) => return Err(error),
+        }
+    }
+    Err(std::io::Error::new(
+        std::io::ErrorKind::InvalidInput,
+        format!(
+            "too many levels of symbolic links while resolving {}",
+            path.display()
+        ),
+    ))
+}
+
+/// Acquires an exclusive advisory lock for editing the config file at `path`.
+pub fn lock_config(path: &Path) -> std::io::Result<ConfigLock> {
+    let target = resolve_write_target(path)?;
+    let parent = target
+        .parent()
+        .filter(|parent| !parent.as_os_str().is_empty())
+        .unwrap_or_else(|| Path::new("."));
+    std::fs::create_dir_all(parent)?;
+    let dir = std::fs::File::open(parent)?;
+    dir.lock()?;
+    Ok(ConfigLock { _dir: dir })
+}
+
+/// Atomically replaces the config file at `path`, following symbolic links so a
+/// symlinked `config.toml` stays linked to its updated target.
+pub fn write_config_atomic(path: &Path, bytes: &[u8]) -> std::io::Result<()> {
+    let target = resolve_write_target(path)?;
+    crate::state_file::write_atomic(&target, bytes)
+}
+
 /// Atomically updates `workspace`'s display assignment in `path`, clearing the
 /// `[[workspaces]]` override when it returns to the built-in default (while
 /// keeping named workspaces that have no route rule declared).
@@ -629,6 +706,8 @@ pub fn save_workspace_monitor_at(
     workspace: WorkspaceId,
     selector: &DisplaySelector,
 ) -> Result<Config, String> {
+    let _lock =
+        lock_config(path).map_err(|error| format!("failed to lock {}: {error}", path.display()))?;
     let mut doc = match std::fs::read_to_string(path) {
         Ok(source) => {
             parse_path(path, &source)?;
@@ -663,7 +742,7 @@ pub fn save_workspace_monitor_at(
         .map_err(|error| format!("failed to format config.toml: {error}"))?;
     let parsed = Config::parse(&rendered)
         .map_err(|error| format!("refusing to write invalid config.toml: {error}"))?;
-    crate::state_file::write_atomic(path, rendered.as_bytes())
+    write_config_atomic(path, rendered.as_bytes())
         .map_err(|error| format!("failed to write {}: {error}", path.display()))?;
     Ok(parsed)
 }
@@ -951,6 +1030,34 @@ monitor = "main"
         assert_eq!(kept.named_workspaces().collect::<Vec<_>>(), vec![named]);
         let written = std::fs::read_to_string(&path).unwrap();
         assert!(written.contains("workspace = \"D\""), "{written}");
+
+        drop(std::fs::remove_dir_all(dir));
+    }
+
+    #[test]
+    fn save_workspace_monitor_preserves_symlink_target_without_sidecar_files() {
+        let dir = std::env::temp_dir().join(format!(
+            "spaceman-config-symlink-{}-{}",
+            std::process::id(),
+            now().as_nanos()
+        ));
+        std::fs::create_dir_all(&dir).unwrap();
+        let target = dir.join("dotfiles.toml");
+        let link = dir.join("config.toml");
+        std::fs::write(&target, "version = 1\n").unwrap();
+        std::os::unix::fs::symlink("dotfiles.toml", &link).unwrap();
+
+        save_workspace_monitor_at(&link, WorkspaceId::TWO, &DisplaySelector::Secondary).unwrap();
+
+        assert!(
+            std::fs::symlink_metadata(&link)
+                .unwrap()
+                .file_type()
+                .is_symlink()
+        );
+        let written = std::fs::read_to_string(&target).unwrap();
+        assert!(written.contains("monitor = \"secondary\""), "{written}");
+        assert_eq!(std::fs::read_dir(&dir).unwrap().count(), 2);
 
         drop(std::fs::remove_dir_all(dir));
     }

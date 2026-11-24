@@ -10,6 +10,8 @@ use spaceman::{
     config::{Config, HudStyle, MouseFollowsFocus, WindowDisposition},
 };
 
+mod regressions;
+
 use super::{Outcome, try_run_with_config_path};
 
 struct TempConfig {

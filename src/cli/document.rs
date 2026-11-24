@@ -7,9 +7,11 @@ use std::{
 use serde::{Deserialize, Serialize};
 use spaceman::{
     DisplaySelector, WorkspaceId, Workspaces,
-    config::{Config, HudStyle, MouseFollowsFocus, UpdateChannel, config_path},
+    config::{
+        Config, HudStyle, MouseFollowsFocus, UpdateChannel, config_path, lock_config,
+        write_config_atomic,
+    },
     spacing::{Spacing, SpacingKey},
-    state_file::write_atomic,
 };
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
@@ -268,10 +270,14 @@ impl RuleView {
 struct EffectiveConfigToml<'a> {
     version: u32,
     settings: EffectiveSettings,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    labs: Option<LabsDoc>,
     #[serde(skip_serializing_if = "<[RuleDoc]>::is_empty")]
     rules: &'a [RuleDoc],
     #[serde(skip_serializing_if = "<[WorkspaceDoc]>::is_empty")]
     workspaces: &'a [WorkspaceDoc],
+    #[serde(skip_serializing_if = "Option::is_none")]
+    shortcuts: Option<&'a ShortcutsDoc>,
 }
 
 impl ConfigDoc {
@@ -321,8 +327,10 @@ impl ConfigDoc {
         let view = EffectiveConfigToml {
             version: self.version,
             settings: self.effective_settings(),
+            labs: self.labs,
             rules: &self.rules,
             workspaces: &self.workspaces,
+            shortcuts: self.shortcuts.as_ref(),
         };
         let rendered = toml::to_string_pretty(&view)
             .map_err(|error| format!("failed to format config.toml: {error}"))?;
@@ -333,8 +341,24 @@ impl ConfigDoc {
 
     pub(crate) fn save_atomic(&self, path: &Path) -> Result<(), String> {
         let rendered = self.render_toml()?;
-        write_atomic(path, rendered.as_bytes())
+        write_config_atomic(path, rendered.as_bytes())
             .map_err(|error| format!("failed to write {}: {error}", path.display()))
+    }
+
+    /// Acquires an exclusive config lock, reads the latest document from `path`,
+    /// runs `edit`, and writes atomically when `edit` reports a change.
+    pub(crate) fn edit_locked<T>(
+        path: &Path,
+        edit: impl FnOnce(&mut Self) -> Result<(T, bool), String>,
+    ) -> Result<T, String> {
+        let _lock = lock_config(path)
+            .map_err(|error| format!("failed to lock {}: {error}", path.display()))?;
+        let (mut doc, _) = Self::load_or_default(path)?;
+        let (result, changed) = edit(&mut doc)?;
+        if changed {
+            doc.save_atomic(path)?;
+        }
+        Ok(result)
     }
 
     pub(crate) fn rule_views(&self) -> Vec<RuleView> {
