@@ -138,7 +138,7 @@ impl Doc {
 
     /// Back to the built-in shortcuts: `[shortcuts]` leaves the file.
     pub fn reset_shortcuts(&mut self) {
-        self.doc.remove("shortcuts");
+        self.remove_table("shortcuts");
     }
 
     fn shortcuts_table(&self) -> Option<&dyn TableLike> {
@@ -159,22 +159,23 @@ impl Doc {
 
     /// Drops a `[shortcuts.bindings]` or `[shortcuts]` table an edit emptied.
     fn tidy_shortcuts(&mut self) {
-        let Some(table) = self
+        let bindings_empty = self
             .doc
-            .get_mut("shortcuts")
-            .and_then(Item::as_table_like_mut)
-        else {
-            return;
-        };
-        if table
-            .get("bindings")
+            .get("shortcuts")
+            .and_then(Item::as_table_like)
+            .and_then(|table| table.get("bindings"))
+            .and_then(Item::as_table_like)
+            .is_some_and(TableLike::is_empty);
+        if bindings_empty {
+            self.remove_subtable("shortcuts", "bindings");
+        }
+        if self
+            .doc
+            .get("shortcuts")
             .and_then(Item::as_table_like)
             .is_some_and(TableLike::is_empty)
         {
-            table.remove("bindings");
-        }
-        if table.is_empty() {
-            self.doc.remove("shortcuts");
+            self.remove_table("shortcuts");
         }
     }
 }

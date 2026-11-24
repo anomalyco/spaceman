@@ -69,7 +69,8 @@ A rule needs at least one of `bundle_id` or `title`. If both are present, both m
 Rules run in file order and the first matching rule wins. An unmatched window is managed normally.
 
 - `float` excludes the window from tiling and resizing, preserves its native frame, and keeps it with
-  the logical workspace where it was first observed.
+  its logical workspace (a remembered workspace during recall, or the active workspace where it was
+  first observed).
 - `route` assigns a newly inserted resizable logical window to workspace 1 through 10 or a configured
   named workspace A through Z. A bundle-level `route` rule (without `title`) applies to the
   application's initial window while secondary windows opened later stay on the active workspace; a
@@ -81,9 +82,9 @@ Rules run in file order and the first matching rule wins. An unmatched window is
   window is released the next time it is observed on screen.
 
 During startup recovery, after a qualifying mid-session relaunch, or for an application marked to
-return, an unmatched window may return to a remembered workspace; see
-[Remembered Placements](#remembered-placements). Matching `route` and `ignore` rules always win over
-memory.
+return, a window not matched by a `route` or `ignore` rule (including one matched by a `float` rule)
+may return to a remembered workspace; see [Remembered Placements](#remembered-placements). Matching
+`route` and `ignore` rules always win over memory.
 
 Title matching occurs only in memory. Titles are not serialized into persisted state, snapshots,
 `ctl debug`, or the HUD.

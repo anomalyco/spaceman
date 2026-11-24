@@ -286,7 +286,7 @@ impl Doc {
                     false
                 };
             if empty {
-                self.doc.remove("settings");
+                self.remove_table("settings");
             }
             return;
         };

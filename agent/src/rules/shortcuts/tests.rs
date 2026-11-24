@@ -278,3 +278,25 @@ fn modifier_round_trip_preserves_suppression_when_destination_holds_explicit_bin
     assert_eq!(bound(&doc, "ctrl+alt+h"), Some(Some("focus left".into())));
     assert_eq!(bound(&doc, "ctrl+h"), Some(None));
 }
+
+#[test]
+fn resetting_shortcuts_or_choosing_option_preserves_detached_section_heading() {
+    let source = "version = 1\n\n# Keyboard tuning.\n\n[shortcuts]\nmodifier = \"ctrl+alt\"\n\n# Other settings.\n\n[settings]\nhud = false\n";
+
+    let mut reset = Doc::parse(source);
+    reset.reset_shortcuts();
+    let reset_saved = saved(&reset).source();
+    assert!(reset_saved.contains("# Keyboard tuning."), "{reset_saved}");
+    assert!(reset_saved.contains("# Other settings."), "{reset_saved}");
+    assert!(!reset_saved.contains("[shortcuts]"), "{reset_saved}");
+
+    let mut option = Doc::parse(source);
+    option.set_shortcut_modifier(Modifiers::OPTION);
+    let option_saved = saved(&option).source();
+    assert!(
+        option_saved.contains("# Keyboard tuning."),
+        "{option_saved}"
+    );
+    assert!(option_saved.contains("# Other settings."), "{option_saved}");
+    assert!(!option_saved.contains("[shortcuts]"), "{option_saved}");
+}

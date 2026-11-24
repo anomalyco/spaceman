@@ -145,6 +145,82 @@ impl Doc {
         }
     }
 
+    /// Removes top-level table `key` (and any subtables inside it), preserving detached
+    /// comment headings set off by a blank line above any removed table header.
+    pub(super) fn remove_table(&mut self, key: &str) {
+        let mut comments = Vec::new();
+        let mut inline_comment = None;
+        let next_root_key = next_value_key_after(self.doc.as_table(), key);
+        match self.doc.get(key) {
+            Some(Item::Table(table)) => collect_detached_table_comments(table, &mut comments),
+            Some(Item::Value(_)) => {
+                inline_comment = self
+                    .doc
+                    .key(key)
+                    .and_then(|k| k.leaf_decor().prefix())
+                    .and_then(RawString::as_str)
+                    .and_then(detached_comments);
+            }
+            _ => {}
+        }
+        self.doc.remove(key);
+        self.splice_removed_table_comments(comments, inline_comment, next_root_key);
+    }
+
+    /// Removes nested table `child` from top-level table `parent`, preserving any detached
+    /// comment heading set off by a blank line above the removed subtable header.
+    pub(super) fn remove_subtable(&mut self, parent: &str, child: &str) {
+        let mut comments = Vec::new();
+        if let Some(table) = self.doc.get(parent).and_then(Item::as_table)
+            && let Some(Item::Table(sub)) = table.get(child)
+        {
+            collect_detached_table_comments(sub, &mut comments);
+        }
+        if let Some(table) = self.doc.get_mut(parent).and_then(Item::as_table_mut) {
+            table.remove(child);
+        }
+        self.splice_removed_table_comments(comments, None, None);
+    }
+
+    fn splice_removed_table_comments(
+        &mut self,
+        mut comments: Vec<(Option<isize>, String)>,
+        inline_comment: Option<String>,
+        next_root_key: Option<String>,
+    ) {
+        if let Some(comment) = inline_comment {
+            if let Some(next_key) = next_root_key
+                && let Some(mut key) = self.doc.key_mut(&next_key)
+            {
+                prepend_decor_comment(key.leaf_decor_mut(), &comment);
+            } else if let Some(first_pos) = min_table_position(self.doc.as_table(), None)
+                && let Some(target) = find_table_at_position_mut(self.doc.as_table_mut(), first_pos)
+            {
+                prepend_decor_comment(target.decor_mut(), &comment);
+            } else {
+                let trailing = self.doc.trailing().as_str().unwrap_or_default().to_owned();
+                self.doc
+                    .set_trailing(join_comment_trailing(&comment, &trailing));
+            }
+        }
+        comments.sort_by_key(|(pos, _)| *pos);
+        // Splice in reverse order so multiple detached headings prepended onto the
+        // same following table keep their original top-to-bottom order.
+        for (pos, comment) in comments.into_iter().rev() {
+            if let Some(pos) = pos
+                && let Some(target_pos) = min_table_position(self.doc.as_table(), Some(pos))
+                && let Some(target) =
+                    find_table_at_position_mut(self.doc.as_table_mut(), target_pos)
+            {
+                prepend_decor_comment(target.decor_mut(), &comment);
+            } else {
+                let trailing = self.doc.trailing().as_str().unwrap_or_default().to_owned();
+                self.doc
+                    .set_trailing(join_comment_trailing(&comment, &trailing));
+            }
+        }
+    }
+
     fn splice_table_comment(
         &mut self,
         section: &str,
@@ -168,6 +244,29 @@ impl Doc {
         let trailing = self.doc.trailing().as_str().unwrap_or_default().to_owned();
         self.doc
             .set_trailing(join_comment_trailing(comment, &trailing));
+    }
+}
+
+fn collect_detached_table_comments(table: &Table, out: &mut Vec<(Option<isize>, String)>) {
+    if !table.is_implicit()
+        && let Some(comment) = table
+            .decor()
+            .prefix()
+            .and_then(RawString::as_str)
+            .and_then(detached_comments)
+    {
+        out.push((table.position(), comment));
+    }
+    for (_, item) in table.iter() {
+        match item {
+            Item::Table(sub) => collect_detached_table_comments(sub, out),
+            Item::ArrayOfTables(array) => {
+                for sub in array.iter() {
+                    collect_detached_table_comments(sub, out);
+                }
+            }
+            _ => {}
+        }
     }
 }
 

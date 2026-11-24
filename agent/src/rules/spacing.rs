@@ -69,10 +69,15 @@ impl Doc {
                     gaps.is_empty()
                 });
             if emptied {
-                settings.remove("gaps");
+                self.remove_subtable("settings", "gaps");
             }
-            if settings.is_empty() {
-                self.doc.remove("settings");
+            if self
+                .doc
+                .get("settings")
+                .and_then(Item::as_table_like)
+                .is_some_and(toml_edit::TableLike::is_empty)
+            {
+                self.remove_table("settings");
             }
             return;
         };

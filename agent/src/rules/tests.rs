@@ -877,3 +877,24 @@ fn rule_placement_and_settings_edits_preserve_retained_key_comments() {
     assert!(saved.contains("# Gap note."));
     assert!(saved.contains("# Modifier note."));
 }
+
+#[test]
+fn clearing_last_layout_spacing_preserves_detached_section_headings() {
+    use spaceman::spacing::Spacing;
+    let width_source =
+        "version = 1\n\n# Layout notes.\n\n[settings]\nsingle_window_max_width = 1680\n";
+    let mut doc = Doc::parse(width_source);
+    doc.set_spacing(Spacing::NONE);
+    let saved = doc.source();
+    assert!(spaceman::config::Config::parse(&saved).is_ok(), "{saved}");
+    assert!(saved.contains("# Layout notes."), "{saved}");
+    assert!(!saved.contains("[settings]"), "{saved}");
+
+    let gaps_source = "version = 1\n\n# Gap notes.\n\n[settings.gaps]\ninner = 6\n";
+    let mut doc = Doc::parse(gaps_source);
+    doc.set_spacing(Spacing::NONE);
+    let saved = doc.source();
+    assert!(spaceman::config::Config::parse(&saved).is_ok(), "{saved}");
+    assert!(saved.contains("# Gap notes."), "{saved}");
+    assert!(!saved.contains("[settings.gaps]"), "{saved}");
+}
