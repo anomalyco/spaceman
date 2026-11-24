@@ -49,7 +49,7 @@ right = 0
 [labs]                                # optional; experimental features, each off by default
 scrolling_strip = false               # Scrolling Strip layout, toggled per workspace with its shortcut
 scrolling_strip_shortcut = "alt+shift+s" # optional; the strip's toggle, in [shortcuts] chord syntax
-scrolling_strip_duration_ms = 250     # optional; how long a strip glide feels, 80 through 900
+scrolling_strip_duration_ms = 180     # optional; how long a strip glide takes, 80 through 900
 scrolling_strip_damping = 1.0         # optional; glide spring damping, 0.6 through 1.3
 scrolling_strip_shared_edge = "tuck"  # optional; "tuck" or "slide" at an edge shared with a display
 
@@ -105,8 +105,9 @@ named workspace S's move shortcut. With every switch off Spaceman behaves exactl
 The strip's glide tuning is also on its Settings › Labs card while the strip is on, and each key is
 left out of the file at its default:
 
-- `scrolling_strip_duration_ms` (default `250`, 80 through 900) scales the glide spring: 125 is
-  twice as fast as 250. Settings offers 150, 250, 380 and 520 ms.
+- `scrolling_strip_duration_ms` (default `180`, 80 through 900) is how long a critically damped
+  glide across half a 2,560-point display takes to arrive within a point of its rest; shorter
+  moves arrive sooner, and 90 is twice as fast as 180. Settings offers 120, 180, 280 and 400 ms.
 - `scrolling_strip_damping` (default `1.0`, 0.6 through 1.3, kept to hundredths) is the spring's
   damping ratio: `1.0` arrives without overshoot, lower overshoots a little and settles back
   (Settings' Bouncy is `0.78`), higher eases in more softly (Soft is `1.18`).

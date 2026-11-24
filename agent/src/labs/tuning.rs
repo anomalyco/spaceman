@@ -137,7 +137,7 @@ mod tests {
     #[test]
     fn pickers_offer_the_presets_and_a_custom_value_from_the_file() {
         let (labels, _, selected) = duration_options(GlideDuration::default());
-        assert_eq!(labels, ["150 ms", "250 ms", "380 ms", "520 ms"]);
+        assert_eq!(labels, ["120 ms", "180 ms", "280 ms", "400 ms"]);
         assert_eq!(selected, 1);
         let (labels, values, selected) = duration_options(GlideDuration::new(600).unwrap());
         assert_eq!(labels.len(), 5);

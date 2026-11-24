@@ -17,7 +17,7 @@ Lab switch (Settings › Labs card / [labs] scrolling_strip / config set labs.sc
 │   └── hot-reloads; claims its chord ahead of built-ins, [shortcuts] bindings still win;
 │       Backspace in the recorder puts the default back                       // strip.shortcut
 ├── Glide tuning (card, only while the switch is on / [labs] / config set labs.…)  // strip.tuning
-│   ├── Glide 150 · 250 · 380 · 520 ms   -> scrolling_strip_duration_ms (80-900, default 250)
+│   ├── Glide 120 · 180 · 280 · 400 ms   -> scrolling_strip_duration_ms (80-900, default 180)
 │   ├── Feel Bouncy · Snappy · Soft      -> scrolling_strip_damping 0.78 · 1.0 · 1.18 (0.6-1.3)
 │   ├── Next to another display Tuck · Slide -> scrolling_strip_shared_edge "tuck" | "slide"
 │   └── a value the file holds that isn't a preset shows as an extra segment; all hot-reload
@@ -45,21 +45,25 @@ Ribbon and camera (pure math: src/strip.rs)                                   //
 
 Glide (src/app/strip/motion.rs -> src/app/app_loop/glide.rs)                   // strip.glide
 ├── Worker: records every column the glide takes out of view in parked-windows.json and resizes
-│           columns whose width changed, then aims CameraSpring (by default critically damped,
-│           stiffness 800, SpringParams::for_duration from [labs])
+│           columns whose width changed, then aims CameraSpring (SpringParams::for_duration from
+│           [labs]: by default critically damped, a 1,280 pt move arriving within 1 pt in 180 ms)
 │           from its current position and velocity; a moved column gets its own offset spring;
 │           sends a StripMotion to the main thread
 ├── Main thread: CADisplayLink runs only while a glide does; each vsync samples the springs and
 │                writes positions through InteractivePresenter (per-app lanes, newest frame wins,
 │                no readback, enhanced UI held off for the whole glide); its clock runs up to
-│                50 ms behind the worker's so the first frame shown is the start of the motion
+│                30 ms behind the worker's so the first frame shown is the start of the motion
 ├── Cycles mid-glide -> every column the window server lists keeps its slot
 ├── Rapid taps -> the running spring is retargeted, one continuous glide; a tap steps on from
 │                 the column the last one aimed at, even before it has focus
-├── Curtain -> the sliding columns are raised over a tucked one if the window server stacks it
-│              in front; a column arriving across a shared edge is focused once the glide settles
+├── Focus -> the column a key moves to is focused as the key lands, so typing reaches it at
+│            once, and glides in on top: the curtain never tucks it or raises a neighbor over it
+├── Curtain -> columns sliding across a tucked one (leaving across a shared edge) are raised over
+│              it if the window server stacks it in front
 ├── Focus refused mid-glide -> retried when the glide settles instead of failing the key
-├── Settled -> link stops; worker lays the strip out once, peeks/parks out-of-view columns
+├── Settled (within 1 pt and slow; the final frame snaps to the exact rest) -> link stops; 47 ms
+│              later (MAX_PRESENT_LAG + a 60 Hz frame) the worker lays the strip out once,
+│              peeks/parks out-of-view columns
 │              (a recorded column still on screen at a shared edge too), retires recovery
 │              frames of columns back in view
 └── Switch, move, toggle, pause or quit mid-glide -> glide halted before windows are touched
@@ -101,14 +105,15 @@ Unit (FakeBackend), `src/app/tests/strip.rs`:
 `a_focus_step_glides_and_settles_into_the_rest_layout`, `rapid_taps_retarget_one_glide`, and
 `switching_workspaces_halts_a_running_glide`, `a_cycle_mid_glide_keeps_a_column_caught_off_screen`,
 `gliding_across_a_shared_edge_and_back_never_exempts_a_column_from_parking`,
-`a_column_arriving_across_a_shared_edge_is_uncovered_then_focused`, and
-`rapid_taps_step_from_a_deferred_focus_and_retry_a_refused_one`. Curtain and free-edge slide-in:
+`a_column_arriving_across_a_shared_edge_takes_focus_at_once_on_top`, and
+`rapid_taps_step_from_the_aimed_column_and_retry_a_refused_one`. Curtain and free-edge slide-in:
 `a_column_crossing_a_shared_edge_stays_under_the_neighbor_sliding_across_it`,
-`free_edges_tuck_nothing`, `a_column_arriving_past_a_free_edge_slides_in_from_its_sliver`. Slide at a
+`free_edges_tuck_nothing`, `the_column_taking_focus_glides_in_on_top`, `a_column_arriving_past_a_free_edge_slides_in_from_its_sliver`. Slide at a
 shared edge: `sliding_past_a_shared_edge_keeps_each_column_centered_on_its_own_display`,
 `sliding_parks_at_rest_and_still_curtains_the_rest_of_the_way` and
 `sliding_lets_a_column_overhang_a_shared_edge_up_to_its_center` (`src/motion/tests.rs`). Glide
-tuning: `the_defaults_are_the_original_spring`, `a_shorter_glide_is_a_proportionally_faster_spring`,
+tuning: `the_defaults_are_the_default_spring`, `a_shorter_glide_is_a_proportionally_faster_spring`,
+`default_spring_is_critically_damped_and_settles_a_column_move_in_180_ms` (`src/motion/tests.rs`),
 `tuning_round_trips_and_stays_out_of_the_file_at_its_defaults`, `tuning_out_of_range_is_refused`
 (`src/labs/glide.rs`), `retuning_a_spring_keeps_its_motion_continuous`,
 `strip_glide_tuning_round_trips_and_leaves_defaults_out` (CLI, `src/cli/tests/labs.rs`),
@@ -154,8 +159,9 @@ Settings › Labs -> Scrolling Strip card -> Glide / Feel / Next to another disp
 - **Shared edges.** A column partly in view on the side of another display is kept inside its own
   display, so it sits under its neighbor instead of running off the edge. That only looks right
   while the neighbor is stacked above it: the glide raises the neighbor when the window server
-  says otherwise, and holds the arriving column's focus (which would raise it) until the glide
-  settles. Before this, a column leaving across the seam stayed on screen after the glide; heal
+  says otherwise. The column a key moves to is the exception: it is focused at once, so it
+  shows on top at its rest (Tuck) or half past the edge (Slide) from the first frame rather
+  than waiting under its neighbor. Before the curtain, a column leaving across the seam stayed on screen after the glide; heal
   then took it for its app un-parking itself and, the second time, exempted it from parking for
   the session.
 - **Slide needs separate Spaces.** `scrolling_strip_shared_edge = "slide"` relies on macOS drawing

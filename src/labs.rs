@@ -28,7 +28,7 @@ pub struct LabsConfig {
     /// syntax (`"alt+shift+s"`).
     #[serde(default, skip_serializing_if = "LabShortcut::is_default")]
     pub scrolling_strip_shortcut: LabShortcut,
-    /// How long a strip glide feels, in milliseconds (80 to 900, 250 by default).
+    /// How long a strip glide takes, in milliseconds (80 to 900, 180 by default).
     #[serde(default, skip_serializing_if = "GlideDuration::is_default")]
     pub scrolling_strip_duration_ms: GlideDuration,
     /// The glide spring's damping ratio (0.6 to 1.3, 1.0 by default: no overshoot).

@@ -260,7 +260,9 @@ fn a_shifted_column_springs_back_to_its_place() {
     assert_eq!(x_of(&motion.positions(start), 2), 800);
     assert!(!motion.is_settled(start + Duration::from_millis(30)));
     let settled = motion.settles_at(start);
-    assert_eq!(x_of(&motion.positions(settled), 2), 600);
+    // Within a point of its place once settled; the final frame snaps it there.
+    assert!((x_of(&motion.positions(settled), 2) - 600).abs() <= 1);
+    assert_eq!(x_of(&motion.final_positions(), 2), 600);
 }
 
 #[test]
@@ -317,7 +319,7 @@ fn ids(windows: &[PhysicalWindowId]) -> Vec<u32> {
 #[test]
 fn a_column_crossing_a_shared_edge_stays_under_the_neighbor_sliding_across_it() {
     let start = Instant::now();
-    let arriving = glide(0.0, 600.0, start, seam_right()).curtain(start);
+    let arriving = glide(0.0, 600.0, start, seam_right()).curtain(start, None);
     assert_eq!(ids(&arriving.tucked), [3, 4]);
     assert_eq!(
         ids(&arriving.over),
@@ -325,7 +327,7 @@ fn a_column_crossing_a_shared_edge_stays_under_the_neighbor_sliding_across_it() 
         "the first column never reaches the seam"
     );
 
-    let leaving = glide(600.0, 0.0, start, seam_right()).curtain(start);
+    let leaving = glide(600.0, 0.0, start, seam_right()).curtain(start, None);
     assert_eq!(ids(&leaving.tucked), [3, 4]);
     assert_eq!(ids(&leaving.over), [2]);
 }
@@ -335,7 +337,7 @@ fn free_edges_tuck_nothing() {
     let start = Instant::now();
     for (from, to) in [(0.0, 600.0), (600.0, 0.0)] {
         assert_eq!(
-            glide(from, to, start, free()).curtain(start),
+            glide(from, to, start, free()).curtain(start, None),
             Curtain::default()
         );
     }
@@ -362,7 +364,8 @@ fn a_column_arriving_past_a_free_edge_slides_in_from_its_sliver() {
         last = x;
     }
     assert_eq!(last, 600);
-    assert!(moving_frames > 20, "moved on {moving_frames} frames");
+    // A 180 ms glide spans about 21 frames at 120 Hz: it moves on nearly every one.
+    assert!(moving_frames >= 18, "moved on {moving_frames} frames");
 }
 
 /// `seam_right` with columns sliding past the seam as far as their center allows.
@@ -415,14 +418,31 @@ fn sliding_parks_at_rest_and_still_curtains_the_rest_of_the_way() {
         ]
     );
     let start = Instant::now();
-    let arriving = glide(0.0, 600.0, start, slide_right()).curtain(start);
+    let arriving = glide(0.0, 600.0, start, slide_right()).curtain(start, None);
     assert_eq!(ids(&arriving.tucked), [3, 4]);
     assert_eq!(ids(&arriving.over), [2]);
     assert_eq!(
         glide(600.0, 0.0, start, slide_right())
-            .curtain(start)
+            .curtain(start, None)
             .tucked
             .len(),
         2
     );
+}
+
+/// The column taking focus is never tucked or covered: focus raises it as the key lands and it
+/// glides in on top, while the leaving column it crosses stays curtained under the rest.
+#[test]
+fn the_column_taking_focus_glides_in_on_top() {
+    let start = Instant::now();
+    for bounds in [seam_right(), slide_right()] {
+        let motion = glide(0.0, 600.0, start, bounds);
+        let curtain = motion.curtain(start, Some(&window(3)));
+        assert_eq!(ids(&curtain.tucked), [4]);
+        assert_eq!(
+            ids(&curtain.over),
+            [2],
+            "nothing is raised for the focused column"
+        );
+    }
 }

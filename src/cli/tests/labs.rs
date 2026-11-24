@@ -67,7 +67,7 @@ fn strip_glide_tuning_round_trips_and_leaves_defaults_out() {
     let temp = TempConfig::new("labs-glide");
     temp.write("version = 1\n[labs]\nscrolling_strip = true\n");
     let get = |key: &str| temp.run(&["config", "get", key]).stdout.unwrap();
-    assert_eq!(get("labs.scrolling_strip_duration_ms"), "250");
+    assert_eq!(get("labs.scrolling_strip_duration_ms"), "180");
     assert_eq!(get("labs.scrolling_strip_damping"), "1");
     assert_eq!(get("labs.scrolling_strip_shared_edge"), "tuck");
 
@@ -116,7 +116,7 @@ fn strip_glide_tuning_round_trips_and_leaves_defaults_out() {
 
     // Back to the defaults: the keys leave the file.
     for (key, value) in [
-        ("labs.scrolling_strip_duration_ms", "250"),
+        ("labs.scrolling_strip_duration_ms", "180"),
         ("labs.scrolling_strip_damping", "1.0"),
         ("labs.scrolling_strip_shared_edge", "tuck"),
     ] {

@@ -11,15 +11,19 @@ use crate::{
     strip::{Curtain, MotionColumn, RibbonColumn, StripLayout, StripMotion},
 };
 
-/// How long after the springs settle the worker waits before its own layout pass, so the main
-/// thread's final frame lands first: its frame budget plus the most the main thread runs
-/// behind the worker's clock ([`MAX_PRESENT_LAG`]).
-pub(in crate::app) const SETTLE_GRACE: Duration = Duration::from_millis(90);
-
 /// The most the main thread delays a glide's clock to make up for handing it over: the agent
-/// pump, starting the display link and opening the apps' lanes. Without it the first frame
-/// shown would already be a large step into the motion.
-pub(in crate::app) const MAX_PRESENT_LAG: Duration = Duration::from_millis(50);
+/// pump, starting the display link and opening the apps' lanes (about 26 ms measured on a
+/// Mac Studio). Without it the first frame shown would already be a step into the motion; a
+/// slower hand-off starts that much into it.
+pub(in crate::app) const MAX_PRESENT_LAG: Duration = Duration::from_millis(30);
+
+/// One frame at 60 Hz, the slowest display a glide is shown on.
+const SLOWEST_FRAME: Duration = Duration::from_micros(16_667);
+
+/// How long after the springs settle the worker waits before its own layout pass, so the main
+/// thread's final frame lands first: the most the main thread runs behind the worker's clock
+/// ([`MAX_PRESENT_LAG`]) plus one frame.
+pub(in crate::app) const SETTLE_GRACE: Duration = MAX_PRESENT_LAG.saturating_add(SLOWEST_FRAME);
 
 /// What the worker tells the main thread about strip glides.
 #[derive(Clone, Debug)]
@@ -66,10 +70,8 @@ pub(in crate::app) struct StripView {
     shifts: HashMap<crate::SlotId, CameraSpring>,
     /// When the running glide settles.
     settles_at: Option<Instant>,
-    /// Columns the running glide holds against a shared edge ([`StripMotion::curtain`]).
-    tucked: HashSet<crate::PhysicalWindowId>,
-    /// A column to focus once the glide settles: one tucked under its neighbor until then,
-    /// or one its app refused to focus while the glide moved its windows.
+    /// A column to focus once the glide settles: one its app refused to focus while the glide
+    /// moved its windows.
     focus: Option<crate::PhysicalWindowId>,
 }
 
@@ -101,15 +103,6 @@ impl StripViews {
             .filter_map(|view| view.settles_at)
             .min()
             .map(|at| at + SETTLE_GRACE)
-    }
-
-    /// Whether the running glide holds `window` against a shared edge.
-    pub(in crate::app) fn tucked(
-        &self,
-        workspace: WorkspaceId,
-        window: &crate::PhysicalWindowId,
-    ) -> bool {
-        self.in_motion(workspace) && self.views[workspace.index()].tucked.contains(window)
     }
 
     /// When the running glide's settling layout is due.
@@ -150,7 +143,6 @@ impl StripViews {
                 view.camera = Some(ViewportCamera::Static(spring.target()));
                 view.shifts.clear();
                 view.settles_at = None;
-                view.tucked.clear();
                 view.focus = None;
                 self.outbox
                     .push(StripCommand::Halt(WorkspaceId::from_index(index)));
@@ -359,7 +351,14 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
             issued: now,
         };
         let settles_at = motion.settles_at(now);
-        let curtain = motion.curtain(now);
+        // The column taking focus glides in on top: focus raises it as soon as the key lands.
+        let front = self
+            .workspaces
+            .last_focused_slot(workspace)
+            .and_then(|slot| self.workspaces.engine(workspace).model().slot(slot))
+            .and_then(|slot| slot.bound_window())
+            .cloned();
+        let curtain = motion.curtain(now, front.as_ref());
         self.stack_curtain(&curtain);
         log_event!(
             "workspace {workspace}: strip glide {:.0} -> {:.0} over {}ms ({} windows)",
@@ -371,7 +370,6 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
         let view = &mut self.strip_views.views[workspace.index()];
         view.camera = Some(ViewportCamera::Animating(camera));
         view.settles_at = Some(settles_at);
-        view.tucked = curtain.tucked.into_iter().collect();
         self.strip_views.outbox.retain(
             |command| !matches!(command, StripCommand::Glide(m) if m.workspace == workspace),
         );
@@ -393,7 +391,6 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
                 view.camera = Some(ViewportCamera::Static(spring.target()));
                 view.shifts.clear();
                 view.settles_at = None;
-                view.tucked.clear();
                 settled.push((WorkspaceId::from_index(index), view.focus.take()));
             }
         }

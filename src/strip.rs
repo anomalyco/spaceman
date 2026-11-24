@@ -16,14 +16,11 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
     PhysicalWindowId, Rect, SlotId, WorkspaceId,
-    motion::{CameraSpring, ScrollingDisplayBounds},
+    motion::{CameraSpring, SETTLE_TOLERANCE_PT, ScrollingDisplayBounds},
 };
 
 /// How much of an off-screen column stays visible past a free display edge.
 pub const PEEK_PX: i32 = 16;
-
-/// Device-pixel scale motion settles against: within a quarter of a Retina pixel.
-pub const SETTLE_SCALE: f64 = 2.0;
 
 /// The longest a motion is assumed to run before it counts as settled anyway.
 pub const MAX_MOTION: Duration = Duration::from_secs(3);
@@ -369,12 +366,14 @@ impl StripMotion {
     /// another display, now or once it arrives, and the columns that slide across them.
     ///
     /// A column can't cross a shared edge without showing on the other display, so it waits at
-    /// that edge (inside the display, or in [`crate::motion::SharedEdge::Slide`] half past it; see
-    /// [`column_x`]) while its neighbor slides over or off it. With the neighbor on top, an arriving column is uncovered like a curtain drawn back
-    /// and a leaving one is covered before it is parked; on top itself, it would pop over its
-    /// neighbor on the first frame.
+    /// that edge (inside the display, or in [`crate::motion::SharedEdge::Slide`] half past it;
+    /// see [`column_x`]) while its neighbor slides over or off it. With the neighbor on top, a
+    /// leaving column is covered before it is parked.
+    ///
+    /// `front`, the column taking focus, is never tucked under anything: focus raises it at
+    /// once so keys reach it without waiting for the glide, and it glides in on top.
     #[must_use]
-    pub fn curtain(&self, now: Instant) -> Curtain {
+    pub fn curtain(&self, now: Instant, front: Option<&PhysicalWindowId>) -> Curtain {
         let (camera_now, camera_end) = (self.camera.position(now), self.camera.target());
         let place = |world_x: f64, width: i32, camera: f64| {
             let desired = (f64::from(self.output.x) + world_x - camera).round() as i32;
@@ -387,8 +386,8 @@ impl StripMotion {
             .map(|column| {
                 let (now_x, tucked_now) = place(column.world_x(now), column.width, camera_now);
                 let (end_x, tucked_end) = place(f64::from(column.x), column.width, camera_end);
-                let tucked =
-                    (tucked_now || tucked_end).then_some(if tucked_now { now_x } else { end_x });
+                let tucked = (front != Some(&column.window) && (tucked_now || tucked_end))
+                    .then_some(if tucked_now { now_x } else { end_x });
                 (
                     column,
                     now_x.min(end_x),
@@ -399,6 +398,9 @@ impl StripMotion {
             .collect();
         let mut curtain = Curtain::default();
         for (column, from, to, tucked) in &spans {
+            if front == Some(&column.window) {
+                continue;
+            }
             if tucked.is_some() {
                 curtain.tucked.push(column.window.clone());
                 continue;
@@ -418,12 +420,12 @@ impl StripMotion {
     /// Whether the camera and every column have arrived.
     #[must_use]
     pub fn is_settled(&self, now: Instant) -> bool {
-        self.camera.is_settled(now, SETTLE_SCALE)
+        self.camera.is_settled(now, SETTLE_TOLERANCE_PT)
             && self
                 .columns
                 .iter()
                 .filter_map(|column| column.shift)
-                .all(|shift| shift.is_settled(now, SETTLE_SCALE))
+                .all(|shift| shift.is_settled(now, SETTLE_TOLERANCE_PT))
     }
 
     /// The first moment at or after `from` when the motion counts as settled, found in steps of

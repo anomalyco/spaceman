@@ -19,7 +19,7 @@ impl GlideDuration {
     pub const MIN: u16 = 80;
     pub const MAX: u16 = 900;
     /// The Settings presets, fastest first.
-    pub const PRESETS: [u16; 4] = [150, 250, 380, 520];
+    pub const PRESETS: [u16; 4] = [120, 180, 280, 400];
 
     /// `ms` when it is in range.
     pub fn new(ms: u16) -> Result<Self, String> {
@@ -138,7 +138,7 @@ mod tests {
     use crate::labs::LabsConfig;
 
     #[test]
-    fn the_defaults_are_the_original_spring() {
+    fn the_defaults_are_the_default_spring() {
         let labs = LabsConfig::default();
         let spring = labs.strip_spring();
         assert!((spring.stiffness - SpringParams::default().stiffness).abs() < 1e-9);
@@ -148,9 +148,9 @@ mod tests {
 
     #[test]
     fn a_shorter_glide_is_a_proportionally_faster_spring() {
-        let half = SpringParams::for_duration(125, 1.0);
-        let default = SpringParams::for_duration(250, 1.0);
-        let double = SpringParams::for_duration(500, 1.0);
+        let half = SpringParams::for_duration(90, 1.0);
+        let default = SpringParams::for_duration(180, 1.0);
+        let double = SpringParams::for_duration(360, 1.0);
         assert!((half.angular_frequency() / default.angular_frequency() - 2.0).abs() < 1e-9);
         assert!((default.angular_frequency() / double.angular_frequency() - 2.0).abs() < 1e-9);
     }

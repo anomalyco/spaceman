@@ -744,17 +744,18 @@ fn gliding_across_a_shared_edge_and_back_never_exempts_a_column_from_parking() {
     }
 }
 
-/// The column arriving across the seam waits at its rest under the one sliding off it: the
-/// glide raises that neighbor over it when the window server stacks it in front, and focuses
-/// the arriving column only once the glide settles, so it never pops over its neighbor.
+/// The column arriving across the seam takes focus as the key lands, so typing reaches it at
+/// once, and glides in on top: the neighbor sliding off it is never raised over it, and nothing
+/// focuses again when the glide settles.
 #[test]
-fn a_column_arriving_across_a_shared_edge_is_uncovered_then_focused() {
+fn a_column_arriving_across_a_shared_edge_takes_focus_at_once_on_top() {
     let (mut runtime, windows) = four_windows(LAB_ON);
     runtime.backend.animate_strip = true;
     press(&mut runtime, WorkerAction::ToggleStrip).unwrap();
     press(&mut runtime, WorkerAction::Focus(Direction::Right)).unwrap();
+    // The arriving column is at the back, where the old curtain raised its neighbor over it.
     runtime.backend.stacking = Some(
-        [2, 1, 0, 3]
+        [1, 0, 3, 2]
             .map(|index: usize| windows[index].window_id)
             .to_vec(),
     );
@@ -762,18 +763,21 @@ fn a_column_arriving_across_a_shared_edge_is_uncovered_then_focused() {
 
     press(&mut runtime, WorkerAction::Focus(Direction::Right)).unwrap();
 
+    assert!(runtime.strip_in_motion(WorkspaceId::ONE));
+    assert_eq!(
+        focus_calls(&runtime),
+        [windows[2].clone()],
+        "focused mid-glide"
+    );
+    assert_eq!(runtime.backend.focused, Some(windows[2].clone()));
     assert!(
-        runtime
+        !runtime
             .backend
             .calls
             .contains(&BackendCall::Raise(windows[1].clone())),
         "{:?}",
         runtime.backend.calls
     );
-    assert!(focus_calls(&runtime).is_empty(), "not focused mid-glide");
-    assert!(runtime.strip_views.tucked(WorkspaceId::ONE, &windows[2]));
-    // Every later key and focus check already sees the arriving column as focused.
-    assert_eq!(runtime.current_focus(), Some(windows[2].clone()));
     runtime.cycle(outputs(), &AtomicBool::new(false)).unwrap();
     assert!(runtime.strip_in_motion(WorkspaceId::ONE));
 
@@ -783,11 +787,11 @@ fn a_column_arriving_across_a_shared_edge_is_uncovered_then_focused() {
     assert_eq!(runtime.backend.focused, Some(windows[2].clone()));
 }
 
-/// A tap faster than the glide steps on from the column it deferred, not the one Accessibility
+/// A tap faster than the glide steps on from the column it aimed at, not the one Accessibility
 /// still reports, and a focus the app refuses mid-glide is retried when the glide settles
 /// instead of failing the key.
 #[test]
-fn rapid_taps_step_from_a_deferred_focus_and_retry_a_refused_one() {
+fn rapid_taps_step_from_the_aimed_column_and_retry_a_refused_one() {
     let (mut runtime, windows) = four_windows(LAB_ON);
     runtime.backend.animate_strip = true;
     press(&mut runtime, WorkerAction::ToggleStrip).unwrap();
@@ -805,16 +809,19 @@ fn rapid_taps_step_from_a_deferred_focus_and_retry_a_refused_one() {
     assert_eq!(runtime.backend.focused, Some(windows[2].clone()));
 }
 
-/// A click elsewhere while a deferred focus waits for the glide wins: the glide doesn't take
-/// focus back when it settles.
+/// A click elsewhere while a refused focus waits for the glide to settle wins: the glide
+/// doesn't take focus back when it settles.
 #[test]
 fn a_deferred_focus_yields_to_focus_moved_elsewhere_mid_glide() {
     let (mut runtime, windows) = four_windows(LAB_ON);
     runtime.backend.animate_strip = true;
     press(&mut runtime, WorkerAction::ToggleStrip).unwrap();
     press(&mut runtime, WorkerAction::Focus(Direction::Right)).unwrap();
+    runtime.backend.focus_outcome = Some(false);
     press(&mut runtime, WorkerAction::Focus(Direction::Right)).unwrap();
-    assert!(runtime.strip_views.tucked(WorkspaceId::ONE, &windows[2]));
+    runtime.backend.focus_outcome = None;
+    assert!(runtime.strip_in_motion(WorkspaceId::ONE));
+    assert_ne!(runtime.backend.focused, Some(windows[2].clone()));
     let elsewhere = window(99);
     runtime.backend.focused = Some(elsewhere.clone());
     runtime.backend.calls.clear();

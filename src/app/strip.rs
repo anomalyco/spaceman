@@ -650,12 +650,8 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
         cancelled: &AtomicBool,
     ) -> Result<CycleStatus, String> {
         let status = self.relayout_strip(workspace, &target, outputs, cancelled)?;
-        // A column arriving across a shared edge waits at its rest under the neighbor sliding
-        // off it; focusing it now would raise it over that neighbor on the first frame.
-        if self.strip_views.tucked(workspace, &target) {
-            self.focus_strip_column_on_settle(workspace, origin, target);
-            return Ok(status);
-        }
+        // Focus lands at once, so keys reach the column while it glides in on top
+        // (`StripMotion::curtain` never tucks it under a neighbor).
         self.strip_views.focus_on_settle(workspace, None);
         match self.focus_tile(Some(origin.clone()), &target, outputs) {
             Ok(()) => Ok(status),

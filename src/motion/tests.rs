@@ -15,18 +15,29 @@ fn rect(x: i32, y: i32, width: i32, height: i32) -> Rect {
     }
 }
 
-fn first_settled(spring: &CameraSpring, start: Instant, scale: f64) -> Duration {
+fn first_settled(spring: &CameraSpring, start: Instant, tolerance: f64) -> Duration {
     (0..2_000)
         .map(ms)
-        .find(|elapsed| spring.is_settled(start + *elapsed, scale))
+        .find(|elapsed| spring.is_settled(start + *elapsed, tolerance))
         .expect("spring settles within two seconds")
 }
 
 #[test]
-fn default_spring_is_critically_damped_at_omega_root_800() {
+fn default_spring_is_critically_damped_and_settles_a_column_move_in_180_ms() {
     let params = SpringParams::default();
     assert_eq!(params.damping_ratio, 1.0);
-    assert!((params.angular_frequency() - 800.0_f64.sqrt()).abs() < 1e-12);
+    assert_eq!(params, SpringParams::for_duration(180, 1.0));
+    let start = Instant::now();
+    for (duration, expected) in [(120, ms(120)), (180, ms(180)), (400, ms(400))] {
+        let mut spring =
+            CameraSpring::at_rest(SpringParams::for_duration(duration, 1.0), 0.0, start);
+        spring.retarget(CALIBRATION_MOVE_PT, start);
+        let settled = first_settled(&spring, start, SETTLE_TOLERANCE_PT);
+        assert!(
+            settled.abs_diff(expected) <= ms(1),
+            "{duration} ms spring settled after {settled:?}"
+        );
+    }
 }
 
 #[test]
@@ -34,7 +45,7 @@ fn critically_damped_spring_matches_the_closed_form() {
     let start = Instant::now();
     let (x0, v0, target) = (-640.0, 1_200.0, 900.0);
     let spring = CameraSpring::with_state(SpringParams::default(), target + x0, v0, target, start);
-    let w = 800.0_f64.sqrt();
+    let w = SpringParams::default().angular_frequency();
     for elapsed in [0, 8, 16, 50, 120, 300] {
         let t = ms(elapsed).as_secs_f64();
         let decay = (-w * t).exp();
@@ -78,13 +89,13 @@ fn velocity_is_the_derivative_of_position_in_every_damping_regime() {
 }
 
 #[test]
-fn a_column_width_move_settles_in_about_a_quarter_second_without_overshoot() {
+fn a_short_move_settles_sooner_without_overshoot() {
     let start = Instant::now();
     let mut spring = CameraSpring::at_rest(SpringParams::default(), 0.0, start);
     spring.retarget(100.0, start);
-    let settled = first_settled(&spring, start, 2.0);
+    let settled = first_settled(&spring, start, SETTLE_TOLERANCE_PT);
     assert!(
-        settled > ms(200) && settled < ms(350),
+        settled > ms(100) && settled < ms(180),
         "settled after {settled:?}"
     );
     let max = (0..400)
@@ -122,17 +133,17 @@ fn rapid_retargets_glide_in_one_accelerating_arc() {
         }
     }
     let end = start + ms(180);
-    let settled = first_settled(&spring, end, 2.0);
-    assert!((spring.position(end + settled) - 2_000.0).abs() <= 0.125);
+    let settled = first_settled(&spring, end, SETTLE_TOLERANCE_PT);
+    assert!((spring.position(end + settled) - 2_000.0).abs() <= SETTLE_TOLERANCE_PT);
 }
 
 #[test]
 fn a_fast_pass_through_the_target_is_not_settled() {
     let start = Instant::now();
     let spring = CameraSpring::with_state(SpringParams::default(), 500.0, 4_000.0, 500.0, start);
-    assert!(!spring.is_settled(start, 2.0));
+    assert!(!spring.is_settled(start, SETTLE_TOLERANCE_PT));
     let resting = CameraSpring::at_rest(SpringParams::default(), 500.0, start);
-    assert!(resting.is_settled(start, 2.0));
+    assert!(resting.is_settled(start, SETTLE_TOLERANCE_PT));
 }
 
 #[test]

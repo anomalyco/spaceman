@@ -11,8 +11,18 @@ use serde::{Deserialize, Serialize};
 
 use crate::Rect;
 
-/// A spring's physical constants. The default is critically damped with `ω = √800 ≈ 28.3 rad/s`,
-/// which settles a typical column-width move in about a quarter of a second without overshoot.
+/// How close to its target a glide counts as arrived, in points. Window positions are whole
+/// points, so the last point of a spring's tail is never seen; the final frame snaps to the
+/// exact rest position.
+pub const SETTLE_TOLERANCE_PT: f64 = 1.0;
+
+/// The move [`SpringParams::for_duration`] is calibrated on: half a 2,560-point display, a
+/// typical column-width step.
+pub const CALIBRATION_MOVE_PT: f64 = 1_280.0;
+
+/// A spring's physical constants. The default is critically damped and settles a
+/// [`CALIBRATION_MOVE_PT`] move within [`SETTLE_TOLERANCE_PT`] in
+/// [`SpringParams::DEFAULT_DURATION_MS`], without overshoot.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct SpringParams {
     pub mass: f64,
@@ -22,26 +32,22 @@ pub struct SpringParams {
 
 impl Default for SpringParams {
     fn default() -> Self {
-        Self {
-            mass: 1.0,
-            damping_ratio: 1.0,
-            stiffness: 800.0,
-        }
+        Self::for_duration(Self::DEFAULT_DURATION_MS, 1.0)
     }
 }
 
 impl SpringParams {
-    /// The glide the default spring gives, in milliseconds: the reference
-    /// [`Self::for_duration`] scales from.
-    pub const DEFAULT_DURATION_MS: u16 = 250;
+    /// The default glide, in milliseconds.
+    pub const DEFAULT_DURATION_MS: u16 = 180;
 
-    /// A unit-mass spring that feels `duration_ms` long: `ω` scales inversely with the
-    /// duration, so 250 ms is the default `ω = √800` and 125 ms moves twice as fast. A
-    /// `damping_ratio` below 1 overshoots a little; above 1 eases in more softly.
+    /// A unit-mass spring whose critically damped glide over [`CALIBRATION_MOVE_PT`] arrives
+    /// within [`SETTLE_TOLERANCE_PT`] in `duration_ms`: `ω` scales inversely with the
+    /// duration, so 90 ms moves twice as fast as 180. A `damping_ratio` below 1 overshoots a
+    /// little; above 1 eases in more softly (and takes a little longer to arrive).
     #[must_use]
     pub fn for_duration(duration_ms: u16, damping_ratio: f64) -> Self {
-        let omega =
-            800_f64.sqrt() * f64::from(Self::DEFAULT_DURATION_MS) / f64::from(duration_ms.max(1));
+        let seconds = f64::from(duration_ms.max(1)) / 1_000.0;
+        let omega = critical_settle_phase(SETTLE_TOLERANCE_PT / CALIBRATION_MOVE_PT) / seconds;
         Self {
             mass: 1.0,
             damping_ratio,
@@ -54,6 +60,20 @@ impl SpringParams {
     pub fn angular_frequency(self) -> f64 {
         (self.stiffness / self.mass).sqrt()
     }
+}
+
+/// The `u = ωt` at which a critically damped spring released from rest has come within
+/// `fraction` of its move: the root of `(1 + u)·e^(−u) = fraction`, by Newton's method on its
+/// logarithm. About 9.5 for one point of a 1,280-point move.
+fn critical_settle_phase(fraction: f64) -> f64 {
+    let target = fraction.clamp(1e-12, 0.5).ln();
+    let mut u = 10.0_f64;
+    for _ in 0..16 {
+        let value = (1.0 + u).ln() - u - target;
+        let slope = 1.0 / (1.0 + u) - 1.0;
+        u -= value / slope;
+    }
+    u
 }
 
 /// Position and velocity of a spring at one instant, in the caller's units (points, points/s).
@@ -168,12 +188,12 @@ impl CameraSpring {
         }
     }
 
-    /// Whether the spring has visibly arrived: within a quarter of a device pixel of its target
-    /// and moving slowly enough that it would cover less than that in `1/ω` seconds. Checking
-    /// velocity too means a fast pass through the target never counts as settled.
+    /// Whether the spring has arrived: within `tolerance` points of its target and moving
+    /// slowly enough that it would cover less than that in `1/ω` seconds. Checking velocity
+    /// too means a fast pass through the target never counts as settled.
     #[must_use]
-    pub fn is_settled(&self, now: Instant, scale: f64) -> bool {
-        let tolerance = 0.25 / scale.max(f64::EPSILON);
+    pub fn is_settled(&self, now: Instant, tolerance: f64) -> bool {
+        let tolerance = tolerance.max(f64::EPSILON);
         let sample = self.sample(now);
         (sample.position - self.target).abs() <= tolerance
             && sample.velocity.abs() / self.params.angular_frequency() <= tolerance
