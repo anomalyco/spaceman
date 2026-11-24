@@ -232,6 +232,44 @@ pub fn parse_modifier(source: &str) -> Result<Modifiers, String> {
     Ok(chord.modifiers)
 }
 
+/// Whether `chord` is a built-in default shortcut under `base` (with `named_workspaces`
+/// enabled) — i.e. a shortcut that moves when `[shortcuts] modifier` changes.
+///
+/// Fixed Lab chords such as Scratchpad's `alt+\` and `alt+shift+\` do not follow
+/// `[shortcuts] modifier` and return `false`.
+#[must_use]
+pub fn is_built_in_chord(chord: Chord, base: Modifiers, named_workspaces: &[WorkspaceId]) -> bool {
+    let shift = if chord.modifiers == base {
+        false
+    } else if chord.modifiers == base.with_shift() {
+        true
+    } else {
+        return false;
+    };
+    match chord.key {
+        Key::Number(1..=10) | Key::Code(0x30) => true,
+        Key::Code(0x31) => shift,
+        Key::Character(character) => {
+            let is_named = named_workspaces.iter().any(|workspace| {
+                workspace
+                    .letter()
+                    .is_some_and(|letter| letter.eq_ignore_ascii_case(&character))
+            });
+            if is_named {
+                return true;
+            }
+            match character {
+                'h' | 'j' | 'k' | 'l' => true,
+                'f' => shift,
+                '`' => true,
+                '/' | '-' | '=' => !shift,
+                _ => false,
+            }
+        }
+        _ => false,
+    }
+}
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq, PartialOrd, Ord)]
 pub enum Key {
     /// A character, found on whatever key types it in the active keyboard layout.
@@ -251,6 +289,7 @@ pub enum Command {
     MoveWorkspace(DisplayTarget),
     Focus(Direction),
     FocusNext,
+    FocusPrev,
     MoveDirection(Direction),
     Layout,
     Fullscreen,
@@ -260,7 +299,7 @@ pub enum Command {
     Retile,
 }
 
-pub const COMMAND_USAGE: &str = "switch WORKSPACE|move WORKSPACE|back-and-forth|move-workspace [next|prev|DISPLAY]|focus DIR|focus next|move-direction DIR|layout|fullscreen|float|resize shrink|resize grow|balance|retile|none";
+pub const COMMAND_USAGE: &str = "switch WORKSPACE|move WORKSPACE|back-and-forth|move-workspace [next|prev|DISPLAY]|focus DIR|focus next|focus prev|move-direction DIR|layout|fullscreen|float|resize shrink|resize grow|balance|retile|none";
 
 /// `[shortcuts]` as written.
 #[derive(Deserialize)]
@@ -438,6 +477,7 @@ pub fn parse_command(source: &str) -> Result<Option<Command>, String> {
         ["move", workspace] => Command::Move(WorkspaceId::parse(workspace)?),
         ["back-and-forth"] => Command::BackAndForth,
         ["focus", "next"] => Command::FocusNext,
+        ["focus", "prev"] => Command::FocusPrev,
         ["focus", direction] => Command::Focus(direction.parse()?),
         ["move-direction", direction] => Command::MoveDirection(direction.parse()?),
         ["layout"] => Command::Layout,
@@ -480,6 +520,7 @@ impl Command {
             }
             Self::Focus(direction) => format!("focus {direction}"),
             Self::FocusNext => "cycle workspace windows".into(),
+            Self::FocusPrev => "cycle workspace windows backward".into(),
             Self::MoveDirection(direction) => format!("move window {direction}"),
             Self::Layout => "toggle layout".into(),
             Self::Fullscreen => "toggle fullscreen layout".into(),
@@ -569,6 +610,7 @@ mod tests {
             ("move S", Some(Command::Move(s))),
             ("focus left", Some(Command::Focus(Direction::Left))),
             ("focus next", Some(Command::FocusNext)),
+            ("focus prev", Some(Command::FocusPrev)),
             (
                 "move-direction up",
                 Some(Command::MoveDirection(Direction::Up)),
@@ -725,5 +767,57 @@ mod tests {
             ..base.clone()
         };
         assert!(base.differs_from(&scratchpad));
+    }
+
+    #[test]
+    fn is_built_in_chord_matches_base_shortcuts_and_excludes_fixed_scratchpad_chords() {
+        let base = Modifiers::OPTION;
+        let named = [
+            WorkspaceId::named('A').unwrap(),
+            WorkspaceId::named('F').unwrap(),
+        ];
+        for source in [
+            "alt+1",
+            "alt+shift+0",
+            "alt+h",
+            "alt+shift+l",
+            "alt+shift+f",
+            "alt+shift+space",
+            "alt+tab",
+            "alt+shift+tab",
+            "alt+/",
+            "alt+`",
+            "alt+shift+`",
+            "alt+-",
+            "alt+=",
+            "alt+a",
+            "alt+shift+a",
+            "alt+f",
+        ] {
+            assert!(
+                is_built_in_chord(parse_chord(source).unwrap(), base, &named),
+                "{source} should follow the base modifier"
+            );
+        }
+        for source in [
+            "alt+\\",
+            "alt+shift+\\",
+            "alt+space",
+            "alt+shift+/",
+            "alt+b",
+            "ctrl+alt+h",
+        ] {
+            assert!(
+                !is_built_in_chord(parse_chord(source).unwrap(), base, &named),
+                "{source} should not follow the base modifier"
+            );
+        }
+        // Without workspace F enabled, plain Option+F is not a built-in (only Option+Shift+F is).
+        assert!(!is_built_in_chord(parse_chord("alt+f").unwrap(), base, &[]));
+        assert!(is_built_in_chord(
+            parse_chord("alt+shift+f").unwrap(),
+            base,
+            &[]
+        ));
     }
 }

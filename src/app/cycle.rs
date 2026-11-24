@@ -61,13 +61,22 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
             if !self.parked.contains_key(&window) {
                 continue;
             }
-            // Throttle retries of restores awaiting window-server confirmation
-            // so a slow app is not written to and logged about every cycle.
-            if self
+            let retry_throttled = self
                 .recently_parked
                 .get(&window)
-                .is_some_and(|attempted_at| attempted_at.elapsed() < RESTORE_RETRY_INTERVAL)
-            {
+                .is_some_and(|attempted_at| attempted_at.elapsed() < RESTORE_RETRY_INTERVAL);
+            if let Some(target) = self.scratchpad.pending_summon(&window) {
+                if !matches!(
+                    self.finish_scratchpad_summon(&window, target, retry_throttled),
+                    macos::ApplyOutcome::Applied | macos::ApplyOutcome::Gone
+                ) {
+                    *failed += 1;
+                }
+                continue;
+            }
+            // Throttle retries of restores awaiting window-server confirmation
+            // so a slow app is not written to and logged about every cycle.
+            if retry_throttled {
                 continue;
             }
             if !matches!(
@@ -188,6 +197,7 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
         self.follow_strip_focus(&visible, focused.as_ref().filter(|_| focused_is_frontmost));
         self.restore_visible(&visible, cancelled, &mut failed);
         self.park_inactive(&outputs, &visible, server_frames, cancelled, &mut failed);
+        self.recover_stranded_visible(&outputs, &visible, server_frames, cancelled, &mut failed);
         if cancelled.load(Ordering::Acquire) {
             return Err("workspace operation cancelled".into());
         }
@@ -255,8 +265,9 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
                 .engine_mut(workspace)
                 .remember_insertion_focus(focused);
         }
+        let remembered_focus = self.resolve_focus(focused.clone());
         if focused_is_frontmost
-            && let Some(focused) = focused.as_ref()
+            && let Some(focused) = remembered_focus.as_ref()
             && let Some(workspace) = self.workspaces.workspace_of(focused)
             && self.workspaces.uses_fullscreen_layout(workspace)
             && !attempted_focus_restore.contains(&workspace)
@@ -284,19 +295,23 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
         Ok(status)
     }
 
-    /// A bound window the window server still shows on screen inside this
-    /// output, but which the app's Accessibility snapshot omitted, has not
-    /// gone anywhere: the snapshot is incomplete for that app. Downgrade the
-    /// app to `Unavailable` so reconciliation keeps its slots instead of
+    /// A bound window the window server still shows on screen, but which the
+    /// app's Accessibility snapshot omitted (including a visible window left
+    /// with its center off-display after a display disconnect or shrink), has
+    /// not gone anywhere: the snapshot is incomplete for that app. Downgrade
+    /// the app to `Unavailable` so reconciliation keeps its slots instead of
     /// retiring one and re-adopting the window as new a cycle later. The
     /// omission is believed once it outlasts [`OMISSION_SETTLE`].
     fn guard_omitted_windows(
         &mut self,
         workspace: WorkspaceId,
-        output: crate::Rect,
         observation: &mut crate::NativeObservation,
         onscreen_frames: Option<&HashMap<u32, crate::Rect>>,
+        close_recheck: &mut Option<Instant>,
     ) {
+        if observation.mouse_down {
+            return;
+        }
         let Some(onscreen_frames) = onscreen_frames else {
             return;
         };
@@ -308,7 +323,8 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
         self.omitted_windows
             .retain(|window, _| match self.workspaces.workspace_of(window) {
                 Some(owner) => owner != workspace || !observed.contains(window),
-                None => false,
+                // An omitted float's settle is tracked by affinity freezing.
+                None => self.workspaces.floating_workspace_of(window).is_some(),
             });
         let now = Instant::now();
         for app_observation in &mut observation.applications {
@@ -318,11 +334,7 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
             let settling = bound
                 .iter()
                 .filter(|window| window.app == app.id && !observed.contains(*window))
-                .filter(|window| {
-                    onscreen_frames
-                        .get(&window.window_id)
-                        .is_some_and(|frame| output.contains_center(*frame))
-                })
+                .filter(|window| onscreen_frames.contains_key(&window.window_id))
                 .filter(|window| {
                     let omission = self
                         .omitted_windows
@@ -334,7 +346,14 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
                             );
                             Omission::new(now)
                         });
-                    omission.is_settling(now)
+                    if omission.is_settling(now) {
+                        let deadline = omission.next_recheck(now);
+                        *close_recheck =
+                            Some(close_recheck.map_or(deadline, |other| other.min(deadline)));
+                        true
+                    } else {
+                        false
+                    }
                 })
                 .count();
             if settling == 0 {
@@ -517,7 +536,12 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
             }
         }
         self.observe_parked_strip_columns(workspace, &mut scoped_observation, server_frames);
-        self.guard_omitted_windows(workspace, output, &mut scoped_observation, onscreen_frames);
+        self.guard_omitted_windows(
+            workspace,
+            &mut scoped_observation,
+            onscreen_frames,
+            close_recheck,
+        );
         let apps_with_window_server_evidence = self.apps_with_window_server_evidence(
             workspace,
             &scoped_observation,
@@ -561,7 +585,7 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
         for (window, target) in &routes {
             if !affinity_policy.visible_workspaces.contains(target) {
                 let target_output = output_for(&self.workspaces, *target, outputs);
-                match self.park_window(window, target_output, outputs) {
+                match self.park_window_across(window, output, target_output, outputs) {
                     macos::ApplyOutcome::Applied => {}
                     macos::ApplyOutcome::Gone => {
                         self.forget_window(workspace, window);

@@ -108,7 +108,7 @@ fn recording_saves_the_chord_and_moves_the_built_in_off_its_old_one() {
     let shortcuts = ui.doc.shortcuts();
     let focus_left = catalog::find("focus-left").unwrap();
     assert_eq!(
-        focus_left.chords(&shortcuts),
+        focus_left.chords(&shortcuts, &[]),
         [parse_chord("ctrl+alt+h").unwrap()]
     );
     assert_eq!(shortcuts.binding(parse_chord("alt+h").unwrap()), Some(None));
@@ -155,7 +155,7 @@ fn delete_unbinds_to_none() {
     assert!(
         catalog::find("float")
             .unwrap()
-            .chords(&shortcuts)
+            .chords(&shortcuts, &[])
             .is_empty()
     );
     assert_eq!(
@@ -190,4 +190,165 @@ fn held_modifiers_show_and_clear_a_refusal() {
     assert!(on_input(&mut ui, &PhysicalInput::FocusLost));
     assert_eq!(ui.shortcut_capture, Capture::Idle);
     assert!(!on_input(&mut ui, &PhysicalInput::Modifiers(ALT)));
+}
+
+#[test]
+fn recording_refuses_an_enabled_named_workspace_chord_and_accepts_it_when_absent() {
+    let mut ui = listening("balance");
+    ui.doc = crate::rules::Doc::parse(
+        "version = 1\n[[workspaces]]\nworkspace = 'A'\nmonitor = 'main'\n",
+    );
+    let before = ui.doc.source();
+
+    record(&mut ui, "balance", us(K::KeyA, ALT));
+    assert_eq!(ui.shortcut_capture.listening(), Some("balance"));
+    assert_eq!(message(&ui), Some("Used by Switch to workspace A"));
+    assert_eq!(ui.doc.source(), before);
+
+    record(
+        &mut ui,
+        "balance",
+        us(K::KeyA, mods(true, false, true, false)),
+    );
+    assert_eq!(ui.shortcut_capture.listening(), Some("balance"));
+    assert_eq!(message(&ui), Some("Used by Move window to workspace A"));
+    assert_eq!(ui.doc.source(), before);
+
+    // Named workspace enabled via [[rules]] is also refused, and an overlapping letter (H)
+    // refuses Option+H for Focus left without writing an unbind over workspace H on rebind.
+    let mut ruled = listening("focus-left");
+    ruled.doc = crate::rules::Doc::parse(
+        "version = 1\n[[rules]]\nbundle_id = 'com.example.App'\naction = 'route'\nworkspace = 'H'\n",
+    );
+    record(&mut ruled, "focus-left", us(K::KeyH, ALT));
+    assert_eq!(ruled.shortcut_capture.listening(), Some("focus-left"));
+    assert_eq!(message(&ruled), Some("Used by Switch to workspace H"));
+    record(
+        &mut ruled,
+        "focus-left",
+        us(K::KeyH, mods(true, true, false, false)),
+    );
+    assert_eq!(
+        ruled.shortcut_capture,
+        Capture::Saved {
+            action: "focus-left"
+        }
+    );
+    assert_eq!(
+        ruled.doc.shortcuts().binding(parse_chord("alt+h").unwrap()),
+        None
+    );
+
+    // Control: when workspace A is absent, Option+A is free for Balance layout.
+    let mut absent = listening("balance");
+    absent.doc = crate::rules::Doc::parse("version = 1\n");
+    record(&mut absent, "balance", us(K::KeyA, ALT));
+    assert_eq!(
+        absent.shortcut_capture,
+        Capture::Saved { action: "balance" }
+    );
+    assert_eq!(
+        absent
+            .doc
+            .shortcuts()
+            .binding(parse_chord("alt+a").unwrap()),
+        Some(Some(&shortcuts::Command::Balance))
+    );
+}
+
+#[test]
+fn changing_base_modifier_keeps_unbound_scratchpad_chord_in_place() {
+    let mut ui = listening("balance");
+    ui.doc = crate::rules::Doc::parse(
+        "version = 1\n[labs]\nscratchpad = true\n[shortcuts.bindings]\n'alt+\\' = 'none'\n",
+    );
+    assert!(ui.doc.shortcuts().scratchpad);
+    assert_eq!(
+        ui.doc.shortcuts().binding(parse_chord("alt+\\").unwrap()),
+        Some(None)
+    );
+
+    super::super::set_modifier(&mut ui, catalog::PRESETS[1].1);
+
+    assert_eq!(
+        ui.doc.shortcuts().binding(parse_chord("alt+\\").unwrap()),
+        Some(None)
+    );
+    assert_eq!(
+        ui.doc
+            .shortcuts()
+            .binding(parse_chord("ctrl+alt+\\").unwrap()),
+        None
+    );
+}
+
+fn focus_left_after(presses: Vec<(&'static str, Press)>) -> (Vec<String>, Ui) {
+    let mut ui = crate::playground::blank_fixture();
+    ui.doc = crate::rules::Doc::parse("version = 1\n");
+    for (action, press) in presses {
+        record(&mut ui, action, press);
+    }
+    let action = catalog::find("focus-left").unwrap();
+    let chords = action
+        .chords(&ui.doc.shortcuts(), &[])
+        .iter()
+        .map(|chord| chord.source())
+        .collect();
+    (chords, ui)
+}
+
+fn ctrl_cmd(key: K) -> Press {
+    us(key, mods(false, true, false, true))
+}
+
+#[test]
+fn a_cleared_shortcut_stays_cleared_after_its_old_chord_is_reused() {
+    let (chords, mut ui) = focus_left_after(vec![
+        ("focus-left", Press::Unbind),
+        ("balance", us(K::KeyH, ALT)),
+        ("balance", ctrl_cmd(K::KeyB)),
+    ]);
+    assert_eq!(chords, Vec::<String>::new());
+    assert_eq!(
+        ui.doc.shortcuts().binding(parse_chord("alt+h").unwrap()),
+        Some(None)
+    );
+    // Moving Focus left back to its built-in chord still restores it cleanly.
+    record(&mut ui, "focus-left", us(K::KeyH, ALT));
+    assert_eq!(
+        catalog::find("focus-left")
+            .unwrap()
+            .chords(&ui.doc.shortcuts(), &[])
+            .iter()
+            .map(|c| c.source())
+            .collect::<Vec<_>>(),
+        ["alt+h"]
+    );
+    // Reset to Defaults restores every built-in shortcut.
+    ui.doc.reset_shortcuts();
+    assert!(!ui.doc.has_custom_shortcuts());
+}
+
+#[test]
+fn a_moved_shortcut_keeps_one_chord_after_its_old_chord_is_reused() {
+    let (chords, ui) = focus_left_after(vec![
+        ("focus-left", ctrl_cmd(K::KeyH)),
+        ("balance", us(K::KeyH, ALT)),
+        ("balance", Press::Unbind),
+    ]);
+    assert_eq!(chords, ["ctrl+cmd+h"]);
+    assert_eq!(
+        ui.doc.shortcuts().binding(parse_chord("alt+h").unwrap()),
+        Some(None)
+    );
+}
+
+#[test]
+fn control_an_unrelated_chord_changes_nothing() {
+    let (chords, _) = focus_left_after(vec![
+        ("focus-left", Press::Unbind),
+        ("balance", ctrl_cmd(K::KeyG)),
+        ("balance", ctrl_cmd(K::KeyB)),
+    ]);
+    assert_eq!(chords, Vec::<String>::new());
 }

@@ -67,7 +67,7 @@ monitor = "main"
 # Shortcuts are optional and left commented out, so copying this file keeps every
 # built-in shortcut. Bindings use `spaceman ctl` commands and replace the built-in
 # shortcut on the same chord; "none" unbinds one. Set defaults = false to register
-# only these bindings. Changes apply on the next start. Every chord needs alt, cmd,
+# only these bindings. Changes register live without a restart. Every chord needs alt, cmd,
 # or ctrl, so a plain letter can never be hijacked. Avoid a bare-Option chord such
 # as "alt+left": it replaces macOS's Option+arrow word jump in every text field.
 #

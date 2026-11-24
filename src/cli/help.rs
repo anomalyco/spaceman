@@ -248,8 +248,8 @@ pub(crate) fn ctl_help(executable: &str) -> String {
         "  move-app <bundle-id> <ws>  Move an application's windows to a workspace",
         "",
         "Windows & layout:",
-        "  focus <left|down|up|right|next>",
-        "                             Move focus by direction or cycle to next window",
+        "  focus <left|down|up|right|next|prev>",
+        "                             Move focus by direction or cycle through the workspace's windows",
         "  move-direction <left|down|up|right>",
         "                             Reorder the focused window in a direction",
         "  layout                     Toggle the workspace split axis",
@@ -257,7 +257,7 @@ pub(crate) fn ctl_help(executable: &str) -> String {
         "  float                      Float the focused window above the tiles, or tile it again",
         "  strip                      Toggle Scrolling Strip on the active workspace (Labs)",
         "  resize <shrink|grow>       Adjust the focused window's layout weight",
-        "  balance                    Reset split weights evenly",
+        "  balance                    Equalize the focused tile's immediate split",
         "  retile                     Force a fresh observation and retile",
         "",
         "Labs (need [labs] scratchpad = true):",
@@ -272,7 +272,7 @@ pub(crate) fn ctl_help(executable: &str) -> String {
         "  open-accessibility         Open Accessibility onboarding / System Settings",
         "  check-for-updates          Check for Spaceman updates",
         "  toggle-launch-at-login     Toggle Launch at Login registration",
-        "  restart | quit             Restore windows and restart or quit the agent",
+        "  restart | quit             Restore parked windows and exit the agent (does not relaunch)",
     ]
     .join("\n")
 }

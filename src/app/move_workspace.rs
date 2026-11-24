@@ -23,8 +23,10 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
             return Err("Only one display is connected".into());
         }
         let visible = self.visible_workspaces(&outputs);
+        let reported_focused = self.backend.focused_window();
         let (source_resolved, focused_window) =
             self.focused_visible_workspace(&visible, &outputs)?;
+        let prior_stale = self.take_pending_focus_stale();
         let moved_ws = source_resolved.workspace;
         let source_display_id = source_resolved.display_id;
         let source_output = source_resolved.output;
@@ -228,6 +230,9 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
 
         let mut moved_floating_originals = Vec::new();
         for window in &moved_floating {
+            if self.parked.contains_key(window) {
+                continue;
+            }
             if cancelled.load(Ordering::Acquire) {
                 self.rollback_move_workspace(MoveRollback {
                     moved_ws,
@@ -368,6 +373,13 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
             .set_workspace_monitor(moved_ws, target_selector.clone());
         self.workspaces
             .move_to_display(moved_ws, target_selector.clone(), source_replacement);
+        // The target lane's own active workspace may not be the one shown: a
+        // UUID selector and `secondary` can name the same display.
+        if let Some(shown) =
+            displaced.filter(|shown| self.workspaces.assignment(*shown) != &target_selector)
+        {
+            self.workspaces.set_previous(target_selector.clone(), shown);
+        }
         self.foreground_lanes
             .insert(target_display_id, target_selector);
         if let Some(replacement) = source_replacement {
@@ -384,15 +396,45 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
             self.foreground_lanes.remove(&source_display_id);
         }
 
+        // Translate any floating window still waiting on a pending recovery frame
+        // from the old display onto the new display so restore lands there (#286, #304).
+        for window in &moved_floating {
+            let Some(&recovery) = self.parked.get(window) else {
+                continue;
+            };
+            let current = self
+                .scratchpad
+                .pending_summon(window)
+                .map(|summon| self.restore_target(summon))
+                .unwrap_or(recovery);
+            if source_output.contains_center(current) {
+                let relocated = translate_frame_to_output(current, source_output, target_output);
+                let _: bool = self.record_recovery(window, relocated);
+                if self.scratchpad.pending_summon(window).is_some() {
+                    self.scratchpad.set_pending_summon(window, Some(relocated));
+                }
+            }
+            if !matches!(
+                self.restore_window(window),
+                macos::ApplyOutcome::Applied | macos::ApplyOutcome::Gone
+            ) {
+                failed += 1;
+            }
+            if !self.parked.contains_key(window) {
+                self.scratchpad.set_pending_summon(window, None);
+            }
+        }
+
         let moved_windows = self.workspaces.windows(moved_ws);
         let outcome = self.focus_workspace_entry(
             moved_ws,
             &moved_windows,
-            focused_window,
+            reported_focused,
             frontmost_before,
             false,
+            prior_stale,
         );
-        self.follow_pointer_for_workspace(moved_ws, target_output, outcome);
+        self.follow_pointer_for_workspace(moved_ws, target_output, outcome, &outputs);
         self.persist_workspace_state_if_changed()?;
         log_event!(
             "move-workspace complete: workspace {} -> {} in {}ms",
@@ -410,7 +452,7 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
         visible: &[ResolvedWorkspace],
         outputs: &macos::DisplayOutputs,
     ) -> Result<(ResolvedWorkspace, Option<crate::PhysicalWindowId>), String> {
-        let focused = self.backend.focused_window();
+        let focused = self.current_focus();
         if let Some(window) = focused.as_ref() {
             if let Some(workspace) = self.workspaces.workspace_of_any(window)
                 && let Some(resolved) = visible.iter().find(|entry| entry.workspace == workspace)
@@ -428,9 +470,17 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
                 return Ok((resolved.clone(), Some(window.clone())));
             }
         }
+        // No visible window has focus, as on an empty workspace: the one
+        // switched to last is the focused one, wherever it shows.
+        let last_focused = self.last_focused_workspace;
         visible
             .iter()
-            .find(|entry| entry.display_id == outputs.main().id)
+            .find(|entry| Some(entry.workspace) == last_focused)
+            .or_else(|| {
+                visible
+                    .iter()
+                    .find(|entry| entry.display_id == outputs.main().id)
+            })
             .or_else(|| visible.first())
             .cloned()
             .map(|resolved| (resolved, focused))

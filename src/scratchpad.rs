@@ -53,6 +53,8 @@ pub struct ScratchpadEntry {
     pub size: Option<(i32, i32)>,
     /// The workspace it floats on while shown; `None` while hidden (parked off-screen).
     pub shown_on: Option<WorkspaceId>,
+    /// Centered frame a summon requested that the window server has not confirmed yet.
+    pub pending_summon: Option<Rect>,
 }
 
 /// Scratchpad windows in toggle order: a toggle summons the first one not already shown on the
@@ -96,6 +98,7 @@ impl ScratchpadState {
             window,
             size,
             shown_on: None,
+            pending_summon: None,
         });
         true
     }
@@ -152,6 +155,21 @@ impl ScratchpadState {
         }
     }
 
+    #[must_use]
+    pub fn pending_summon(&self, window: &PhysicalWindowId) -> Option<Rect> {
+        self.entry(window).and_then(|entry| entry.pending_summon)
+    }
+
+    pub fn set_pending_summon(&mut self, window: &PhysicalWindowId, frame: Option<Rect>) {
+        if let Some(entry) = self
+            .entries
+            .iter_mut()
+            .find(|entry| &entry.window == window)
+        {
+            entry.pending_summon = frame;
+        }
+    }
+
     /// Hides `window` and sends it to the back of the order, so the next toggle summons the
     /// window after it. `size` replaces the remembered size when known.
     pub fn mark_hidden(&mut self, window: &PhysicalWindowId, size: Option<(i32, i32)>) {
@@ -159,6 +177,7 @@ impl ScratchpadState {
             return;
         };
         entry.shown_on = None;
+        entry.pending_summon = None;
         entry.size = size.or(entry.size);
         self.entries.push_back(entry);
     }

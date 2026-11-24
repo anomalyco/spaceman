@@ -245,7 +245,7 @@ const SHORTCUTS: [string, React.ReactNode][] = [
   ["Switch workspace", <><Kbd>⌥1</Kbd><span className="text-[#6b6e76]">…</span><Kbd>⌥0</Kbd></>],
   ["Send the window to a workspace", <><Kbd>⌥⇧1</Kbd><span className="text-[#6b6e76]">…</span><Kbd>⌥⇧0</Kbd></>],
   ["Back to the last workspace", <Kbd>⌥Tab</Kbd>],
-  ["Next window", <Kbd>⌥`</Kbd>],
+  ["Next or previous window", <><Kbd>⌥`</Kbd><Kbd>⌥⇧`</Kbd></>],
   ["Focus left, down, up, right", <><Kbd>⌥H</Kbd><Kbd>J</Kbd><Kbd>K</Kbd><Kbd>L</Kbd></>],
   ["Move the tile", <><Kbd>⌥⇧H</Kbd><Kbd>J</Kbd><Kbd>K</Kbd><Kbd>L</Kbd></>],
   ["Flip the split", <Kbd>⌥/</Kbd>],

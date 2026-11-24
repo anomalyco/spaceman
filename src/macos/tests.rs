@@ -5,7 +5,7 @@ use crate::{AppInstanceId, DisplaySelector, PhysicalWindowId, Rect};
 use super::{
     DisplayOutput, DisplayOutputs,
     apply::{group_placements_by_app, position_matches},
-    ax::{WindowServerWindow, top_window_at_point},
+    ax::{WindowServerWindow, should_ignore_missing_window_id, top_window_at_point},
     events::running_application_instances,
     frontmost_application, is_process_incarnation_running, process_start_time,
 };
@@ -192,4 +192,25 @@ fn window_event_monitor_wakes_parked_run_loop_on_refresh_and_drop() {
         "parked event monitor took {:?} to wake and stop",
         stop_started.elapsed()
     );
+}
+
+#[test]
+fn missing_window_id_skips_non_standard_elements_like_finders_desktop() {
+    // Finder reports the desktop as an AXScrollArea / AXDesktop entry without a CGWindowID.
+    assert!(should_ignore_missing_window_id(
+        Some("AXScrollArea"),
+        Some("AXDesktop"),
+    ));
+    assert!(should_ignore_missing_window_id(Some("AXScrollArea"), None));
+    assert!(should_ignore_missing_window_id(
+        Some("AXWindow"),
+        Some("AXDesktop"),
+    ));
+    // Standard windows or unreadable elements stay conservative (Unavailable).
+    assert!(!should_ignore_missing_window_id(
+        Some("AXWindow"),
+        Some("AXStandardWindow"),
+    ));
+    assert!(!should_ignore_missing_window_id(Some("AXWindow"), None));
+    assert!(!should_ignore_missing_window_id(None, None));
 }

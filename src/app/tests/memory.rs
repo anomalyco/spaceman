@@ -567,3 +567,96 @@ fn moving_a_recalled_window_journals_a_wrong_recall_without_marking_the_app() {
     );
     assert!(!runtime.memory.memory.returns(BUNDLE));
 }
+
+/// #122: a window that claims a floating placement floats again on its
+/// remembered workspace, keeps its frame across cycles, and tiles on toggle.
+#[test]
+fn a_recalled_floating_placement_keeps_the_window_floating() {
+    let window = relaunched(10);
+    let original = frame(50);
+    let mut remembered = WindowMemory::default();
+    assert!(remembered.record(
+        BUNDLE,
+        vec![RememberedWindow {
+            workspace: WorkspaceId::ONE,
+            frame: original,
+            floating: true,
+        }],
+        1,
+    ));
+    let mut runtime = runtime(backend_with(&[(window.clone(), original)]));
+    runtime.restore_window_memory(remembered);
+    let cancelled = AtomicBool::new(false);
+
+    for _ in 0..2 {
+        runtime.cycle(outputs(), &cancelled).unwrap();
+        assert_eq!(recalls(&runtime), vec![(10, WorkspaceId::ONE)]);
+        assert_eq!(runtime.workspaces.workspace_of(&window), None);
+        assert_eq!(
+            runtime.workspaces.floating_workspace_of(&window),
+            Some(WorkspaceId::ONE)
+        );
+        assert_eq!(runtime.backend.frames[&window], original);
+    }
+
+    runtime.backend.focused = Some(window.clone());
+    runtime.toggle_float(outputs(), &cancelled).unwrap();
+    assert_eq!(
+        runtime.workspaces.workspace_of(&window),
+        Some(WorkspaceId::ONE)
+    );
+}
+
+#[test]
+fn bare_executables_without_bundle_ids_do_not_share_placement_memory() {
+    let make = |pid, window_id| crate::PhysicalWindowId {
+        app: AppInstanceId {
+            pid,
+            launched_at: pid as u64,
+        },
+        window_id,
+    };
+    let a = make(2, 10);
+    let b = make(3, 20);
+    let backend = FakeBackend {
+        frames: [(a.clone(), frame(50))].into_iter().collect(),
+        observation: Some(observation_for("unknown", &a, frame(50))),
+        ..FakeBackend::default()
+    };
+    let mut rt = runtime(backend);
+    rt.restore_window_memory(crate::window_memory::WindowMemory::default());
+    rt.memory.started_at = Some(Instant::now() - crate::app::memory::RECALL_WINDOW);
+    let cancel = AtomicBool::new(false);
+    let three = WorkspaceId::new(3).unwrap();
+    rt.switch(three, outputs(), &cancel).unwrap();
+    for _ in 0..3 {
+        rt.cycle(outputs(), &cancel).unwrap();
+    }
+    for (_, since) in rt.memory.pending.values_mut() {
+        *since -= crate::app::memory::MEMORY_SETTLE;
+    }
+    rt.cycle(outputs(), &cancel).unwrap();
+    assert_eq!(rt.workspaces.workspace_of(&a), Some(three));
+    assert!(
+        rt.backend
+            .window_memory
+            .as_ref()
+            .and_then(|memory| memory.get("unknown"))
+            .is_none(),
+        "unknown bare executables must not be stored in shared placement memory"
+    );
+
+    rt.switch(WorkspaceId::ONE, outputs(), &cancel).unwrap();
+    assert!(rt.parked.contains_key(&a));
+
+    rt.backend.frames.insert(b.clone(), frame(120));
+    let mut observation = observation_for("unknown", &a, frame(50));
+    observation
+        .applications
+        .extend(observation_for("unknown", &b, frame(120)).applications);
+    rt.backend.observation = Some(observation);
+    rt.cycle(outputs(), &cancel).unwrap();
+
+    assert_eq!(rt.workspaces.workspace_of(&b), Some(WorkspaceId::ONE));
+    assert!(!rt.parked.contains_key(&b));
+}

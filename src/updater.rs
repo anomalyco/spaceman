@@ -68,7 +68,7 @@ enum Available {
     /// The channel setting names another channel, whose release waits for
     /// the user to confirm the switch.
     Switch {
-        channel: String,
+        channel: UpdateChannel,
         version: String,
         sha256: String,
     },
@@ -92,6 +92,7 @@ enum Phase {
 /// A verified update waiting for Install & Restart.
 #[derive(Clone, Debug, Eq, PartialEq)]
 struct StagedUpdate {
+    channel: UpdateChannel,
     staged: bundle::Staged,
     sha256: String,
     version: String,
@@ -102,9 +103,9 @@ struct StagedUpdate {
 struct Core {
     phase: Phase,
     staged: Option<StagedUpdate>,
-    /// The SHA-256 of the other channel's release the user agreed to switch
-    /// to; the next check takes it.
-    confirmed_switch: Option<String>,
+    /// The channel and SHA-256 of the other channel's release the user agreed
+    /// to switch to; the next check on that channel takes it.
+    confirmed_switch: Option<(UpdateChannel, String)>,
     check_requested: bool,
     stop: bool,
 }
@@ -120,7 +121,7 @@ impl Core {
                 }),
                 _,
             ) => UiUpdateStatus::Switch {
-                channel: channel.clone(),
+                channel: channel.as_str().into(),
                 version: version.clone(),
             },
             (Phase::Available(Available::Download { version, .. }), _) => {
@@ -269,10 +270,13 @@ impl Updater {
     /// the next check, which starts now, downloads and stages it.
     pub(crate) fn confirm_switch(&self) {
         let mut core = self.shared.lock();
-        let Phase::Available(Available::Switch { sha256, .. }) = &core.phase else {
+        let Phase::Available(Available::Switch {
+            channel, sha256, ..
+        }) = &core.phase
+        else {
             return;
         };
-        core.confirmed_switch = Some(sha256.clone());
+        core.confirmed_switch = Some((*channel, sha256.clone()));
         core.phase = Phase::Checking;
         core.check_requested = true;
         drop(core);
@@ -297,24 +301,67 @@ impl Updater {
     /// Swaps in the staged update and schedules its launch for when this
     /// process exits. Call only once every parked window has been restored.
     pub(crate) fn install(&self) -> Result<String, String> {
-        self.apply(updates_dir(), |staged| bundle::install(staged, true))
+        self.apply_for(Some(channel()), updates_dir(), |staged| {
+            bundle::install(staged, true)
+        })
     }
 
     /// Quitting with an update ready installs it for the next launch, as
     /// Install & Restart does but without relaunching. Call only once every
     /// parked window has been restored. `None` when no update was ready.
     pub(crate) fn install_on_quit(&self) -> Option<Result<String, String>> {
-        self.ready()
-            .then(|| self.apply(updates_dir(), |staged| bundle::install(staged, false)))
+        self.install_on_quit_for(channel(), updates_dir(), |staged| {
+            bundle::install(staged, false)
+        })
     }
 
-    fn apply(
+    fn install_on_quit_for(
         &self,
+        selected: UpdateChannel,
+        updates: Result<PathBuf, String>,
+        install: impl FnOnce(&bundle::Staged) -> Result<(), String>,
+    ) -> Option<Result<String, String>> {
+        let discarded = {
+            let mut core = self.shared.lock();
+            if !core.live() {
+                return None;
+            }
+            match core.staged.as_ref() {
+                None => return None,
+                Some(update) if update.channel != selected => core.staged.take(),
+                Some(_) => None,
+            }
+        };
+        if let Some(update) = discarded {
+            bundle::discard(&update.staged);
+            self.shared.changed();
+            return None;
+        }
+        Some(self.apply_for(Some(selected), updates, install))
+    }
+
+    fn apply_for(
+        &self,
+        selected: Option<UpdateChannel>,
         updates: Result<PathBuf, String>,
         install: impl FnOnce(&bundle::Staged) -> Result<(), String>,
     ) -> Result<String, String> {
         let mut core = self.shared.lock();
         if !core.live() {
+            return Err("no update is ready".into());
+        }
+        if let Some(selected) = selected
+            && core
+                .staged
+                .as_ref()
+                .is_some_and(|staged| staged.channel != selected)
+        {
+            let discarded = core.staged.take();
+            drop(core);
+            if let Some(update) = discarded {
+                bundle::discard(&update.staged);
+            }
+            self.shared.changed();
             return Err("no update is ready".into());
         }
         let update = core.staged.take().ok_or("no update is ready")?;
@@ -393,8 +440,8 @@ fn run(shared: &Shared, installed: &Path, method: Method) {
     let mut cache = transport::ManifestCache::default();
     let mut failures = 0;
     loop {
-        shared.set_phase(Phase::Checking);
         let channel = channel();
+        prepare_check(shared, channel);
         let interval = match channel {
             UpdateChannel::Stable => CHECK_INTERVAL,
             UpdateChannel::Dev => DEV_CHECK_INTERVAL,
@@ -481,6 +528,38 @@ fn discard_staged(shared: &Shared) {
     }
 }
 
+/// Drops any staged update or pending switch confirmation from another channel
+/// before fetching the selected channel's manifest, so an offline check failure
+/// cannot leave an abandoned channel switch ready to install on quit.
+fn prepare_check(shared: &Shared, selected: UpdateChannel) {
+    let discarded = {
+        let mut core = shared.lock();
+        if !core.live() {
+            return;
+        }
+        if core
+            .confirmed_switch
+            .as_ref()
+            .is_some_and(|(channel, _)| *channel != selected)
+        {
+            core.confirmed_switch = None;
+        }
+        if core
+            .staged
+            .as_ref()
+            .is_some_and(|staged| staged.channel != selected)
+        {
+            core.staged.take()
+        } else {
+            None
+        }
+    };
+    if let Some(update) = discarded {
+        bundle::discard(&update.staged);
+    }
+    shared.set_phase(Phase::Checking);
+}
+
 fn check(
     shared: &Shared,
     installed: &Path,
@@ -508,8 +587,17 @@ fn check(
     let decision = protocol::decide(APP, ARTIFACT, channel.as_str(), &manifest, &install);
     let (confirmed, staged) = {
         let mut core = shared.lock();
-        let staged = core.staged.as_ref().map(|staged| staged.sha256.clone());
-        (core.confirmed_switch.take(), staged)
+        let staged = core
+            .staged
+            .as_ref()
+            .filter(|staged| staged.channel == channel)
+            .map(|staged| staged.sha256.clone());
+        let confirmed = core
+            .confirmed_switch
+            .take()
+            .filter(|(confirmed_channel, _)| *confirmed_channel == channel)
+            .map(|(_, sha256)| sha256);
+        (confirmed, staged)
     };
     match plan(decision, method, confirmed.as_deref(), staged.as_deref()) {
         Plan::Reject(reason) => Err(format!("the update manifest was rejected: {reason}")),
@@ -523,7 +611,7 @@ fn check(
             // The staged update is the old channel's; the switch replaces it.
             discard_staged(shared);
             Ok(Phase::Available(Available::Switch {
-                channel: channel.as_str().into(),
+                channel,
                 version,
                 sha256,
             }))
@@ -542,8 +630,13 @@ fn check(
             transport::prune(&updates, None);
             let executable = transport::sha256_hex(&staged.update.join(bundle::EXECUTABLE))
                 .map_err(|error| error.to_string())?;
+            if self::channel() != channel {
+                bundle::discard(&staged);
+                return Ok(Phase::Idle);
+            }
             log(&format!("{version} is ready to install"));
             let update = StagedUpdate {
+                channel,
                 staged,
                 sha256: target.sha256,
                 version,

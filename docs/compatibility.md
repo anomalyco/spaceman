@@ -23,17 +23,18 @@ Accessibility grants live in **System Settings > Privacy & Security**. The list 
 app tile in that list, so the setup guide asks for a click on the Privacy & Security notification or
 the list's `+` button instead.
 
-Spaceman observes Accessibility elements with role `AXWindow` and subrole `AXStandardWindow` that are
-on screen, not minimized, not in native fullscreen, centered on an attached display, and expose a
-settable position. Standard windows with an enabled fullscreen button (or borderless regular-app
-windows without close/fullscreen buttons, such as Ghostty with `window-decoration = false`) and a
-settable size can tile, including standard windows at floating window level (`kCGWindowLayer = 3`,
-such as a popped-out Slack Huddle). Modal windows, standard windows whose fullscreen button is
-disabled or absent while a close button is present (such as file Open/Save panels, settings windows,
-and splash screens), movable non-resizable windows, and windows matched by a `float` rule retain their
-frame but park and reveal with their logical workspace. Buttonless accessory-application windows,
-utility panels, dialogs with other subroles, and applications with incomplete or unusual Accessibility
-implementations may remain global or be ignored.
+Spaceman observes normal-level (`kCGWindowLayer = 0`) Accessibility elements with role `AXWindow`
+and subrole `AXStandardWindow` that are on screen, not minimized, not in native fullscreen, centered
+on an attached display, and expose a settable position. Standard windows with an enabled fullscreen
+button (or borderless regular-app windows without close/fullscreen buttons, such as Ghostty with
+`window-decoration = false`) and a settable size can tile. Modal windows, standard windows whose
+fullscreen button is disabled or absent while a close button is present (such as file Open/Save
+panels, settings windows, and splash screens), movable non-resizable windows, and windows matched by
+a `float` rule retain their frame but park and reveal with their logical workspace. Always-on-top
+overlays at non-zero window layers (`kCGWindowLayer != 0`, such as popped-out Slack Huddles and
+Picture-in-Picture windows), buttonless accessory-application windows, utility panels, dialogs with
+other subroles, and applications with incomplete or unusual Accessibility implementations remain
+global and are ignored so Spaceman never fights their bounds.
 
 Some applications reposition their own windows. If a parked window reappears on screen while its
 application is frontmost, the user summoned it: the stale recovery frame is discarded and the window —

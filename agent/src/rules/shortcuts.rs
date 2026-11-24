@@ -2,7 +2,10 @@
 //! and every other binding survive. A built-in shortcut moved to a new chord leaves `none` on
 //! its old one, and moving it back home removes both.
 
-use spaceman::shortcuts::{self, Chord, Command, Modifiers, Shortcuts};
+use spaceman::{
+    WorkspaceId,
+    shortcuts::{self, Chord, Command, Key, Modifiers, Shortcuts},
+};
 use toml_edit::{Item, Table, TableLike, value};
 
 use super::Doc;
@@ -27,17 +30,46 @@ impl Doc {
         let Ok(Some(target)) = shortcuts::parse_command(command) else {
             return;
         };
-        let defaults = self.shortcuts().defaults;
-        let default = default.filter(|_| defaults);
+        let shortcuts = self.shortcuts();
+        let named = self.named_workspaces();
+        let default = default.filter(|_| shortcuts.defaults);
         let bindings = self.bindings_mut();
         let ours = bound_keys(bindings, |bound| bound == Some(&target));
+        let mut vacated_built_ins = Vec::new();
         for key in ours {
+            if let Ok(old) = shortcuts::parse_chord(&key) {
+                let keep_as_none = chord != Some(old)
+                    && (default == Some(old) || is_implicit_shortcut(old, &shortcuts, &named));
+                if keep_as_none {
+                    super::set_table_item(bindings, &key, value("none"));
+                    continue;
+                }
+                if default != Some(old)
+                    && chord != Some(old)
+                    && is_implicit_shortcut(old, &shortcuts, &named)
+                {
+                    vacated_built_ins.push(old);
+                }
+                if chord == Some(old) && default != Some(old) {
+                    continue;
+                }
+            }
             bindings.remove(&key);
         }
         if let Some(chord) = chord {
-            remove_chord(bindings, chord);
-            if default != Some(chord) {
+            if default == Some(chord) {
+                remove_chord(bindings, chord);
+            } else if let Some(existing) = find_chord(bindings, chord) {
+                super::set_table_item(bindings, &existing, value(command));
+            } else {
                 bindings.insert(&chord.source(), value(command));
+            }
+        }
+        // Moving or clearing a command that had taken over another built-in chord leaves `none`
+        // on that chord so the previously cleared or moved built-in shortcut stays inactive.
+        for vacated in vacated_built_ins {
+            if find_chord(bindings, vacated).is_none() {
+                bindings.insert(&vacated.source(), value("none"));
             }
         }
         // The built-in shortcut keeps its chord unless something claims it.
@@ -51,43 +83,62 @@ impl Doc {
     }
 
     /// Sets the modifiers every built-in shortcut holds. A built-in shortcut unbound with
-    /// `none` stays unbound on its new chord.
+    /// `none` stays unbound on its new chord; fixed chords (such as Scratchpad's `alt+\`)
+    /// stay put because they do not follow `modifier`.
     pub fn set_shortcut_modifier(&mut self, modifier: Modifiers) {
-        let old = self.shortcuts().modifier;
+        let shortcuts = self.shortcuts();
+        let old = shortcuts.modifier;
         if old == modifier {
             return;
         }
-        let bindings = self.bindings_mut();
-        let unbound = bound_keys(bindings, |bound| bound.is_none());
-        for key in unbound {
-            let Ok(chord) = shortcuts::parse_chord(&key) else {
-                continue;
-            };
-            let modifiers = if chord.modifiers == old {
-                modifier
-            } else if chord.modifiers == old.with_shift() {
-                modifier.with_shift()
-            } else {
-                continue;
-            };
-            bindings.remove(&key);
-            let moved = Chord { modifiers, ..chord };
-            if find_chord(bindings, moved).is_none() {
-                bindings.insert(&moved.source(), value("none"));
+        if shortcuts.defaults {
+            let named = self.named_workspaces();
+            let bindings = self.bindings_mut();
+            let unbound = bound_keys(bindings, |bound| bound.is_none());
+            let overridden = bound_keys(bindings, |bound| bound.is_some());
+            let mut suppress_moved = Vec::new();
+            for key in unbound {
+                let Ok(chord) = shortcuts::parse_chord(&key) else {
+                    continue;
+                };
+                if !shortcuts::is_built_in_chord(chord, old, &named) {
+                    continue;
+                }
+                bindings.remove(&key);
+                suppress_moved.push(chord);
+            }
+            for key in overridden {
+                let Ok(chord) = shortcuts::parse_chord(&key) else {
+                    continue;
+                };
+                if shortcuts::is_built_in_chord(chord, old, &named) {
+                    suppress_moved.push(chord);
+                }
+            }
+            for chord in suppress_moved {
+                let modifiers = if chord.modifiers.shift {
+                    modifier.with_shift()
+                } else {
+                    modifier
+                };
+                let moved = Chord { modifiers, ..chord };
+                if find_chord(bindings, moved).is_none() {
+                    bindings.insert(&moved.source(), value("none"));
+                }
             }
         }
         let table = self.shortcuts_table_mut();
         if modifier == Modifiers::OPTION {
             table.remove("modifier");
         } else {
-            table.insert("modifier", value(modifier.source()));
+            super::set_table_item(table, "modifier", value(modifier.source()));
         }
         self.tidy_shortcuts();
     }
 
     /// Back to the built-in shortcuts: `[shortcuts]` leaves the file.
     pub fn reset_shortcuts(&mut self) {
-        self.doc.remove("shortcuts");
+        self.remove_table("shortcuts");
     }
 
     fn shortcuts_table(&self) -> Option<&dyn TableLike> {
@@ -108,22 +159,23 @@ impl Doc {
 
     /// Drops a `[shortcuts.bindings]` or `[shortcuts]` table an edit emptied.
     fn tidy_shortcuts(&mut self) {
-        let Some(table) = self
+        let bindings_empty = self
             .doc
-            .get_mut("shortcuts")
-            .and_then(Item::as_table_like_mut)
-        else {
-            return;
-        };
-        if table
-            .get("bindings")
+            .get("shortcuts")
+            .and_then(Item::as_table_like)
+            .and_then(|table| table.get("bindings"))
+            .and_then(Item::as_table_like)
+            .is_some_and(TableLike::is_empty);
+        if bindings_empty {
+            self.remove_subtable("shortcuts", "bindings");
+        }
+        if self
+            .doc
+            .get("shortcuts")
             .and_then(Item::as_table_like)
             .is_some_and(TableLike::is_empty)
         {
-            table.remove("bindings");
-        }
-        if table.is_empty() {
-            self.doc.remove("shortcuts");
+            self.remove_table("shortcuts");
         }
     }
 }
@@ -174,6 +226,20 @@ fn remove_chord(bindings: &mut dyn TableLike, chord: Chord) {
     if let Some(key) = find_chord(bindings, chord) {
         bindings.remove(&key);
     }
+}
+
+/// Whether removing `chord` from `[shortcuts.bindings]` would re-expose an implicit shortcut
+/// (a built-in default under `shortcuts.defaults`, or a fixed Scratchpad chord).
+fn is_implicit_shortcut(chord: Chord, shortcuts: &Shortcuts, named: &[WorkspaceId]) -> bool {
+    (shortcuts.defaults && shortcuts::is_built_in_chord(chord, shortcuts.modifier, named))
+        || (shortcuts.scratchpad && is_scratchpad_chord(chord))
+}
+
+fn is_scratchpad_chord(chord: Chord) -> bool {
+    chord.key == Key::Character('\\')
+        && !chord.modifiers.control
+        && !chord.modifiers.command
+        && chord.modifiers.option
 }
 
 #[cfg(test)]

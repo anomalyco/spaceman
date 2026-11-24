@@ -184,7 +184,9 @@ impl Engine {
         else {
             return false;
         };
-        let mut layout = self.display_layout().clone();
+        // Swap inside the requested layout so swapping two tiles while a
+        // minimum-width fit temporarily stacks them does not save that stack.
+        let mut layout = self.layout.clone();
         if !layout.swap(first, second) {
             return false;
         }
@@ -202,7 +204,7 @@ impl Engine {
     ) -> bool {
         let canvas = settings.canvas();
         let current = settings.spacing.untile(current);
-        self.edit_slot(window, |layout, slot| layout.resize(slot, current, canvas))
+        self.edit_weights(window, |layout, slot| layout.resize(slot, current, canvas))
     }
 
     pub(crate) fn remember_insertion_focus(&mut self, window: &PhysicalWindowId) {
@@ -267,7 +269,7 @@ impl Engine {
         settings: &Settings,
     ) -> bool {
         let canvas = settings.canvas();
-        self.edit_slot(window, |layout, slot| {
+        self.edit_weights(window, |layout, slot| {
             layout.resize_by(slot, direction, amount, canvas)
         })
     }
@@ -278,7 +280,7 @@ impl Engine {
         settings: &Settings,
     ) -> bool {
         let canvas = settings.canvas();
-        self.edit_slot(window, |layout, slot| layout.balance(slot, canvas))
+        self.edit_weights(window, |layout, slot| layout.balance(slot, canvas))
     }
 
     pub(crate) fn create_implicit_split(
@@ -359,6 +361,42 @@ impl Engine {
         }
         self.layout = layout;
         self.commit_layout();
+        true
+    }
+
+    /// Edits tile sizes. While the display shows an automatic grouping the
+    /// requested layout lacks, the edit changes only that temporary fit:
+    /// saving it would make the grouping permanent.
+    fn edit_weights(
+        &mut self,
+        window: &PhysicalWindowId,
+        op: impl FnOnce(&mut LayoutTree, crate::SlotId) -> bool,
+    ) -> bool {
+        let requested = &self.layout;
+        let Some(tree) = self
+            .fit
+            .as_mut()
+            .and_then(|fit| fit.tree.as_mut())
+            .filter(|tree| tree.regroups(requested))
+        else {
+            return self.edit_slot(window, op);
+        };
+        let Some(slot) = self
+            .model
+            .workspace
+            .slots
+            .iter()
+            .find(|slot| slot.bound_window() == Some(window))
+            .map(|slot| slot.id)
+        else {
+            return false;
+        };
+        let mut edited = tree.clone();
+        if !op(&mut edited, slot) {
+            return false;
+        }
+        *tree = edited;
+        self.invalidate();
         true
     }
 

@@ -583,3 +583,98 @@ fn unmanaged_route_is_rejected_before_insertion() {
     assert!(runtime.cycle(outputs(), &AtomicBool::new(false)).is_err());
     assert_eq!(runtime.workspaces.workspace_of(&window), None);
 }
+
+#[test]
+fn startup_splash_window_does_not_suppress_bundle_route_for_main_window() {
+    let splash = window(640);
+    let main_window = window(641);
+    let splash_frame = crate::Rect {
+        x: 350,
+        y: 250,
+        width: 300,
+        height: 300,
+    };
+    let main_frame = crate::Rect {
+        x: 50,
+        y: 30,
+        width: 900,
+        height: 700,
+    };
+    let config = Config::parse(
+        "version = 1\n[[rules]]\nbundle_id = 'com.example.Discord'\naction = 'route'\nworkspace = 6",
+    )
+    .unwrap();
+
+    // Start focused on workspace 2 (main display); workspace 6 is active on secondary.
+    let mut splash_obs = observation_for_windows(
+        "com.example.Discord",
+        &splash,
+        &[(splash.clone(), splash_frame)],
+    );
+    if let crate::AppObservation::Complete { windows, .. } = &mut splash_obs.applications[0] {
+        windows[0].resizable = false;
+    }
+    let backend = FakeBackend {
+        frames: HashMap::from([(splash.clone(), splash_frame)]),
+        focused: Some(splash.clone()),
+        frontmost: Some(splash.app.clone()),
+        observation: Some(splash_obs),
+        ..FakeBackend::default()
+    };
+    let mut rt = runtime_with_config(backend, config);
+    let cancel = AtomicBool::new(false);
+    rt.switch(WorkspaceId::TWO, outputs(), &cancel).unwrap();
+    rt.cycle(outputs(), &cancel).unwrap();
+    assert_eq!(
+        rt.workspaces.floating_workspace_of(&splash),
+        Some(WorkspaceId::SIX),
+        "startup splash window follows the app's route rule"
+    );
+
+    // Main resizable window opens while the splash is still alive: it must still
+    // route to workspace 6 instead of tiling on active workspace 2.
+    let mut both_obs = observation_for_windows(
+        "com.example.Discord",
+        &main_window,
+        &[
+            (splash.clone(), splash_frame),
+            (main_window.clone(), main_frame),
+        ],
+    );
+    if let crate::AppObservation::Complete { windows, .. } = &mut both_obs.applications[0] {
+        windows[0].resizable = false;
+        windows[1].resizable = true;
+    }
+    rt.backend.frames.insert(main_window.clone(), main_frame);
+    rt.backend.focused = Some(main_window.clone());
+    rt.backend.observation = Some(both_obs);
+    rt.cycle(outputs(), &cancel).unwrap();
+    assert_eq!(
+        rt.workspaces.workspace_of(&main_window),
+        Some(WorkspaceId::SIX),
+        "main window must follow the bundle route rule even while splash is alive"
+    );
+
+    // Control: a second tiled window opened later still lands on the current display.
+    let secondary = window(642);
+    let mut with_second = observation_for_windows(
+        "com.example.Discord",
+        &secondary,
+        &[
+            (main_window.clone(), rt.backend.frames[&main_window]),
+            (secondary.clone(), main_frame),
+        ],
+    );
+    if let crate::AppObservation::Complete { windows, .. } = &mut with_second.applications[0] {
+        windows[0].resizable = true;
+        windows[1].resizable = true;
+    }
+    rt.backend.frames.insert(secondary.clone(), main_frame);
+    rt.backend.focused = Some(secondary.clone());
+    rt.backend.observation = Some(with_second);
+    rt.cycle(outputs(), &cancel).unwrap();
+    assert_eq!(
+        rt.workspaces.workspace_of(&secondary),
+        Some(WorkspaceId::TWO)
+    );
+}

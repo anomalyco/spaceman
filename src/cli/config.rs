@@ -10,7 +10,8 @@ use spaceman::{
 use super::{
     Outcome,
     document::{
-        ConfigDoc, EffectiveSettings, RuleView, WorkspaceDoc, resolve_config_path, to_json_pretty,
+        ConfigDoc, EffectiveSettings, RuleView, ShortcutsDoc, WorkspaceDoc, resolve_config_path,
+        to_json_pretty,
     },
     help,
 };
@@ -27,9 +28,12 @@ struct ShowOutput {
     exists: bool,
     version: u32,
     settings: EffectiveSettings,
+    #[serde(skip_serializing_if = "LabsConfig::is_default")]
     labs: LabsConfig,
     rules: Vec<RuleView>,
     workspaces: Vec<WorkspaceDoc>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    shortcuts: Option<ShortcutsDoc>,
 }
 
 #[derive(Serialize)]
@@ -89,17 +93,6 @@ impl SettingKey {
             Self::MouseFollowsFocus => "mouse_follows_focus",
             Self::Spacing(key) => key.path(),
         }
-    }
-}
-
-fn parse_bool(key: SettingKey, raw: &str) -> Result<bool, String> {
-    match raw {
-        "true" => Ok(true),
-        "false" => Ok(false),
-        _ => Err(format!(
-            "invalid value for {}: expected 'true' or 'false', got {raw:?}",
-            key.as_str()
-        )),
     }
 }
 
@@ -176,14 +169,17 @@ fn run_show(args: &[&str], path_override: Option<&Path>) -> Result<String, Strin
     let path = resolve_config_path(path_override)?;
     let (doc, exists) = ConfigDoc::load_or_default(&path)?;
     if json {
+        let settings = doc.effective_settings();
+        let rules = doc.rule_views();
         to_json_pretty(&ShowOutput {
             path: path.display().to_string(),
             exists,
             version: doc.version,
-            settings: doc.effective_settings(),
+            settings,
             labs: doc.labs,
-            rules: doc.rule_views(),
+            rules,
             workspaces: doc.workspaces,
+            shortcuts: doc.shortcuts,
         })
     } else {
         doc.render_effective_toml()
@@ -242,84 +238,124 @@ fn run_get(args: &[&str], path_override: Option<&Path>) -> Result<String, String
     }
 }
 
+enum SettingValue {
+    Hud(bool),
+    HudStyle(HudStyle),
+    UpdateChannel(UpdateChannel),
+    Lab(LabFeature, bool),
+    MouseFollowsFocus(MouseFollowsFocus),
+    Spacing(SpacingKey, i64),
+}
+
+impl SettingValue {
+    fn parse(key: SettingKey, raw_value: &str) -> Result<Self, String> {
+        match key {
+            SettingKey::Hud => match raw_value {
+                "true" => Ok(Self::Hud(true)),
+                "false" => Ok(Self::Hud(false)),
+                _ => Err(format!(
+                    "invalid value for hud: expected 'true' or 'false', got {raw_value:?}"
+                )),
+            },
+            SettingKey::HudStyle => HudStyle::parse(raw_value)
+                .map(Self::HudStyle)
+                .ok_or_else(|| {
+                    format!(
+                        "invalid value for hud_style: expected 'icons' or 'layouts', got {raw_value:?}"
+                    )
+                }),
+            SettingKey::UpdateChannel => UpdateChannel::parse(raw_value)
+                .map(Self::UpdateChannel)
+                .ok_or_else(|| {
+                    format!(
+                        "invalid value for update_channel: expected 'stable' or 'dev', got {raw_value:?}"
+                    )
+                }),
+            SettingKey::Lab(feature) => match raw_value {
+                "true" => Ok(Self::Lab(feature, true)),
+                "false" => Ok(Self::Lab(feature, false)),
+                _ => Err(format!(
+                    "invalid value for {}: expected 'true' or 'false', got {raw_value:?}",
+                    key.as_str()
+                )),
+            },
+            SettingKey::MouseFollowsFocus => MouseFollowsFocus::parse(raw_value)
+                .map(Self::MouseFollowsFocus)
+                .ok_or_else(|| {
+                    format!(
+                        "invalid value for mouse_follows_focus: expected 'off', 'display', or 'window', got {raw_value:?}"
+                    )
+                }),
+            SettingKey::Spacing(spacing_key) => {
+                let parsed = raw_value.parse::<i64>().map_err(|_| {
+                    format!(
+                        "invalid value for {}: expected a whole number of points, got {raw_value:?}",
+                        spacing_key.path()
+                    )
+                })?;
+                spacing_key.check(parsed)?;
+                Ok(Self::Spacing(spacing_key, parsed))
+            }
+        }
+    }
+}
+
 fn run_set(args: &[&str], path_override: Option<&Path>) -> Result<String, String> {
     let (json, positional) = split_json_flag(args)?;
     let [raw_key, raw_value] = positional.as_slice() else {
         return Err("usage: spaceman config set <key> <value> [--json]".into());
     };
     let key = SettingKey::parse(raw_key)?;
+    let parsed_value = SettingValue::parse(key, raw_value)?;
     let path = resolve_config_path(path_override)?;
-    let (mut doc, _) = ConfigDoc::load_or_default(&path)?;
 
-    let (text, value) = match key {
-        SettingKey::Hud => {
-            let parsed = parse_bool(key, raw_value)?;
-            doc.settings.hud = Some(parsed);
-            (
-                format!("set hud = {parsed}"),
-                serde_json::Value::Bool(parsed),
-            )
-        }
-        SettingKey::HudStyle => {
-            let parsed = HudStyle::parse(raw_value).ok_or_else(|| {
-                format!(
-                    "invalid value for hud_style: expected 'icons' or 'layouts', got {raw_value:?}"
+    let (text, value) = ConfigDoc::edit_locked(&path, |doc| {
+        let output = match parsed_value {
+            SettingValue::Hud(parsed) => {
+                doc.settings.hud = Some(parsed);
+                (
+                    format!("set hud = {parsed}"),
+                    serde_json::Value::Bool(parsed),
                 )
-            })?;
-            doc.settings.hud_style = Some(parsed);
-            (
-                format!("set hud_style = {}", parsed.as_str()),
-                serde_json::Value::String(parsed.as_str().to_owned()),
-            )
-        }
-        SettingKey::UpdateChannel => {
-            let parsed = UpdateChannel::parse(raw_value).ok_or_else(|| {
-                format!(
-                    "invalid value for update_channel: expected 'stable' or 'dev', got {raw_value:?}"
+            }
+            SettingValue::HudStyle(parsed) => {
+                doc.settings.hud_style = Some(parsed);
+                (
+                    format!("set hud_style = {}", parsed.as_str()),
+                    serde_json::Value::String(parsed.as_str().to_owned()),
                 )
-            })?;
-            doc.settings.update_channel = Some(parsed);
-            (
-                format!("set update_channel = {}", parsed.as_str()),
-                serde_json::Value::String(parsed.as_str().to_owned()),
-            )
-        }
-        SettingKey::MouseFollowsFocus => {
-            let parsed = MouseFollowsFocus::parse(raw_value).ok_or_else(|| {
-                format!(
-                    "invalid value for mouse_follows_focus: expected 'off', 'display', or 'window', got {raw_value:?}"
+            }
+            SettingValue::UpdateChannel(parsed) => {
+                doc.settings.update_channel = Some(parsed);
+                (
+                    format!("set update_channel = {}", parsed.as_str()),
+                    serde_json::Value::String(parsed.as_str().to_owned()),
                 )
-            })?;
-            doc.settings.mouse_follows_focus = Some(parsed);
-            (
-                format!("set mouse_follows_focus = {}", parsed.as_str()),
-                serde_json::Value::String(parsed.as_str().to_owned()),
-            )
-        }
-        SettingKey::Lab(feature) => {
-            let parsed = parse_bool(key, raw_value)?;
-            doc.labs.set(feature, parsed);
-            (
-                format!("set {} = {parsed}", key.as_str()),
-                serde_json::Value::Bool(parsed),
-            )
-        }
-        SettingKey::Spacing(key) => {
-            let parsed = raw_value.parse::<i64>().map_err(|_| {
-                format!(
-                    "invalid value for {}: expected a whole number of points, got {raw_value:?}",
-                    key.path()
+            }
+            SettingValue::Lab(feature, parsed) => {
+                doc.labs.set(feature, parsed);
+                (
+                    format!("set {} = {parsed}", key.as_str()),
+                    serde_json::Value::Bool(parsed),
                 )
-            })?;
-            let value = doc.settings.set_spacing(key, parsed)?;
-            (
-                format!("set {} = {value}", key.path()),
-                serde_json::Value::from(value),
-            )
-        }
-    };
-
-    doc.save_atomic(&path)?;
+            }
+            SettingValue::MouseFollowsFocus(parsed) => {
+                doc.settings.mouse_follows_focus = Some(parsed);
+                (
+                    format!("set mouse_follows_focus = {}", parsed.as_str()),
+                    serde_json::Value::String(parsed.as_str().to_owned()),
+                )
+            }
+            SettingValue::Spacing(spacing_key, parsed) => {
+                let value = doc.settings.set_spacing(spacing_key, parsed)?;
+                (
+                    format!("set {} = {value}", spacing_key.path()),
+                    serde_json::Value::from(value),
+                )
+            }
+        };
+        Ok((output, true))
+    })?;
     if json {
         to_json_pretty(&SettingOutput {
             path: Some(path.display().to_string()),

@@ -142,6 +142,30 @@ fn modifier_moves_unbound_built_ins_with_it() {
 }
 
 #[test]
+fn modifier_keeps_fixed_scratchpad_unbinds_in_place() {
+    let mut doc = Doc::parse(
+        "version = 1\n[labs]\nscratchpad = true\n[[workspaces]]\nworkspace = \"A\"\nmonitor = \"main\"\n[shortcuts.bindings]\n'alt+\\' = 'none'\n'alt+shift+\\' = 'none'\n'alt+h' = 'none'\n'alt+a' = 'none'\n",
+    );
+    let ctrl_alt = Modifiers {
+        control: true,
+        option: true,
+        ..Modifiers::default()
+    };
+    doc.set_shortcut_modifier(ctrl_alt);
+    let doc = saved(&doc);
+    // Fixed Scratchpad chords stay on Option+\ and Option+Shift+\.
+    assert_eq!(bound(&doc, "alt+\\"), Some(None));
+    assert_eq!(bound(&doc, "alt+shift+\\"), Some(None));
+    assert_eq!(bound(&doc, "ctrl+alt+\\"), None);
+    assert_eq!(bound(&doc, "ctrl+alt+shift+\\"), None);
+    // Built-in layout and enabled named workspace unbinds still follow the base modifier.
+    assert_eq!(bound(&doc, "ctrl+alt+h"), Some(None));
+    assert_eq!(bound(&doc, "ctrl+alt+a"), Some(None));
+    assert_eq!(bound(&doc, "alt+h"), None);
+    assert_eq!(bound(&doc, "alt+a"), None);
+}
+
+#[test]
 fn reset_removes_the_table_and_keeps_everything_else() {
     let mut doc = Doc::parse(SOURCE);
     doc.set_shortcut_modifier(Modifiers {
@@ -155,4 +179,124 @@ fn reset_removes_the_table_and_keeps_everything_else() {
     assert!(!source.contains("shortcuts"), "{source}");
     assert!(source.contains("# Spaceman configuration."), "{source}");
     assert_eq!(doc.shortcuts(), Shortcuts::default());
+}
+
+#[test]
+fn vacating_a_borrowed_built_in_or_scratchpad_chord_leaves_none() {
+    let mut doc = Doc::parse(
+        "version = 1\n[labs]\nscratchpad = true\n[[workspaces]]\nworkspace = \"A\"\nmonitor = \"main\"\n",
+    );
+    // Unbind Focus left (alt+h), Workspace A (alt+a), and Scratchpad (alt+\), borrow each with
+    // Balance, then move Balance away: each vacated implicit chord stays `none`.
+    doc.set_shortcut("focus left", Some(chord("alt+h")), None);
+    doc.set_shortcut("balance", None, Some(chord("alt+h")));
+    doc.set_shortcut("balance", None, Some(chord("ctrl+cmd+b")));
+    let doc = saved(&doc);
+    assert_eq!(bound(&doc, "alt+h"), Some(None));
+    assert_eq!(
+        bound(&doc, "ctrl+cmd+b"),
+        Some(Some("balance layout".into()))
+    );
+
+    let mut doc = doc;
+    doc.set_shortcut("balance", None, Some(chord("alt+a")));
+    doc.set_shortcut("balance", None, None);
+    let doc = saved(&doc);
+    assert_eq!(bound(&doc, "alt+a"), Some(None));
+
+    let mut doc = doc;
+    doc.set_shortcut("balance", None, Some(chord("alt+\\")));
+    doc.set_shortcut("balance", None, None);
+    let doc = saved(&doc);
+    assert_eq!(bound(&doc, "alt+\\"), Some(None));
+}
+
+#[test]
+fn clearing_or_rebinding_explicit_built_in_shortcut_preserves_retained_key_comment() {
+    let source = "version = 1\n\n# Shortcut section.\n[shortcuts.bindings]\n# Focus note.\n\"alt+h\" = \"focus left\"\n# Balance note.\n\"alt+shift+b\" = \"balance\"\n";
+    let default = parse_chord("alt+h").unwrap();
+
+    // Clearing keeps alt+h = "none" and its comment.
+    let mut cleared = Doc::parse(source);
+    cleared.set_shortcut("focus left", Some(default), None);
+    let saved = cleared.source();
+    assert!(spaceman::config::Config::parse(&saved).is_ok());
+    assert!(saved.contains("\"alt+h\" = \"none\""));
+    assert!(saved.contains("# Focus note."));
+    assert!(saved.contains("# Balance note."));
+
+    // Rebinding to another chord keeps alt+h = "none" and its comment.
+    let mut rebound = Doc::parse(source);
+    rebound.set_shortcut(
+        "focus left",
+        Some(default),
+        Some(parse_chord("ctrl+cmd+h").unwrap()),
+    );
+    let saved = rebound.source();
+    assert!(spaceman::config::Config::parse(&saved).is_ok());
+    assert!(saved.contains("\"alt+h\" = \"none\""));
+    assert!(saved.contains("\"ctrl+cmd+h\" = \"focus left\""));
+    assert!(saved.contains("# Focus note."));
+    assert!(saved.contains("# Balance note."));
+}
+
+#[test]
+fn modifier_round_trip_preserves_suppression_when_destination_holds_explicit_binding() {
+    let mut doc = Doc::parse("version = 1\n");
+    let ctrl_alt = Modifiers {
+        control: true,
+        option: true,
+        ..Modifiers::default()
+    };
+    let ctrl = Modifiers {
+        control: true,
+        ..Modifiers::default()
+    };
+    doc.set_shortcut(
+        "focus left",
+        Some(chord("alt+h")),
+        Some(chord("ctrl+alt+h")),
+    );
+    assert_eq!(bound(&doc, "ctrl+alt+h"), Some(Some("focus left".into())));
+    assert_eq!(bound(&doc, "alt+h"), Some(None));
+
+    // Switch Base modifier to Control+Option (colliding with ctrl+alt+h) and back to Option.
+    doc.set_shortcut_modifier(ctrl_alt);
+    let mut doc = saved(&doc);
+    assert_eq!(bound(&doc, "ctrl+alt+h"), Some(Some("focus left".into())));
+    assert_eq!(bound(&doc, "alt+h"), None);
+
+    doc.set_shortcut_modifier(Modifiers::OPTION);
+    let mut doc = saved(&doc);
+    assert_eq!(bound(&doc, "ctrl+alt+h"), Some(Some("focus left".into())));
+    assert_eq!(bound(&doc, "alt+h"), Some(None));
+
+    // Two-hop Option -> Control+Option -> Control also keeps focus left on ctrl+alt+h alone.
+    doc.set_shortcut_modifier(ctrl_alt);
+    doc.set_shortcut_modifier(ctrl);
+    let doc = saved(&doc);
+    assert_eq!(bound(&doc, "ctrl+alt+h"), Some(Some("focus left".into())));
+    assert_eq!(bound(&doc, "ctrl+h"), Some(None));
+}
+
+#[test]
+fn resetting_shortcuts_or_choosing_option_preserves_detached_section_heading() {
+    let source = "version = 1\n\n# Keyboard tuning.\n\n[shortcuts]\nmodifier = \"ctrl+alt\"\n\n# Other settings.\n\n[settings]\nhud = false\n";
+
+    let mut reset = Doc::parse(source);
+    reset.reset_shortcuts();
+    let reset_saved = saved(&reset).source();
+    assert!(reset_saved.contains("# Keyboard tuning."), "{reset_saved}");
+    assert!(reset_saved.contains("# Other settings."), "{reset_saved}");
+    assert!(!reset_saved.contains("[shortcuts]"), "{reset_saved}");
+
+    let mut option = Doc::parse(source);
+    option.set_shortcut_modifier(Modifiers::OPTION);
+    let option_saved = saved(&option).source();
+    assert!(
+        option_saved.contains("# Keyboard tuning."),
+        "{option_saved}"
+    );
+    assert!(option_saved.contains("# Other settings."), "{option_saved}");
+    assert!(!option_saved.contains("[shortcuts]"), "{option_saved}");
 }

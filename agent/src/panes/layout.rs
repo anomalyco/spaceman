@@ -5,7 +5,7 @@
 mod preview;
 mod slider;
 
-use rune::{El, Tx, col, icon, row, text};
+use rune::{Color, El, Tx, col, icon, row, text};
 use rune_kit::SegmentedControl;
 use spaceman::spacing::{Spacing, SpacingKey};
 
@@ -89,19 +89,66 @@ pub(crate) fn customize_open(ui: &Ui, spacing: &Spacing) -> bool {
     ui.per_edge.unwrap_or(!uniform(spacing))
 }
 
+/// Which section or row on Layout a `spaceman://` deep link highlights, if any.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum Highlight {
+    Gaps,
+    MaxWidth,
+}
+
+fn highlight_target(ui: &Ui) -> Option<Highlight> {
+    match ui.highlight_feature.as_deref() {
+        Some("gaps") => Some(Highlight::Gaps),
+        Some("max-width" | "single-width") => Some(Highlight::MaxWidth),
+        _ => None,
+    }
+}
+
+fn highlight_style(
+    p: Paint,
+    target: Option<Highlight>,
+    wanted: Highlight,
+) -> Option<(Color, f32, Color)> {
+    (target == Some(wanted)).then_some((p.k.c.layer_02, p.hair, p.k.c.border_focus))
+}
+
+fn apply_highlight(el: El, p: Paint, target: Option<Highlight>, wanted: Highlight) -> El {
+    match highlight_style(p, target, wanted) {
+        Some((fill, width, border)) => el.fill(fill).border(width, border),
+        None => el,
+    }
+}
+
 pub fn pane(ui: &Ui, p: Paint) -> El {
     let spacing = ui.spacing_draft.unwrap_or_else(|| ui.doc.spacing());
     let open = customize_open(ui, &spacing);
-    let width = controls::setting_row(
+    let target = highlight_target(ui);
+    let gaps_card = apply_highlight(
+        controls::card(p, "card", gap_rows(p, &spacing, open)),
         p,
-        "single-width",
-        "Single-window width",
-        Some((
-            "A window alone on its display, and Fullscreen Layout, is centered at this width."
-                .to_owned(),
-            p.muted(),
-        )),
-        width_picker(p, spacing.single_window_max_width),
+        target,
+        Highlight::Gaps,
+    );
+    let gaps = col()
+        .key("gaps")
+        .gap(8.0)
+        .child(controls::heading(p, "header", "Gaps", None))
+        .child(gaps_card);
+    let width = apply_highlight(
+        controls::setting_row(
+            p,
+            "single-width",
+            "Single-window width",
+            Some((
+                "A window alone on its display, and Fullscreen Layout, is centered at this width."
+                    .to_owned(),
+                p.muted(),
+            )),
+            width_picker(p, spacing.single_window_max_width),
+        ),
+        p,
+        target,
+        Highlight::MaxWidth,
     );
     scroll_body(
         "layout-body",
@@ -109,12 +156,7 @@ pub fn pane(ui: &Ui, p: Paint) -> El {
             .key("sections")
             .gap(24.0)
             .child(preview::card(p, spacing))
-            .child(controls::section(
-                p,
-                "gaps",
-                "Gaps",
-                gap_rows(p, &spacing, open),
-            ))
+            .child(gaps)
             .child(controls::section(p, "wide", "Wide displays", vec![width])),
     )
 }
@@ -290,5 +332,47 @@ mod tests {
             ..Spacing::NONE
         };
         assert_eq!((ALL.set)(wide, 8).single_window_max_width, 1680);
+    }
+
+    #[test]
+    fn gaps_deep_link_highlights_gaps_while_ordinary_layout_link_does_not() {
+        use spaceman::deep_link::parse_url;
+
+        let p = Paint::new(true, 2.0);
+        let mut ui = crate::playground::blank_fixture();
+
+        ui.open_target(parse_url("spaceman://features/gaps").unwrap().resolve());
+        assert_eq!(ui.pane, crate::Pane::Layout);
+        let target = highlight_target(&ui);
+        assert_eq!(target, Some(Highlight::Gaps));
+        assert_eq!(
+            highlight_style(p, target, Highlight::Gaps),
+            Some((p.k.c.layer_02, p.hair, p.k.c.border_focus))
+        );
+        assert_eq!(highlight_style(p, target, Highlight::MaxWidth), None);
+        let _ = pane(&ui, p);
+
+        ui.open_target(parse_url("spaceman://settings/layout").unwrap().resolve());
+        assert_eq!(ui.pane, crate::Pane::Layout);
+        let target = highlight_target(&ui);
+        assert_eq!(target, None);
+        assert_eq!(highlight_style(p, target, Highlight::Gaps), None);
+        assert_eq!(highlight_style(p, target, Highlight::MaxWidth), None);
+        let _ = pane(&ui, p);
+
+        ui.open_target(
+            parse_url("spaceman://features/max-width")
+                .unwrap()
+                .resolve(),
+        );
+        assert_eq!(ui.pane, crate::Pane::Layout);
+        let target = highlight_target(&ui);
+        assert_eq!(target, Some(Highlight::MaxWidth));
+        assert_eq!(highlight_style(p, target, Highlight::Gaps), None);
+        assert_eq!(
+            highlight_style(p, target, Highlight::MaxWidth),
+            Some((p.k.c.layer_02, p.hair, p.k.c.border_focus))
+        );
+        let _ = pane(&ui, p);
     }
 }

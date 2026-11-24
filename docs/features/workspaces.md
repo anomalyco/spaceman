@@ -13,11 +13,18 @@ Switch workspace                                           // ws.switch
 ├── Focus -> last-focused tile of the incoming workspace, keyboard focus included
 │   (that window raised and made main, then its app brought forward with `AXFrontmost`), unless
 │   one of its windows already has focus (e.g. focus follow): that window keeps it
-└── Already active -> stays, re-focuses its remembered tile (keeps current focus if it is there)
+└── Already active -> stays and re-focuses its remembered tile (keeps current focus if it is there)
+    ├── Pressed again (`Option+<ws>` / `ctl switch`) while focus is on that workspace -> the
+    │   next tile takes focus, wrapping at the end of the tile order; the way to walk the shared
+    │   frame in Fullscreen Layout
+    ├── Focus on another display's workspace -> only brings focus back; the press after that cycles
+    └── Menu bar or HUD click on the active workspace -> never cycles, keeps the current focus
 
 Swipe                                                      // ws.swipe
-└── Three-finger swipe left/right -> next/previous workspace in the menu section of the display
-    under the pointer (visible + occupied), stops at either end
+├── Three-finger swipe left/right -> next/previous workspace in the menu section of the display
+│   under the pointer (visible + occupied), stops at either end
+└── Suppressed while a pointer button is down or a window drag is active (including macOS
+    Accessibility "Three Finger Drag")
 
 Back-and-forth                                             // ws.back-and-forth
 ├── Option+Tab / ctl back-and-forth -> the workspace focused before this one, on any display
@@ -30,8 +37,10 @@ Back-and-forth                                             // ws.back-and-forth
 Move workspace to another display                          // ws.move-workspace
 ├── Option+Shift+Tab / ctl move-workspace [next|prev|<display>]
 ├── Orders displays left-to-right; wraps around for next/prev; persists assignment to config.toml
+├── With no visible window focused (an empty workspace), moves the workspace switched to last
 ├── Reveals & lays out source display's previous workspace -> lays out moved workspace on target
-│   -> parks target's displaced workspace (which is only that display's lane history)
+│   -> parks target's displaced workspace (which is only that display's lane history, even when
+│   another selector for the same display, such as a UUID, assigns it)
 └── Preserves Fullscreen Layout and focus on the moved workspace (focus history untouched); HUD on both displays
 
 Move window without switching                              // ws.move-window
@@ -40,7 +49,7 @@ Move window without switching                              // ws.move-window
 │   size and relative place); focus follows it and Option+Tab goes back
 ├── Target hidden on another display -> parked off the edge of the display it is on; its recovery
 │   frame moves onto the target's display, so showing the workspace brings it up there
-└── ctl move-app <bundle-id> <ws>     -> every current window of that app
+└── ctl move-app <bundle-id> <ws>     -> every current window of that app, tiled or floating, in one request
 
 Mouse follows focus ([settings] mouse_follows_focus)       // ws.mouse-follows-focus
 ├── "off" (default) -> never moves the pointer
@@ -65,10 +74,11 @@ Where a new window goes (first match wins)                 // ws.adoption
 ├── ignore rule        -> never managed
 ├── route rule         -> that workspace (parked if hidden); bundle-only route rules apply to the
 │                         app's initial window while secondary windows stay on the active workspace
-├── float rule / dialog / non-resizable -> floating on the workspace where first seen
 ├── remembered placement (startup window, first 60 s, or the app relaunched within 30 s of
-│   quitting) -> remembered workspace
-└── otherwise          -> active workspace of the display under the window's center
+│   quitting) -> remembered workspace (floating if matched by a float rule, dialog, non-resizable,
+│   or remembered as floating)
+├── float rule / dialog / non-resizable -> floating on the active workspace under the window's center
+└── otherwise          -> tiled on the active workspace of the display under the window's center
 
 Displays                                                    // ws.displays
 ├── Default: 1-5 main, 6-10 secondary; [[workspaces]] monitor = main | secondary | UUID | name
@@ -78,7 +88,9 @@ Displays                                                    // ws.displays
 │   saved UUID renders back as that display's name
 ├── Preferred display unplugged -> its workspaces fall back to main, return on reconnect; its
 │   saved assignment keeps a Disconnected displays card with the picker on Not connected
-└── Display added or removed -> hidden windows re-parked against the new displays
+└── Display added or removed -> hidden windows re-parked against the new displays; visible owned
+    windows left with their center off every remaining display keep their slots and snap back onto
+    their workspace's display
 
 Workspace HUD ([settings] hud, on by default)               // ws.hud
 ├── A switch, a window moved to another workspace, a split-axis or Fullscreen Layout toggle
@@ -118,7 +130,9 @@ with the original frame persisted to `parked-windows.json` first.
 
 ```ts
 Keyboard (while tiling is enabled)
-├── Option+<1..0 | A..Z>        -> switch
+├── Option+<1..0 | A..Z>        -> switch; pressed again on the active workspace -> next tile
+│                                  (wraps, and is how Fullscreen Layout tiles get focus)
+├── Option+` / Option+Shift+`   -> next / previous window on the workspace, floats included
 ├── Option+Shift+<1..0 | A..Z>  -> move focused window
 ├── Option+Tab                  -> back-and-forth (last two workspaces focused, any display)
 └── Option+Shift+Tab            -> move focused workspace to next display
@@ -148,15 +162,27 @@ on the same letter.
   `workspace_back_and_forth_bounces_between_the_last_two_focused_workspaces`,
   `workspace_back_and_forth_on_one_display_switches_like_before`,
   `switching_to_an_unconfigured_named_workspace_is_rejected`.
+- Unit (FakeBackend), `src/app/tests/switch_repeat.rs`: a repeat `SwitchWorkspace` walks a
+  3-tile workspace A -> B -> C -> A in split and Fullscreen Layout (remembered focus and HUD
+  included), warps the pointer onto each next tile under `mouse_follows_focus`, steps on inside
+  the focus settle window while Accessibility still reports the old window; with focus on another
+  display's workspace the first press only re-focuses and the next one cycles; a float hands focus
+  to the remembered tile; a menu-bar/HUD `SelectWorkspace` on the active workspace never cycles;
+  a single-tile workspace stays put.
 - Unit (FakeBackend), `src/app/tests/cross_display.rs`: moving a window to a workspace on
   another display, on screen (tiled, floating, focus history) or hidden (parked on its own display
   even when a write off the other display's edge is refused, shown on the target display later,
-  left where it was when it cannot be parked). Unit, `src/macos/apply.rs`: a refused size write
+  left where it was when it cannot be parked), dragged floats parking off their actual display on
+  switch or move (issue 148) and relocating from a third display onto the target display (issue
+  152), and `move_app_moves_every_managed_window_of_the_app` (issue 121) and
+  `move_app_moves_floating_windows_too` (issue 136). Unit, `src/macos/apply.rs`: a refused size write
   before a move no longer stops the move; focusing raises the window before bringing its app
   forward, and either `AXFrontmost` or AppKit activation brings the app forward (issue 92).
 - Unit (FakeBackend), `src/app/tests/focus.rs`:
   `a_workspace_switch_that_cannot_focus_keeps_the_focus_restore_pending`,
-  `a_workspace_switch_that_focuses_settles_the_focus_restore`, and the `mouse_follows_focus_*`
+  `a_workspace_switch_that_focuses_settles_the_focus_restore`,
+  `reselecting_the_active_split_workspace_keeps_the_focused_tile` (issue 120),
+  `leaving_with_a_float_focused_keeps_the_remembered_tile` (`float.rs`, issue 138), and the `mouse_follows_focus_*`
   tests covering `off` / `display` / `window`, empty-display centering, same-display and
   in-window skips, `move-workspace` / `move`, passive `cycle()` focus-follow suppression, and
   `mouse_down` guarding (plus `warp_reassociates_immediately_after_warping_and_skips_while_mouse_is_down`
@@ -171,7 +197,11 @@ on the same letter.
   `move_workspace_single_display_is_a_noop`,
   `move_workspace_preserves_fullscreen_layout_and_focused_tile`,
   `move_workspace_persisted_assignment_survives_config_reload`,
-  `move_workspace_replaces_unplugged_assignment_and_rolls_back_on_error`.
+  `move_workspace_replaces_unplugged_assignment_and_rolls_back_on_error`;
+  `src/app/tests/empty_workspace_move.rs` (an empty workspace on a non-main display, issue 201);
+  `src/app/tests/dual_selector_move.rs` (a display with a UUID and a `secondary` selector, issue 202).
+- Unit (FakeBackend), `src/app/tests/reconnect_unsettled.rs`: a tile whose display disconnects
+  before its layout settles returns to its tile on reconnect, and a refusing app stays frozen (issue 203).
 - Unit (FakeBackend), `src/app/tests/tear_regressions.rs` (sequences found by model-based testing):
   `switch_after_moving_a_window_there_survives_async_activation`,
   `frontmost_app_with_a_visible_floating_window_does_not_switch_away`,
@@ -195,9 +225,11 @@ on the same letter.
   `status_menu_lists_each_displays_visible_and_occupied_workspaces` (menu rows per display, checks,
   app order). The AppKit rows themselves (icons, tooltip of app names) are not covered.
 - Unit: `swipes_step_through_the_occupied_workspaces_of_the_display_under_the_pointer`
-  (`src/app/tests/switching.rs`) and the recognizer in `src/swipe.rs` (fires once per swipe; ignores
-  short, vertical and four-finger swipes). The event tap itself (`src/macos/swipes.rs`) is not
-  covered.
+  (`src/app/tests/switching.rs`), the recognizer in `src/swipe.rs` (fires once per swipe; ignores
+  short, vertical and four-finger swipes), pointer-button / three-finger-drag suppression in
+  `src/macos/swipes.rs` and `src/app/input.rs` (issue 151), and visible stranded-window recovery
+  after display disconnect in `src/app/tests/display_disconnect.rs` (issue 150). Live CGEventTap
+  callback delivery in `src/macos/swipes.rs` is not covered.
 - Unit (FakeBackend), `src/app/tests/reconciliation.rs`: adoption order
   (`bundle_route_applies_to_initial_window_while_secondary_windows_stay_on_active_workspace`,
   `title_route_rule_routes_matching_secondary_window`,

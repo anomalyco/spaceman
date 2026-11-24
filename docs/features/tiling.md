@@ -17,11 +17,12 @@ Automatic tiling                                        // tile.auto
 Focus                                                   // tile.focus
 ├── Option+H/J/K/L / ctl focus <dir> -> nearest tile in that direction, crossing displays
 │   └── In Fullscreen Layout -> previous/next tile in stable order (see fullscreen-layout.md)
-└── Option+` / ctl focus next        -> next tile in stable order, wrapping
+└── Option+` / ctl focus next        -> next window: tiles in stable order, then floats, wrapping
+    └── Option+Shift+` / ctl focus prev -> the same ring, backward
 
 Reorder                                                 // tile.reorder
 ├── Option+Shift+H/J/K/L / ctl move-direction <dir> -> swap/move within the tree
-│   ├── At the workspace edge -> moves to the adjacent display's active workspace
+│   ├── At the workspace edge -> moves to the adjacent display's active workspace, even an empty one
 │   └── Perpendicular move    -> re-orients or creates a mixed split
 └── Pointer drag
     ├── Over a sibling     -> live-previewed swap, applied on mouse-up
@@ -66,6 +67,7 @@ pause, quit, or hotkey loss.
   `keyboard_resize_applies_and_persists_the_focused_layout`,
   `balance_applies_and_persists_the_focused_parent_split`,
   `reorder_moves_to_the_adjacent_display_at_a_tile_boundary`,
+  `reorder_moves_to_an_empty_workspace_on_the_adjacent_display` (issue 119),
   `perpendicular_reorder_creates_a_mixed_split_for_three_windows`,
   `layout_toggle_repartitions_and_persists_the_focused_workspace`.
 - Engine and layout tree: `new_window_joins_the_focused_nested_split` and
@@ -82,7 +84,7 @@ pause, quit, or hotkey loss.
   `closed_window_its_app_keeps_ordered_out_gives_up_its_tile` (an app closes its window by ordering it out),
   `workspace_whose_windows_all_leave_the_screen_keeps_its_tiles` (another Space is showing).
 - Unit (FakeBackend), `src/app/tests/minimums.rs`: a window that refuses its tile width gets a wider
-  tile (middle, last, several at once, and observation-cycle cases); a three-window row that cannot fit stacks two neighbors, and a wider display restores the requested row; Fullscreen Layout ignores minimums. `src/layout_tree.rs`:
+  tile (middle, last, several at once, and observation-cycle cases); a three-window row that cannot fit stacks two neighbors, and a wider display restores the requested row; Fullscreen Layout ignores minimums. `src/app/tests/stacked_resize.rs`: a resize while a pair is stacked keeps the saved row (issue 197). `src/layout_tree.rs`:
   `fitting_minimums_reaches_into_nested_splits_and_leaves_impossible_splits_alone`.
 - Spacing, `src/spacing/tests.rs`: outer padding and its 320×240 floor; one tile, two columns and a
   nested three-tile split with inner gaps and asymmetric padding (no overlaps, exact point totals);
@@ -104,7 +106,8 @@ pause, quit, or hotkey loss.
   later (Electron aspect ratios) are still recorded as constrained instead of fought every cycle.
   If the requested split cannot fit, Spaceman tries grouping one adjacent pair of root children
   on the other axis. It checks both width and height and keeps window order. Automatic fits
-  are temporary; the requested layout returns when it fits again. If no pair solves the shortage,
+  are temporary; the requested layout returns when it fits again. A resize or balance while a
+  pair is stacked changes only the stack shown, never the saved split. If no pair solves the shortage,
   windows may overlap. A sustained overlap involving a constrained tile appears in `spaceman doctor`
   as `constrained_overlap`.
 - Some apps (many SwiftUI apps) close a window by ordering it out; the window server keeps

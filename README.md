@@ -129,9 +129,10 @@ Core controls:
 | `Option+Shift+1` ... `Option+Shift+0` | Move the focused window to workspace 1 ... 10 |
 | `Option+A` ... `Option+Z` | Switch to a configured named workspace |
 | `Option+Shift+A` ... `Option+Shift+Z` | Move the focused window to a configured named workspace |
-| `Option+Tab` | Return to the previously focused workspace, on any display |
+| `Option+Tab` | Focus the workspace focused before this one, on any display |
 | `Option+Shift+Tab` | Move the focused workspace to the next display |
-| Option-backtick | Focus the next tiled window in the workspace |
+| Option-backtick | Focus the next window in the workspace, tiled or floating |
+| Option-Shift-backtick | Focus the previous window in the workspace |
 | `Option+H/J/K/L` | Focus left/down/up/right |
 | `Option+Shift+H/J/K/L` | Move the focused tile left/down/up/right |
 | `Option+/` | Toggle the active layout's root split axis |

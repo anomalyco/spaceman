@@ -48,7 +48,7 @@ impl From<UiAction> for Action {
             UiAction::ToggleLaunchAtLogin => Self::ToggleLaunchAtLogin,
             UiAction::SetHud(enabled) => Self::SetHud(enabled),
             UiAction::SwitchWorkspace(workspace) => {
-                Self::Worker(WorkerAction::SwitchWorkspace(workspace))
+                Self::Worker(WorkerAction::SelectWorkspace(workspace))
             }
             UiAction::Retile => Self::Worker(WorkerAction::Retile),
             UiAction::MarkWrong => Self::Worker(WorkerAction::MarkWrong),
@@ -442,7 +442,7 @@ mod tests {
         bridge.send(UiAction::SwitchWorkspace(WorkspaceId::THREE));
         assert_eq!(
             receiver.try_recv().ok(),
-            Some(Action::Worker(WorkerAction::SwitchWorkspace(
+            Some(Action::Worker(WorkerAction::SelectWorkspace(
                 WorkspaceId::THREE
             )))
         );

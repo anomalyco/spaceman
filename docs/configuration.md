@@ -73,7 +73,8 @@ A rule needs at least one of `bundle_id` or `title`. If both are present, both m
 Rules run in file order and the first matching rule wins. An unmatched window is managed normally.
 
 - `float` excludes the window from tiling and resizing, preserves its native frame, and keeps it with
-  the logical workspace where it was first observed.
+  its logical workspace (a remembered workspace during recall, or the active workspace where it was
+  first observed).
 - `route` assigns a newly inserted resizable logical window to workspace 1 through 10 or a configured
   named workspace A through Z. A bundle-level `route` rule (without `title`) applies to the
   application's initial window while secondary windows opened later stay on the active workspace; a
@@ -84,10 +85,10 @@ Rules run in file order and the first matching rule wins. An unmatched window is
   parked. Use it for applications that insist on positioning their own windows. A previously managed
   window is released the next time it is observed on screen.
 
-During the startup recovery window, an unmatched window of an application that has not yet been seen
-in the session may return to a remembered workspace; see
-[Remembered Placements](#remembered-placements). Matching `route` and `ignore` rules always win over
-memory.
+During startup recovery, after a qualifying mid-session relaunch, or for an application marked to
+return, a window not matched by a `route` or `ignore` rule (including one matched by a `float` rule)
+may return to a remembered workspace; see [Remembered Placements](#remembered-placements). Matching
+`route` and `ignore` rules always win over memory.
 
 `[labs]` holds one switch per experimental feature; Settings › Labs writes it, and an all-off
 table is left out of the file. `scrolling_strip_shortcut` picks the strip's toggle (Settings › Labs
@@ -170,13 +171,14 @@ Commands:
 | `back-and-forth` | Return to the previous workspace |
 | `move-workspace [next\|prev\|DISPLAY]` | Move the focused workspace to another display |
 | `focus left\|down\|up\|right` | Focus the nearest tile in that direction |
-| `focus next` | Focus the next tiled window in the workspace |
+| `focus next` | Focus the next window in the workspace: tiles in stable order, then floating windows |
+| `focus prev` | Focus the previous window in that same order |
 | `move-direction left\|down\|up\|right` | Move the focused tile in that direction |
 | `layout` | Toggle the active layout's root split axis |
 | `fullscreen` | Toggle Fullscreen Layout |
 | `float` | Float the focused window, or tile it again |
 | `resize shrink\|grow` | Shrink or grow the focused tile |
-| `balance` | Reset the active workspace's split weights |
+| `balance` | Equalize the focused tile's immediate split |
 | `retile` | Retile now |
 | `none` | Unbind the chord: no built-in shortcut claims it |
 
@@ -217,8 +219,8 @@ scratchpad = false                    # optional (default: false); the i3/sway-s
 ```
 
 `scratchpad = true` enables the Scratchpad (see [Controls › Scratchpad](controls.md#scratchpad-lab)) and
-registers its two shortcuts, `Option+\` and `Option+Shift+\`, the next time Spaceman starts
-(`spaceman ctl restart`); a `[shortcuts]` binding on either chord takes it instead. The
+registers its two shortcuts, `Option+\` and `Option+Shift+\`, live without a restart (or on the next
+hotkey registration if tiling is paused); a `[shortcuts]` binding on either chord takes it instead. The
 `spaceman ctl scratchpad` commands follow the switch live. Turning the switch off while windows are
 hidden in the scratchpad brings them back on screen, where they tile again.
 
@@ -229,16 +231,31 @@ application relaunch. Spaceman therefore also remembers, per application bundle 
 workspace each managed window lived on, whether it floated, and its last on-screen frame. It never
 records window titles.
 
-During the first 60 seconds after Spaceman starts, when an application bundle is seen for the first
-time and owns no windows yet (such as after a reboot or a Spaceman start without valid workspace
-state), its windows may claim those remembered placements:
-first a window whose frame matches a remembered frame within 8 pixels, then the remaining windows in
-creation order. A claimed window joins its remembered workspace (hidden if that workspace is not
-visible). Applications launched later during the session, or relaunched after already having been seen,
-open on the active workspace instead of recalling historical placements. Windows beyond the remembered
-count, windows opened after the recall window closes, and placements on workspaces that are no longer
-enabled or managed are adopted on the active workspace. Multi-window applications that
-restore windows with identical frames are matched by creation order, which is a best guess.
+A new application process that owns no windows yet may claim its remembered placements in three
+cases:
+
+- **Startup recovery:** during the first 60 seconds after Spaceman starts, when an application
+  bundle is seen for the first time in the session (such as after a reboot or a Spaceman start
+  without valid workspace state).
+- **Mid-session relaunch:** after the startup window, when another process of the same application
+  quit within the last 30 seconds or still owns windows (for example, an in-app update or restart
+  that launches the new process before the old one exits).
+- **Returning applications:** when you move a newly opened window to another workspace by hand
+  within 120 seconds of it opening on the active workspace, Spaceman marks that application to
+  return so later launches recall its remembered placements as well.
+
+Matching `route` and `ignore` rules always take precedence over memory (an application with a
+bundle-level `route` rule does not open a recall, and per-window `route` and `ignore` rules skip
+recall). An ordinary later launch without a qualifying relaunch or returning mark opens on the
+active workspace instead of recalling historical placements.
+
+During a 60-second recall window, eligible windows claim remembered placements: first a window whose
+frame matches a remembered frame within 8 pixels, then the remaining windows in creation order. A
+claimed window joins its remembered workspace (hidden if that workspace is not visible, and floating
+again if it was saved floating). Windows beyond the remembered count, windows opened after the
+recall window closes, and placements on workspaces that are no longer enabled or managed are adopted
+on the active workspace. Multi-window applications that restore windows with identical frames are
+matched by creation order, which is a best guess.
 
 A changed arrangement replaces an application's memory only after it holds for 10 seconds while the
 application keeps running, so the windows closing one by one as an application quits do not erase

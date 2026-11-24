@@ -301,6 +301,7 @@ pub struct Workspaces {
     floating_owners: HashMap<PhysicalWindowId, WorkspaceId>,
     enabled: HashSet<WorkspaceId>,
     last_focused: [Option<crate::SlotId>; WorkspaceId::COUNT],
+    last_focused_float: [Option<PhysicalWindowId>; WorkspaceId::COUNT],
     fullscreen_layout: [bool; WorkspaceId::COUNT],
     strip: [crate::strip::StripState; WorkspaceId::COUNT],
 }
@@ -320,6 +321,7 @@ impl Default for Workspaces {
             floating_owners: HashMap::new(),
             enabled: WorkspaceId::numbered().collect(),
             last_focused: std::array::from_fn(|_| None),
+            last_focused_float: std::array::from_fn(|_| None),
             fullscreen_layout: [false; WorkspaceId::COUNT],
             strip: std::array::from_fn(|_| crate::strip::StripState::default()),
         }
@@ -536,7 +538,9 @@ impl Workspaces {
             }
         }
         if self.previous.get(&source).is_some_and(|candidate| {
-            *candidate == workspace || self.active.get(&source) == Some(candidate)
+            *candidate == workspace
+                || Some(*candidate) == source_replacement
+                || self.active.get(&source) == Some(candidate)
         }) {
             self.previous.remove(&source);
         }
@@ -559,6 +563,12 @@ impl Workspaces {
             self.active.insert(display, workspace);
         }
         active
+    }
+
+    /// Records `shown` as `display`'s previous workspace: a move covered it
+    /// there though another selector naming the same display assigns it.
+    pub fn set_previous(&mut self, display: DisplaySelector, shown: WorkspaceId) {
+        self.previous.insert(display, shown);
     }
 
     #[must_use]
@@ -626,16 +636,25 @@ impl Workspaces {
     }
 
     pub(crate) fn own_floating(&mut self, window: PhysicalWindowId, workspace: WorkspaceId) {
-        self.floating_owners.insert(window, workspace);
+        if let Some(previous) = self.floating_owners.insert(window.clone(), workspace)
+            && previous != workspace
+            && self.last_focused_float[previous.index()].as_ref() == Some(&window)
+        {
+            self.last_focused_float[previous.index()] = None;
+        }
     }
 
+    /// The workspace's tiles in stable tile order, then its floats in a stable
+    /// (app instance, window id) order so callers can walk them predictably.
     pub(crate) fn windows(&self, workspace: WorkspaceId) -> Vec<PhysicalWindowId> {
+        let mut floats: Vec<_> = self
+            .floating_entries()
+            .filter(|(_, owner)| *owner == workspace)
+            .map(|(window, _)| window.clone())
+            .collect();
+        floats.sort();
         let mut windows = self.engine(workspace).bound_windows();
-        windows.extend(
-            self.floating_entries()
-                .filter(|(_, owner)| *owner == workspace)
-                .map(|(window, _)| window.clone()),
-        );
+        windows.extend(floats);
         windows
     }
 
@@ -651,8 +670,12 @@ impl Workspaces {
             .map(|slot| &slot.identity_window().app)
     }
 
-    pub(crate) fn app_owns_windows(&self, app: &crate::AppInstanceId) -> bool {
+    pub(crate) fn app_owns_tiled_windows(&self, app: &crate::AppInstanceId) -> bool {
         WorkspaceId::all().any(|workspace| self.app_instances(workspace).any(|owner| owner == app))
+    }
+
+    pub(crate) fn app_owns_windows(&self, app: &crate::AppInstanceId) -> bool {
+        self.app_owns_tiled_windows(app)
             || self.floating_owners.keys().any(|window| &window.app == app)
     }
 
@@ -687,7 +710,11 @@ impl Workspaces {
     }
 
     pub(crate) fn forget_floating(&mut self, window: &PhysicalWindowId) {
-        self.floating_owners.remove(window);
+        if let Some(workspace) = self.floating_owners.remove(window)
+            && self.last_focused_float[workspace.index()].as_ref() == Some(window)
+        {
+            self.last_focused_float[workspace.index()] = None;
+        }
     }
 
     /// The one enabled workspace holding the app's windows, tiled or floating;
@@ -735,8 +762,24 @@ impl Workspaces {
         self.prune_intents(workspace);
     }
 
+    /// Remember `window` as the workspace's focused tile or float. Focusing a
+    /// float records it without overwriting the remembered tile (#138, #240).
     pub(crate) fn remember_focus(&mut self, workspace: WorkspaceId, window: &PhysicalWindowId) {
-        self.last_focused[workspace.index()] = self.engine(workspace).slot_for_window(window);
+        if let Some(slot) = self.engine(workspace).slot_for_window(window) {
+            self.last_focused[workspace.index()] = Some(slot);
+            self.last_focused_float[workspace.index()] = None;
+        } else if self.floating_workspace_of(window) == Some(workspace) {
+            self.last_focused_float[workspace.index()] = Some(window.clone());
+        }
+    }
+
+    /// The workspace's most recently focused floating window, if it still
+    /// belongs to `workspace`.
+    pub(crate) fn preferred_float_focus(&self, workspace: WorkspaceId) -> Option<PhysicalWindowId> {
+        self.last_focused_float[workspace.index()]
+            .as_ref()
+            .filter(|window| self.floating_workspace_of(window) == Some(workspace))
+            .cloned()
     }
 
     pub(crate) fn preferred_focus(&self, workspace: WorkspaceId) -> Option<PhysicalWindowId> {

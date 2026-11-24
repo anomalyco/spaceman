@@ -19,6 +19,36 @@ impl LayoutTree {
         candidate.fit_minimums(output, minimums);
         (candidate != *self).then_some(candidate)
     }
+
+    /// Whether this fit groups tiles that `requested` keeps apart, so it
+    /// differs in more than weights and an edit to it must never be saved.
+    pub(crate) fn regroups(&self, requested: &Self) -> bool {
+        !same_shape(&self.root, &requested.root)
+    }
+}
+
+fn same_shape(left: &Node, right: &Node) -> bool {
+    match (left, right) {
+        (Node::Leaf(left), Node::Leaf(right)) => left == right,
+        (
+            Node::Split {
+                axis: left_axis,
+                children: left,
+            },
+            Node::Split {
+                axis: right_axis,
+                children: right,
+            },
+        ) => {
+            left_axis == right_axis
+                && left.len() == right.len()
+                && left
+                    .iter()
+                    .zip(right)
+                    .all(|(left, right)| same_shape(&left.node, &right.node))
+        }
+        _ => false,
+    }
 }
 
 /// Grouping neighbors on the other axis saves the smaller of their two
