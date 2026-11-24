@@ -113,10 +113,17 @@ spaceman ctl pause   # wait for "mode":"paused" and "busy":false
 spaceman ctl quit    # wait for spaceman-agent to exit
 ```
 
-Confirm windows returned, then:
+Confirm windows returned, then remove the app and CLI (this preserves your configuration and workspace state for a later reinstall):
 
 ```sh
 rm -rf "/Applications/Spaceman.app"
 rm -f "$HOME/.local/bin/spaceman"
+```
+
+(If installed via Homebrew, run `brew uninstall --cask anomalyco/tap/spaceman` instead.)
+
+Only if you also want to erase saved configuration, workspace state, and recovery files after confirming every window has returned:
+
+```sh
 rm -rf "$HOME/Library/Application Support/Spaceman"
 ```
