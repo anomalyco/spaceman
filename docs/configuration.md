@@ -165,7 +165,7 @@ Commands:
 | `fullscreen` | Toggle Fullscreen Layout |
 | `float` | Float the focused window, or tile it again |
 | `resize shrink\|grow` | Shrink or grow the focused tile |
-| `balance` | Reset the active workspace's split weights |
+| `balance` | Equalize the focused tile's immediate split |
 | `retile` | Retile now |
 | `none` | Unbind the chord: no built-in shortcut claims it |
 
