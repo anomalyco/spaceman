@@ -117,6 +117,8 @@ pub enum PlacementSource {
     Recall,
     /// A configured route rule.
     Rule,
+    /// Workspace Overflow (`[labs] overflow`): the active workspace was full.
+    Overflow,
 }
 
 impl PlacementSource {
@@ -126,6 +128,7 @@ impl PlacementSource {
             Self::Active => "opened on the active workspace",
             Self::Recall => "recalled from memory",
             Self::Rule => "routed by a rule",
+            Self::Overflow => "overflowed from a full workspace",
         }
     }
 }

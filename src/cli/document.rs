@@ -37,6 +37,8 @@ pub(crate) struct ConfigDoc {
 pub(crate) struct LabsDoc {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub scratchpad: Option<bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub overflow: Option<u8>,
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]

@@ -12,6 +12,9 @@ pub(super) enum FrozenWindowAffinity {
     /// application's window claimed.
     Inferred(WorkspaceId),
     CurrentDisplay,
+    /// A `CurrentDisplay` window whose display's active workspace was full
+    /// (`[labs] overflow`): it opens on this workspace of the same display.
+    Overflow(WorkspaceId),
     /// Never tiled, owned, or parked (ignore rule or parking exemption).
     Ignored,
 }

@@ -132,6 +132,11 @@ pub struct LabsConfig {
     /// The i3/sway-style Scratchpad ([`crate::scratchpad`]) and its `⌥\` / `⌥⇧\` shortcuts.
     #[serde(default)]
     pub scratchpad: bool,
+    /// Workspace Overflow: the most tiles a newly opened window joins on the
+    /// active workspace before it opens on the next workspace of that display with room
+    /// instead. `0` turns it off.
+    #[serde(default)]
+    pub overflow: u8,
 }
 
 #[derive(Clone, Debug, Default)]
@@ -907,6 +912,23 @@ monitor = "main"
         );
         assert!(Config::parse("version = 1\n[labs]\nwarp_drive = true\n").is_err());
         assert!(Config::parse("version = 1\n[labs]\nscratchpad = 1\n").is_err());
+    }
+
+    #[test]
+    fn parses_labs_overflow_off_by_default() {
+        assert_eq!(Config::default().labs().overflow, 0);
+        assert_eq!(
+            Config::parse("version = 1\n[labs]\n")
+                .unwrap()
+                .labs()
+                .overflow,
+            0
+        );
+        let config = Config::parse("version = 1\n[labs]\noverflow = 4\n").unwrap();
+        assert_eq!(config.labs().overflow, 4);
+        assert!(Config::parse("version = 1\n[labs]\noverflow = -1\n").is_err());
+        assert!(Config::parse("version = 1\n[labs]\noverflow = 300\n").is_err());
+        assert!(Config::parse("version = 1\n[labs]\noverflow = true\n").is_err());
     }
 
     #[test]
