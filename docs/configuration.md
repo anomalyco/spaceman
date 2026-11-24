@@ -48,6 +48,9 @@ right = 0
 [labs]                                # optional; experimental features, each off by default
 scrolling_strip = false               # Scrolling Strip layout, toggled per workspace with its shortcut
 scrolling_strip_shortcut = "alt+shift+s" # optional; the strip's toggle, in [shortcuts] chord syntax
+scrolling_strip_duration_ms = 250     # optional; how long a strip glide feels, 80 through 900
+scrolling_strip_damping = 1.0         # optional; glide spring damping, 0.6 through 1.3
+scrolling_strip_shared_edge = "tuck"  # optional; "tuck" or "slide" at an edge shared with a display
 
 [[rules]]
 bundle_id = "com.example.Application" # optional exact match
@@ -97,6 +100,24 @@ chord syntax, registers only while `scrolling_strip` is on, and claims its chord
 built-in shortcuts; a `[shortcuts]` binding on the same chord still wins. The default gives way to a
 named workspace S's move shortcut. With every switch off Spaceman behaves exactly as without Labs. See
 [Scrolling Strip](features/scrolling-strip.md).
+
+The strip's glide tuning is also on its Settings › Labs card while the strip is on, and each key is
+left out of the file at its default:
+
+- `scrolling_strip_duration_ms` (default `250`, 80 through 900) scales the glide spring: 125 is
+  twice as fast as 250. Settings offers 150, 250, 380 and 520 ms.
+- `scrolling_strip_damping` (default `1.0`, 0.6 through 1.3, kept to hundredths) is the spring's
+  damping ratio: `1.0` arrives without overshoot, lower overshoots a little and settles back
+  (Settings' Bouncy is `0.78`), higher eases in more softly (Soft is `1.18`).
+- `scrolling_strip_shared_edge` (default `"tuck"`) is how columns meet an edge the display shares
+  with another monitor. `"tuck"` keeps them wholly on their own display: one crossing the edge
+  waits there while its neighbor slides over it. `"slide"` lets them glide past the edge until just
+  short of half their width, so macOS still counts them on their own display and, with "Displays
+  have separate Spaces" on (the macOS default), doesn't draw the part past the edge on the other
+  monitor. Columns that come to rest out of view are parked in both modes.
+
+All three reload before the next strip key press, with no restart; a glide already running keeps
+its position and speed and continues on the new spring.
 
 Title matching occurs only in memory. Titles are not serialized into persisted state, snapshots,
 `ctl debug`, or the HUD.

@@ -45,10 +45,12 @@ impl ViewportCamera {
         }
     }
 
-    fn spring(self, now: Instant) -> CameraSpring {
+    /// The camera as a spring with `params`, keeping a running glide's position and velocity.
+    fn spring(self, params: SpringParams, now: Instant) -> CameraSpring {
         match self {
-            Self::Static(position) => CameraSpring::at_rest(SpringParams::default(), position, now),
-            Self::Animating(spring) => spring,
+            Self::Static(position) => CameraSpring::at_rest(params, position, now),
+            Self::Animating(spring) if spring.params() == params => spring,
+            Self::Animating(spring) => spring.retuned(params, now),
         }
     }
 }
@@ -177,6 +179,7 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
     pub(in crate::app) fn steer_strip(&mut self, workspace: WorkspaceId, plan: &StripPlan) -> bool {
         let now = Instant::now();
         let animates = self.backend.presents_motion();
+        let params = self.config.labs().strip_spring();
         let view = &mut self.strip_views.views[workspace.index()];
         let placed: HashMap<_, _> = plan
             .ribbon
@@ -199,7 +202,7 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
                 let velocity = current.map_or(0.0, |s| s.velocity);
                 view.shifts.insert(
                     column.slot,
-                    CameraSpring::with_state(SpringParams::default(), offset, velocity, 0.0, now),
+                    CameraSpring::with_state(params, offset, velocity, 0.0, now),
                 );
                 changed = true;
             }
@@ -306,7 +309,7 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
         let Some(old_camera) = view.camera else {
             return false;
         };
-        let mut camera = old_camera.spring(now);
+        let mut camera = old_camera.spring(self.config.labs().strip_spring(), now);
         camera.retarget(plan.target, now);
         let current_camera = camera.position(now);
         let shift_at = |slot| {

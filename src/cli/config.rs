@@ -3,7 +3,7 @@ use std::path::{Path, PathBuf};
 use serde::Serialize;
 use spaceman::{
     config::{HudStyle, MouseFollowsFocus, UpdateChannel, load_path},
-    labs::{LabFeature, LabsConfig},
+    labs::{GlideDamping, GlideDuration, LabFeature, LabsConfig, SharedEdge},
     spacing::SpacingKey,
 };
 
@@ -58,6 +58,12 @@ enum SettingKey {
     UpdateChannel,
     /// A `[labs]` switch.
     Lab(LabFeature),
+    /// `labs.scrolling_strip_duration_ms`.
+    StripDuration,
+    /// `labs.scrolling_strip_damping`.
+    StripDamping,
+    /// `labs.scrolling_strip_shared_edge`.
+    StripSharedEdge,
     MouseFollowsFocus,
     Spacing(SpacingKey),
 }
@@ -65,9 +71,18 @@ enum SettingKey {
 impl SettingKey {
     fn parse(raw: &str) -> Result<Self, String> {
         if let Some(id) = raw.strip_prefix("labs.") {
-            return LabFeature::from_id(id).map(Self::Lab).ok_or_else(|| {
-                format!("unknown setting {raw:?}; valid labs keys: labs.scrolling_strip")
-            });
+            return match id {
+                "scrolling_strip_duration_ms" => Ok(Self::StripDuration),
+                "scrolling_strip_damping" => Ok(Self::StripDamping),
+                "scrolling_strip_shared_edge" => Ok(Self::StripSharedEdge),
+                _ => LabFeature::from_id(id).map(Self::Lab).ok_or_else(|| {
+                    format!(
+                        "unknown setting {raw:?}; valid labs keys: labs.scrolling_strip, \
+                         labs.scrolling_strip_duration_ms, labs.scrolling_strip_damping, \
+                         labs.scrolling_strip_shared_edge"
+                    )
+                }),
+            };
         }
         match raw.strip_prefix("settings.").unwrap_or(raw) {
             "hud" => Ok(Self::Hud),
@@ -78,7 +93,9 @@ impl SettingKey {
                 format!(
                     "unknown setting {raw:?}; valid keys: hud, hud_style, update_channel, \
                      mouse_follows_focus, gaps.inner, gaps.top, gaps.bottom, gaps.left, \
-                     gaps.right, single_window_max_width, labs.scrolling_strip"
+                     gaps.right, single_window_max_width, labs.scrolling_strip, \
+                     labs.scrolling_strip_duration_ms, labs.scrolling_strip_damping, \
+                     labs.scrolling_strip_shared_edge"
                 )
             }),
         }
@@ -90,6 +107,9 @@ impl SettingKey {
             Self::HudStyle => "hud_style",
             Self::UpdateChannel => "update_channel",
             Self::Lab(LabFeature::ScrollingStrip) => "labs.scrolling_strip",
+            Self::StripDuration => "labs.scrolling_strip_duration_ms",
+            Self::StripDamping => "labs.scrolling_strip_damping",
+            Self::StripSharedEdge => "labs.scrolling_strip_shared_edge",
             Self::MouseFollowsFocus => "mouse_follows_focus",
             Self::Spacing(key) => key.path(),
         }
@@ -218,6 +238,18 @@ fn run_get(args: &[&str], path_override: Option<&Path>) -> Result<String, String
             let enabled = doc.labs.enabled(feature);
             (enabled.to_string(), serde_json::Value::Bool(enabled))
         }
+        SettingKey::StripDuration => {
+            let ms = doc.labs.scrolling_strip_duration_ms.ms();
+            (ms.to_string(), serde_json::Value::from(ms))
+        }
+        SettingKey::StripDamping => {
+            let ratio = doc.labs.scrolling_strip_damping.ratio();
+            (ratio.to_string(), serde_json::Value::from(ratio))
+        }
+        SettingKey::StripSharedEdge => {
+            let mode = doc.labs.scrolling_strip_shared_edge.as_str();
+            (mode.to_owned(), serde_json::Value::String(mode.to_owned()))
+        }
         SettingKey::MouseFollowsFocus => {
             let mode = doc.settings.effective_mouse_follows_focus().as_str();
             (mode.to_owned(), serde_json::Value::String(mode.to_owned()))
@@ -243,6 +275,9 @@ enum SettingValue {
     HudStyle(HudStyle),
     UpdateChannel(UpdateChannel),
     Lab(LabFeature, bool),
+    StripDuration(GlideDuration),
+    StripDamping(GlideDamping),
+    StripSharedEdge(SharedEdge),
     MouseFollowsFocus(MouseFollowsFocus),
     Spacing(SpacingKey, i64),
 }
@@ -279,6 +314,36 @@ impl SettingValue {
                     key.as_str()
                 )),
             },
+            SettingKey::StripDuration => raw_value
+                .parse::<u16>()
+                .map_err(|_| {
+                    format!(
+                        "invalid value for {}: expected a whole number of milliseconds, got {raw_value:?}",
+                        key.as_str()
+                    )
+                })
+                .and_then(GlideDuration::new)
+                .map(Self::StripDuration)
+                .map_err(|error| prefixed(key, error)),
+            SettingKey::StripDamping => raw_value
+                .parse::<f64>()
+                .map_err(|_| {
+                    format!(
+                        "invalid value for {}: expected a number such as 0.78, 1.0 or 1.18, got {raw_value:?}",
+                        key.as_str()
+                    )
+                })
+                .and_then(GlideDamping::new)
+                .map(Self::StripDamping)
+                .map_err(|error| prefixed(key, error)),
+            SettingKey::StripSharedEdge => SharedEdge::parse(raw_value)
+                .map(Self::StripSharedEdge)
+                .ok_or_else(|| {
+                    format!(
+                        "invalid value for {}: expected 'tuck' or 'slide', got {raw_value:?}",
+                        key.as_str()
+                    )
+                }),
             SettingKey::MouseFollowsFocus => MouseFollowsFocus::parse(raw_value)
                 .map(Self::MouseFollowsFocus)
                 .ok_or_else(|| {
@@ -297,6 +362,15 @@ impl SettingValue {
                 Ok(Self::Spacing(spacing_key, parsed))
             }
         }
+    }
+}
+
+/// `error` as an invalid value for `key`, unless it already says so.
+fn prefixed(key: SettingKey, error: String) -> String {
+    if error.starts_with("invalid value") {
+        error
+    } else {
+        format!("invalid value for {}: {error}", key.as_str())
     }
 }
 
@@ -337,6 +411,27 @@ fn run_set(args: &[&str], path_override: Option<&Path>) -> Result<String, String
                 (
                     format!("set {} = {parsed}", key.as_str()),
                     serde_json::Value::Bool(parsed),
+                )
+            }
+            SettingValue::StripDuration(parsed) => {
+                doc.labs.scrolling_strip_duration_ms = parsed;
+                (
+                    format!("set {} = {}", key.as_str(), parsed.ms()),
+                    serde_json::Value::from(parsed.ms()),
+                )
+            }
+            SettingValue::StripDamping(parsed) => {
+                doc.labs.scrolling_strip_damping = parsed;
+                (
+                    format!("set {} = {}", key.as_str(), parsed.ratio()),
+                    serde_json::Value::from(parsed.ratio()),
+                )
+            }
+            SettingValue::StripSharedEdge(parsed) => {
+                doc.labs.scrolling_strip_shared_edge = parsed;
+                (
+                    format!("set {} = {}", key.as_str(), parsed.as_str()),
+                    serde_json::Value::String(parsed.as_str().to_owned()),
                 )
             }
             SettingValue::MouseFollowsFocus(parsed) => {

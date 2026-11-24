@@ -16,6 +16,12 @@ Lab switch (Settings › Labs card / [labs] scrolling_strip / config set labs.sc
 ├── Shortcut (card recorder / [labs] scrolling_strip_shortcut, default alt+shift+s)
 │   └── hot-reloads; claims its chord ahead of built-ins, [shortcuts] bindings still win;
 │       Backspace in the recorder puts the default back                       // strip.shortcut
+├── Glide tuning (card, only while the switch is on / [labs] / config set labs.…)  // strip.tuning
+│   ├── Glide 150 · 250 · 380 · 520 ms   -> scrolling_strip_duration_ms (80-900, default 250)
+│   ├── Feel Bouncy · Snappy · Soft      -> scrolling_strip_damping 0.78 · 1.0 · 1.18 (0.6-1.3)
+│   ├── Next to another display Tuck · Slide -> scrolling_strip_shared_edge "tuck" | "slide"
+│   └── a value the file holds that isn't a preset shows as an extra segment; all hot-reload
+│       before the next key press, and a running glide is retuned in place
 └── How it works (card button) -> dialog: the strip under the display, and its keys
 
 Toggle (focused workspace) Option+Shift+S / ctl strip                         // strip.toggle
@@ -29,14 +35,18 @@ Ribbon and camera (pure math: src/strip.rs)                                   //
 ├── rest_layout(): in view -> its frame (a partly visible column runs off a free edge)
 │                  out of view past a free edge -> 16 pt sliver (PEEK_PX), recorded as parked
 │                  out of view past an edge shared with another display -> parked
-└── Nothing ever crosses a shared edge (ScrollingDisplayBounds clamps it inside)
+└── Nothing shows on the other side of a shared edge (ScrollingDisplayBounds clamps it)
+    ├── Tuck (default): a column stays wholly inside its display
+    ├── Slide: a column may overhang the edge by up to half its width less 8 pt, so its center
+    │          stays on its own display; macOS ("Displays have separate Spaces") clips the rest
     └── Curtain (StripMotion::curtain): a column held at a shared edge stays under the neighbor
         sliding across it: arriving, it is uncovered as the neighbor slides off; leaving, it is
         covered, then parked by the settling layout
 
 Glide (src/app/strip/motion.rs -> src/app/app_loop/glide.rs)                   // strip.glide
 ├── Worker: records every column the glide takes out of view in parked-windows.json and resizes
-│           columns whose width changed, then aims CameraSpring (critically damped, stiffness 800)
+│           columns whose width changed, then aims CameraSpring (by default critically damped,
+│           stiffness 800, SpringParams::for_duration from [labs])
 │           from its current position and velocity; a moved column gets its own offset spring;
 │           sends a StripMotion to the main thread
 ├── Main thread: CADisplayLink runs only while a glide does; each vsync samples the springs and
@@ -94,7 +104,17 @@ Unit (FakeBackend), `src/app/tests/strip.rs`:
 `a_column_arriving_across_a_shared_edge_is_uncovered_then_focused`, and
 `rapid_taps_step_from_a_deferred_focus_and_retry_a_refused_one`. Curtain and free-edge slide-in:
 `a_column_crossing_a_shared_edge_stays_under_the_neighbor_sliding_across_it`,
-`free_edges_tuck_nothing`, `a_column_arriving_past_a_free_edge_slides_in_from_its_sliver`. Ribbon, camera and glide math: `src/strip/tests.rs`
+`free_edges_tuck_nothing`, `a_column_arriving_past_a_free_edge_slides_in_from_its_sliver`. Slide at a
+shared edge: `sliding_past_a_shared_edge_keeps_each_column_centered_on_its_own_display`,
+`sliding_parks_at_rest_and_still_curtains_the_rest_of_the_way` and
+`sliding_lets_a_column_overhang_a_shared_edge_up_to_its_center` (`src/motion/tests.rs`). Glide
+tuning: `the_defaults_are_the_original_spring`, `a_shorter_glide_is_a_proportionally_faster_spring`,
+`tuning_round_trips_and_stays_out_of_the_file_at_its_defaults`, `tuning_out_of_range_is_refused`
+(`src/labs/glide.rs`), `retuning_a_spring_keeps_its_motion_continuous`,
+`strip_glide_tuning_round_trips_and_leaves_defaults_out` (CLI, `src/cli/tests/labs.rs`),
+`glide_tuning_round_trips_and_leaves_its_defaults_out` (Settings, `agent/src/rules/glide.rs`) and
+`pickers_offer_the_presets_and_a_custom_value_from_the_file` (`agent/src/labs/tuning.rs`). Ribbon,
+camera and glide math: `src/strip/tests.rs`
 (minimal scroll, peeks, seams, 120 Hz intermediate frames, retarget continuity). Enhanced UI hand-off:
 `a_restore_owed_during_a_hold_is_paid_when_the_last_sink_closes` (`src/macos/presenter/holds.rs`).
 Persistence: `persisted_strip_round_trips_and_excludes_fullscreen_layout`. Config:
@@ -112,6 +132,8 @@ Settings › Labs -> Scrolling Strip switch on
 Focus a window on the workspace
 └── Option+Shift+S (or the shortcut picked on the card) / spaceman ctl strip -> toggle
 Settings › Labs -> How it works -> the strip and its keys
+Settings › Labs -> Scrolling Strip card -> Glide / Feel / Next to another display
+└── spaceman config set labs.scrolling_strip_duration_ms 380   (likewise _damping, _shared_edge)
 ```
 
 ## Existing Checks
@@ -136,6 +158,11 @@ Settings › Labs -> How it works -> the strip and its keys
   settles. Before this, a column leaving across the seam stayed on screen after the glide; heal
   then took it for its app un-parking itself and, the second time, exempted it from parking for
   the session.
+- **Slide needs separate Spaces.** `scrolling_strip_shared_edge = "slide"` relies on macOS drawing
+  a window only on the display that holds its center, which is what "Displays have separate
+  Spaces" (on by default) does. With it off, the half of a column past the edge shows on the other
+  monitor mid-glide. Slide only changes the glide and a partly visible column's rest: a column that
+  ends out of view is parked as in Tuck, never left resting past the edge.
 - **Peek sliver vs. macOS clamping.** macOS keeps a window's title bar below the menu bar but
   doesn't pull a window back horizontally: parking keeps 1 point on screen and stays put, and the
   strip's 16-point sliver is wider than that.

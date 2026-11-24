@@ -5,8 +5,9 @@
 //!
 //! Past a free display edge an off-screen column keeps a [`PEEK_PX`] sliver visible, so it
 //! glides off and back on instead of vanishing. Against an edge shared with another monitor a
-//! column stays inside the display, and once the camera rests the columns beyond it are parked
-//! like an inactive workspace's windows. Everything here is pure geometry: the worker decides
+//! column stays inside the display (or, with `scrolling_strip_shared_edge = "slide"`, keeps its
+//! center inside), and once the camera rests the columns beyond it are parked like an inactive
+//! workspace's windows. Everything here is pure geometry: the worker decides
 //! rest layouts with it, and the main thread samples a [`StripMotion`] every display frame.
 
 use std::time::{Duration, Instant};
@@ -367,20 +368,18 @@ impl StripMotion {
     /// What the glide must keep stacked: the columns it holds against an edge shared with
     /// another display, now or once it arrives, and the columns that slide across them.
     ///
-    /// A column can't cross a shared edge without showing on the other display, so it waits
-    /// inside the display at that edge (see [`column_x`]) while its neighbor slides over or off
-    /// it. With the neighbor on top, an arriving column is uncovered like a curtain drawn back
+    /// A column can't cross a shared edge without showing on the other display, so it waits at
+    /// that edge (inside the display, or in [`crate::motion::SharedEdge::Slide`] half past it; see
+    /// [`column_x`]) while its neighbor slides over or off it. With the neighbor on top, an arriving column is uncovered like a curtain drawn back
     /// and a leaving one is covered before it is parked; on top itself, it would pop over its
     /// neighbor on the first frame.
     #[must_use]
     pub fn curtain(&self, now: Instant) -> Curtain {
-        let (left, right) = (self.output.x, self.output.x + self.output.width);
         let (camera_now, camera_end) = (self.camera.position(now), self.camera.target());
         let place = |world_x: f64, width: i32, camera: f64| {
             let desired = (f64::from(self.output.x) + world_x - camera).round() as i32;
             let x = column_x(self.output, &self.bounds, world_x, width, camera);
-            let tucked = x != desired && x >= left && x + width <= right;
-            (x, tucked)
+            (x, self.bounds.holds_at_shared_edge(desired, width, PEEK_PX))
         };
         let spans: Vec<_> = self
             .columns

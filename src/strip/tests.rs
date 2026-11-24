@@ -1,5 +1,8 @@
 use super::*;
-use crate::{AppInstanceId, motion::SpringParams};
+use crate::{
+    AppInstanceId,
+    motion::{SLIDE_CENTER_MARGIN, SharedEdge, SpringParams},
+};
 
 const AREA: Rect = Rect {
     x: 0,
@@ -360,4 +363,66 @@ fn a_column_arriving_past_a_free_edge_slides_in_from_its_sliver() {
     }
     assert_eq!(last, 600);
     assert!(moving_frames > 20, "moved on {moving_frames} frames");
+}
+
+/// `seam_right` with columns sliding past the seam as far as their center allows.
+fn slide_right() -> ScrollingDisplayBounds {
+    seam_right().with_shared_edge(SharedEdge::Slide)
+}
+
+/// In Slide, a column arriving across the seam starts half past it and slides in on every
+/// frame of its second half, while its center never leaves this display.
+#[test]
+fn sliding_past_a_shared_edge_keeps_each_column_centered_on_its_own_display() {
+    let start = Instant::now();
+    let motion = glide(0.0, 600.0, start, slide_right());
+    let farthest = AREA.width - 300 - SLIDE_CENTER_MARGIN;
+    assert_eq!(x_of(&motion.positions(start), 3), farthest);
+    let mut at = start;
+    let mut seen = std::collections::BTreeSet::new();
+    while at < motion.settles_at(start) {
+        for (window, (x, _)) in motion.positions(at) {
+            assert!(
+                x + 300 < AREA.width,
+                "{window:?} at {x}: its center crosses the seam"
+            );
+            if window.window_id == 3 {
+                seen.insert(x);
+            }
+        }
+        at += Duration::from_millis(4);
+    }
+    assert!(seen.len() > 20, "column 3 took {} positions", seen.len());
+    assert_eq!(x_of(&motion.final_positions(), 3), 600);
+}
+
+/// Slide still keeps the columns that rest out of view parked rather than half on screen, and
+/// the neighbor still slides over the one waiting at the seam.
+#[test]
+fn sliding_parks_at_rest_and_still_curtains_the_rest_of_the_way() {
+    let strip = ribbon(&columns(&[StripWidth::TwoThirds; 3]), 1200);
+    let layout = rest_layout(AREA, &slide_right(), &strip, 0.0);
+    assert_eq!(
+        layout.columns,
+        vec![
+            (SlotId(1), ColumnRest::Visible(frame(0, 800))),
+            // Partly in view: it overhangs the seam by a little under half its width.
+            (
+                SlotId(2),
+                ColumnRest::Visible(frame(400 + 400 - SLIDE_CENTER_MARGIN, 800))
+            ),
+            (SlotId(3), ColumnRest::Parked),
+        ]
+    );
+    let start = Instant::now();
+    let arriving = glide(0.0, 600.0, start, slide_right()).curtain(start);
+    assert_eq!(ids(&arriving.tucked), [3, 4]);
+    assert_eq!(ids(&arriving.over), [2]);
+    assert_eq!(
+        glide(600.0, 0.0, start, slide_right())
+            .curtain(start)
+            .tucked
+            .len(),
+        2
+    );
 }

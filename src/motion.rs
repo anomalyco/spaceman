@@ -7,6 +7,8 @@ use std::{
     time::{Duration, Instant},
 };
 
+use serde::{Deserialize, Serialize};
+
 use crate::Rect;
 
 /// A spring's physical constants. The default is critically damped with `ω = √800 ≈ 28.3 rad/s`,
@@ -29,6 +31,24 @@ impl Default for SpringParams {
 }
 
 impl SpringParams {
+    /// The glide the default spring gives, in milliseconds: the reference
+    /// [`Self::for_duration`] scales from.
+    pub const DEFAULT_DURATION_MS: u16 = 250;
+
+    /// A unit-mass spring that feels `duration_ms` long: `ω` scales inversely with the
+    /// duration, so 250 ms is the default `ω = √800` and 125 ms moves twice as fast. A
+    /// `damping_ratio` below 1 overshoots a little; above 1 eases in more softly.
+    #[must_use]
+    pub fn for_duration(duration_ms: u16, damping_ratio: f64) -> Self {
+        let omega =
+            800_f64.sqrt() * f64::from(Self::DEFAULT_DURATION_MS) / f64::from(duration_ms.max(1));
+        Self {
+            mass: 1.0,
+            damping_ratio,
+            stiffness: omega * omega,
+        }
+    }
+
     /// Natural angular frequency `ω = √(k / m)`, in radians per second.
     #[must_use]
     pub fn angular_frequency(self) -> f64 {
@@ -93,6 +113,13 @@ impl CameraSpring {
     #[must_use]
     pub fn target(&self) -> f64 {
         self.target
+    }
+
+    /// The same motion from `now` on with new constants, keeping its position and velocity.
+    #[must_use]
+    pub fn retuned(&self, params: SpringParams, now: Instant) -> Self {
+        let current = self.sample(now);
+        Self::with_state(params, current.position, current.velocity, self.target, now)
     }
 
     /// Aims the spring at `target` from wherever it is at `now`, keeping its exact position and
@@ -277,14 +304,70 @@ pub fn project_end(position: f64, velocity: f64) -> f64 {
 /// rounding gap between visible frames still counts as a shared seam.
 const SEAM_TOLERANCE: i32 = 2;
 
+/// How far short of half its width a column stops past a shared edge in
+/// [`SharedEdge::Slide`], so its center stays on its own display.
+pub const SLIDE_CENTER_MARGIN: i32 = 8;
+
+/// How a scrolling display's columns meet an edge it shares with another monitor.
+#[derive(Clone, Copy, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum SharedEdge {
+    /// Columns stay wholly inside the display; one going past the edge waits there while its
+    /// neighbor slides over it.
+    #[default]
+    Tuck,
+    /// Columns slide past the edge until just short of half their width, so their center (the
+    /// point macOS assigns a window's display by) stays on this display and, with "Displays
+    /// have separate Spaces" on, the part past the edge isn't drawn on the neighbor. The rest
+    /// of the way they tuck as in [`Self::Tuck`].
+    Slide,
+}
+
+impl SharedEdge {
+    pub const ALL: [Self; 2] = [Self::Tuck, Self::Slide];
+
+    /// Its value in `config.toml`.
+    #[must_use]
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Tuck => "tuck",
+            Self::Slide => "slide",
+        }
+    }
+
+    #[must_use]
+    pub fn parse(raw: &str) -> Option<Self> {
+        Self::ALL.into_iter().find(|mode| mode.as_str() == raw)
+    }
+
+    #[must_use]
+    pub fn is_default(&self) -> bool {
+        *self == Self::default()
+    }
+
+    /// How far past a shared edge a column `width` wide may go.
+    #[must_use]
+    pub const fn overhang(self, width: i32) -> i32 {
+        match self {
+            Self::Tuck => 0,
+            Self::Slide => {
+                let overhang = width / 2 - SLIDE_CENTER_MARGIN;
+                if overhang > 0 { overhang } else { 0 }
+            }
+        }
+    }
+}
+
 /// Horizontal limits for a scrolling display's columns. A free edge lets a column slide off
-/// screen leaving a sliver visible; an edge shared with another monitor keeps the column fully
-/// inside, so a sliding window never shows up on the neighbouring display.
+/// screen leaving a sliver visible; an edge shared with another monitor keeps the column inside
+/// (or, in [`SharedEdge::Slide`], its center inside), so a sliding window never shows up on
+/// the neighbouring display.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct ScrollingDisplayBounds {
     pub frame: Rect,
     pub adjacent_left: bool,
     pub adjacent_right: bool,
+    pub shared_edge: SharedEdge,
 }
 
 impl ScrollingDisplayBounds {
@@ -295,6 +378,7 @@ impl ScrollingDisplayBounds {
             frame,
             adjacent_left: false,
             adjacent_right: false,
+            shared_edge: SharedEdge::Tuck,
         };
         let (left, right) = (frame.x, frame.x + frame.width);
         for other in others {
@@ -307,6 +391,13 @@ impl ScrollingDisplayBounds {
                 other.x >= right - SEAM_TOLERANCE && other.x + other.width > right;
         }
         bounds
+    }
+
+    /// The same bounds meeting shared edges as `shared_edge` says.
+    #[must_use]
+    pub const fn with_shared_edge(mut self, shared_edge: SharedEdge) -> Self {
+        self.shared_edge = shared_edge;
+        self
     }
 
     /// Bounds for the display with `display_id` among `displays` (each display's ID and frame),
@@ -331,25 +422,35 @@ impl ScrollingDisplayBounds {
     }
 
     /// The lowest and highest left edge a column `width` wide may take, keeping `peek_px`
-    /// (at least 1) visible past a free edge. When the column can't fit between two shared
-    /// edges, both limits are the display's left edge.
+    /// (at least 1) visible past a free edge and going no further past a shared one than
+    /// [`SharedEdge::overhang`]. When the column can't fit between two shared edges, both
+    /// limits are the lower one.
     #[must_use]
     pub fn column_x_range(&self, width: i32, peek_px: i32) -> (i32, i32) {
         let width = width.max(1);
         let peek = peek_px.clamp(1, width);
         let left = self.frame.x;
         let right = self.frame.x + self.frame.width;
+        let overhang = self.shared_edge.overhang(width);
         let min = if self.adjacent_left {
-            left
+            left - overhang
         } else {
             left - width + peek
         };
         let max = if self.adjacent_right {
-            right - width
+            right - width + overhang
         } else {
             right - peek
         };
         (min, max.max(min))
+    }
+
+    /// Whether a column wanting `desired_x` is held back at a shared edge, rather than placed
+    /// where it wants or peeking past a free one.
+    #[must_use]
+    pub fn holds_at_shared_edge(&self, desired_x: i32, width: i32, peek_px: i32) -> bool {
+        let (min, max) = self.column_x_range(width, peek_px);
+        (desired_x > max && self.adjacent_right) || (desired_x < min && self.adjacent_left)
     }
 
     /// `desired_x` clamped into [`Self::column_x_range`].

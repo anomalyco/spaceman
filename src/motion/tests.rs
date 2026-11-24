@@ -269,3 +269,51 @@ fn a_column_wider_than_a_display_between_two_seams_pins_to_the_left_edge() {
 fn an_unknown_display_has_no_bounds() {
     assert!(ScrollingDisplayBounds::for_display(side_by_side(), "gone").is_none());
 }
+
+/// Kit's desk: two 2560-point Studio Displays side by side.
+#[test]
+fn sliding_lets_a_column_overhang_a_shared_edge_up_to_its_center() {
+    let displays = [
+        ("left", rect(0, 0, 2_560, 1_415)),
+        ("right", rect(2_560, 0, 2_560, 1_415)),
+    ];
+    let tuck = ScrollingDisplayBounds::for_display(displays, "left").unwrap();
+    assert_eq!(tuck.shared_edge, SharedEdge::Tuck);
+    assert_eq!(tuck.clamp_column_x(2_560, 1_280, 16), 2_560 - 1_280);
+    let slide = tuck.with_shared_edge(SharedEdge::Slide);
+    let farthest = slide.clamp_column_x(2_560, 1_280, 16);
+    assert_eq!(farthest, 2_560 - 640 - SLIDE_CENTER_MARGIN);
+    assert!(
+        farthest + 640 < 2_560,
+        "the center stays on the left display"
+    );
+    assert!(slide.holds_at_shared_edge(2_560, 1_280, 16));
+    assert!(!slide.holds_at_shared_edge(farthest, 1_280, 16));
+    // The free left edge peeks exactly as before.
+    assert_eq!(slide.clamp_column_x(-5_000, 1_280, 16), -1_280 + 16);
+    assert!(!slide.holds_at_shared_edge(-5_000, 1_280, 16));
+    // The right display overhangs its left seam the same way.
+    let right = ScrollingDisplayBounds::for_display(displays, "right")
+        .unwrap()
+        .with_shared_edge(SharedEdge::Slide);
+    assert_eq!(
+        right.clamp_column_x(0, 1_280, 16),
+        2_560 - 640 + SLIDE_CENTER_MARGIN
+    );
+    // Too narrow to overhang without its center crossing: it tucks.
+    assert_eq!(SharedEdge::Slide.overhang(10), 0);
+}
+
+#[test]
+fn retuning_a_spring_keeps_its_motion_continuous() {
+    let start = Instant::now();
+    let spring = CameraSpring::with_state(SpringParams::default(), 0.0, 0.0, 600.0, start);
+    let mid = start + ms(60);
+    let before = spring.sample(mid);
+    let faster = spring.retuned(SpringParams::for_duration(150, 0.78), mid);
+    let after = faster.sample(mid);
+    assert!((before.position - after.position).abs() < 1e-9);
+    assert!((before.velocity - after.velocity).abs() < 1e-9);
+    assert_eq!(faster.target(), 600.0);
+    assert_eq!(faster.params().damping_ratio, 0.78);
+}

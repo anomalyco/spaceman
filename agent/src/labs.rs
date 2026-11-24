@@ -1,10 +1,12 @@
 //! Settings › Labs: one card per experiment in [`LabFeature::ALL`], each with its own switch,
 //! all off by default. A switch writes `[labs]` in `config.toml`; the agent picks it up from
 //! there, registering the feature's shortcut and letting its work start. A card also holds the
-//! feature's shortcut ([`shortcut`]) and a "How it works" dialog ([`how_it_works`]).
+//! feature's shortcut ([`shortcut`]), its tuning while it is on ([`tuning`]), and a "How it
+//! works" dialog ([`how_it_works`]).
 
 mod how_it_works;
 mod shortcut;
+mod tuning;
 
 use rune::{El, Icon, col, row, text};
 use rune_kit::ShortcutRecorderState;
@@ -100,11 +102,14 @@ fn card(ui: &Ui, p: Paint, feature: LabFeature) -> El {
             .grow(1.0)
             .shrink(),
     );
-    controls::card(
-        p,
-        &format!("{}-card", feature.id()),
-        vec![switch, shortcut::row(ui, p, feature), explain, note],
-    )
+    let mut rows = vec![switch, shortcut::row(ui, p, feature)];
+    if ui.doc.lab(feature) {
+        rows.extend(match feature {
+            LabFeature::ScrollingStrip => tuning::rows(ui, p),
+        });
+    }
+    rows.extend([explain, note]);
+    controls::card(p, &format!("{}-card", feature.id()), rows)
 }
 
 const fn note(feature: LabFeature) -> &'static str {

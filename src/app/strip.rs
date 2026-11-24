@@ -61,7 +61,8 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
             .strip_outputs()
             .map(|outputs| outputs.frames().filter(|frame| *frame != output).collect())
             .unwrap_or_default();
-        let bounds = ScrollingDisplayBounds::new(output, others);
+        let bounds = ScrollingDisplayBounds::new(output, others)
+            .with_shared_edge(self.config.labs().scrolling_strip_shared_edge);
         let camera = self
             .strip_views
             .view(workspace)

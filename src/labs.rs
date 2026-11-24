@@ -5,9 +5,17 @@
 //! Gate a feature where its work starts (the worker action, the hotkey registration), not only
 //! where its UI shows: with every switch off, Spaceman behaves exactly as if Labs did not exist.
 
+mod glide;
+
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
-use crate::shortcuts::{Chord, Key, Modifiers, parse_chord};
+pub use glide::{DAMPING_KEY, DURATION_KEY, GlideDamping, GlideDuration, SHARED_EDGE_KEY};
+
+pub use crate::motion::SharedEdge;
+use crate::{
+    motion::SpringParams,
+    shortcuts::{Chord, Key, Modifiers, parse_chord},
+};
 
 /// The `[labs]` table. Omitted from `config.toml` while every switch is off and every
 /// shortcut is its default.
@@ -20,6 +28,15 @@ pub struct LabsConfig {
     /// syntax (`"alt+shift+s"`).
     #[serde(default, skip_serializing_if = "LabShortcut::is_default")]
     pub scrolling_strip_shortcut: LabShortcut,
+    /// How long a strip glide feels, in milliseconds (80 to 900, 250 by default).
+    #[serde(default, skip_serializing_if = "GlideDuration::is_default")]
+    pub scrolling_strip_duration_ms: GlideDuration,
+    /// The glide spring's damping ratio (0.6 to 1.3, 1.0 by default: no overshoot).
+    #[serde(default, skip_serializing_if = "GlideDamping::is_default")]
+    pub scrolling_strip_damping: GlideDamping,
+    /// How columns meet an edge shared with another monitor: `"tuck"` (default) or `"slide"`.
+    #[serde(default, skip_serializing_if = "SharedEdge::is_default")]
+    pub scrolling_strip_shared_edge: SharedEdge,
     /// The i3/sway-style Scratchpad ([`crate::scratchpad`]) and its `⌥\` / `⌥⇧\` shortcuts.
     /// Set in `config.toml` only for now: it has no card in Settings › Labs.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
@@ -74,6 +91,15 @@ impl LabsConfig {
     #[must_use]
     pub fn is_default(&self) -> bool {
         *self == Self::default()
+    }
+
+    /// The spring a strip glide rides, from its duration and damping.
+    #[must_use]
+    pub fn strip_spring(&self) -> SpringParams {
+        glide::spring(
+            self.scrolling_strip_duration_ms,
+            self.scrolling_strip_damping,
+        )
     }
 
     #[must_use]
