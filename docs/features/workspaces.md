@@ -65,7 +65,8 @@ Mouse follows focus ([settings] mouse_follows_focus)       // ws.mouse-follows-f
 Focus follows                                              // ws.focus-follow
 ├── Focusing a window that lives on a hidden workspace (Dock, Cmd+Tab, notification)
 │   -> that workspace becomes active, with focus on that window (not its remembered tile)
-│   └── Switch interrupted by that same activation -> the next cycle follows it again
+│   └── Switch interrupted by that same activation -> retiles every 40 ms for 500 ms and follows it
+│       as soon as Accessibility catches up
 ├── Focusing a window on another display's visible workspace -> no switch; Option+Tab remembers it
 └── No focused window reported -> follows the frontmost app only when all its windows, tiled
     or floating, are on one workspace
