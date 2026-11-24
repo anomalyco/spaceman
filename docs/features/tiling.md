@@ -118,10 +118,10 @@ pause, quit, or hotkey loss.
   match `ctl debug`; directional focus, repeat switch and `focus next` move real macOS focus; the
   rest re-fill after a minimize or hide (500 ms budget from when the window leaves the screen);
   float and un-float re-tile.
-- Observed (2026-11-24, gauntlet in a macOS 27 VM): after a minimize the rest re-fill about 30 ms
-  after the window leaves the screen, but after a hide (Cmd+H) it takes about 700 ms. Spaceman
-  observes `AXWindowMiniaturized` but no hide notification, so a hide is only seen through the
-  activation change and its settle delay.
+- Observed (2026-11-24, gauntlet in a macOS 27 VM): the rest re-fill about 40 ms after the window
+  leaves the screen, after a minimize (`AXWindowMiniaturized`) and after a hide (Cmd+H, through
+  `NSWorkspaceDidHideApplicationNotification`; before that a hide waited for the 1 s fallback
+  refresh, about 730 ms). `src/macos/events.rs`: `hiding_an_app_refreshes_on_the_next_tick`.
 
 ## Gotchas
 
