@@ -132,6 +132,7 @@ modifier = "alt"                      # optional (default: "alt"); every built-i
 "alt+v" = "float"
 "alt+j" = "layout"                    # replaces the built-in Option+J (focus down)
 "alt+shift+b" = "balance"
+"ctrl+alt+w" = "resize width 1200"
 "alt+h" = "none"                      # unbinds the built-in Option+H
 ```
 
@@ -166,9 +167,19 @@ Commands:
 | `fullscreen` | Toggle Fullscreen Layout |
 | `float` | Float the focused window, or tile it again |
 | `resize shrink\|grow` | Shrink or grow the focused tile |
+| `resize width\|height POINTS` | Resize the focused window to that width or height (1 to 16384 points) |
 | `balance` | Equalize the focused tile's immediate split |
 | `retile` | Retile now |
 | `none` | Unbind the chord: no built-in shortcut claims it |
+
+`resize width POINTS` resizes the focused window to that width (its own frame, gaps excluded) by
+moving its boundary at the nearest split that lays tiles out side by side; `resize height POINTS`
+does the same at the nearest split that stacks them. The split's other tiles give or take the
+difference in proportion to their sizes, and no tile goes below 50 points (nested splits keep room
+for each of their tiles), so a size that does not fit is clamped. A tile with no such split (a lone tile, which `settings.single_window_max_width` sizes,
+or the height of a tile in a single row) is left alone. Like `resize shrink|grow` and `balance`, it
+asks you to leave Fullscreen Layout first. Neither `resize width|height` nor `balance` has a
+built-in chord; bind them here.
 
 A global shortcut fires in every app, so a chord that types something takes that key everywhere:
 `alt+left` replaces macOS's Option+arrow word jump in text fields. Prefer `ctrl` or `alt+shift` for

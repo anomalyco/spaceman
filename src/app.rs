@@ -231,6 +231,9 @@ pub(crate) enum WorkerAction {
     Reorder(Direction),
     ToggleLayout,
     Resize(ResizeDirection),
+    /// Resize the focused window to this width (`Horizontal`) or height (`Vertical`) in points.
+    ResizeTo(crate::Axis, i32),
+    /// Equalize the focused tile's immediate split.
     Balance,
     ToggleFullscreenLayout,
     /// Float the focused window above the workspace's tiles, or tile it again.
@@ -259,6 +262,7 @@ impl WorkerAction {
             Self::Reorder(_) => "directional move queued".into(),
             Self::ToggleLayout => "layout toggle queued".into(),
             Self::Resize(_) => "resize queued".into(),
+            Self::ResizeTo(..) => "resize queued".into(),
             Self::Balance => "balance queued".into(),
             Self::ToggleFullscreenLayout => "fullscreen layout toggle queued".into(),
             Self::ToggleFloat => "float toggle queued".into(),

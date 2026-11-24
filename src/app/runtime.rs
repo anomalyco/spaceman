@@ -292,6 +292,9 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
             WorkerAction::Reorder(direction) => rt.reorder_focused(direction, outputs, cancelled),
             WorkerAction::ToggleLayout => rt.toggle_layout(outputs, cancelled),
             WorkerAction::Resize(direction) => rt.resize_focused(direction, outputs, cancelled),
+            WorkerAction::ResizeTo(axis, points) => {
+                rt.resize_focused_to(axis, points, outputs, cancelled)
+            }
             WorkerAction::Balance => rt.balance_focused(outputs, cancelled),
             WorkerAction::ToggleFullscreenLayout => rt.toggle_fullscreen_layout(outputs, cancelled),
             WorkerAction::ToggleFloat => rt.toggle_float(outputs, cancelled),

@@ -32,6 +32,8 @@ Reorder                                                 // tile.reorder
 Size                                                    // tile.size
 ├── Option+- / Option+= / ctl resize shrink|grow -> 50 px at the immediate split
 ├── Pointer resize       -> split weights follow both edges of a corner drag, preview during the gesture
+├── ctl resize width|height <points> -> resize the focused window to that width/height at the
+│   nearest split on that axis; siblings give or take in proportion; clamped at minimums; lone tile unchanged
 ├── ctl balance          -> equalize the focused tile's immediate split (no default hotkey)
 └── Window refuses its tile size (app minimum) -> its tile grows to fit and siblings give up
     the space; if necessary, try stacking an adjacent pair
@@ -51,7 +53,8 @@ Spacing                                                 // tile.spacing
 ```ts
 Keyboard: Option+H/J/K/L, Option+Shift+H/J/K/L, Option+`, Option+-, Option+=, Option+/
 Pointer:  drag a managed window (reorder/nest/move display), drag its edge (resize)
-CLI:      spaceman ctl focus | move-direction | resize | balance | layout | retile
+CLI:      spaceman ctl focus | move-direction | resize shrink|grow|width|height | balance | layout | retile
+Shortcut: [shortcuts.bindings] can bind any of those, e.g. "ctrl+alt+w" = "resize width 1200"
 Settings: Settings › Layout -> Window gaps (Customize separately: Between windows, Screen edges, Top/Bottom/Left/Right), Single-window width
 Config:   spaceman config set gaps.inner|gaps.top|gaps.bottom|gaps.left|gaps.right|single_window_max_width <points>
 ```
@@ -66,12 +69,16 @@ pause, quit, or hotkey loss.
   `workspace_focus_cycle_wraps_through_tile_order_in_every_layout`,
   `keyboard_resize_applies_and_persists_the_focused_layout`,
   `balance_applies_and_persists_the_focused_parent_split`,
+  `resize_to_applies_and_persists_the_focused_window_width`,
+  `resize_to_requires_leaving_fullscreen_layout`,
   `reorder_moves_to_the_adjacent_display_at_a_tile_boundary`,
   `reorder_moves_to_an_empty_workspace_on_the_adjacent_display` (issue 119),
   `perpendicular_reorder_creates_a_mixed_split_for_three_windows`,
   `layout_toggle_repartitions_and_persists_the_focused_workspace`.
 - Engine and layout tree: `new_window_joins_the_focused_nested_split` and
-  `corner_drag_moves_both_nested_boundaries` cover insertion and diagonal resizing.
+  `corner_drag_moves_both_nested_boundaries` cover insertion and diagonal resizing;
+  `resize_to_*` in `src/layout_tree/tests.rs` cover the nearest split on each axis, proportional
+  sharing, recursive minimums, and lone tiles.
 - Unit (FakeBackend), `src/app/tests/gestures.rs`: drag swap preview, edge-nesting preview,
   cross-display drop; `startup.rs` covers gesture classification and `src/app/input.rs` covers
   queued final gestures.
@@ -89,7 +96,7 @@ pause, quit, or hotkey loss.
 - Spacing, `src/spacing/tests.rs`: outer padding and its 320×240 floor; one tile, two columns and a
   nested three-tile split with inner gaps and asymmetric padding (no overlaps, exact point totals);
   equal weights give equal windows; Fullscreen Layout's capped frame; directional focus across gaps;
-  a pointer resize, keyboard resize and balance through gaps. `src/config.rs` and
+  a pointer resize, keyboard resize, `resize width` and balance through gaps. `src/config.rs` and
   `src/cli/tests.rs` cover parsing, range errors and `spaceman config`;
   `agent/src/rules/tests.rs` covers Settings › Layout saves that keep comments and restore the file.
 - Fixture replay: `cargo run -- replay fixtures/ghostty-tab-replacement.json` (reconciliation of a
@@ -117,7 +124,8 @@ pause, quit, or hotkey loss.
   period. Minimizing an app's only window or hiding the app (Command-H) does the
   same; the window comes back as a new tile at the end of the layout. While nothing on the display
   is observed (another macOS Space is showing), tiles are kept.
-- `balance` has no default hotkey; it is CLI-only.
+- `balance` and `resize width|height` have no default hotkey; bind them in
+  `[shortcuts.bindings]` or run them from the CLI.
 - With gaps, a drop that lands in the gap between two tiles misses both and leaves the layout as it
   was. The Workspace HUD's layout previews stay schematic and ignore spacing.
 - A window that enters macOS native fullscreen (for example browser video) loses its slot after two

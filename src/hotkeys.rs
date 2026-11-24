@@ -310,6 +310,7 @@ fn worker_action(command: &Command) -> WorkerAction {
         Command::Fullscreen => WorkerAction::ToggleFullscreenLayout,
         Command::Float => WorkerAction::ToggleFloat,
         Command::Resize(direction) => WorkerAction::Resize(*direction),
+        Command::ResizeTo(axis, points) => WorkerAction::ResizeTo(*axis, *points),
         Command::Balance => WorkerAction::Balance,
         Command::Retile => WorkerAction::Retile,
     }
@@ -1032,9 +1033,13 @@ mod tests {
             "alt+left" = "move-direction left"
             "alt+shift+ctrl+right" = "focus right"
             "alt+shift+b" = "balance"
+            "ctrl+alt+w" = "resize width 1200"
             "#,
         );
-        let layout_with_b = LayoutSnapshot::for_test(vec![(11, 'b', false, false)], vec![]);
+        let layout_with_b = LayoutSnapshot::for_test(
+            vec![(11, 'b', false, false), (13, 'w', false, false)],
+            vec![],
+        );
         let plan = HotkeyPlan::from_layout(&[], &shortcuts, &layout_with_b).unwrap();
         let reorder = registration(&plan, &WorkerAction::Reorder(Direction::Left));
         assert!(
@@ -1051,6 +1056,12 @@ mod tests {
                     && registration.modifiers == OPTION_KEY | SHIFT_KEY | CONTROL_KEY)
         );
         assert_eq!(registration(&plan, &WorkerAction::Balance).len(), 1);
+        let resize = registration(
+            &plan,
+            &WorkerAction::ResizeTo(crate::Axis::Horizontal, 1200),
+        );
+        assert!(resize.iter().any(|registration| registration.key_code == 13
+            && registration.modifiers == OPTION_KEY | CONTROL_KEY));
     }
 
     #[test]

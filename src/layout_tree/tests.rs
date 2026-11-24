@@ -331,6 +331,92 @@ fn balance_equalizes_the_focused_tiles_immediate_parent() {
 }
 
 #[test]
+fn resize_to_sets_the_extent_and_keeps_the_other_tiles_proportions() {
+    let mut tree = LayoutTree::flat(Axis::Horizontal, [SlotId(1), SlotId(2), SlotId(3)]);
+    assert!(tree.resize_by(SlotId(2), ResizeDirection::Grow, 100, output()));
+    // 333 | 433 | 234
+
+    assert!(tree.resize_to(SlotId(1), Axis::Horizontal, 600, output()));
+
+    let widths = tree
+        .placements(output())
+        .iter()
+        .map(|(_, frame)| frame.width)
+        .collect::<Vec<_>>();
+    assert_eq!(widths[0], 600);
+    assert_eq!(widths.iter().sum::<i32>(), 1000);
+    // The other two give up 267 in proportion to what each could spare, 383 and 184.
+    assert_eq!(widths[1..], [252, 148]);
+
+    // Asking again for the same size changes nothing.
+    assert!(!tree.resize_to(SlotId(1), Axis::Horizontal, 600, output()));
+
+    // Shrinking gives the space back in proportion to the others' widths.
+    assert!(tree.resize_to(SlotId(1), Axis::Horizontal, 200, output()));
+    let widths = tree
+        .placements(output())
+        .iter()
+        .map(|(_, frame)| frame.width)
+        .collect::<Vec<_>>();
+    assert_eq!(widths[0], 200);
+    assert_eq!(widths.iter().sum::<i32>(), 1000);
+}
+
+#[test]
+fn resize_to_uses_the_nearest_split_on_its_axis() {
+    // [1 / 2] | 3
+    let mut tree = LayoutTree::flat(Axis::Horizontal, [SlotId(1), SlotId(2), SlotId(3)]);
+    assert!(tree.move_relative(SlotId(1), SlotId(2), Direction::Up));
+
+    // Width is set at the root columns, so both stacked tiles get it.
+    assert!(tree.resize_to(SlotId(1), Axis::Horizontal, 700, output()));
+    let frames = tree.placements(output());
+    assert_eq!(frames[0].1.width, 700);
+    assert_eq!(frames[1].1.width, 700);
+    assert_eq!(frames[2].1.width, 300);
+
+    // Height is set in the nested rows.
+    assert!(tree.resize_to(SlotId(2), Axis::Vertical, 300, output()));
+    let frames = tree.placements(output());
+    assert_eq!(frames[0].1.height, 500);
+    assert_eq!(frames[1].1.height, 300);
+    assert_eq!(frames[2].1.height, 800);
+
+    // Tile 3 spans the full height: no split sets it.
+    assert!(!tree.resize_to(SlotId(3), Axis::Vertical, 300, output()));
+}
+
+#[test]
+fn resize_to_stops_at_recursive_tile_minimums() {
+    // 1 | [2 / 3] | 4
+    let mut tree = LayoutTree::flat(
+        Axis::Horizontal,
+        [SlotId(1), SlotId(2), SlotId(3), SlotId(4)],
+    );
+    assert!(tree.move_relative(SlotId(3), SlotId(2), Direction::Down));
+
+    assert!(tree.resize_to(SlotId(1), Axis::Horizontal, 5000, output()));
+    let widths = tree
+        .placements(output())
+        .into_iter()
+        .map(|(slot, frame)| (slot, frame.width))
+        .collect::<HashMap<_, _>>();
+    assert_eq!(widths[&SlotId(1)], 1000 - 2 * MIN_TILE_EXTENT);
+    assert_eq!(widths[&SlotId(2)], MIN_TILE_EXTENT);
+    assert_eq!(widths[&SlotId(4)], MIN_TILE_EXTENT);
+
+    assert!(tree.resize_to(SlotId(1), Axis::Horizontal, 1, output()));
+    assert_eq!(tree.placements(output())[0].1.width, MIN_TILE_EXTENT);
+}
+
+#[test]
+fn resize_to_leaves_a_lone_tile_alone() {
+    let mut tree = LayoutTree::flat(Axis::Horizontal, [SlotId(1)]);
+    assert!(!tree.resize_to(SlotId(1), Axis::Horizontal, 400, output()));
+    assert!(!tree.resize_to(SlotId(1), Axis::Vertical, 400, output()));
+}
+
+#[test]
 fn newly_discovered_slot_uses_existing_weight_scale() {
     let mut tree = LayoutTree::flat(Axis::Horizontal, [SlotId(1)]);
     if let Node::Split { children, .. } = &mut tree.root {

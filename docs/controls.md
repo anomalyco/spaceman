@@ -62,8 +62,8 @@ Command-backtick continues to use macOS's same-application window cycle, and Spa
 resulting focus. Press `Option+Shift+F` again to restore the unchanged split layout. Fullscreen Layout
 and its active tile survive workspace switches, native-tab physical-window replacement, and Spaceman
 restarts. `Option+/` exits Fullscreen Layout, toggles the preserved split axis, and immediately applies
-the resulting normal layout. Keyboard resize, balance, and tile reordering require leaving Fullscreen
-Layout first. Pointer dragging and resizing are ignored while the mode is active. Floating windows are
+the resulting normal layout. Keyboard resize (including `resize width|height`), balance, and tile
+reordering require leaving Fullscreen Layout first. Pointer dragging and resizing are ignored while the mode is active. Floating windows are
 not expanded. Removing or moving away the workspace's final tiled window exits Fullscreen Layout.
 
 `Option+Shift+Space` floats the focused window: it leaves the tiles, keeps its exact frame and
@@ -177,6 +177,8 @@ spaceman ctl fullscreen
 spaceman ctl float
 spaceman ctl resize shrink
 spaceman ctl resize grow
+spaceman ctl resize width 1200
+spaceman ctl resize height 600
 spaceman ctl balance
 spaceman ctl scratchpad toggle
 spaceman ctl scratchpad mark
@@ -198,9 +200,13 @@ Directions are `left`, `down`, `up`, and `right`. `focus next` is Option-backtic
 `focus prev` is Option-Shift-backtick, `fullscreen` toggles the focused workspace's Fullscreen Layout, like `Option+Shift+F`, and `float`
 toggles the focused window's floating, like `Option+Shift+Space`. `scratchpad toggle` and
 `scratchpad mark` are `Option+\` and `Option+Shift+\`; while `[labs] scratchpad` is off they report
-`Scratchpad is off`. `balance` equalizes the focused tile's immediate
-split while respecting nested minimum sizes. `hud` repeatedly renders sanitized runtime geometry in
-the terminal until interrupted. `ctl wrong` marks the journal the moment something looks wrong and
+`Scratchpad is off`. `resize width|height POINTS` resizes the focused window to that width or
+height (its own frame, gaps excluded) by moving its boundary at the nearest split along that axis;
+the split's other tiles give or take the difference in proportion, never below 50 points. `balance`
+equalizes the focused tile's immediate split while respecting nested minimum sizes; it does not
+touch the workspace's other splits. Neither has a default shortcut (see
+[Configuration › Shortcuts](configuration.md#shortcuts)). `hud` repeatedly renders sanitized
+runtime geometry in the terminal until interrupted. `ctl wrong` marks the journal the moment something looks wrong and
 writes a full arrangement snapshot, so `doctor` shows what the screen held then.
 
 `ctl debug` excludes window titles. It reports each display's Fullscreen Layout state and tiled

@@ -283,6 +283,31 @@ impl Engine {
         self.edit_weights(window, |layout, slot| layout.balance(slot, canvas))
     }
 
+    /// Resize the focused window so its frame is `points` along `axis`: the tile's cell is the
+    /// window plus the inner gap.
+    pub(crate) fn resize_focused_tile_to(
+        &mut self,
+        window: &PhysicalWindowId,
+        axis: crate::Axis,
+        points: i32,
+        settings: &Settings,
+    ) -> bool {
+        let canvas = settings.canvas();
+        let cell = settings.spacing.untile(crate::Rect {
+            x: 0,
+            y: 0,
+            width: points,
+            height: points,
+        });
+        let target = match axis {
+            crate::Axis::Horizontal => cell.width,
+            crate::Axis::Vertical => cell.height,
+        };
+        self.edit_slot(window, |layout, slot| {
+            layout.resize_to(slot, axis, target, canvas)
+        })
+    }
+
     pub(crate) fn create_implicit_split(
         &mut self,
         window: &PhysicalWindowId,
