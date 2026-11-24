@@ -23,9 +23,9 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
             return Err("Only one display is connected".into());
         }
         let visible = self.visible_workspaces(&outputs);
+        let reported_focused = self.backend.focused_window();
         let (source_resolved, focused_window) =
             self.focused_visible_workspace(&visible, &outputs)?;
-        let focused_window = self.resolve_focus(focused_window);
         self.pending_focus = None;
         let moved_ws = source_resolved.workspace;
         let source_display_id = source_resolved.display_id;
@@ -397,7 +397,7 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
         let outcome = self.focus_workspace_entry(
             moved_ws,
             &moved_windows,
-            focused_window,
+            reported_focused,
             frontmost_before,
             false,
         );
@@ -419,7 +419,7 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
         visible: &[ResolvedWorkspace],
         outputs: &macos::DisplayOutputs,
     ) -> Result<(ResolvedWorkspace, Option<crate::PhysicalWindowId>), String> {
-        let focused = self.backend.focused_window();
+        let focused = self.current_focus();
         if let Some(window) = focused.as_ref() {
             if let Some(workspace) = self.workspaces.workspace_of_any(window)
                 && let Some(resolved) = visible.iter().find(|entry| entry.workspace == workspace)

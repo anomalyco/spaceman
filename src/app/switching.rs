@@ -95,8 +95,10 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
         }
         // The focus before the switch, trusting an in-flight focus command over
         // a stale Accessibility report before clearing pending_focus for the
-        // incoming workspace.
-        let focused_before = self.current_focus();
+        // incoming workspace. Keep the raw reported focus separately so
+        // focus_workspace_entry still suppresses the stale window AX reports.
+        let reported_focused_before = self.backend.focused_window();
+        let focused_before = self.resolve_focus(reported_focused_before.clone());
         self.pending_focus = None;
         let switch_started = Instant::now();
         let mut outgoing = self.workspaces.windows(previous);
@@ -227,7 +229,7 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
                 }
             }
         }
-        let focus_already_in_workspace = focused_before
+        let focus_already_in_workspace = reported_focused_before
             .as_ref()
             .is_some_and(|window| self.workspaces.workspace_of_any(window) == Some(workspace))
             || frontmost_before
@@ -239,7 +241,7 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
         let outcome = self.focus_workspace_entry(
             workspace,
             &incoming,
-            focused_before,
+            reported_focused_before,
             frontmost_before,
             true,
         );

@@ -225,10 +225,10 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
         outputs: macos::DisplayOutputs,
         cancelled: &AtomicBool,
     ) -> Result<CycleStatus, String> {
-        // A switch keeps a focus command still in flight: pressing the active
-        // workspace's shortcut again steps from the window the last press
-        // focused, which Accessibility may not report yet. Every other action
-        // here starts from whatever focus is reported now.
+        // Focus, switch, and workspace-move actions keep an in-flight focus
+        // command so they resolve against the just-focused window even when
+        // Accessibility has not caught up yet; other workspace/window actions
+        // start from whatever focus is reported now.
         if matches!(
             action,
             WorkerAction::SelectWorkspace(_)

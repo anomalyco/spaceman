@@ -379,3 +379,53 @@ fn stale_focus_report_does_not_lose_selected_tile_on_switch_move_or_cycle() {
         Some(window(20))
     );
 }
+
+#[test]
+fn cross_display_focus_then_move_workspace_targets_pending_workspace_during_lag() {
+    for stale in [true, false] {
+        let first = window(10);
+        let mut second = window(30);
+        second.app.pid = 2;
+        let backend = FakeBackend {
+            focused: Some(first.clone()),
+            frontmost: Some(first.app.clone()),
+            frames: HashMap::from([(first.clone(), frame(50)), (second.clone(), frame(1050))]),
+            ..FakeBackend::default()
+        };
+        let mut rt = runtime(backend);
+        bind(&mut rt, WorkspaceId::ONE, &first);
+        bind(&mut rt, WorkspaceId::SIX, &second);
+        press(&mut rt, WorkerAction::Focus(Direction::Right));
+        assert_eq!(rt.backend.focused, Some(second.clone()));
+        assert_eq!(rt.pending_focus.as_ref().unwrap().target, second);
+
+        if stale {
+            rt.backend.focused = Some(first.clone());
+            rt.backend.frontmost = Some(first.app.clone());
+        }
+        press(
+            &mut rt,
+            WorkerAction::MoveWorkspaceToDisplay(DisplayTarget::Next),
+        );
+        assert_eq!(
+            rt.backend.persisted_monitors.first().map(|entry| entry.0),
+            Some(WorkspaceId::SIX)
+        );
+        assert_eq!(
+            rt.workspaces.active_for(&DisplaySelector::Main),
+            Some(WorkspaceId::SIX)
+        );
+        assert_eq!(
+            rt.workspaces.active_for(&DisplaySelector::Secondary),
+            Some(WorkspaceId::new(7).unwrap())
+        );
+        assert!(!rt.parked.contains_key(&second));
+        if stale {
+            assert_eq!(rt.suppressed_focus, Some(first));
+            assert_eq!(
+                rt.pending_focus.as_ref().map(|p| p.target.clone()),
+                Some(second)
+            );
+        }
+    }
+}

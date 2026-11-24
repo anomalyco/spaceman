@@ -51,6 +51,10 @@ fn a_focused_window_on_a_visible_workspace_still_wins() {
     bind(&mut rt, ws(6), &other);
     let cancelled = AtomicBool::new(false);
     rt.switch(ws(6), three_outputs(), &cancelled).unwrap();
+    // Simulate focus settling on ws(6) before the user clicks main on ws(1).
+    if let Some(pending) = rt.pending_focus.as_mut() {
+        pending.at -= super::super::commands::FOCUS_SETTLE;
+    }
     rt.backend.focused = Some(main.clone());
     rt.move_workspace_to_display(DisplayTarget::Next, three_outputs(), &cancelled)
         .unwrap();
