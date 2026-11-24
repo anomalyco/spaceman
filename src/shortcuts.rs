@@ -5,7 +5,7 @@ use std::collections::BTreeMap;
 
 use serde::Deserialize;
 
-use crate::{Direction, DisplaySelector, DisplayTarget, ResizeDirection, WorkspaceId};
+use crate::{Axis, Direction, DisplaySelector, DisplayTarget, ResizeDirection, WorkspaceId};
 
 /// The parsed `[shortcuts]` table.
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -296,11 +296,13 @@ pub enum Command {
     Fullscreen,
     Float,
     Resize(ResizeDirection),
+    /// Resize the focused window to this width (`Horizontal`) or height (`Vertical`) in points.
+    ResizeTo(Axis, i32),
     Balance,
     Retile,
 }
 
-pub const COMMAND_USAGE: &str = "switch WORKSPACE|move WORKSPACE [--follow]|back-and-forth|move-workspace [next|prev|DISPLAY]|focus DIR|focus next|focus prev|move-direction DIR|layout|fullscreen|float|resize shrink|resize grow|balance|retile|none";
+pub const COMMAND_USAGE: &str = "switch WORKSPACE|move WORKSPACE [--follow]|back-and-forth|move-workspace [next|prev|DISPLAY]|focus DIR|focus next|focus prev|move-direction DIR|layout|fullscreen|float|resize shrink|resize grow|resize width|height POINTS|balance|retile|none";
 
 /// `[shortcuts]` as written.
 #[derive(Deserialize)]
@@ -489,6 +491,10 @@ pub fn parse_command(source: &str) -> Result<Option<Command>, String> {
         ["float"] => Command::Float,
         ["resize", "shrink"] => Command::Resize(ResizeDirection::Shrink),
         ["resize", "grow"] => Command::Resize(ResizeDirection::Grow),
+        ["resize", dimension, points] => {
+            let (axis, points) = crate::parse_resize_to(dimension, points)?;
+            Command::ResizeTo(axis, points)
+        }
         ["balance"] => Command::Balance,
         ["retile"] => Command::Retile,
         _ => {
@@ -536,6 +542,12 @@ impl Command {
             Self::Float => "toggle floating window".into(),
             Self::Resize(ResizeDirection::Shrink) => "shrink layout".into(),
             Self::Resize(ResizeDirection::Grow) => "grow layout".into(),
+            Self::ResizeTo(Axis::Horizontal, points) => {
+                format!("resize focused window to {points} wide")
+            }
+            Self::ResizeTo(Axis::Vertical, points) => {
+                format!("resize focused window to {points} tall")
+            }
             Self::Balance => "balance layout".into(),
             Self::Retile => "retile".into(),
         }
@@ -630,6 +642,14 @@ mod tests {
             ("float", Some(Command::Float)),
             ("balance", Some(Command::Balance)),
             (
+                "resize width 1200",
+                Some(Command::ResizeTo(Axis::Horizontal, 1200)),
+            ),
+            (
+                "resize  height   480",
+                Some(Command::ResizeTo(Axis::Vertical, 480)),
+            ),
+            (
                 "move-workspace",
                 Some(Command::MoveWorkspace(DisplayTarget::Next)),
             ),
@@ -645,6 +665,14 @@ mod tests {
         assert!(parse_command("explode").is_err());
         assert!(parse_command("switch 11").is_err());
         assert!(parse_command("focus sideways").is_err());
+        for invalid in [
+            "resize width",
+            "resize width -5",
+            "resize width 99999",
+            "balance now",
+        ] {
+            assert!(parse_command(invalid).is_err(), "{invalid}");
+        }
     }
 
     #[test]

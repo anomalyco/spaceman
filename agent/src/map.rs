@@ -121,6 +121,10 @@ impl Layout {
                     }
                 }
                 Place::Float | Place::Ignore => floating.push(rule),
+                // Tiling is the default, so a tile rule has no place on the map.
+                // `spaceman rules` and config.toml edit it; the HUD's Float and Pin
+                // replace it.
+                Place::Tile => {}
             }
         }
         Layout {
@@ -443,7 +447,7 @@ impl MapView<'_> {
         };
         let key = match place {
             Place::Workspace(workspace) => format!("add-{workspace}-menu"),
-            Place::Float | Place::Ignore => "add-menu".into(),
+            Place::Float | Place::Tile | Place::Ignore => "add-menu".into(),
         };
         self.add_menu(&key, trigger, place, layer)
     }

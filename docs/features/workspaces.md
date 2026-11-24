@@ -22,7 +22,7 @@ Switch workspace                                           // ws.switch
 
 Swipe                                                      // ws.swipe
 ├── Three-finger swipe left/right -> next/previous workspace in the menu section of the display
-│   under the pointer (visible + occupied), stops at either end
+│   under the pointer (visible + occupied, in workspace order), stops at either end
 └── Suppressed while a pointer button is down or a window drag is active (including macOS
     Accessibility "Three Finger Drag")
 
@@ -76,9 +76,9 @@ Where a new window goes (first match wins)                 // ws.adoption
 ├── route rule         -> that workspace (parked if hidden); bundle-only route rules apply to the
 │                         app's initial window while secondary windows stay on the active workspace
 ├── remembered placement (startup window, first 60 s, or the app relaunched within 30 s of
-│   quitting) -> remembered workspace (floating if matched by a float rule, dialog, non-resizable,
-│   or remembered as floating)
-├── float rule / dialog / non-resizable -> floating on the active workspace under the window's center
+│   quitting) -> remembered workspace (floating if matched by a float rule, dialog/non-resizable
+│   without a tile rule, or remembered as floating)
+├── float rule / dialog / non-resizable (no tile rule) -> floating on the active workspace under the window's center
 └── otherwise          -> tiled on the active workspace of the display under the window's center
 
 Displays                                                    // ws.displays
@@ -93,10 +93,20 @@ Displays                                                    // ws.displays
     windows left with their center off every remaining display keep their slots and snap back onto
     their workspace's display
 
+Workspace order ([settings] workspace_order)                // ws.order
+├── The order the HUD row, the menu bar menu and three-finger swipes list a display's workspaces
+├── Listed workspaces first, in the order given; the rest follow as 1-10, then A-Z
+├── Unset or empty -> 1-10, then A-Z, as before
+├── Empty workspaces flicked through while the HUD is up stay in the row where the order puts them
+├── Only where workspaces are listed: never enables a letter; shortcuts, routes, and saved state
+│   are unchanged
+├── Unknown or repeated entry -> config rejected
+└── Applies on config reload; removing it brings back the default order
+
 Workspace HUD ([settings] hud, on by default)               // ws.hud
 ├── A switch, a window moved to another workspace, a split-axis or Fullscreen Layout toggle
 │   -> a capsule on every display, each with its own row: every workspace on that
-│      display holding windows, plus the visible one, in order; a marker on the visible one
+│      display holding windows, plus the visible one, in workspace order; a marker on the visible one
 ├── hud_position = "bottom" (default) -> the capsule rests 60 pt above each display's bottom edge,
 │   clear of the Dock; "top" -> 60 pt below its top edge, clear of the menu bar
 ├── hud_style = "icons" (default) -> each workspace as its number and its apps' icons (one per app,
@@ -143,7 +153,8 @@ Keyboard (while tiling is enabled)
 Trackpad: three-finger swipe left/right -> next/previous workspace (turn macOS's three-finger
           "Swipe between full-screen applications" off or move it to four fingers)
 CLI: spaceman ctl switch | back-and-forth | move-workspace | move | move-app
-Config: ~/Library/Application Support/Spaceman/config.toml -> [[rules]], [[workspaces]] (edits apply when the file changes; new named-workspace shortcuts register on the next app start)
+Config: ~/Library/Application Support/Spaceman/config.toml -> [[rules]], [[workspaces]],
+        [settings] workspace_order (edits apply when the file changes; new named-workspace shortcuts register on the next app start)
 Menu bar: shows the active workspace glyphs; its menu lists each display's visible workspace (checked)
           and occupied ones with their apps' icons and Option shortcut -> choose one to switch
 Mouse: drop a tile on another display -> moves it to that display's active workspace (see tiling.md)
@@ -166,6 +177,16 @@ on the same letter.
   `workspace_back_and_forth_bounces_between_the_last_two_focused_workspaces`,
   `workspace_back_and_forth_on_one_display_switches_like_before`,
   `switching_to_an_unconfigured_named_workspace_is_rejected`.
+- Unit (FakeBackend), `src/app/tests/workspace_order.rs`: `settings.workspace_order` orders
+  `listed_workspaces` (unlisted workspaces follow in the default order; an entry neither enables a
+  letter nor lists an empty workspace), the HUD row and three-finger swipes, and a config reload
+  applies and clears it. Unit, `src/config.rs`:
+  `workspace_order_accepts_numbers_and_letters_in_the_given_order`,
+  `workspace_order_rejects_duplicate_and_unknown_workspaces`, and
+  `saving_a_workspace_monitor_keeps_the_workspace_order` (Settings › Workspaces); CLI,
+  `src/cli/tests/regressions.rs`: `config_commands_keep_and_show_the_workspace_order`; agent,
+  `agent/src/hud/tests.rs`: `visited_empty_workspaces_keep_the_configured_workspace_order` (empty
+  workspaces flicked through during one HUD show stay where the order puts them).
 - Unit (FakeBackend), `src/app/tests/switch_repeat.rs`: a repeat `SwitchWorkspace` walks a
   3-tile workspace A -> B -> C -> A in split and Fullscreen Layout (remembered focus and HUD
   included), warps the pointer onto each next tile under `mouse_follows_focus`, steps on inside
@@ -251,10 +272,13 @@ on the same letter.
 - Unit, `src/geometry.rs`: `parking_leaves_a_single_corner_pixel_on_screen`,
   `a_window_held_above_its_parking_corner_is_still_parked`,
   `a_window_held_up_by_its_title_bar_stays_off_a_shorter_neighbor`,
-  `a_window_held_up_stays_off_a_neighbors_menu_bar`, and
-  `a_side_dock_moves_parking_to_the_other_corner`: parking targets a bottom corner, accepts macOS
-  holding the window up by its title bar, and keeps every held-up position off other displays and
-  off menu bars and Docks. How far macOS holds it up is not covered.
+  `a_window_held_up_stays_off_a_neighbors_menu_bar`,
+  `a_side_dock_moves_parking_to_the_other_corner`, and
+  `a_display_below_falls_back_to_the_edge_strip_not_its_corner`: parking targets a bottom corner,
+  accepts macOS holding the window up by its title bar, and keeps every held-up position off other
+  displays and off menu bars and Docks; when a display below blocks both corners it parks along its
+  own display's side edge rather than another display's corner. How far macOS holds it up is not
+  covered.
 - Unit (FakeBackend), `src/app/tests/reconciliation.rs`:
   `an_app_that_quits_while_hidden_releases_its_tiles_and_recovery_metadata` (an app that quits
   while its windows are parked frees their tiles without the workspace being shown).
@@ -264,6 +288,12 @@ on the same letter.
   covered.
 - Live harness (not run): `scripts/live-workspaces.sh` switches 6/7/8 by real hotkeys, moves without
   switching, rapid-switch coalescing, and hard-kill recovery. Needs two displays and AeroSpace.
+- Live gauntlet, `scripts/gauntlet.sh`: `ctl switch` parks every window to at most a one-point strip,
+  records each original frame in `parked-windows.json`, restores the exact frames on the way back and
+  empties the file; `ctl move` parks the window with its frame recorded.
+- Observed (2026-11-24, gauntlet): after `ctl move`, the moved (now parked) window keeps keyboard
+  focus and its app stays frontmost. Spaceman's in-memory focus suppression stops it following
+  that focus, but a relaunch in that state follows it to the target workspace.
 
 - Unit, `src/app/tests/dispatch.rs` and `src/app/tests/switching.rs`: the HUD event's rows per
   display, the visible workspace on each, and `from` only on the display that switched.

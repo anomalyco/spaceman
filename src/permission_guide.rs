@@ -158,8 +158,110 @@ pub fn settings_focus() -> SettingsFocus {
 }
 
 #[cfg(test)]
+#[repr(C)]
+#[derive(Clone, Copy, Debug, PartialEq)]
+struct GuidePoint {
+    x: f64,
+    y: f64,
+}
+
+#[cfg(test)]
+#[repr(C)]
+#[derive(Clone, Copy, Debug, PartialEq)]
+struct GuideSize {
+    width: f64,
+    height: f64,
+}
+
+#[cfg(test)]
+#[repr(C)]
+#[derive(Clone, Copy, Debug, PartialEq)]
+struct GuideRect {
+    x: f64,
+    y: f64,
+    width: f64,
+    height: f64,
+}
+
+#[cfg(test)]
+#[repr(C)]
+#[derive(Clone, Copy, Debug)]
+struct GuideWindowInfo {
+    pid: i32,
+    layer: i32,
+    alpha: f64,
+    frame: GuideRect,
+    is_settings_owner: bool,
+    is_system_prompt_owner: bool,
+    is_ignored_chrome: bool,
+}
+
+#[cfg(test)]
+#[repr(C)]
+#[derive(Clone, Copy, Debug)]
+struct GuideWindowAnalysis {
+    has_settings_frame: bool,
+    settings_frame: GuideRect,
+    has_blocking_sheet_or_prompt: bool,
+}
+
+#[cfg(test)]
+unsafe extern "C" {
+    fn spaceman_permission_guide_origin(
+        settings: GuideRect,
+        visible: GuideRect,
+        panel: GuideSize,
+        protected_mode: bool,
+    ) -> GuidePoint;
+    fn spaceman_permission_guide_analyze_windows(
+        windows: *const GuideWindowInfo,
+        count: usize,
+        self_pid: i32,
+        modal_layer: i32,
+    ) -> GuideWindowAnalysis;
+}
+
+#[cfg(test)]
 mod tests {
     use super::*;
+
+    fn guide_origin(
+        settings: GuideRect,
+        visible: GuideRect,
+        panel: GuideSize,
+        protected_mode: bool,
+    ) -> GuidePoint {
+        // SAFETY: Pure value-type geometry calculation in `native/permission_guide.m`.
+        unsafe { spaceman_permission_guide_origin(settings, visible, panel, protected_mode) }
+    }
+
+    fn analyze_windows(windows: &[GuideWindowInfo], self_pid: i32) -> GuideWindowAnalysis {
+        // SAFETY: Passes a valid slice pointer and length to the pure C analyzer.
+        unsafe {
+            spaceman_permission_guide_analyze_windows(windows.as_ptr(), windows.len(), self_pid, 8)
+        }
+    }
+
+    fn rect(x: f64, y: f64, width: f64, height: f64) -> GuideRect {
+        GuideRect {
+            x,
+            y,
+            width,
+            height,
+        }
+    }
+
+    fn settings_window(frame: GuideRect, layer: i32) -> GuideWindowInfo {
+        GuideWindowInfo {
+            pid: 500,
+            layer,
+            alpha: 1.0,
+            frame,
+            is_settings_owner: true,
+            is_system_prompt_owner: false,
+            is_ignored_chrome: false,
+        }
+    }
 
     #[test]
     fn return_from_settings_brings_spaceman_back_only_from_system_settings() {
@@ -246,5 +348,175 @@ mod tests {
         let copy = add_instructions();
         assert!(copy.contains(list_name()));
         assert_eq!(copy.contains("Drag"), drag_supported());
+    }
+
+    #[test]
+    fn protected_guide_prefers_above_then_below_then_top_never_bottom() {
+        let visible = rect(0.0, 0.0, 1440.0, 875.0);
+        let panel = GuideSize {
+            width: 658.0,
+            height: 52.0,
+        };
+
+        // Room above and below: prefers above System Settings (+12 pt).
+        let centered = rect(360.0, 140.0, 720.0, 600.0);
+        let above = guide_origin(centered, visible, panel, true);
+        assert_eq!(above.y, 140.0 + 600.0 + 12.0);
+        assert_eq!(above.x, 360.0 + 360.0 - 658.0 / 2.0);
+
+        // Settings near the top of the screen: no room above, falls back below (-12 pt).
+        let near_top = rect(360.0, 250.0, 720.0, 600.0);
+        let below = guide_origin(near_top, visible, panel, true);
+        assert_eq!(below.y, 250.0 - 52.0 - 12.0);
+
+        // Tall / full-height Settings on a laptop display: neither above nor below fits.
+        // Must sit near the top of visible (never NSMinY(visible) + 8 over bottom buttons).
+        let laptop_visible = rect(0.0, 0.0, 1280.0, 775.0);
+        let tall_settings = rect(200.0, 15.0, 880.0, 745.0);
+        let fallback = guide_origin(tall_settings, laptop_visible, panel, true);
+        assert_eq!(fallback.y, 775.0 - 52.0 - 12.0);
+        assert!(
+            fallback.y >= tall_settings.y + 120.0,
+            "fallback ({}) overlapped bottom 120 pt of Settings",
+            fallback.y
+        );
+
+        // Secondary display with negative Y coordinates behaves identically.
+        let lower_display = rect(0.0, -900.0, 1440.0, 875.0);
+        let tall_on_lower = rect(360.0, -885.0, 720.0, 845.0);
+        let lower_fallback = guide_origin(tall_on_lower, lower_display, panel, true);
+        assert_eq!(lower_fallback.y, -25.0 - 52.0 - 12.0);
+        assert!(lower_fallback.y >= tall_on_lower.y + 120.0);
+    }
+
+    #[test]
+    fn protected_guide_never_overlaps_settings_bottom_band_on_standard_displays() {
+        let visible = rect(0.0, 0.0, 1280.0, 720.0);
+        let panel = GuideSize {
+            width: 658.0,
+            height: 52.0,
+        };
+        for settings_height in [400.0, 550.0, 650.0, 700.0, 720.0] {
+            for offset_y in [0.0, 10.0, 40.0, 80.0, 140.0, 260.0] {
+                if offset_y + settings_height > visible.height + 40.0 {
+                    continue;
+                }
+                let settings = rect(240.0, offset_y, 760.0, settings_height);
+                let origin = guide_origin(settings, visible, panel, true);
+                let panel_top = origin.y + panel.height;
+                let danger_bottom = settings.y;
+                let danger_top = settings.y + 120.0;
+                let overlaps_bottom = origin.y < danger_top && panel_top > danger_bottom;
+                assert!(
+                    !overlaps_bottom,
+                    "panel [{}, {}] overlapped Settings bottom band [{}, {}] for settings={settings:?}",
+                    origin.y, panel_top, danger_bottom, danger_top
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn legacy_drag_guide_stays_clamped_inside_visible_frame() {
+        let visible = rect(0.0, 0.0, 1440.0, 875.0);
+        let settings = rect(360.0, 140.0, 720.0, 600.0);
+        let panel = GuideSize {
+            width: 480.0,
+            height: 116.0,
+        };
+        let origin = guide_origin(settings, visible, panel, false);
+        assert_eq!(origin.x, 360.0 + 720.0 - 480.0 - 16.0);
+        assert_eq!(origin.y, 140.0 + 16.0);
+    }
+
+    #[test]
+    fn window_analysis_hides_guide_for_settings_sheets_and_security_prompts() {
+        let main_frame = rect(300.0, 100.0, 720.0, 620.0);
+        let sheet_frame = rect(430.0, 200.0, 460.0, 360.0);
+        let main = settings_window(main_frame, 0);
+
+        // Main System Settings window alone: show the guide.
+        let alone = analyze_windows(&[main], 999);
+        assert!(alone.has_settings_frame);
+        assert!(!alone.has_blocking_sheet_or_prompt);
+
+        // Layer-0 attached sheet ("Choose Apps" / "Override System Protections"): hide.
+        let layer0_sheet = settings_window(sheet_frame, 0);
+        let with_layer0_sheet = analyze_windows(&[layer0_sheet, main], 999);
+        assert!(with_layer0_sheet.has_settings_frame);
+        assert!(with_layer0_sheet.has_blocking_sheet_or_prompt);
+
+        // Modal-layer sheet owned by System Settings: hide.
+        let modal_sheet = settings_window(sheet_frame, 8);
+        let with_modal_sheet = analyze_windows(&[modal_sheet, main], 999);
+        assert!(with_modal_sheet.has_blocking_sheet_or_prompt);
+
+        // Tiny or transparent Settings helper windows must not trigger false positives.
+        let tiny_helper = settings_window(rect(310.0, 110.0, 24.0, 24.0), 0);
+        let invisible_helper = GuideWindowInfo {
+            alpha: 0.0,
+            ..settings_window(sheet_frame, 0)
+        };
+        let with_helpers = analyze_windows(&[tiny_helper, invisible_helper, main], 999);
+        assert!(!with_helpers.has_blocking_sheet_or_prompt);
+
+        // System security / TCC prompt (SecurityAgent, CoreServicesUIAgent, etc.): hide.
+        let security_prompt = GuideWindowInfo {
+            pid: 700,
+            layer: 8,
+            alpha: 1.0,
+            frame: sheet_frame,
+            is_settings_owner: false,
+            is_system_prompt_owner: true,
+            is_ignored_chrome: false,
+        };
+        let with_prompt = analyze_windows(&[security_prompt, main], 999);
+        assert!(with_prompt.has_blocking_sheet_or_prompt);
+
+        // Unknown macOS 27.3 XPC sheet window rendered in front of Settings overlapping it: hide.
+        let xpc_sheet = GuideWindowInfo {
+            pid: 801,
+            layer: 0,
+            alpha: 1.0,
+            frame: sheet_frame,
+            is_settings_owner: false,
+            is_system_prompt_owner: false,
+            is_ignored_chrome: false,
+        };
+        let with_xpc_sheet = analyze_windows(&[xpc_sheet, main], 999);
+        assert!(with_xpc_sheet.has_blocking_sheet_or_prompt);
+
+        // Regular app behind System Settings, Spaceman's own panel, and another display's window
+        // must not hide the guide.
+        let own_panel = GuideWindowInfo {
+            pid: 999,
+            layer: 3,
+            alpha: 1.0,
+            frame: rect(300.0, 40.0, 658.0, 52.0),
+            is_settings_owner: false,
+            is_system_prompt_owner: false,
+            is_ignored_chrome: false,
+        };
+        let other_monitor = GuideWindowInfo {
+            pid: 802,
+            layer: 0,
+            alpha: 1.0,
+            frame: rect(2000.0, 100.0, 900.0, 700.0),
+            is_settings_owner: false,
+            is_system_prompt_owner: false,
+            is_ignored_chrome: false,
+        };
+        let app_behind = GuideWindowInfo {
+            pid: 803,
+            layer: 0,
+            alpha: 1.0,
+            frame: main_frame,
+            is_settings_owner: false,
+            is_system_prompt_owner: false,
+            is_ignored_chrome: false,
+        };
+        let benign = analyze_windows(&[own_panel, other_monitor, main, app_behind], 999);
+        assert!(benign.has_settings_frame);
+        assert!(!benign.has_blocking_sheet_or_prompt);
     }
 }

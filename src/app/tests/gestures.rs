@@ -218,7 +218,7 @@ fn releasing_resize_or_drop_after_workspace_switch_keeps_outgoing_workspace_park
     let mut rt = make_runtime();
     let mut queue = InputQueue::default();
     let mut tracker = GestureTracker::default();
-    tracker.begin(Some((window(20), right)));
+    tracker.begin(vec![(window(20), right)]);
     rt.backend.mouse_down = true;
     rt.backend.frames.insert(
         window(20),
@@ -243,7 +243,7 @@ fn releasing_resize_or_drop_after_workspace_switch_keeps_outgoing_workspace_park
     let saved_before = rt.backend.workspace_state.clone().unwrap();
 
     rt.backend.mouse_down = false;
-    let release = tracker.finish(Some(parked_right), None).unwrap();
+    let release = tracker.finish(|_| Some(parked_right), None).unwrap();
     assert_eq!(release, FinalGesture::Resize(window(20), parked_right));
     let before_calls = rt.backend.calls.len();
     let status = dispatch(&mut rt, QueuedInput::Gesture(release));

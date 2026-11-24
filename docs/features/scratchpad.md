@@ -44,8 +44,12 @@ Unit (FakeBackend), `src/app/tests/scratchpad.rs`:
 `an_empty_scratchpad_toggle_is_a_clean_no_op`. Pure model and summon frame: `src/scratchpad.rs`;
 shortcut gating: `scratchpad_shortcuts_register_only_while_the_lab_is_on` in `src/hotkeys.rs`.
 
+Live gauntlet, `scripts/gauntlet.sh`: `scratchpad mark` parks the window with its frame in
+`parked-windows.json` while the rest re-fill, `scratchpad toggle` summons it on screen, floating and
+focused, and `mark` on the shown window tiles it again.
+
 ## Gaps
 
-- No live harness drives the scratchpad against real windows yet.
+- No live check drives the scratchpad shortcuts themselves.
 - No Settings › Labs toggle yet; the switch lives in `config.toml`.
 - Activating a hidden window's app (Dock, Cmd+Tab) does not summon it.

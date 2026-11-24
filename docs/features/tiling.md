@@ -26,12 +26,14 @@ Reorder                                                 // tile.reorder
 │   └── Perpendicular move    -> re-orients or creates a mixed split
 └── Pointer drag
     ├── Over a sibling     -> live-previewed swap, applied on mouse-up
-    ├── Near a tile edge   -> nested split
+    ├── Near a tile edge   -> nested split (in the saved layout, even while tiles are temporarily stacked)
     └── Onto another display -> moved to that display's active workspace
 
 Size                                                    // tile.size
 ├── Option+- / Option+= / ctl resize shrink|grow -> 50 px at the immediate split
 ├── Pointer resize       -> split weights follow both edges of a corner drag, preview during the gesture
+├── ctl resize width|height <points> -> resize the focused window to that width/height at the
+│   nearest split on that axis; siblings give or take in proportion; clamped at minimums; lone tile unchanged
 ├── ctl balance          -> equalize the focused tile's immediate split (no default hotkey)
 └── Window refuses its tile size (app minimum) -> its tile grows to fit and siblings give up
     the space; if necessary, try stacking an adjacent pair
@@ -42,6 +44,8 @@ Axis                                                    // tile.axis
 Spacing                                                 // tile.spacing
 ├── settings.gaps.inner              -> exactly that many points between neighboring tiles, any nesting
 ├── settings.gaps.top/bottom/left/right -> outer padding; gives way above a 320×240 tiled area
+├── settings.gaps.outer              -> padding of each of those edges the file leaves out; an edge
+│   with its own key keeps it, even at 0
 └── settings.single_window_max_width -> a lone tile (one tiled window, or Fullscreen Layout) centered
     at that width when the padded area is wider
 ```
@@ -51,9 +55,10 @@ Spacing                                                 // tile.spacing
 ```ts
 Keyboard: Option+H/J/K/L, Option+Shift+H/J/K/L, Option+`, Option+-, Option+=, Option+/
 Pointer:  drag a managed window (reorder/nest/move display), drag its edge (resize)
-CLI:      spaceman ctl focus | move-direction | resize | balance | layout | retile
+CLI:      spaceman ctl focus | move-direction | resize shrink|grow|width|height | balance | layout | retile
+Shortcut: [shortcuts.bindings] can bind any of those, e.g. "ctrl+alt+w" = "resize width 1200"
 Settings: Settings › Layout -> Window gaps (Customize separately: Between windows, Screen edges, Top/Bottom/Left/Right), Single-window width
-Config:   spaceman config set gaps.inner|gaps.top|gaps.bottom|gaps.left|gaps.right|single_window_max_width <points>
+Config:   spaceman config set gaps.inner|gaps.outer|gaps.top|gaps.bottom|gaps.left|gaps.right|single_window_max_width <points>
 ```
 
 Input arriving while the worker is busy queues in order (up to 64); queued input is dropped on
@@ -66,41 +71,68 @@ pause, quit, or hotkey loss.
   `workspace_focus_cycle_wraps_through_tile_order_in_every_layout`,
   `keyboard_resize_applies_and_persists_the_focused_layout`,
   `balance_applies_and_persists_the_focused_parent_split`,
+  `resize_to_applies_and_persists_the_focused_window_width`,
+  `resize_to_requires_leaving_fullscreen_layout`,
   `reorder_moves_to_the_adjacent_display_at_a_tile_boundary`,
   `reorder_moves_to_an_empty_workspace_on_the_adjacent_display` (issue 119),
   `perpendicular_reorder_creates_a_mixed_split_for_three_windows`,
   `layout_toggle_repartitions_and_persists_the_focused_workspace`.
 - Engine and layout tree: `new_window_joins_the_focused_nested_split` and
-  `corner_drag_moves_both_nested_boundaries` cover insertion and diagonal resizing.
+  `corner_drag_moves_both_nested_boundaries` cover insertion and diagonal resizing;
+  `resize_to_*` in `src/layout_tree/tests.rs` cover the nearest split on each axis, proportional
+  sharing, recursive minimums, and lone tiles.
 - Unit (FakeBackend), `src/app/tests/gestures.rs`: drag swap preview, edge-nesting preview,
   cross-display drop; `startup.rs` covers gesture classification and `src/app/input.rs` covers
-  queued final gestures.
+  queued final gestures and edge drags grabbed from outside the window (in a gap or over the
+  neighbor), which `src/macos/tests.rs` hit-tests by resize-border reach.
 - Unit (FakeBackend), `src/app/tests/reconciliation.rs`:
   `early_open_event_rechecks_until_the_new_window_can_split_its_sibling`,
+  `closed_window_its_app_keeps_ordered_out_gives_up_its_tile` (an app closes its window by ordering it out),
+  `workspace_whose_windows_all_leave_the_screen_keeps_its_tiles` (another Space is showing).
+  `src/app/tests/ordered_out.rs`:
   `confirmed_last_window_close_reflows_the_sibling_in_the_same_cycle`,
   `uncertain_close_requests_one_early_retry`,
   `recheck_reflows_when_the_ordered_out_surface_disappears`,
   `a_possible_tab_replacement_or_incomplete_snapshot_keeps_its_tile`,
-  `closed_window_its_app_keeps_ordered_out_gives_up_its_tile` (an app closes its window by ordering it out),
-  `workspace_whose_windows_all_leave_the_screen_keeps_its_tiles` (another Space is showing).
-  `src/app/tests/set_aside.rs`: `hidden_or_minimized_window_reflows_the_sibling_in_the_same_cycle`,
+  `hidden_or_minimized_window_reflows_the_sibling_in_the_same_cycle`,
   `an_app_keeps_its_tiles_while_one_of_its_windows_is_still_settling`,
   `a_parked_window_keeps_its_tile_through_the_settle`.
 - Unit (FakeBackend), `src/app/tests/minimums.rs`: a window that refuses its tile width gets a wider
-  tile (middle, last, several at once, and observation-cycle cases); a three-window row that cannot fit stacks two neighbors, and a wider display restores the requested row; Fullscreen Layout ignores minimums. `src/app/tests/stacked_resize.rs`: a resize while a pair is stacked keeps the saved row (issue 197). `src/layout_tree.rs`:
+  tile (middle, last, several at once, and observation-cycle cases); a three-window row that cannot fit stacks two neighbors, and a wider display restores the requested row; Fullscreen Layout ignores minimums. `src/app/tests/stacked_resize.rs`: a resize (issue 197), swap, or drag-nest (with or without a preview) while a pair is stacked never saves the temporary stack; a drag-nest through a fit that only reweights keeps the requested weights; a perpendicular move through a stack saves A above `B | C`; and a drop held on the other stacked tile follows the preview. `src/layout_tree.rs`:
   `fitting_minimums_reaches_into_nested_splits_and_leaves_impossible_splits_alone`.
+- Window classification (`src/macos/classify.rs`), `src/macos/tests.rs`:
+  `primary_windows_without_a_working_fullscreen_button_still_tile` (FaceTime, Phone, News, Podcasts,
+  Games, Shortcuts, System Settings, windows showing a sheet) and
+  `settings_windows_modals_and_accessory_panels_still_float`.
+- `tile` rule: `src/app/tests/rules.rs`
+  `a_tile_rule_tiles_a_window_that_looks_like_a_dialog_until_toggled_to_float`; `src/config.rs`
+  `tile_rule_parses_and_rejects_a_workspace`; `src/cli/tests.rs` `rules_add_tile_writes_a_tile_rule`;
+  `agent/src/rules/tests.rs` `a_tile_rule_reads_back_and_the_hud_float_replaces_it_in_place`.
 - Spacing, `src/spacing/tests.rs`: outer padding and its 320×240 floor; one tile, two columns and a
   nested three-tile split with inner gaps and asymmetric padding (no overlaps, exact point totals);
   equal weights give equal windows; Fullscreen Layout's capped frame; directional focus across gaps;
-  a pointer resize, keyboard resize and balance through gaps. `src/config.rs` and
-  `src/cli/tests.rs` cover parsing, range errors and `spaceman config`;
-  `agent/src/rules/tests.rs` covers Settings › Layout saves that keep comments and restore the file.
+  a pointer resize, keyboard resize, `resize width` and balance through gaps.
+  `src/app/tests/spacing.rs` covers the frames the runtime applies, `outer` with one edge at zero
+  included. `src/config.rs` and `src/cli/tests.rs` cover parsing, `outer`'s fallback and its
+  explicit edges, range errors and `spaceman config`; `agent/src/rules/tests.rs` covers Settings ›
+  Layout saves that keep comments, keep `outer` and its explicit zeros, and restore the file.
 - Fixture replay: `cargo run -- replay fixtures/ghostty-tab-replacement.json` (reconciliation of a
   native-tab replacement, without the runtime).
 - Live harness (not run): `scripts/live-ghostty-tabs.sh` for native-tab slot preservation.
+- Live gauntlet, `scripts/gauntlet.sh`: three windows tile the display with no overlap or gap and
+  match `ctl debug`; directional focus, repeat switch and `focus next` move real macOS focus; the
+  rest re-fill after a minimize or hide (500 ms budget from when the window leaves the screen);
+  float and un-float re-tile.
+- Observed (2026-11-24, gauntlet in a macOS 27 VM): after a minimize the rest re-fill about 30 ms
+  after the window leaves the screen, but after a hide (Cmd+H) it takes about 700 ms. Spaceman
+  observes `AXWindowMiniaturized` but no hide notification, so a hide is only seen through the
+  activation change and its settle delay.
 
 ## Gotchas
 
+- Settings › Rules shows no `tile` rules: tiling is the default, so the map has nowhere to draw one.
+  Edit them with `spaceman rules` or `config.toml`; the Workspace HUD's Float and Pin replace an
+  app's tile rule.
 - Tests check requested frames; apps with minimum sizes may refuse them. Spaceman grows such a
   window's tile to the size it kept, taking the space from its siblings in proportion to what each
   can spare, and logs a `minimum size:` line in `agent.log`. Minimums are learned per window, only
@@ -113,6 +145,12 @@ pause, quit, or hotkey loss.
   pair is stacked changes only the stack shown, never the saved split. If no pair solves the shortage,
   windows may overlap. A sustained overlap involving a constrained tile appears in `spaceman doctor`
   as `constrained_overlap`.
+- A swap, a drag-nest or a perpendicular move while tiles are temporarily stacked edits the saved
+  layout; the stack is then recomputed from it, so the result shown can differ from the stack the
+  tile was dropped on or moved across. Dropping A on the top edge of C in `| A | B/C |`, stacked
+  only to fit, saves `| B | A/C |`. While dragging, each preview re-lays out the tiles, so a drop
+  near the edge of a temporarily stacked tile can land beside the tile that has moved under the
+  pointer: holding A on B's top edge there also ends as `| B | A/C |`.
 - Some apps (many SwiftUI apps) close a window by ordering it out; the window server keeps
   listing it. When a sibling stays visible and the app had one tile on this workspace, an empty
   Accessibility window list can confirm the close immediately. An inconclusive check gets one
@@ -121,14 +159,18 @@ pause, quit, or hotkey loss.
   period: macOS confirms it, so the siblings reflow at once, and the window comes back as a
   new tile at the end of the layout. While nothing on the display is observed (another macOS Space
   is showing), tiles are kept.
-- `balance` has no default hotkey; it is CLI-only.
+- `balance` and `resize width|height` have no default hotkey; bind them in
+  `[shortcuts.bindings]` or run them from the CLI.
 - With gaps, a drop that lands in the gap between two tiles misses both and leaves the layout as it
   was. The Workspace HUD's layout previews stay schematic and ignore spacing.
+- `settings.gaps.outer` is a config shorthand only: the runtime and `config show` get four resolved
+  edges, and Settings never writes it. A file that spells out all four edges ignores it.
 - A window that enters macOS native fullscreen (for example browser video) loses its slot after two
   seconds and returns as a new tile at the end of the layout
   ([known defect](fullscreen-layout.md#gotchas)).
-- Floating windows (rules, manual Toggle Float, modal/dialog windows without an enabled fullscreen
-  button, or non-resizable windows) are owned by a workspace (and can be moved between workspaces)
+- Floating windows (rules, manual Toggle Float, modal windows, dialogs with a close button but
+  neither a fullscreen button nor an enabled zoom button, or non-resizable windows) are owned by a
+  workspace (and can be moved between workspaces)
   but are never tiled or resized. A window that already holds a tile keeps it while it temporarily
   reports non-resizable (such as while showing a window-modal close or save sheet); only a `float`
   rule or Toggle Float releases a tile.

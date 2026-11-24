@@ -110,6 +110,42 @@ impl LayoutTree {
         true
     }
 
+    /// Set the focused tile's extent along `axis` at the nearest split on that axis. The
+    /// split's other children give or take the difference in proportion to their size (or to
+    /// what each can spare above its nested minimum), so their relative sizes hold.
+    pub(crate) fn resize_to(
+        &mut self,
+        slot: SlotId,
+        axis: Axis,
+        target: i32,
+        output: Rect,
+    ) -> bool {
+        let Some((path, index)) = nearest_split_on(&self.root, slot, axis, Vec::new()) else {
+            return false;
+        };
+        let Some((split_frame, _, children)) = self.split_at_mut(output, &path) else {
+            return false;
+        };
+        let extents = partition_children(split_frame, axis, children)
+            .iter()
+            .map(|frame| extent(*frame, axis))
+            .collect::<Vec<_>>();
+        let minimums = children
+            .iter()
+            .map(|child| minimum_extent(&child.node, axis))
+            .collect::<Vec<_>>();
+        let Some(sized) = extents_with(&extents, &minimums, index, target) else {
+            return false;
+        };
+        if sized == extents {
+            return false;
+        }
+        for (child, extent) in children.iter_mut().zip(sized) {
+            child.weight = pixel_weight(extent);
+        }
+        true
+    }
+
     pub(crate) fn balance(&mut self, slot: SlotId, output: Rect) -> bool {
         let Some((path, _)) = immediate_parent(&self.root, slot, Vec::new()) else {
             return false;
@@ -252,6 +288,94 @@ fn resize_candidate(
     candidates
         .into_iter()
         .max_by_key(|candidate| candidate.delta.abs())
+}
+
+/// `extents` with child `index` set to `target`, clamped so every child keeps its minimum.
+/// The others grow in proportion to their extents, or shrink in proportion to their slack.
+/// `None` when the minimums cannot all fit.
+fn extents_with(extents: &[i32], minimums: &[i32], index: usize, target: i32) -> Option<Vec<i32>> {
+    let total = extents.iter().sum::<i32>();
+    let others_minimum = minimums.iter().sum::<i32>() - minimums[index];
+    if minimums[index] + others_minimum > total {
+        return None;
+    }
+    let focused = target.clamp(minimums[index], total - others_minimum);
+    let others = (0..extents.len()).filter(|&other| other != index);
+    // Positive: the others grow by this much; negative: they shrink.
+    let change = (total - focused) - (total - extents[index]);
+    let (weights, caps): (Vec<i64>, Vec<i64>) = others
+        .clone()
+        .map(|other| {
+            if change > 0 {
+                (i64::from(extents[other].max(1)), i64::MAX)
+            } else {
+                let slack = i64::from(extents[other] - minimums[other]).max(0);
+                (slack, slack)
+            }
+        })
+        .unzip();
+    let shares = spread(i64::from(change.abs()), &weights, &caps);
+    let mut sized = extents.to_vec();
+    sized[index] = focused;
+    for (other, share) in others.zip(shares) {
+        let share = i32::try_from(share).unwrap_or(i32::MAX);
+        sized[other] += if change > 0 { share } else { -share };
+    }
+    Some(sized)
+}
+
+/// `amount` split over `weights` in proportion, in whole points, no share above its cap.
+fn spread(amount: i64, weights: &[i64], caps: &[i64]) -> Vec<i64> {
+    let total = weights.iter().sum::<i64>();
+    let mut shares = weights
+        .iter()
+        .zip(caps)
+        .map(|(weight, cap)| {
+            if total == 0 {
+                0
+            } else {
+                (amount * weight / total).min(*cap)
+            }
+        })
+        .collect::<Vec<_>>();
+    let mut left = amount - shares.iter().sum::<i64>();
+    while left > 0 {
+        let before = left;
+        for (share, cap) in shares.iter_mut().zip(caps) {
+            if left > 0 && *share < *cap {
+                *share += 1;
+                left -= 1;
+            }
+        }
+        if left == before {
+            break;
+        }
+    }
+    shares
+}
+
+/// The deepest split on `axis` with more than one child that contains `slot`, and the index of
+/// the child holding it: the split whose boundaries set the tile's extent along `axis`.
+fn nearest_split_on(
+    node: &Node,
+    slot: SlotId,
+    axis: Axis,
+    path: Vec<usize>,
+) -> Option<(Vec<usize>, usize)> {
+    let Node::Split {
+        axis: split_axis,
+        children,
+    } = node
+    else {
+        return None;
+    };
+    let index = children
+        .iter()
+        .position(|child| child.node.contains(slot))?;
+    let mut child_path = path.clone();
+    child_path.push(index);
+    nearest_split_on(&children[index].node, slot, axis, child_path)
+        .or_else(|| (*split_axis == axis && children.len() > 1).then_some((path, index)))
 }
 
 fn pixel_weight(extent: i32) -> u32 {

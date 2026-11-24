@@ -12,7 +12,7 @@ use spaceman::{
         write_config_atomic,
     },
     labs::LabsConfig,
-    spacing::{Spacing, SpacingKey},
+    spacing::{Spacing, SpacingKey, check_outer},
 };
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
@@ -56,7 +56,7 @@ impl Default for ConfigDoc {
     }
 }
 
-#[derive(Clone, Copy, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
+#[derive(Clone, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
 pub(crate) struct SettingsDoc {
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -87,6 +87,8 @@ pub(crate) struct SettingsDoc {
     pub mouse_follows_focus: Option<MouseFollowsFocus>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub single_window_max_width: Option<i64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub workspace_order: Option<Vec<WorkspaceId>>,
     #[serde(default, skip_serializing_if = "GapsDoc::is_empty")]
     pub gaps: GapsDoc,
 }
@@ -97,6 +99,8 @@ pub(crate) struct SettingsDoc {
 pub(crate) struct GapsDoc {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub inner: Option<i64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub outer: Option<i64>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub top: Option<i64>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -110,6 +114,7 @@ pub(crate) struct GapsDoc {
 impl GapsDoc {
     fn is_empty(&self) -> bool {
         self.inner.is_none()
+            && self.outer.is_none()
             && self.top.is_none()
             && self.bottom.is_none()
             && self.left.is_none()
@@ -125,6 +130,7 @@ impl SettingsDoc {
             && self.update_channel.is_none()
             && self.mouse_follows_focus.is_none()
             && self.single_window_max_width.is_none()
+            && self.workspace_order.is_none()
             && self.gaps.is_empty()
     }
 
@@ -139,21 +145,58 @@ impl SettingsDoc {
         }
     }
 
-    /// The spacing the file asks for, every unset key at its default `0`.
+    fn outer(&self) -> Option<i32> {
+        self.gaps.outer.and_then(|value| check_outer(value).ok())
+    }
+
+    /// `gaps.outer` as the file sets it, whatever the edges are.
+    pub(crate) fn effective_outer(&self) -> i32 {
+        self.outer().unwrap_or(0)
+    }
+
+    /// Sets `gaps.outer` after checking its range; `0` removes it. Edges keep their own keys.
+    pub(crate) fn set_outer(&mut self, value: i64) -> Result<i32, String> {
+        let checked = check_outer(value)?;
+        self.gaps.outer = (checked != 0).then_some(i64::from(checked));
+        Ok(checked)
+    }
+
+    /// The spacing the file asks for, every unset key at its fallback.
     pub(crate) fn effective_spacing(&self) -> Spacing {
-        let mut doc = *self;
+        let mut doc = self.clone();
         let mut spacing = Spacing::NONE;
         for key in SpacingKey::ALL {
-            let value = doc.spacing_slot(key).unwrap_or(0);
-            key.set(&mut spacing, i32::try_from(value).unwrap_or(0));
+            let value = match *doc.spacing_slot(key) {
+                Some(value) => i32::try_from(value).unwrap_or(0),
+                None => key.fallback(self.outer()),
+            };
+            key.set(&mut spacing, value);
         }
         spacing
     }
 
-    /// Sets one spacing key after checking its range; `0` removes it, back to the default.
+    /// Whether the file sets this spacing key explicitly.
+    pub(crate) fn has_spacing(&self, key: SpacingKey) -> bool {
+        match key {
+            SpacingKey::Inner => self.gaps.inner.is_some(),
+            SpacingKey::Top => self.gaps.top.is_some(),
+            SpacingKey::Bottom => self.gaps.bottom.is_some(),
+            SpacingKey::Left => self.gaps.left.is_some(),
+            SpacingKey::Right => self.gaps.right.is_some(),
+            SpacingKey::SingleWindowMaxWidth => self.single_window_max_width.is_some(),
+        }
+    }
+
+    /// Removes one spacing key from the file so it falls back to its default (or `gaps.outer`).
+    pub(crate) fn clear_spacing(&mut self, key: SpacingKey) {
+        *self.spacing_slot(key) = None;
+    }
+
+    /// Sets one spacing key after checking its range, or removes it when its value needs no key.
     pub(crate) fn set_spacing(&mut self, key: SpacingKey, value: i64) -> Result<i32, String> {
         let checked = key.check(value)?;
-        *self.spacing_slot(key) = (checked != 0).then_some(i64::from(checked));
+        let written = key.is_written(checked, self.outer());
+        *self.spacing_slot(key) = written.then_some(i64::from(checked));
         Ok(checked)
     }
 
@@ -245,6 +288,7 @@ pub(crate) struct EffectiveSettings {
     pub update_channel: &'static str,
     pub mouse_follows_focus: &'static str,
     pub single_window_max_width: i32,
+    pub workspace_order: Vec<WorkspaceId>,
     pub gaps: EffectiveGaps,
 }
 
@@ -321,6 +365,7 @@ impl ConfigDoc {
             update_channel: self.settings.effective_update_channel().as_str(),
             mouse_follows_focus: self.settings.effective_mouse_follows_focus().as_str(),
             single_window_max_width: spacing.single_window_max_width,
+            workspace_order: self.settings.workspace_order.clone().unwrap_or_default(),
             gaps: EffectiveGaps {
                 inner: spacing.inner,
                 top: spacing.top,

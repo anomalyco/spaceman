@@ -3,10 +3,51 @@
 #import <CoreGraphics/CoreGraphics.h>
 #import <CoreImage/CoreImage.h>
 #import <QuartzCore/QuartzCore.h>
+#import <stdint.h>
+#import <stdlib.h>
+#import <unistd.h>
+
+typedef struct {
+    double x;
+    double y;
+} SpacemanGuidePoint;
+
+typedef struct {
+    double width;
+    double height;
+} SpacemanGuideSize;
+
+typedef struct {
+    double x;
+    double y;
+    double width;
+    double height;
+} SpacemanGuideRect;
+
+typedef struct {
+    int32_t pid;
+    int32_t layer;
+    double alpha;
+    SpacemanGuideRect frame;
+    bool is_settings_owner;
+    bool is_system_prompt_owner;
+    bool is_ignored_chrome;
+} SpacemanGuideWindowInfo;
+
+typedef struct {
+    bool has_settings_frame;
+    SpacemanGuideRect settings_frame;
+    bool has_blocking_sheet_or_prompt;
+} SpacemanGuideWindowAnalysis;
+
+@class SpacemanGuideDelegate;
 
 static NSPanel *guidePanel;
+static SpacemanGuideDelegate *guideDelegate;
 static NSTimer *guideTimer;
 static BOOL sawSettingsWindow;
+static BOOL guideUserMoved;
+static BOOL guidePlacingProgrammatically;
 /// The Accessibility pane the guide points at, reopened when Settings is closed
 /// under it, at most `guideReopenLimit` times before the guide gives up.
 static NSURL *guideSettingsURL;
@@ -124,7 +165,12 @@ static void drawTile(NSRect bounds, NSImage *icon, NSString *name, BOOL dark) {
 }
 
 - (BOOL)acceptsFirstMouse:(NSEvent *)event {
+    (void)event;
     return YES;
+}
+
+- (BOOL)mouseDownCanMoveWindow {
+    return NO;
 }
 
 - (void)resetCursorRects {
@@ -172,36 +218,303 @@ static void drawTile(NSRect bounds, NSImage *icon, NSString *name, BOOL dark) {
 
 @end
 
-static CGRect currentSettingsFrame(void) {
+@interface SpacemanGuideContentView : NSView
+@end
+
+@implementation SpacemanGuideContentView
+
+- (BOOL)acceptsFirstMouse:(NSEvent *)event {
+    (void)event;
+    return YES;
+}
+
+- (BOOL)mouseDownCanMoveWindow {
+    return YES;
+}
+
+@end
+
+@interface SpacemanGuideLabel : NSTextField
+@end
+
+@implementation SpacemanGuideLabel
+
+- (BOOL)acceptsFirstMouse:(NSEvent *)event {
+    (void)event;
+    return YES;
+}
+
+- (BOOL)mouseDownCanMoveWindow {
+    return YES;
+}
+
+- (void)mouseDown:(NSEvent *)event {
+    [self.window performWindowDragWithEvent:event];
+}
+
+@end
+
+@interface SpacemanCloseButton : NSButton
+@end
+
+@implementation SpacemanCloseButton
+
+- (BOOL)acceptsFirstMouse:(NSEvent *)event {
+    (void)event;
+    return YES;
+}
+
+- (BOOL)mouseDownCanMoveWindow {
+    return NO;
+}
+
+- (void)resetCursorRects {
+    [self addCursorRect:self.bounds cursor:NSCursor.pointingHandCursor];
+}
+
+@end
+
+static void closeGuide(void);
+
+@interface SpacemanGuideDelegate : NSObject <NSWindowDelegate>
+@end
+
+@implementation SpacemanGuideDelegate
+
+- (void)windowDidMove:(NSNotification *)notification {
+    (void)notification;
+    if (!guidePlacingProgrammatically) {
+        guideUserMoved = YES;
+    }
+}
+
+- (void)dismissGuide:(id)sender {
+    (void)sender;
+    closeGuide();
+}
+
+@end
+
+static double clampDouble(double value, double minValue, double maxValue) {
+    if (minValue > maxValue) {
+        return minValue;
+    }
+    return MIN(MAX(value, minValue), maxValue);
+}
+
+static bool rectsIntersect(SpacemanGuideRect a, SpacemanGuideRect b) {
+    return a.x < b.x + b.width &&
+           a.x + a.width > b.x &&
+           a.y < b.y + b.height &&
+           a.y + a.height > b.y;
+}
+
+/// Computes the AppKit origin (bottom-left) for the floating permission guide.
+///
+/// On macOS 27.3+ (`protected_mode == true`), confirmation buttons sit along the
+/// bottom of System Settings and its modal sheets. Prefer placing the bar above
+/// Settings, else below Settings, else near the top of `visible` — never fall
+/// back to the bottom of `visible` over those buttons.
+SpacemanGuidePoint spaceman_permission_guide_origin(
+    SpacemanGuideRect settings,
+    SpacemanGuideRect visible,
+    SpacemanGuideSize panel,
+    bool protected_mode
+) {
+    const double edgeMargin = 8.0;
+    const double protectedGap = 12.0;
+    const double protectedTopFallbackMargin = 12.0;
+    const double bottomAvoidHeight = 120.0;
+
+    double minX = visible.x + edgeMargin;
+    double maxX = visible.x + visible.width - panel.width - edgeMargin;
+    double minY = visible.y + edgeMargin;
+    double maxY = visible.y + visible.height - panel.height - edgeMargin;
+
+    if (!protected_mode) {
+        double x = (settings.x + settings.width) - panel.width - 16.0;
+        double y = settings.y + 16.0;
+        return (SpacemanGuidePoint){
+            .x = clampDouble(x, minX, maxX),
+            .y = clampDouble(y, minY, maxY),
+        };
+    }
+
+    double settingsCenterX = settings.x + settings.width / 2.0;
+    double x = clampDouble(settingsCenterX - panel.width / 2.0, minX, maxX);
+
+    double aboveY = (settings.y + settings.height) + protectedGap;
+    double belowY = settings.y - panel.height - protectedGap;
+    double topFallbackY = visible.y + visible.height - panel.height - protectedTopFallbackMargin;
+
+    double y;
+    if (aboveY >= minY && aboveY <= maxY) {
+        y = aboveY;
+    } else if (belowY >= minY && belowY <= maxY) {
+        y = belowY;
+    } else {
+        y = clampDouble(topFallbackY, minY, maxY);
+        double dangerTop = settings.y + MIN(bottomAvoidHeight, settings.height);
+        if (y < dangerTop && maxY > y) {
+            y = maxY;
+        }
+    }
+
+    return (SpacemanGuidePoint){ .x = x, .y = y };
+}
+
+/// Inspects a front-to-back on-screen window list to locate System Settings'
+/// main window and detect any modal sheet, dialog, or system security/TCC
+/// approval prompt that must never be overlapped by the floating guide.
+SpacemanGuideWindowAnalysis spaceman_permission_guide_analyze_windows(
+    const SpacemanGuideWindowInfo *windows,
+    size_t count,
+    int32_t self_pid,
+    int32_t modal_layer
+) {
+    SpacemanGuideWindowAnalysis result = {
+        .has_settings_frame = false,
+        .settings_frame = {0, 0, 0, 0},
+        .has_blocking_sheet_or_prompt = false,
+    };
+    if (windows == NULL || count == 0) {
+        return result;
+    }
+
+    size_t settingsIndex = count;
+    double bestArea = 0.0;
+    for (size_t i = 0; i < count; i++) {
+        SpacemanGuideWindowInfo w = windows[i];
+        if (!w.is_settings_owner || w.layer != 0 || w.alpha <= 0.01) {
+            continue;
+        }
+        if (w.frame.width < 300.0 || w.frame.height < 200.0) {
+            continue;
+        }
+        double area = w.frame.width * w.frame.height;
+        if (!result.has_settings_frame || area > bestArea) {
+            result.has_settings_frame = true;
+            result.settings_frame = w.frame;
+            settingsIndex = i;
+            bestArea = area;
+        }
+    }
+
+    size_t settingsVisibleWindows = 0;
+    for (size_t i = 0; i < count; i++) {
+        SpacemanGuideWindowInfo w = windows[i];
+        if (w.alpha <= 0.01 || w.frame.width < 100.0 || w.frame.height < 60.0) {
+            continue;
+        }
+        if (w.is_settings_owner) {
+            if (w.layer >= 0 && w.layer < 24) {
+                settingsVisibleWindows += 1;
+                if (w.layer > 0) {
+                    result.has_blocking_sheet_or_prompt = true;
+                }
+            }
+            continue;
+        }
+        if (w.is_system_prompt_owner && w.layer >= 0) {
+            result.has_blocking_sheet_or_prompt = true;
+            continue;
+        }
+        if (!result.has_settings_frame || w.is_ignored_chrome || w.pid == self_pid) {
+            continue;
+        }
+        if (rectsIntersect(w.frame, result.settings_frame)) {
+            if (w.layer == modal_layer || (w.layer == 0 && i < settingsIndex)) {
+                result.has_blocking_sheet_or_prompt = true;
+            }
+        }
+    }
+
+    if (settingsVisibleWindows > 1) {
+        result.has_blocking_sheet_or_prompt = true;
+    }
+
+    return result;
+}
+
+static BOOL isSystemPromptOwner(NSString *owner) {
+    return [owner isEqualToString:@"SecurityAgent"] ||
+           [owner isEqualToString:@"CoreServicesUIAgent"] ||
+           [owner isEqualToString:@"LocalAuthenticationUIAgent"] ||
+           [owner isEqualToString:@"UniversalAccessAuthWarn"] ||
+           [owner isEqualToString:@"Open and Save Panel Service"] ||
+           [owner isEqualToString:@"UserNotificationCenter"];
+}
+
+static BOOL isIgnoredChromeOwner(NSString *owner) {
+    return [owner isEqualToString:@"Window Server"] ||
+           [owner isEqualToString:@"Dock"] ||
+           [owner isEqualToString:@"Control Center"] ||
+           [owner isEqualToString:@"SystemUIServer"] ||
+           [owner isEqualToString:@"Notification Center"];
+}
+
+static SpacemanGuideWindowAnalysis inspectSettingsWindows(void) {
+    NSArray<NSRunningApplication *> *settingsApps =
+        [NSRunningApplication runningApplicationsWithBundleIdentifier:settingsBundleID];
+    pid_t settingsPID = settingsApps.count > 0 ? settingsApps.firstObject.processIdentifier : 0;
+
     CFArrayRef windowInfo = CGWindowListCopyWindowInfo(
         kCGWindowListOptionOnScreenOnly | kCGWindowListExcludeDesktopElements,
         kCGNullWindowID
     );
     NSArray *windows = CFBridgingRelease(windowInfo);
-    CGRect best = CGRectNull;
+    size_t count = (size_t)windows.count;
+    if (count == 0) {
+        return spaceman_permission_guide_analyze_windows(NULL, 0, (int32_t)getpid(), 8);
+    }
+
+    SpacemanGuideWindowInfo *entries = calloc(count, sizeof(SpacemanGuideWindowInfo));
+    if (entries == NULL) {
+        return spaceman_permission_guide_analyze_windows(NULL, 0, (int32_t)getpid(), 8);
+    }
+
+    size_t validCount = 0;
     for (NSDictionary *window in windows) {
-        NSString *owner = window[(id)kCGWindowOwnerName];
-        if (![owner isEqualToString:@"System Settings"] &&
-            ![owner isEqualToString:@"System Preferences"]) {
-            continue;
-        }
-        if ([window[(id)kCGWindowLayer] integerValue] != 0) {
-            continue;
-        }
         CGRect frame;
         if (!CGRectMakeWithDictionaryRepresentation(
                 (__bridge CFDictionaryRef)window[(id)kCGWindowBounds], &frame)) {
             continue;
         }
-        if (frame.size.width < 300 || frame.size.height < 200) {
-            continue;
-        }
-        if (CGRectIsNull(best) || frame.size.width * frame.size.height >
-                                      best.size.width * best.size.height) {
-            best = frame;
-        }
+        NSString *owner = window[(id)kCGWindowOwnerName];
+        int32_t pid = (int32_t)[window[(id)kCGWindowOwnerPID] intValue];
+        int32_t layer = (int32_t)[window[(id)kCGWindowLayer] integerValue];
+        NSNumber *alphaValue = window[(id)kCGWindowAlpha];
+        double alpha = alphaValue != nil ? alphaValue.doubleValue : 1.0;
+
+        BOOL isSettingsOwner = (settingsPID > 0 && pid == (int32_t)settingsPID) ||
+                               [owner isEqualToString:@"System Settings"] ||
+                               [owner isEqualToString:@"System Preferences"];
+
+        entries[validCount++] = (SpacemanGuideWindowInfo){
+            .pid = pid,
+            .layer = layer,
+            .alpha = alpha,
+            .frame = {
+                .x = frame.origin.x,
+                .y = frame.origin.y,
+                .width = frame.size.width,
+                .height = frame.size.height,
+            },
+            .is_settings_owner = isSettingsOwner,
+            .is_system_prompt_owner = isSystemPromptOwner(owner),
+            .is_ignored_chrome = isIgnoredChromeOwner(owner),
+        };
     }
-    return best;
+
+    int32_t modalLayer = (int32_t)CGWindowLevelForKey(kCGModalPanelWindowLevelKey);
+    SpacemanGuideWindowAnalysis analysis = spaceman_permission_guide_analyze_windows(
+        entries,
+        validCount,
+        (int32_t)getpid(),
+        modalLayer
+    );
+    free(entries);
+    return analysis;
 }
 
 /// Whether System Settings is the application in front, so the guide has
@@ -355,11 +668,15 @@ static void closeGuide(void) {
     endFlight();
     [guideTimer invalidate];
     guideTimer = nil;
+    guidePanel.delegate = nil;
     [guidePanel orderOut:nil];
     guidePanel = nil;
+    guideDelegate = nil;
     guideTile = nil;
     guideSettingsURL = nil;
     sawSettingsWindow = NO;
+    guideUserMoved = NO;
+    guidePlacingProgrammatically = NO;
 }
 
 /// Whether the Accessibility guide is open, in front or waiting behind another
@@ -512,8 +829,8 @@ static void updateGuidePosition(void) {
         closeGuide();
         return;
     }
-    CGRect quartzFrame = currentSettingsFrame();
-    if (CGRectIsNull(quartzFrame)) {
+    SpacemanGuideWindowAnalysis analysis = inspectSettingsWindows();
+    if (!analysis.has_settings_frame) {
         if (!sawSettingsWindow) {
             return;
         }
@@ -534,13 +851,22 @@ static void updateGuidePosition(void) {
         return;
     }
     sawSettingsWindow = YES;
-    if (!settingsFrontmost()) {
-        // Another app is in front of System Settings: the guide points at
-        // nothing from there, and must not float over what the person is doing.
-        // It comes back when System Settings does.
+    if (!settingsFrontmost() || analysis.has_blocking_sheet_or_prompt) {
+        // Another app is in front, or System Settings has a modal sheet /
+        // system approval prompt open: stay out of sight so the guide never
+        // blocks a confirmation button, and return once it clears.
+        if (analysis.has_blocking_sheet_or_prompt && flightPanel != nil) {
+            endFlight();
+        }
         [guidePanel orderOut:nil];
         return;
     }
+    CGRect quartzFrame = CGRectMake(
+        analysis.settings_frame.x,
+        analysis.settings_frame.y,
+        analysis.settings_frame.width,
+        analysis.settings_frame.height
+    );
     NSRect settings = appKitFrame(quartzFrame);
     NSSize size = guidePanel.frame.size;
     NSScreen *screen = nil;
@@ -554,24 +880,29 @@ static void updateGuidePosition(void) {
         screen = NSScreen.mainScreen;
     }
     NSRect visible = screen != nil ? screen.visibleFrame : settings;
-    if (accessibilityProtected()) {
-        // macOS 27.3's System & App Protection Override keeps its own controls
-        // at the bottom of the window, so the bar sits outside the window: below
-        // it when there is room, above it when there is not, never over its list.
-        CGFloat x = NSMidX(settings) - size.width / 2;
-        x = MIN(MAX(x, NSMinX(visible) + 8), NSMaxX(visible) - size.width - 8);
-        CGFloat y = NSMinY(settings) - size.height - 16;
-        if (y < NSMinY(visible) + 8) {
-            CGFloat above = NSMaxY(settings) + 16;
-            y = above <= NSMaxY(visible) - size.height - 8 ? above : NSMinY(visible) + 8;
-        }
-        [guidePanel setFrameOrigin:NSMakePoint(x, y)];
-    } else {
-        CGFloat x = NSMaxX(settings) - size.width - 16;
-        CGFloat y = NSMinY(settings) + 16;
-        x = MIN(MAX(x, NSMinX(visible) + 8), NSMaxX(visible) - size.width - 8);
-        y = MIN(MAX(y, NSMinY(visible) + 8), NSMaxY(visible) - size.height - 8);
-        [guidePanel setFrameOrigin:NSMakePoint(x, y)];
+    if (!guideUserMoved) {
+        SpacemanGuidePoint origin = spaceman_permission_guide_origin(
+            (SpacemanGuideRect){
+                .x = settings.origin.x,
+                .y = settings.origin.y,
+                .width = settings.size.width,
+                .height = settings.size.height,
+            },
+            (SpacemanGuideRect){
+                .x = visible.origin.x,
+                .y = visible.origin.y,
+                .width = visible.size.width,
+                .height = visible.size.height,
+            },
+            (SpacemanGuideSize){
+                .width = size.width,
+                .height = size.height,
+            },
+            accessibilityProtected()
+        );
+        guidePlacingProgrammatically = YES;
+        [guidePanel setFrameOrigin:NSMakePoint(origin.x, origin.y)];
+        guidePlacingProgrammatically = NO;
     }
     if (flightPanel != nil && flightStartedAt == 0) {
         flightStartedAt = CACurrentMediaTime();
@@ -579,7 +910,9 @@ static void updateGuidePosition(void) {
     if (flightPanel != nil) {
         [flightPanel orderFrontRegardless];
     }
+    guidePlacingProgrammatically = YES;
     [guidePanel orderFrontRegardless];
+    guidePlacingProgrammatically = NO;
 }
 
 void spaceman_show_accessibility_guide(void) {
@@ -609,19 +942,23 @@ void spaceman_show_accessibility_guide(void) {
     NSFont *instructionFont = [NSFont systemFontOfSize:13 weight:NSFontWeightMedium];
     NSString *text;
     NSSize panelSize;
+    NSScreen *mainScreen = NSScreen.mainScreen;
     if (renamed) {
         text = [NSString stringWithFormat:
             @"Click the Privacy & Security notification, or add %@ in %@",
             appName, listName];
-        CGFloat width = ceil([text sizeWithAttributes:@{ NSFontAttributeName: instructionFont }].width) + 36;
-        NSScreen *mainScreen = NSScreen.mainScreen;
+        CGFloat width = ceil([text sizeWithAttributes:@{ NSFontAttributeName: instructionFont }].width) + 66;
         if (mainScreen != nil) {
             width = MIN(width, mainScreen.visibleFrame.size.width - 32);
         }
         panelSize = NSMakeSize(MAX(width, 320), 52);
     } else {
         text = [NSString stringWithFormat:@"↑  Drag %@ into the %@ list above", appName, listName];
-        panelSize = NSMakeSize(480, 116);
+        CGFloat width = MAX(480, ceil([text sizeWithAttributes:@{ NSFontAttributeName: instructionFont }].width) + 66);
+        if (mainScreen != nil) {
+            width = MIN(width, mainScreen.visibleFrame.size.width - 32);
+        }
+        panelSize = NSMakeSize(width, 116);
     }
     guidePanel = [[NSPanel alloc]
         initWithContentRect:NSMakeRect(0, 0, panelSize.width, panelSize.height)
@@ -630,6 +967,8 @@ void spaceman_show_accessibility_guide(void) {
                             NSWindowStyleMaskFullSizeContentView
                     backing:NSBackingStoreBuffered
                       defer:NO];
+    guideDelegate = [[SpacemanGuideDelegate alloc] init];
+    guidePanel.delegate = guideDelegate;
     guidePanel.floatingPanel = YES;
     guidePanel.level = NSFloatingWindowLevel;
     guidePanel.collectionBehavior = NSWindowCollectionBehaviorCanJoinAllSpaces |
@@ -639,21 +978,48 @@ void spaceman_show_accessibility_guide(void) {
     guidePanel.hasShadow = YES;
     guidePanel.hidesOnDeactivate = NO;
     guidePanel.releasedWhenClosed = NO;
+    guidePanel.movableByWindowBackground = YES;
 
-    NSView *content = [[NSView alloc] initWithFrame:NSMakeRect(0, 0, panelSize.width, panelSize.height)];
+    SpacemanGuideContentView *content =
+        [[SpacemanGuideContentView alloc] initWithFrame:NSMakeRect(0, 0, panelSize.width, panelSize.height)];
     content.wantsLayer = YES;
     content.layer.backgroundColor = NSColor.controlBackgroundColor.CGColor;
     content.layer.cornerRadius = renamed ? 14 : 20;
     content.layer.borderWidth = 1;
     content.layer.borderColor = [NSColor colorWithWhite:0 alpha:0.10].CGColor;
 
-    NSTextField *instruction = [NSTextField labelWithString:text];
+    SpacemanGuideLabel *instruction = [SpacemanGuideLabel labelWithString:text];
     instruction.frame = renamed
-        ? NSMakeRect(18, (panelSize.height - 24) / 2, panelSize.width - 36, 24)
-        : NSMakeRect(18, 73, panelSize.width - 36, 24);
+        ? NSMakeRect(18, (panelSize.height - 18) / 2, panelSize.width - 66, 18)
+        : NSMakeRect(18, 76, panelSize.width - 66, 18);
     instruction.font = instructionFont;
     instruction.textColor = NSColor.labelColor;
+    instruction.lineBreakMode = NSLineBreakByTruncatingTail;
     [content addSubview:instruction];
+
+    SpacemanCloseButton *closeButton = [[SpacemanCloseButton alloc]
+        initWithFrame:renamed
+            ? NSMakeRect(panelSize.width - 36, (panelSize.height - 24) / 2, 24, 24)
+            : NSMakeRect(panelSize.width - 36, 73, 24, 24)];
+    closeButton.bordered = NO;
+    [closeButton setButtonType:NSButtonTypeMomentaryPushIn];
+    NSImage *xmark = [NSImage imageWithSystemSymbolName:@"xmark"
+                               accessibilityDescription:@"Dismiss"];
+    if (xmark != nil) {
+        NSImageSymbolConfiguration *config =
+            [NSImageSymbolConfiguration configurationWithPointSize:11
+                                                            weight:NSFontWeightSemibold];
+        closeButton.image = [xmark imageWithSymbolConfiguration:config];
+        closeButton.imagePosition = NSImageOnly;
+        closeButton.contentTintColor = NSColor.secondaryLabelColor;
+    } else {
+        closeButton.title = @"×";
+        closeButton.font = [NSFont systemFontOfSize:14 weight:NSFontWeightMedium];
+    }
+    closeButton.toolTip = @"Dismiss";
+    closeButton.target = guideDelegate;
+    closeButton.action = @selector(dismissGuide:);
+    [content addSubview:closeButton];
 
     if (!renamed) {
         SpacemanDragView *dragView = [[SpacemanDragView alloc]

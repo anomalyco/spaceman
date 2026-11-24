@@ -299,6 +299,23 @@ fn keyboard_resize_and_balance_stay_inside_the_usable_rect() {
 }
 
 #[test]
+fn resize_to_sets_the_window_frame_through_gaps() {
+    let settings = Settings::for_output(OUTPUT).spaced(spacing(9, [0, 0, 30, 30]));
+    let (mut engine, windows) = engine_with(3);
+    assert!(engine.resize_focused_tile_to(&windows[1], Axis::Horizontal, 500, &settings));
+    let tiles: Vec<_> = engine
+        .placements(&settings)
+        .into_iter()
+        .map(|placement| (placement.slot, placement.frame))
+        .collect();
+    assert_tiled(settings.spacing, &tiles);
+    // The window itself is 500 wide, not its cell.
+    assert_eq!(tiles[1].1.width, 500);
+    assert_eq!(tiles[0].1.x, settings.usable().x);
+    assert_eq!(right(tiles[2].1), right(settings.usable()));
+}
+
+#[test]
 fn keys_parse_check_and_round_trip() {
     for key in SpacingKey::ALL {
         assert_eq!(SpacingKey::parse(key.path()), Some(key));

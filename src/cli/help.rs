@@ -167,8 +167,9 @@ pub(crate) fn config_help(executable: &str) -> String {
         "  update_channel  stable | dev      In-app updater release channel (default: stable)",
         "  mouse_follows_focus  off | display | window  Move pointer on focus changes (default: off)",
         "  gaps.inner      0-48              Points between tiled windows (default: 0)",
-        "  gaps.top        0-128             Outer padding at the screen's top edge (default: 0;",
-        "  gaps.bottom     0-128               likewise gaps.bottom, gaps.left, gaps.right)",
+        "  gaps.outer      0-128             Outer padding at every edge without its own (default: 0)",
+        "  gaps.top        0-128             Outer padding at the screen's top edge (default:",
+        "  gaps.bottom     0-128               gaps.outer; likewise gaps.bottom, gaps.left, gaps.right)",
         "  gaps.left       0-128",
         "  gaps.right      0-128",
         "  single_window_max_width  0 | 320-16384  Center a lone window at this width (default: 0, off)",
@@ -196,7 +197,7 @@ pub(crate) fn rules_help(executable: &str) -> String {
         "Usage:",
         &format!("  {executable} rules list [--json]"),
         &format!(
-            "  {executable} rules add --app <bundle-id> (--workspace <ws> | --float | --ignore)"
+            "  {executable} rules add --app <bundle-id> (--workspace <ws> | --float | --tile | --ignore)"
         ),
         "                         [--title <title>] [--position <index>] [--json]",
         &format!("  {executable} rules remove <index-or-bundle-id> [--json]"),
@@ -207,6 +208,7 @@ pub(crate) fn rules_help(executable: &str) -> String {
         "  --title <title>            Require an exact window title match",
         "  --workspace <ws>           Route matching windows to workspace 1-10 or A-Z",
         "  --float                    Float matching windows without tiling",
+        "  --tile                     Tile matching windows even if they look like dialogs",
         "  --ignore                   Ignore matching windows completely",
         "  --position <index>         Insert at 1-based rule index (default: append)",
         "  --json                     Emit machine-readable JSON output",
@@ -264,6 +266,8 @@ pub(crate) fn ctl_help(executable: &str) -> String {
         "  float                      Float the focused window above the tiles, or tile it again",
         "  strip                      Toggle Scrolling Strip on the active workspace (Labs)",
         "  resize <shrink|grow>       Adjust the focused window's layout weight",
+        "  resize <width|height> <points>",
+        "                             Resize the focused window to that width or height",
         "  balance                    Equalize the focused tile's immediate split",
         "  retile                     Force a fresh observation and retile",
         "",

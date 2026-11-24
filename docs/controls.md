@@ -63,8 +63,8 @@ Command-backtick continues to use macOS's same-application window cycle, and Spa
 resulting focus. Press `Option+Shift+F` again to restore the unchanged split layout. Fullscreen Layout
 and its active tile survive workspace switches, native-tab physical-window replacement, and Spaceman
 restarts. `Option+/` exits Fullscreen Layout, toggles the preserved split axis, and immediately applies
-the resulting normal layout. Keyboard resize, balance, and tile reordering require leaving Fullscreen
-Layout first. Pointer dragging and resizing are ignored while the mode is active. Floating windows are
+the resulting normal layout. Keyboard resize (including `resize width|height`), balance, and tile
+reordering require leaving Fullscreen Layout first. Pointer dragging and resizing are ignored while the mode is active. Floating windows are
 not expanded. Removing or moving away the workspace's final tiled window exits Fullscreen Layout.
 
 Scrolling Strip (a Lab, off by default; turn it on in Settings › Labs) lays a workspace's tiles out
@@ -79,8 +79,10 @@ move the focused column, `Option+-`/`Option+=` step its width through 33% · 50%
 (columns you have not sized follow the last width you picked), and Option-backtick cycles columns.
 Focusing a column out of view any other way (a click, the Dock, Command-Tab) glides the viewport to
 it. Next to another display, a column crossing the shared edge waits at the edge under its
-neighbor, which slides over or off it, so nothing shows on the other display; a column arriving
-that way takes focus once the glide ends. The Labs card's How it works dialog shows the strip and
+neighbor, which slides over or off it, so nothing shows on the other display (with `[labs]
+scrolling_strip_shared_edge = "slide"` it glides up to halfway past the edge first). The column a
+key moves to takes focus as the key lands, so typing reaches it during the glide, and it shows on
+top. The Labs card's How it works dialog shows the strip and
 its keys. Turning on Fullscreen Layout or pressing `Option+/` leaves the
 strip. Pointer dragging and resizing are ignored on a strip.
 
@@ -198,6 +200,8 @@ spaceman ctl float
 spaceman ctl strip
 spaceman ctl resize shrink
 spaceman ctl resize grow
+spaceman ctl resize width 1200
+spaceman ctl resize height 600
 spaceman ctl balance
 spaceman ctl scratchpad toggle
 spaceman ctl scratchpad mark
@@ -219,11 +223,15 @@ Directions are `left`, `down`, `up`, and `right`. `focus next` is Option-backtic
 `focus prev` is Option-Shift-backtick, `fullscreen` toggles the focused workspace's Fullscreen Layout, like `Option+Shift+F`, and `float`
 toggles the focused window's floating, like `Option+Shift+Space`. `strip` toggles the workspace's
 Scrolling Strip, like `Option+Shift+S`, and answers `Scrolling Strip is off (enable it in Settings ›
-Labs)` while the Lab is off. `scratchpad toggle` and `scratchpad mark` are `Option+\` and
-`Option+Shift+\`; while `[labs] scratchpad` is off they report `Scratchpad is off`. `balance`
-equalizes the focused tile's immediate
-split while respecting nested minimum sizes. `hud` repeatedly renders sanitized runtime geometry in
-the terminal until interrupted. `ctl wrong` marks the journal the moment something looks wrong and
+Labs)` while the Lab is off. `scratchpad toggle` and
+`scratchpad mark` are `Option+\` and `Option+Shift+\`; while `[labs] scratchpad` is off they report
+`Scratchpad is off`. `resize width|height POINTS` resizes the focused window to that width or
+height (its own frame, gaps excluded) by moving its boundary at the nearest split along that axis;
+the split's other tiles give or take the difference in proportion, never below 50 points. `balance`
+equalizes the focused tile's immediate split while respecting nested minimum sizes; it does not
+touch the workspace's other splits. Neither has a default shortcut (see
+[Configuration › Shortcuts](configuration.md#shortcuts)). `hud` repeatedly renders sanitized
+runtime geometry in the terminal until interrupted. `ctl wrong` marks the journal the moment something looks wrong and
 writes a full arrangement snapshot, so `doctor` shows what the screen held then.
 
 `ctl debug` excludes window titles. It reports each display's Fullscreen Layout and Scrolling Strip state and tiled

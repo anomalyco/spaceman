@@ -212,7 +212,7 @@ impl Doc {
         {
             collect_detached_table_comments(sub, &mut comments);
         }
-        if let Some(table) = self.doc.get_mut(parent).and_then(Item::as_table_mut) {
+        if let Some(table) = self.doc.get_mut(parent).and_then(Item::as_table_like_mut) {
             table.remove(child);
         }
         self.splice_removed_table_comments(comments, None, None);

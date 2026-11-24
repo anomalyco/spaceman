@@ -20,6 +20,8 @@ const EMPTY: &str = "# Spaceman configuration.\nversion = 1\n";
 pub enum Place {
     Workspace(WorkspaceId),
     Float,
+    /// Tiled even when the window looks like a dialog.
+    Tile,
     /// Never tiled, moved or parked.
     Ignore,
 }
@@ -338,12 +340,13 @@ impl Doc {
     /// Sets `key` in table `name`, or removes it (and an emptied table) for `None`.
     fn set_key(&mut self, name: &str, key: &str, item: Option<Item>) {
         let Some(item) = item else {
-            let empty = if let Some(table) = self.doc.get_mut(name).and_then(Item::as_table_mut) {
-                table.remove(key);
-                table.is_empty()
-            } else {
-                false
-            };
+            let empty =
+                if let Some(table) = self.doc.get_mut(name).and_then(Item::as_table_like_mut) {
+                    table.remove(key);
+                    table.is_empty()
+                } else {
+                    false
+                };
             if empty {
                 self.remove_table(name);
             }
@@ -353,10 +356,10 @@ impl Doc {
             .doc
             .entry(name)
             .or_insert_with(|| Item::Table(Table::new()));
-        if !entry.is_table() {
+        if !entry.is_table_like() {
             *entry = Item::Table(Table::new());
         }
-        if let Some(table) = entry.as_table_mut() {
+        if let Some(table) = entry.as_table_like_mut() {
             set_table_item(table, key, item);
         }
     }
@@ -396,7 +399,7 @@ impl Doc {
             .into_iter()
             .filter_map(|rule| match rule.place {
                 Place::Workspace(workspace) => Some(workspace),
-                Place::Float | Place::Ignore => None,
+                Place::Float | Place::Tile | Place::Ignore => None,
             })
             .chain(WorkspaceId::all().filter(|workspace| self.monitor(*workspace).is_some()))
             .collect();
@@ -606,6 +609,7 @@ impl Doc {
 fn read_rule(index: usize, table: &dyn TableLike) -> Option<Rule> {
     let place = match table.get("action").and_then(Item::as_str)? {
         "float" => Place::Float,
+        "tile" => Place::Tile,
         "ignore" => Place::Ignore,
         "route" => Place::Workspace(workspace(table.get("workspace")?)?),
         _ => return None,
@@ -678,11 +682,11 @@ fn set_place(table: &mut dyn TableLike, place: Place) {
             set_table_item(table, "action", value("route"));
             set_table_item(table, "workspace", workspace_value(workspace));
         }
-        Place::Float | Place::Ignore => {
-            let action = if place == Place::Float {
-                "float"
-            } else {
-                "ignore"
+        Place::Float | Place::Tile | Place::Ignore => {
+            let action = match place {
+                Place::Float => "float",
+                Place::Tile => "tile",
+                _ => "ignore",
             };
             set_table_item(table, "action", value(action));
             table.remove("workspace");

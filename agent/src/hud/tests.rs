@@ -82,6 +82,7 @@ fn row(visible: u8, from: Option<u8>) -> UiHudDisplay {
         visible: Some(id(visible)),
         from: from.map(id),
         workspaces,
+        order: Vec::new(),
     }
 }
 
@@ -338,6 +339,46 @@ fn visited_empty_workspaces_stay_in_the_row_until_hud_hides() {
     assert_eq!(flow.tick(240 + HOLD_MS + LEAVE_MS), HudTick::Gone);
     arrived(&mut flow, row(2, None), 240 + HOLD_MS + LEAVE_MS + 50);
     assert_eq!(numbers(&flow), [id(1), id(2), id(3)]);
+}
+
+#[test]
+fn visited_empty_workspaces_keep_the_configured_workspace_order() {
+    let named = |letter| WorkspaceId::named(letter).unwrap();
+    let keyboard_row = [id(1), named('Q'), named('W'), named('E')];
+    let order: Vec<WorkspaceId> = keyboard_row
+        .into_iter()
+        .chain(WorkspaceId::all().filter(|workspace| !keyboard_row.contains(workspace)))
+        .collect();
+    // As the runtime sends it: occupied 1, then the visible (empty) one, in `order`.
+    let row = |visible: char, from: Option<char>| UiHudDisplay {
+        id: "main".to_owned(),
+        visible: Some(named(visible)),
+        from: from.map(named),
+        workspaces: vec![
+            workspace(1, &["a"]),
+            UiHudWorkspace {
+                workspace: named(visible),
+                fullscreen: false,
+                tiles: Vec::new(),
+                floating: Vec::new(),
+            },
+        ],
+        order: order.clone(),
+    };
+    let mut flow = HudFlow::new(true);
+    arrived(&mut flow, row('Q', None), 0);
+
+    // Flick across the empty Q, W and E: the ones left stay where `order` puts them.
+    flow.trigger(row('W', Some('Q')), 80);
+    flow.trigger(row('E', Some('W')), 160);
+    let entries: Vec<_> = flow
+        .view(false)
+        .unwrap()
+        .entries()
+        .iter()
+        .map(|entry| entry.workspace)
+        .collect();
+    assert_eq!(entries, keyboard_row);
 }
 
 #[test]

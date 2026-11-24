@@ -2,11 +2,16 @@ use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
 
+mod write;
+pub use write::{
+    ConfigLock, lock_config, resolve_write_target, save_workspace_monitor_at, write_config_atomic,
+};
+
 use crate::{
     DisplaySelector, ObservedWindow, WorkspaceId, Workspaces,
     labs::LabsConfig,
     shortcuts::{RawShortcuts, Shortcuts},
-    spacing::{Spacing, SpacingKey},
+    spacing::{Spacing, SpacingKey, check_outer},
 };
 
 #[derive(Clone, Copy, Debug)]
@@ -163,6 +168,7 @@ pub struct Config {
     labs: LabsConfig,
     rules: Vec<WindowRule>,
     workspace_monitors: Vec<(WorkspaceId, DisplaySelector)>,
+    workspace_order: Vec<WorkspaceId>,
     shortcuts: Shortcuts,
 }
 
@@ -170,6 +176,8 @@ pub struct Config {
 pub enum WindowDisposition {
     Managed,
     Floating,
+    /// Tiled even when the window looks like a dialog or non-resizable panel.
+    Tiled,
     Route(WorkspaceId),
     /// Never tiled, owned, moved, or parked. For windows whose applications
     /// insist on managing them themselves.
@@ -220,6 +228,8 @@ struct RawSettings {
     #[serde(default)]
     single_window_max_width: i64,
     #[serde(default)]
+    workspace_order: Vec<WorkspaceId>,
+    #[serde(default)]
     gaps: RawGaps,
 }
 
@@ -232,6 +242,7 @@ impl Default for RawSettings {
             update_channel: UpdateChannel::default(),
             mouse_follows_focus: MouseFollowsFocus::default(),
             single_window_max_width: 0,
+            workspace_order: Vec::new(),
             gaps: RawGaps::default(),
         }
     }
@@ -241,21 +252,18 @@ impl Default for RawSettings {
 #[derive(Default, Deserialize)]
 #[serde(deny_unknown_fields)]
 struct RawGaps {
-    #[serde(default)]
-    inner: i64,
-    #[serde(default)]
-    top: i64,
-    #[serde(default)]
-    bottom: i64,
-    #[serde(default)]
-    left: i64,
-    #[serde(default)]
-    right: i64,
+    inner: Option<i64>,
+    outer: Option<i64>,
+    top: Option<i64>,
+    bottom: Option<i64>,
+    left: Option<i64>,
+    right: Option<i64>,
 }
 
 impl RawSettings {
     fn spacing(&self) -> Result<Spacing, String> {
         let gaps = &self.gaps;
+        let outer = gaps.outer.map(check_outer).transpose()?;
         let mut spacing = Spacing::default();
         for (key, value) in [
             (SpacingKey::Inner, gaps.inner),
@@ -265,10 +273,14 @@ impl RawSettings {
             (SpacingKey::Right, gaps.right),
             (
                 SpacingKey::SingleWindowMaxWidth,
-                self.single_window_max_width,
+                Some(self.single_window_max_width),
             ),
         ] {
-            key.set(&mut spacing, key.check(value)?);
+            let value = match value {
+                Some(value) => key.check(value)?,
+                None => key.fallback(outer),
+            };
+            key.set(&mut spacing, value);
         }
         Ok(spacing)
     }
@@ -317,9 +329,11 @@ impl Config {
             let action = match (rule.action.as_str(), rule.workspace) {
                 ("float", None) => WindowDisposition::Floating,
                 ("ignore", None) => WindowDisposition::Ignored,
+                ("tile", None) => WindowDisposition::Tiled,
                 ("route", Some(workspace)) => WindowDisposition::Route(workspace),
                 ("float", Some(_)) => return Err("float rule cannot specify workspace".into()),
                 ("ignore", Some(_)) => return Err("ignore rule cannot specify workspace".into()),
+                ("tile", Some(_)) => return Err("tile rule cannot specify workspace".into()),
                 ("route", None) => return Err("route rule requires workspace".into()),
                 (action, _) => return Err(format!("unknown window rule action {action:?}")),
             };
@@ -345,6 +359,13 @@ impl Config {
             }
             workspace_monitors.push((id, DisplaySelector::parse(&workspace.monitor)));
         }
+        for (index, workspace) in raw.settings.workspace_order.iter().enumerate() {
+            if raw.settings.workspace_order[..index].contains(workspace) {
+                return Err(format!(
+                    "workspace {workspace} appears more than once in settings.workspace_order"
+                ));
+            }
+        }
         let mut shortcuts = raw.shortcuts.parse()?;
         shortcuts.scratchpad = raw.labs.scratchpad;
         Ok(Self {
@@ -359,6 +380,7 @@ impl Config {
             labs: raw.labs,
             rules,
             workspace_monitors,
+            workspace_order: raw.settings.workspace_order,
             shortcuts,
         })
     }
@@ -392,6 +414,21 @@ impl Config {
     #[must_use]
     pub const fn mouse_follows_focus(&self) -> MouseFollowsFocus {
         self.settings.mouse_follows_focus
+    }
+
+    /// `settings.workspace_order`: workspaces the HUD, menu bar and swipes list first, in order.
+    #[must_use]
+    pub fn workspace_order(&self) -> &[WorkspaceId] {
+        &self.workspace_order
+    }
+
+    /// Every workspace in listing order: `settings.workspace_order`, then the rest by number,
+    /// then A-Z. Only the order workspaces are listed in; identities and hotkeys don't change.
+    pub fn ordered_workspaces(&self) -> impl Iterator<Item = WorkspaceId> + '_ {
+        self.workspace_order
+            .iter()
+            .copied()
+            .chain(WorkspaceId::all().filter(|workspace| !self.workspace_order.contains(workspace)))
     }
 
     /// The `[labs]` switches: experimental features, all off by default.
@@ -573,214 +610,6 @@ pub fn load_path(path: &Path) -> Result<Config, String> {
     parse_path(path, &source)
 }
 
-#[derive(Deserialize, Serialize)]
-#[serde(deny_unknown_fields)]
-struct EditableConfig {
-    version: u32,
-    #[serde(default, skip_serializing_if = "EditableSettings::is_empty")]
-    settings: EditableSettings,
-    /// Carried through untouched; editing a workspace never changes a Lab.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    labs: Option<toml::Table>,
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    rules: Vec<EditableRule>,
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    workspaces: Vec<EditableWorkspace>,
-    /// Carried through untouched; this editor never changes shortcuts (Settings › Shortcuts
-    /// edits them in place with `toml_edit`).
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    shortcuts: Option<toml::Table>,
-}
-
-impl Default for EditableConfig {
-    fn default() -> Self {
-        Self {
-            version: 1,
-            settings: EditableSettings::default(),
-            labs: None,
-            rules: Vec::new(),
-            workspaces: Vec::new(),
-            shortcuts: None,
-        }
-    }
-}
-
-#[derive(Default, Deserialize, Serialize)]
-#[serde(deny_unknown_fields)]
-struct EditableSettings {
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    hud: Option<bool>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    hud_style: Option<HudStyle>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    hud_position: Option<HudPosition>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    update_channel: Option<UpdateChannel>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    mouse_follows_focus: Option<MouseFollowsFocus>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    single_window_max_width: Option<i64>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    gaps: Option<toml::Table>,
-}
-
-impl EditableSettings {
-    const fn is_empty(&self) -> bool {
-        self.hud.is_none()
-            && self.hud_style.is_none()
-            && self.hud_position.is_none()
-            && self.update_channel.is_none()
-            && self.mouse_follows_focus.is_none()
-            && self.single_window_max_width.is_none()
-            && self.gaps.is_none()
-    }
-}
-
-#[derive(Deserialize, Serialize)]
-#[serde(deny_unknown_fields)]
-struct EditableRule {
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    bundle_id: Option<String>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    title: Option<String>,
-    action: String,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    workspace: Option<WorkspaceId>,
-}
-
-#[derive(Deserialize, Serialize)]
-#[serde(deny_unknown_fields)]
-struct EditableWorkspace {
-    workspace: WorkspaceId,
-    monitor: String,
-}
-
-/// Exclusive advisory lock guarding read-modify-write updates to a config file.
-///
-/// Locks the resolved target's parent directory via `flock(2)` so atomic renames
-/// of the config file never swap the locked inode and no sidecar lock file is
-/// left behind (for example inside a dotfiles repository).
-pub struct ConfigLock {
-    _dir: std::fs::File,
-}
-
-/// Resolves symbolic links at `path` so config locking and atomic saves operate
-/// on the target file instead of replacing the symbolic link itself.
-pub fn resolve_write_target(path: &Path) -> std::io::Result<PathBuf> {
-    const MAX_SYMLINK_DEPTH: usize = 40;
-    match std::fs::symlink_metadata(path) {
-        Ok(meta) if !meta.file_type().is_symlink() => return Ok(path.to_path_buf()),
-        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
-            return Ok(path.to_path_buf());
-        }
-        Err(error) => return Err(error),
-        Ok(_) => {}
-    }
-    match std::fs::canonicalize(path) {
-        Ok(resolved) => return Ok(resolved),
-        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
-        Err(error) => return Err(error),
-    }
-    let mut current = path.to_path_buf();
-    for _ in 0..MAX_SYMLINK_DEPTH {
-        match std::fs::symlink_metadata(&current) {
-            Ok(meta) if meta.file_type().is_symlink() => {
-                let target = std::fs::read_link(&current)?;
-                current = if target.is_absolute() {
-                    target
-                } else {
-                    let parent = current
-                        .parent()
-                        .filter(|parent| !parent.as_os_str().is_empty())
-                        .unwrap_or_else(|| Path::new("."));
-                    let base =
-                        std::fs::canonicalize(parent).unwrap_or_else(|_| parent.to_path_buf());
-                    base.join(target)
-                };
-            }
-            Ok(_) => return Ok(current),
-            Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(current),
-            Err(error) => return Err(error),
-        }
-    }
-    Err(std::io::Error::new(
-        std::io::ErrorKind::InvalidInput,
-        format!(
-            "too many levels of symbolic links while resolving {}",
-            path.display()
-        ),
-    ))
-}
-
-/// Acquires an exclusive advisory lock for editing the config file at `path`.
-pub fn lock_config(path: &Path) -> std::io::Result<ConfigLock> {
-    let target = resolve_write_target(path)?;
-    let parent = target
-        .parent()
-        .filter(|parent| !parent.as_os_str().is_empty())
-        .unwrap_or_else(|| Path::new("."));
-    std::fs::create_dir_all(parent)?;
-    let dir = std::fs::File::open(parent)?;
-    dir.lock()?;
-    Ok(ConfigLock { _dir: dir })
-}
-
-/// Atomically replaces the config file at `path`, following symbolic links so a
-/// symlinked `config.toml` stays linked to its updated target.
-pub fn write_config_atomic(path: &Path, bytes: &[u8]) -> std::io::Result<()> {
-    let target = resolve_write_target(path)?;
-    crate::state_file::write_atomic(&target, bytes)
-}
-
-/// Atomically updates `workspace`'s display assignment in `path`, clearing the
-/// `[[workspaces]]` override when it returns to the built-in default (while
-/// keeping named workspaces that have no route rule declared).
-pub fn save_workspace_monitor_at(
-    path: &Path,
-    workspace: WorkspaceId,
-    selector: &DisplaySelector,
-) -> Result<Config, String> {
-    let _lock =
-        lock_config(path).map_err(|error| format!("failed to lock {}: {error}", path.display()))?;
-    let mut doc = match std::fs::read_to_string(path) {
-        Ok(source) => {
-            parse_path(path, &source)?;
-            toml::from_str::<EditableConfig>(&source)
-                .map_err(|error| format!("{}: {error}", path.display()))?
-        }
-        Err(error) if error.kind() == std::io::ErrorKind::NotFound => EditableConfig::default(),
-        Err(error) => return Err(format!("failed to read {}: {error}", path.display())),
-    };
-    let referenced_by_rule = doc
-        .rules
-        .iter()
-        .any(|rule| rule.workspace == Some(workspace));
-    let clear = *selector == Workspaces::default_assignment(workspace)
-        && (workspace.number().is_some() || referenced_by_rule);
-    if clear {
-        doc.workspaces.retain(|entry| entry.workspace != workspace);
-    } else {
-        let monitor = selector.as_str().to_owned();
-        if let Some(existing) = doc
-            .workspaces
-            .iter_mut()
-            .find(|entry| entry.workspace == workspace)
-        {
-            existing.monitor = monitor;
-        } else {
-            doc.workspaces
-                .push(EditableWorkspace { workspace, monitor });
-        }
-    }
-    let rendered = toml::to_string_pretty(&doc)
-        .map_err(|error| format!("failed to format config.toml: {error}"))?;
-    let parsed = Config::parse(&rendered)
-        .map_err(|error| format!("refusing to write invalid config.toml: {error}"))?;
-    write_config_atomic(path, rendered.as_bytes())
-        .map_err(|error| format!("failed to write {}: {error}", path.display()))?;
-    Ok(parsed)
-}
-
 fn parse_path(path: &Path, source: &str) -> Result<Config, String> {
     Config::parse(source).map_err(|error| format!("{}: {error}", path.display()))
 }
@@ -836,6 +665,30 @@ workspace = 7
     }
 
     #[test]
+    fn tile_rule_parses_and_rejects_a_workspace() {
+        let config = Config::parse(
+            "version = 1\n[[rules]]\nbundle_id = 'com.apple.systempreferences'\naction = 'tile'",
+        )
+        .unwrap();
+        assert_eq!(
+            config.disposition("com.apple.systempreferences", &window(None)),
+            WindowDisposition::Tiled
+        );
+        assert_eq!(
+            config.disposition("com.example.Other", &window(None)),
+            WindowDisposition::Managed
+        );
+        assert_eq!(
+            Config::parse(
+                "version = 1\n[[rules]]\nbundle_id = 'x'\naction = 'tile'\nworkspace = 2"
+            )
+            .err()
+            .as_deref(),
+            Some("tile rule cannot specify workspace")
+        );
+    }
+
+    #[test]
     fn rejects_invalid_rules_and_workspaces() {
         assert!(Config::parse("version = 2").is_err());
         assert!(Config::parse("version = 1\n[[rules]]\naction = 'float'").is_err());
@@ -850,6 +703,53 @@ workspace = 7
                 "version = 1\n[[rules]]\nbundle_id = 'x'\naction = 'route'\nworkspace = 'AA'"
             )
             .is_err()
+        );
+    }
+
+    #[test]
+    fn workspace_order_accepts_numbers_and_letters_in_the_given_order() {
+        let config = Config::parse(
+            "version = 1\n[settings]\nworkspace_order = [1, \"Q\", \"w\", \"10\", \"E\"]",
+        )
+        .unwrap();
+        assert_eq!(
+            config.workspace_order(),
+            [
+                WorkspaceId::ONE,
+                WorkspaceId::named('Q').unwrap(),
+                WorkspaceId::named('W').unwrap(),
+                WorkspaceId::new(10).unwrap(),
+                WorkspaceId::named('E').unwrap(),
+            ]
+        );
+        assert!(
+            Config::parse("version = 1")
+                .unwrap()
+                .workspace_order()
+                .is_empty()
+        );
+    }
+
+    #[test]
+    fn workspace_order_rejects_duplicate_and_unknown_workspaces() {
+        let duplicate =
+            Config::parse("version = 1\n[settings]\nworkspace_order = [\"Q\", \"W\", \"q\"]")
+                .unwrap_err();
+        assert!(
+            duplicate.contains("workspace Q appears more than once in settings.workspace_order"),
+            "{duplicate}"
+        );
+        let numbered =
+            Config::parse("version = 1\n[settings]\nworkspace_order = [3, \"3\"]").unwrap_err();
+        assert!(
+            numbered.contains("workspace 3 appears more than once"),
+            "{numbered}"
+        );
+        let unknown =
+            Config::parse("version = 1\n[settings]\nworkspace_order = [\"AA\"]").unwrap_err();
+        assert!(
+            unknown.contains("workspace must be 1 through 10 or A through Z"),
+            "{unknown}"
         );
     }
 
@@ -1097,6 +997,33 @@ monitor = "main"
     }
 
     #[test]
+    fn saving_a_workspace_monitor_keeps_the_workspace_order() {
+        let dir = std::env::temp_dir().join(format!(
+            "spaceman-config-order-{}-{}",
+            std::process::id(),
+            now().as_nanos()
+        ));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("config.toml");
+        std::fs::write(
+            &path,
+            "version = 1\n[settings]\nworkspace_order = [1, \"Q\", \"W\"]\n",
+        )
+        .unwrap();
+        let saved = save_workspace_monitor_at(&path, WorkspaceId::TWO, &DisplaySelector::Secondary)
+            .unwrap();
+        assert_eq!(
+            saved.workspace_order(),
+            [
+                WorkspaceId::ONE,
+                WorkspaceId::named('Q').unwrap(),
+                WorkspaceId::named('W').unwrap(),
+            ]
+        );
+        drop(std::fs::remove_dir_all(dir));
+    }
+
+    #[test]
     fn save_workspace_monitor_persists_overrides_and_clears_built_in_defaults() {
         let dir = std::env::temp_dir().join(format!(
             "spaceman-config-save-{}-{}",
@@ -1234,8 +1161,65 @@ right = 128
             let error = Config::parse(&format!("version = 1\n{source}\n")).unwrap_err();
             assert_eq!(error, message);
         }
-        assert!(Config::parse("version = 1\n[settings.gaps]\nouter = 4\n").is_err());
+        assert!(Config::parse("version = 1\n[settings.gaps]\nvertical = 4\n").is_err());
         assert!(Config::parse("version = 1\n[settings.gaps]\ninner = 1.5\n").is_err());
+    }
+
+    /// Top, bottom, left and right as `gaps` (the keys under `[settings.gaps]`) resolve them.
+    fn edges(gaps: &str) -> [i32; 4] {
+        let source = format!("version = 1\n[settings.gaps]\n{gaps}\n");
+        let spacing = Config::parse(&source).unwrap().spacing();
+        SpacingKey::EDGES.map(|key| key.get(&spacing))
+    }
+
+    #[test]
+    fn outer_pads_only_the_edges_the_file_leaves_out() {
+        assert_eq!(edges("inner = 6\nouter = 8\ntop = 0"), [0, 8, 8, 8]);
+        assert_eq!(edges("outer = 8"), [8, 8, 8, 8]);
+        assert_eq!(edges("outer = 128"), [128, 128, 128, 128]);
+        assert_eq!(
+            edges("outer = 8\ntop = 1\nbottom = 2\nleft = 3\nright = 4"),
+            [1, 2, 3, 4]
+        );
+        assert_eq!(
+            edges("outer = 8\ntop = 0\nbottom = 0\nleft = 0\nright = 0"),
+            [0, 0, 0, 0]
+        );
+        // It pads edges only, and an unset or zero `outer` leaves them where they were.
+        let gaps = "version = 1\n[settings.gaps]\nouter = 8\n";
+        let spacing = Config::parse(gaps).unwrap().spacing();
+        assert_eq!((spacing.inner, spacing.single_window_max_width), (0, 0));
+        assert_eq!(edges("top = 32\nright = 12"), [32, 0, 0, 12]);
+        assert_eq!(edges("outer = 0\ntop = 32\nright = 12"), [32, 0, 0, 12]);
+    }
+
+    #[test]
+    fn outer_takes_the_same_range_as_an_edge() {
+        for (gaps, message) in [
+            (
+                "outer = -1",
+                "settings.gaps.outer must be between 0 and 128 px, got -1",
+            ),
+            (
+                "outer = 129",
+                "settings.gaps.outer must be between 0 and 128 px, got 129",
+            ),
+            (
+                "outer = 129\ntop = 1\nbottom = 2\nleft = 3\nright = 4",
+                "settings.gaps.outer must be between 0 and 128 px, got 129",
+            ),
+            (
+                "outer = 8\ntop = 129",
+                "settings.gaps.top must be between 0 and 128 px, got 129",
+            ),
+        ] {
+            let error = Config::parse(&format!("version = 1\n[settings.gaps]\n{gaps}\n"));
+            assert_eq!(error.unwrap_err(), message);
+        }
+        for outer in ["8.0", "\"8\"", "true"] {
+            let source = format!("version = 1\n[settings.gaps]\nouter = {outer}\n");
+            assert!(Config::parse(&source).is_err(), "{source}");
+        }
     }
 
     #[test]
@@ -1249,7 +1233,7 @@ right = 128
         let path = dir.join("config.toml");
         std::fs::write(
             &path,
-            "version = 1\n[settings]\nsingle_window_max_width = 1440\n[settings.gaps]\ninner = 6\nleft = 20\n",
+            "version = 1\n[settings]\nsingle_window_max_width = 1440\n[settings.gaps]\ninner = 6\nouter = 8\ntop = 0\nleft = 20\n",
         )
         .unwrap();
         let saved = save_workspace_monitor_at(&path, WorkspaceId::TWO, &DisplaySelector::Secondary)
@@ -1257,6 +1241,13 @@ right = 128
         assert_eq!(saved.spacing().inner, 6);
         assert_eq!(saved.spacing().left, 20);
         assert_eq!(saved.spacing().single_window_max_width, 1440);
+        let written = std::fs::read_to_string(&path).unwrap();
+        let written: toml::Table = toml::from_str(&written).unwrap();
+        assert_eq!(
+            serde_json::to_value(&written["settings"]["gaps"]).unwrap(),
+            serde_json::json!({ "inner": 6, "outer": 8, "top": 0, "left": 20 }),
+            "the shorthand stays a shorthand"
+        );
         drop(std::fs::remove_dir_all(dir));
     }
 

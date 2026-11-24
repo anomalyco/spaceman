@@ -1,6 +1,6 @@
 use super::*;
 
-const KEYBOARD_RESIZE_INCREMENT: i32 = 50;
+mod sizing;
 
 /// How long Accessibility may keep reporting the previously focused window
 /// after a focus command. App activation is asynchronous, so a second ⌥L
@@ -631,48 +631,6 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
         let mut status = self.relayout_persist(workspace, &outputs, cancelled)?;
         status.hud = Some(self.hud_for(workspace, UiHudKind::Layout { axis }, None, &outputs));
         Ok(status)
-    }
-
-    pub(super) fn resize_focused(
-        &mut self,
-        direction: ResizeDirection,
-        outputs: macos::DisplayOutputs,
-        cancelled: &AtomicBool,
-    ) -> Result<CycleStatus, String> {
-        let (window, workspace) = self.focused_active_workspace(&outputs, cancelled, false)?;
-        if self.workspaces.uses_fullscreen_layout(workspace) {
-            return Err("Exit Fullscreen Layout before resizing the split layout".into());
-        }
-        let settings = self.layout_settings(output_for(&self.workspaces, workspace, &outputs));
-        if !self.workspaces.engine_mut(workspace).resize_focused_tile(
-            &window,
-            direction,
-            KEYBOARD_RESIZE_INCREMENT,
-            &settings,
-        ) {
-            return Ok(self.status(0, &outputs));
-        }
-        self.relayout_persist(workspace, &outputs, cancelled)
-    }
-
-    pub(super) fn balance_focused(
-        &mut self,
-        outputs: macos::DisplayOutputs,
-        cancelled: &AtomicBool,
-    ) -> Result<CycleStatus, String> {
-        let (window, workspace) = self.focused_active_workspace(&outputs, cancelled, false)?;
-        if self.workspaces.uses_fullscreen_layout(workspace) {
-            return Err("Exit Fullscreen Layout before balancing the split layout".into());
-        }
-        let settings = self.layout_settings(output_for(&self.workspaces, workspace, &outputs));
-        if !self
-            .workspaces
-            .engine_mut(workspace)
-            .balance_focused_parent(&window, &settings)
-        {
-            return Ok(self.status(0, &outputs));
-        }
-        self.relayout_persist(workspace, &outputs, cancelled)
     }
 
     pub(super) fn toggle_fullscreen_layout(

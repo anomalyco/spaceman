@@ -209,7 +209,7 @@ impl MainThreadAgent {
                             && crate::app::input::should_ignore_swipe(
                                 macos::mouse_down(),
                                 self.mouse_was_down,
-                                self.gesture_tracker.window().is_some(),
+                                self.gesture_tracker.is_active(),
                             ))
                     {
                         self.queue_worker_input(QueuedInput::Action(action));

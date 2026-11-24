@@ -34,6 +34,7 @@ struct RuleRemovedOutput {
 enum ActionArg {
     Workspace(WorkspaceId),
     Float,
+    Tile,
     Ignore,
 }
 
@@ -178,7 +179,9 @@ fn parse_add_options(args: &[&str]) -> Result<AddOptions, String> {
             }
             "--workspace" => {
                 if action.is_some() {
-                    return Err("specify only one of --workspace, --float, or --ignore".into());
+                    return Err(
+                        "specify only one of --workspace, --float, --tile, or --ignore".into(),
+                    );
                 }
                 let value = next_value(flag, inline_value, &mut index)?;
                 let workspace = WorkspaceId::parse(&value)?;
@@ -189,16 +192,31 @@ fn parse_add_options(args: &[&str]) -> Result<AddOptions, String> {
                     return Err("--float does not take a value".into());
                 }
                 if action.is_some() {
-                    return Err("specify only one of --workspace, --float, or --ignore".into());
+                    return Err(
+                        "specify only one of --workspace, --float, --tile, or --ignore".into(),
+                    );
                 }
                 action = Some(ActionArg::Float);
+            }
+            "--tile" => {
+                if inline_value.is_some() {
+                    return Err("--tile does not take a value".into());
+                }
+                if action.is_some() {
+                    return Err(
+                        "specify only one of --workspace, --float, --tile, or --ignore".into(),
+                    );
+                }
+                action = Some(ActionArg::Tile);
             }
             "--ignore" => {
                 if inline_value.is_some() {
                     return Err("--ignore does not take a value".into());
                 }
                 if action.is_some() {
-                    return Err("specify only one of --workspace, --float, or --ignore".into());
+                    return Err(
+                        "specify only one of --workspace, --float, --tile, or --ignore".into(),
+                    );
                 }
                 action = Some(ActionArg::Ignore);
             }
@@ -231,7 +249,9 @@ fn parse_add_options(args: &[&str]) -> Result<AddOptions, String> {
         return Err("rules add requires --app <bundle-id> (or --title <title>)".into());
     }
     let Some(action) = action else {
-        return Err("rules add requires one of --workspace <ws>, --float, or --ignore".into());
+        return Err(
+            "rules add requires one of --workspace <ws>, --float, --tile, or --ignore".into(),
+        );
     };
 
     Ok(AddOptions {
@@ -249,6 +269,7 @@ fn run_add(args: &[&str], path_override: Option<&Path>) -> Result<String, String
     let (action, workspace) = match options.action {
         ActionArg::Workspace(workspace) => ("route".to_owned(), Some(workspace)),
         ActionArg::Float => ("float".to_owned(), None),
+        ActionArg::Tile => ("tile".to_owned(), None),
         ActionArg::Ignore => ("ignore".to_owned(), None),
     };
     let rule = RuleDoc {

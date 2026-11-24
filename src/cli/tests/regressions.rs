@@ -375,3 +375,29 @@ fn write_stdout_line_handles_broken_pipe_cleanly_and_reports_other_write_errors(
         ExitCode::FAILURE
     );
 }
+
+#[test]
+fn config_commands_keep_and_show_the_workspace_order() {
+    let temp = TempConfig::new("workspace-order");
+    temp.write("version = 1\n[settings]\nworkspace_order = [1, \"Q\", \"W\"]\n");
+    let order = [
+        WorkspaceId::ONE,
+        WorkspaceId::named('Q').unwrap(),
+        WorkspaceId::named('W').unwrap(),
+    ];
+
+    let set = temp.run(&["config", "set", "hud", "false"]);
+    assert_eq!(set.exit_code, 0, "{:?}", set.stderr);
+    assert_eq!(
+        Config::parse(&temp.read()).unwrap().workspace_order(),
+        order
+    );
+
+    let show = temp.run(&["config", "show", "--json"]);
+    assert_eq!(show.exit_code, 0, "{:?}", show.stderr);
+    let show: Value = serde_json::from_str(show.stdout.as_deref().unwrap()).unwrap();
+    assert_eq!(
+        show["settings"]["workspace_order"],
+        serde_json::json!([1, "Q", "W"])
+    );
+}

@@ -415,6 +415,166 @@ fn config_gets_sets_and_shows_spacing() {
     assert_eq!(Config::parse(&temp.read()).unwrap().spacing().right, 12);
 }
 
+/// `spaceman config get <key>`, which must succeed.
+fn get(temp: &TempConfig, key: &str) -> String {
+    let got = temp.run(&["config", "get", key]);
+    assert_eq!(got.exit_code, 0, "{:?}", got.stderr);
+    got.stdout.unwrap()
+}
+
+fn set(temp: &TempConfig, key: &str, value: &str) {
+    let set = temp.run(&["config", "set", key, value]);
+    assert_eq!(set.exit_code, 0, "{:?}", set.stderr);
+    assert_eq!(get(temp, key), value);
+}
+
+/// `[settings.gaps]` as the file spells it.
+fn written_gaps(temp: &TempConfig) -> Value {
+    let file: toml::Table = toml::from_str(&temp.read()).unwrap();
+    serde_json::to_value(&file["settings"]["gaps"]).unwrap()
+}
+
+#[test]
+fn config_sets_outer_around_explicit_edges_and_reports_resolved_ones() {
+    let temp = TempConfig::new("config-outer");
+    assert_eq!(get(&temp, "gaps.outer"), "0");
+    set(&temp, "gaps.outer", "8");
+    assert_eq!(written_gaps(&temp), serde_json::json!({ "outer": 8 }));
+    set(&temp, "gaps.inner", "6");
+    set(&temp, "gaps.top", "32");
+    assert_eq!(
+        written_gaps(&temp),
+        serde_json::json!({ "inner": 6, "outer": 8, "top": 32 })
+    );
+    assert_eq!(get(&temp, "gaps.top"), "32");
+    assert_eq!(get(&temp, "settings.gaps.left"), "8");
+
+    // A zero edge stays in the file: without it, `outer` would pad that edge again.
+    set(&temp, "gaps.top", "0");
+    set(&temp, "gaps.outer", "12");
+    assert_eq!(
+        written_gaps(&temp),
+        serde_json::json!({ "inner": 6, "outer": 12, "top": 0 })
+    );
+    let edges = ["gaps.top", "gaps.bottom", "gaps.left", "gaps.right"];
+    assert_eq!(edges.map(|key| get(&temp, key)), ["0", "12", "12", "12"]);
+
+    let show = temp.run(&["config", "show", "--json"]).stdout.unwrap();
+    let show: Value = serde_json::from_str(&show).unwrap();
+    assert_eq!(
+        show["settings"]["gaps"],
+        serde_json::json!({ "inner": 6, "top": 0, "bottom": 12, "left": 12, "right": 12 })
+    );
+    let shown = temp.run(&["config", "show"]).stdout.unwrap();
+    assert_eq!(
+        Config::parse(&shown).unwrap().spacing(),
+        Config::parse(&temp.read()).unwrap().spacing()
+    );
+
+    // An unrelated setting keeps the shorthand, and an edge can match `outer` on its own.
+    set(&temp, "hud", "false");
+    set(&temp, "gaps.left", "12");
+    set(&temp, "gaps.outer", "20");
+    assert_eq!(
+        written_gaps(&temp),
+        serde_json::json!({ "inner": 6, "outer": 20, "top": 0, "left": 12 })
+    );
+
+    // Resetting an explicit edge drops its key so it follows `outer` again.
+    let reset_top = temp.run(&["config", "reset", "gaps.top"]);
+    assert_eq!(reset_top.exit_code, 0, "{:?}", reset_top.stderr);
+    assert_eq!(reset_top.stdout.as_deref(), Some("reset gaps.top = 20"));
+    assert_eq!(
+        written_gaps(&temp),
+        serde_json::json!({ "inner": 6, "outer": 20, "left": 12 })
+    );
+    assert_eq!(edges.map(|key| get(&temp, key)), ["20", "20", "12", "20"]);
+
+    // Back at its default, `outer` leaves the file and every explicit edge stays.
+    set(&temp, "gaps.outer", "0");
+    assert_eq!(
+        written_gaps(&temp),
+        serde_json::json!({ "inner": 6, "left": 12 })
+    );
+    assert_eq!(edges.map(|key| get(&temp, key)), ["0", "0", "12", "0"]);
+
+    // Resetting `gaps.outer` also removes it without touching explicit edges.
+    set(&temp, "gaps.outer", "8");
+    let reset_outer = temp.run(&["config", "reset", "gaps.outer"]);
+    assert_eq!(reset_outer.exit_code, 0, "{:?}", reset_outer.stderr);
+    assert_eq!(reset_outer.stdout.as_deref(), Some("reset gaps.outer = 0"));
+    assert_eq!(
+        written_gaps(&temp),
+        serde_json::json!({ "inner": 6, "left": 12 })
+    );
+}
+
+#[test]
+fn config_outer_reports_the_fallback_and_never_one_inferred_from_the_edges() {
+    let temp = TempConfig::new("config-outer-get");
+    temp.write("version = 1\n[settings.gaps]\ntop = 9\nbottom = 9\nleft = 9\nright = 9\n");
+    assert_eq!(get(&temp, "gaps.outer"), "0");
+    let json = temp.run(&["config", "get", "settings.gaps.outer", "--json"]);
+    let json: Value = serde_json::from_str(&json.stdout.unwrap()).unwrap();
+    assert_eq!(json, serde_json::json!({ "key": "gaps.outer", "value": 0 }));
+    let json = temp.run(&["config", "set", "gaps.outer", "4", "--json"]);
+    let json: Value = serde_json::from_str(&json.stdout.unwrap()).unwrap();
+    assert_eq!(
+        (&json["key"], &json["value"]),
+        (&"gaps.outer".into(), &4.into())
+    );
+    assert_eq!(get(&temp, "gaps.outer"), "4");
+    assert_eq!(get(&temp, "gaps.right"), "9");
+}
+
+#[test]
+fn config_refuses_an_invalid_outer_and_leaves_the_file_alone() {
+    let temp = TempConfig::new("config-outer-invalid");
+    temp.write("version = 1\n[settings.gaps]\nouter = 8\ntop = 0\n");
+    let before = temp.read();
+    for (value, message) in [
+        (
+            "129",
+            "settings.gaps.outer must be between 0 and 128 px, got 129",
+        ),
+        (
+            "wide",
+            "invalid value for gaps.outer: expected a whole number of points",
+        ),
+        (
+            "1.5",
+            "invalid value for gaps.outer: expected a whole number of points",
+        ),
+    ] {
+        let refused = temp.run(&["config", "set", "gaps.outer", value]);
+        assert_eq!(refused.exit_code, 1);
+        let error = refused.stderr.unwrap();
+        assert!(error.contains(message), "{error}");
+    }
+    assert_eq!(temp.read(), before);
+
+    let unknown = temp.run(&["config", "get", "gaps.outside"]).stderr.unwrap();
+    assert!(
+        unknown.contains("gaps.inner, gaps.outer, gaps.top"),
+        "{unknown}"
+    );
+    let help = temp.run(&["config", "--help"]).stdout.unwrap();
+    assert!(help.contains("gaps.outer"), "{help}");
+}
+
+#[test]
+fn config_without_outer_still_drops_a_zero_edge() {
+    let temp = TempConfig::new("config-no-outer");
+    temp.write("version = 1\n[settings.gaps]\ninner = 6\ntop = 32\nleft = 0\n");
+    set(&temp, "gaps.top", "0");
+    assert_eq!(
+        written_gaps(&temp),
+        serde_json::json!({ "inner": 6, "left": 0 })
+    );
+    set(&temp, "gaps.left", "0");
+    assert_eq!(written_gaps(&temp), serde_json::json!({ "inner": 6 }));
+}
+
 #[test]
 fn config_rejects_unknown_keys_invalid_values_and_corrupt_existing_file() {
     let temp = TempConfig::new("config-invalid");
@@ -584,6 +744,52 @@ fn rules_list_add_position_and_remove_by_index_and_bundle_id() {
         Some("No rules configured.")
     );
     assert!(Config::parse(&temp.read()).is_ok());
+}
+
+#[test]
+fn rules_add_tile_writes_a_tile_rule() {
+    let temp = TempConfig::new("rules-tile");
+
+    let added = temp.run(&[
+        "rules",
+        "add",
+        "--app",
+        "com.apple.systempreferences",
+        "--tile",
+    ]);
+    assert_eq!(added.exit_code, 0);
+    assert_eq!(
+        added.stdout.as_deref(),
+        Some("added rule 1: bundle_id=com.apple.systempreferences -> tile")
+    );
+    let config = Config::parse(&temp.read()).unwrap();
+    assert_eq!(
+        config.disposition("com.apple.systempreferences", &sample_window(None)),
+        WindowDisposition::Tiled
+    );
+
+    for conflicting in [
+        &["--tile", "--float"][..],
+        &["--ignore", "--tile"],
+        &["--tile=yes"],
+    ] {
+        let mut args = vec!["rules", "add", "--app", "com.example.App"];
+        args.extend_from_slice(conflicting);
+        assert_eq!(temp.run(&args).exit_code, 1, "{conflicting:?}");
+    }
+    assert_eq!(
+        temp.run(&[
+            "rules",
+            "add",
+            "--app",
+            "com.example.App",
+            "--tile",
+            "--workspace",
+            "2"
+        ])
+        .exit_code,
+        1
+    );
 }
 
 #[test]

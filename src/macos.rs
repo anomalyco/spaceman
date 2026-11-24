@@ -1,5 +1,6 @@
 mod apply;
 mod ax;
+mod classify;
 mod display_link;
 mod displays;
 mod events;
@@ -32,8 +33,8 @@ pub use apply::{
     frame, raise_window, set_parked_position, set_position_only, warp_pointer,
 };
 pub use ax::{
-    onscreen_window_frames, onscreen_window_order, window_at_point, window_server_frame,
-    window_server_frames,
+    onscreen_window_frames, onscreen_window_order, window_server_frame, window_server_frames,
+    windows_at_point,
 };
 pub use display_link::{DisplayFrame, DisplayLink, DisplayLinkError};
 pub use displays::{DisplayOutput, DisplayOutputs, display_ids, outputs};
@@ -51,6 +52,7 @@ use ax::{
     onscreen_windows, optional_bool_attribute, physical_window_id, set_ax_timeout,
     window_server_windows,
 };
+use classify::{TitleBar, TitleButton, is_dialog, is_ignored};
 use displays::main_output;
 use window_attributes::{WindowAttribute, WindowAttributes};
 
@@ -539,14 +541,14 @@ fn observe_application(
     })
 }
 
-pub(super) enum WindowObservation {
+enum WindowObservation {
     Observed(ObservedWindow),
     Ignored,
 }
 
 const MIN_MANAGEABLE_WINDOW_DIMENSION: i32 = 64;
 
-pub(super) fn observe_window(
+fn observe_window(
     id: PhysicalWindowId,
     accessory: bool,
     window: &AXUIElement,
@@ -602,22 +604,26 @@ pub(super) fn observe_window(
     {
         return Ok(WindowObservation::Ignored);
     }
-    let fullscreen_enabled = attributes
-        .get::<AXUIElement>(WindowAttribute::FullScreenButton)
-        .is_ok_and(|button| {
-            set_ax_timeout(&button);
-            optional_bool_attribute(&button, "AXEnabled").unwrap_or(false)
-        });
-    let has_close_button = attributes
+    let close = attributes
         .get::<AXUIElement>(WindowAttribute::CloseButton)
         .is_ok();
-    if accessory && !fullscreen_enabled && !has_close_button {
+    let mut bar = TitleBar {
+        fullscreen: title_button(&attributes, WindowAttribute::FullScreenButton),
+        zoom: TitleButton::Absent,
+        close,
+    };
+    if is_ignored(accessory, bar) {
         return Ok(WindowObservation::Ignored);
     }
     let modal = attributes
         .optional_bool(WindowAttribute::Modal)
         .unwrap_or(false);
-    let dialog = modal || (!fullscreen_enabled && (has_close_button || accessory));
+    // The zoom button's state costs its own round trip, and only decides a
+    // regular application's closable window without a fullscreen button.
+    if !accessory && !modal && close && bar.fullscreen == TitleButton::Absent {
+        bar.zoom = title_button(&attributes, WindowAttribute::ZoomButton);
+    }
+    let dialog = is_dialog(accessory, modal, bar);
     let resizable = !dialog
         && is_settable(window, "AXSize").map_err(|error| format!("AXSize settable: {error:?}"))?;
     let title = match attributes.get::<CFString>(WindowAttribute::Title) {
@@ -630,4 +636,18 @@ pub(super) fn observe_window(
         resizable,
         title,
     }))
+}
+
+fn title_button(attributes: &WindowAttributes<'_>, button: WindowAttribute) -> TitleButton {
+    match attributes.get::<AXUIElement>(button) {
+        Ok(button) => {
+            set_ax_timeout(&button);
+            if optional_bool_attribute(&button, "AXEnabled").unwrap_or(false) {
+                TitleButton::Enabled
+            } else {
+                TitleButton::Disabled
+            }
+        }
+        Err(_) => TitleButton::Absent,
+    }
 }

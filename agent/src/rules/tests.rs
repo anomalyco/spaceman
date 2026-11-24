@@ -103,6 +103,26 @@ fn a_broken_file_is_never_saved_over() {
 }
 
 #[test]
+fn a_tile_rule_reads_back_and_the_hud_float_replaces_it_in_place() {
+    let mut doc = Doc::parse(
+        "version = 1\n\n[[rules]]\nbundle_id = \"com.apple.systempreferences\"\naction = \"tile\"\n",
+    );
+    assert!(doc.error.is_none());
+    assert_eq!(
+        doc.app_place("com.apple.systempreferences"),
+        Some(Place::Tile)
+    );
+    // Floating it from the HUD rewrites the tile rule rather than adding a second
+    // rule the first-match tile rule would shadow.
+    doc.set_app_place("com.apple.systempreferences", Some(Place::Float));
+    assert_eq!(doc.rules().len(), 1);
+    assert_eq!(doc.rules()[0].place, Place::Float);
+    doc.place(0, Place::Tile);
+    assert!(doc.source().contains("action = \"tile\""));
+    assert!(spaceman::config::Config::parse(&doc.source()).is_ok());
+}
+
+#[test]
 fn set_app_place_updates_bundle_rule_without_touching_title_rules() {
     let mut doc = Doc::parse(SOURCE);
     assert_eq!(doc.app_place("com.brave.Browser"), None);
@@ -946,4 +966,242 @@ fn clearing_last_layout_spacing_preserves_detached_section_headings() {
     assert!(spaceman::config::Config::parse(&saved).is_ok(), "{saved}");
     assert!(saved.contains("# Gap notes."), "{saved}");
     assert!(!saved.contains("[settings.gaps]"), "{saved}");
+}
+
+/// Settings › Layout's view of `[settings.gaps]` with `gaps` inside it.
+fn gaps(gaps: &str) -> Doc {
+    let doc = Doc::parse(&format!("# Mine.\nversion = 1\n\n[settings.gaps]\n{gaps}"));
+    assert_eq!(doc.error, None);
+    doc
+}
+
+/// What the running agent would tile with once `doc` is saved.
+fn saved_spacing(doc: &Doc) -> spaceman::spacing::Spacing {
+    spaceman::config::Config::parse(&doc.source())
+        .unwrap()
+        .spacing()
+}
+
+#[test]
+fn spacing_shows_the_edges_outer_resolves_to() {
+    use spaceman::spacing::Spacing;
+    let doc = gaps("inner = 6\nouter = 8\ntop = 0\n");
+    assert_eq!(
+        doc.spacing(),
+        Spacing {
+            inner: 6,
+            top: 0,
+            ..Spacing::NONE.with_edges(8)
+        }
+    );
+    assert_eq!(doc.spacing(), saved_spacing(&doc));
+}
+
+#[test]
+fn unrelated_edits_keep_outer_and_its_explicit_edges() {
+    use spaceman::spacing::Spacing;
+    for source in [
+        "inner = 6\nouter = 8 # Everywhere.\ntop = 0\nleft = 8\n",
+        "inner = 6\nouter = 0\ntop = 0\nleft = 8\n",
+    ] {
+        let mut doc = gaps(source);
+        let before = doc.spacing();
+        doc.set_spacing(before);
+        doc.set_hud(false);
+        doc.set_hud(true);
+        doc.set_monitor(ws("2"), Some("secondary"));
+        doc.set_monitor(ws("2"), None);
+        assert_eq!(doc.source(), gaps(source).source());
+
+        doc.set_spacing(Spacing {
+            inner: 10,
+            ..before
+        });
+        assert_eq!(
+            doc.source(),
+            gaps(&source.replace("inner = 6", "inner = 10")).source()
+        );
+        doc.set_spacing(Spacing {
+            single_window_max_width: 1680,
+            ..doc.spacing()
+        });
+        assert!(
+            doc.source()
+                .contains(&source.replace("inner = 6", "inner = 10"))
+        );
+        assert_eq!(
+            saved_spacing(&doc),
+            Spacing {
+                inner: 10,
+                single_window_max_width: 1680,
+                ..before
+            }
+        );
+    }
+}
+
+#[test]
+fn an_edge_set_to_zero_does_not_fall_back_to_outer() {
+    use spaceman::spacing::{Spacing, SpacingKey};
+    for key in SpacingKey::EDGES {
+        let mut doc = gaps("outer = 8\n");
+        let mut spacing = doc.spacing();
+        key.set(&mut spacing, 0);
+        doc.set_spacing(spacing);
+        assert_eq!(
+            doc.source(),
+            gaps(&format!("outer = 8\n{} = 0\n", key.gap_name().unwrap())).source()
+        );
+        assert_eq!(saved_spacing(&doc), spacing);
+
+        // Another slider's save leaves it at zero, and it can be raised again.
+        let inner = Spacing {
+            inner: 4,
+            ..doc.spacing()
+        };
+        doc.set_spacing(inner);
+        assert_eq!(saved_spacing(&doc), inner);
+        doc.set_spacing(Spacing::NONE.with_edges(8));
+        assert_eq!(saved_spacing(&doc), Spacing::NONE.with_edges(8));
+    }
+
+    let mut doc = gaps("inner = 6\nouter = 8\n");
+    doc.set_spacing(Spacing::NONE);
+    assert_eq!(
+        doc.source(),
+        gaps("outer = 8\ntop = 0\nbottom = 0\nleft = 0\nright = 0\n").source()
+    );
+    assert_eq!(saved_spacing(&doc), Spacing::NONE);
+}
+
+#[test]
+fn editing_one_edge_leaves_the_others_following_outer() {
+    use spaceman::spacing::Spacing;
+    let mut doc = gaps("inner = 6\nouter = 8\n");
+    doc.set_spacing(Spacing {
+        top: 30,
+        ..doc.spacing()
+    });
+    assert_eq!(
+        doc.source(),
+        gaps("inner = 6\nouter = 8\ntop = 30\n").source()
+    );
+    // Every edge together still overrides, and the shorthand is there once they go.
+    doc.set_spacing(doc.spacing().with_edges(12));
+    assert_eq!(saved_spacing(&doc).uniform_edges(), Some(12));
+    assert!(doc.source().contains("outer = 8\n"), "{}", doc.source());
+}
+
+#[test]
+fn inline_settings_keep_outer_when_something_else_changes() {
+    use spaceman::spacing::Spacing;
+    for source in [
+        "version = 1\n[settings]\nhud = true\ngaps = { inner = 6, outer = 8, top = 0 }\n",
+        "version = 1\nsettings = { hud = true, gaps = { inner = 6, outer = 8, top = 0 } }\n",
+        "version = 1\n[settings]\nhud = true\ngaps.inner = 6\ngaps.outer = 8\ngaps.top = 0\n",
+        "version = 1\nsettings.hud = true\nsettings.gaps.inner = 6\nsettings.gaps.outer = 8\nsettings.gaps.top = 0\n",
+    ] {
+        let mut doc = Doc::parse(source);
+        assert_eq!(doc.error, None);
+        let before = doc.spacing();
+        assert_eq!(before, saved_spacing(&doc));
+        let wider = Spacing {
+            inner: 10,
+            ..before
+        };
+        doc.set_spacing(wider);
+        assert_eq!(doc.source(), source.replace("inner = 6", "inner = 10"));
+        doc.set_hud(false);
+        assert_eq!(saved_spacing(&doc), wider, "{}", doc.source());
+        assert!(
+            !spaceman::config::Config::parse(&doc.source())
+                .unwrap()
+                .hud()
+        );
+        doc.set_spacing(Spacing { left: 0, ..wider });
+        assert_eq!(saved_spacing(&doc), Spacing { left: 0, ..wider });
+        doc.set_spacing(Spacing::NONE);
+        assert_eq!(saved_spacing(&doc), Spacing::NONE, "{}", doc.source());
+        assert!(doc.source().contains("outer = 8"), "{}", doc.source());
+    }
+
+    let mut doc = Doc::parse("version = 1\nsettings = { hud = false }\n");
+    let spacing = Spacing::NONE.with_edges(8);
+    doc.set_spacing(spacing);
+    assert_eq!(saved_spacing(&doc), spacing, "{}", doc.source());
+    assert!(!doc.hud());
+    doc.set_spacing(Spacing::NONE);
+    doc.set_hud(true);
+    assert_eq!(doc.source(), "version = 1\n");
+}
+
+#[test]
+fn spacing_without_outer_still_drops_an_edge_set_to_zero() {
+    use spaceman::spacing::Spacing;
+    let mut doc = gaps("inner = 6\nleft = 20\n");
+    doc.set_spacing(Spacing {
+        left: 0,
+        ..doc.spacing()
+    });
+    assert_eq!(doc.source(), gaps("inner = 6\n").source());
+    doc.set_spacing(Spacing::NONE);
+    assert_eq!(doc.source(), "# Mine.\nversion = 1\n");
+}
+
+#[test]
+fn unrelated_edits_leave_an_explicit_zero_for_a_later_outer() {
+    use spaceman::spacing::Spacing;
+    for source in [
+        "version = 1\n\n[settings] # Displays.\n\n[settings.gaps]\ninner = 6\ntop = 0\n",
+        "version = 1\n\n[settings] # Displays.\ngaps = { inner = 6, top = 0 } # Flush.\n",
+        "version = 1\n\n[settings] # Displays.\ngaps = { top = 0 } # Flush.\n",
+    ] {
+        let mut doc = Doc::parse(source);
+        doc.set_spacing(Spacing {
+            single_window_max_width: 1680,
+            ..doc.spacing()
+        });
+        let saved = doc.source();
+        assert_eq!(
+            saved.replace("single_window_max_width = 1680\n", ""),
+            source
+        );
+        let padded = Doc::parse(&saved.replace("top = 0", "outer = 8, top = 0").replace(
+            "inner = 6\nouter = 8, top = 0",
+            "inner = 6\nouter = 8\ntop = 0",
+        ));
+        assert_eq!(padded.error, None);
+        assert_eq!((padded.spacing().top, padded.spacing().left), (0, 8));
+    }
+}
+
+#[test]
+fn edits_keep_the_comments_around_outer() {
+    use spaceman::spacing::Spacing;
+    for source in [
+        "version = 1\n[settings.gaps]\nouter = 8 # Around.\n# Between.\ninner = 6 # Tight.\ntop = 0\n",
+        "version = 1\n[settings]\ngaps = {\n  outer = 8, # Around.\n  inner = 6, # Tight.\n  top = 0,\n}\n",
+    ] {
+        let mut doc = Doc::parse(source);
+        assert_eq!(doc.error, None);
+        // `toml_edit` reflows a multiline inline table even unedited.
+        let unedited = doc.source();
+        assert!(unedited.contains("outer = 8"), "{unedited}");
+        doc.set_spacing(Spacing {
+            inner: 10,
+            ..doc.spacing()
+        });
+        assert_eq!(doc.source(), unedited.replace("inner = 6", "inner = 10"));
+    }
+
+    let source = "version = 1\nsettings = {\n  gaps = { outer = 8 }, # Around.\n  single_window_max_width = 1440, # Wide.\n}\n";
+    let mut doc = Doc::parse(source);
+    assert_eq!(doc.error, None);
+    let unedited = doc.source();
+    assert!(unedited.contains("1440"), "{unedited}");
+    doc.set_spacing(Spacing {
+        single_window_max_width: 1680,
+        ..doc.spacing()
+    });
+    assert_eq!(doc.source(), unedited.replace("1440", "1680"));
 }

@@ -69,6 +69,44 @@ Accessibility writes. Start them with AeroSpace enabled, read each script, prese
 windows, and confirm its expected display and Ghostty assumptions. Never run a destructive live test
 on a user's normal workspace merely because unit tests pass.
 
+## Live Gauntlet
+
+```sh
+./scripts/build-app.sh
+./scripts/gauntlet.sh                                 # on this Mac
+./scripts/gauntlet.sh --host user@test-mac            # on another Mac over ssh
+./scripts/gauntlet.sh --only switch,reflow --reflow-budget-ms 300
+```
+
+The gauntlet runs a real `Spaceman.app` against three disposable windows and checks every step
+twice: against the window server (`CGWindowListCopyWindowInfo` bounds, on-screen state, front
+window, frontmost app) and against Spaceman's own `ctl debug`, `ctl status`,
+`parked-windows.json`, `agent.log` and `spaceman doctor`. It covers boot and tiling, workspace
+switches and parking, focus (directional, repeat switch, `focus next`), minimize and hide reflow
+against a time budget, float, the Scratchpad, a hard kill and relaunch, and a clean quit that must
+put every parked window back. Nothing is judged by eye.
+
+Each run writes `receipt.json` (every step with its timing, expected and measured frames),
+`snapshots/` (title-free `ctl debug` and window-server state after each step), `doctor.txt`, and
+the run's `state/` (`agent.log`, `journal.jsonl`, `parked-windows.json`,
+`workspace-state.json`) to `--out` (default `/tmp/spaceman-gauntlet-<timestamp>`). It exits 1 if any
+step fails.
+
+Isolation: Spaceman starts through LaunchServices with `SPACEMAN_APPLICATION_SUPPORT` and
+`SPACEMAN_CONFIG` pointing into the receipt directory and `SPACEMAN_DISABLE_UPDATES=1`. Its config
+ignores every app already running, so it only ever tiles, parks or focuses the gauntlet's own
+windows, and each window is a separate process the gauntlet closes at the end. It refuses to start
+while another Spaceman, AeroSpace, yabai or Amethyst runs. Interrupting it quits Spaceman (which
+restores parked windows) and closes the test windows.
+
+The target Mac needs a logged-in desktop and Accessibility granted to the Spaceman.app under test.
+The grant follows the Developer ID signature, so granting it once (System Settings › Privacy &
+Security › Accessibility) covers later builds. Windows appear on that Mac's main display. A
+disposable macOS VM is the best place to run it; `--host` copies both apps there over ssh and
+copies the receipt back, and `GAUNTLET_SSH` replaces the ssh command (a key, a jump host).
+The harness itself is `scripts/gauntlet/*.swift`, compiled by `gauntlet.sh` into
+`target/gauntlet/SpacemanGauntlet.app` with `swiftc`; the target Mac needs no developer tools.
+
 ## Documentation Checks
 
 When commands, menu labels, config fields, state paths, shortcuts, packaging, or recovery semantics

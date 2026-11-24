@@ -41,6 +41,10 @@ fn actions() -> Vec<(WorkerAction, DirectAction)> {
         (WorkerAction::Resize(ResizeDirection::Grow), |r, o, c| {
             r.resize_focused(ResizeDirection::Grow, o, c)
         }),
+        (
+            WorkerAction::ResizeTo(crate::Axis::Horizontal, 600),
+            |r, o, c| r.resize_focused_to(crate::Axis::Horizontal, 600, o, c),
+        ),
         (WorkerAction::Balance, |r, o, c| r.balance_focused(o, c)),
         (WorkerAction::ToggleFullscreenLayout, |r, o, c| {
             r.toggle_fullscreen_layout(o, c)
@@ -218,6 +222,7 @@ fn control_acknowledgements_name_each_queued_action() {
             "focus queued",
             "directional move queued",
             "layout toggle queued",
+            "resize queued",
             "resize queued",
             "balance queued",
             "fullscreen layout toggle queued",

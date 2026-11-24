@@ -104,6 +104,11 @@ See [Recovery](../recovery.md) for the safe manual procedure; never delete `park
   or a quit) have no automated test.
 - Live harness (not run): `scripts/live-workspaces.sh` hard-kills the agent with a parked window and
   checks startup recovery.
+- Live gauntlet, `scripts/gauntlet.sh`: SIGKILL with a window parked keeps it parked and its record on
+  disk, and a relaunch keeps it on its workspace; `ctl quit` returns every parked window to its
+  recorded frame and empties `parked-windows.json`; `agent.log` has no panic or error line; no window
+  title reaches any state file, snapshot or `doctor` output; `doctor` counts every start, every clean
+  stop and no anomalies.
 - Observed (2026-10-01, two reinstalls via `scripts/install-app.sh`): restoration before exit
   succeeded both times (one retry). The first restart silently dropped five hidden-workspace slots
   when Accessibility could not find them right after launch, then stalled 81 s; fixed in the working

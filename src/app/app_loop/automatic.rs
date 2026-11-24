@@ -45,18 +45,22 @@ impl MainThreadAgent {
         if !self.mouse_was_down && mouse_down {
             // Core Graphics hit-testing and readback do not send synchronous
             // AX messages to another app from the main-thread input loop.
-            self.gesture_tracker
-                .begin(macos::mouse_position().and_then(macos::window_at_point));
+            self.gesture_tracker.begin(
+                macos::mouse_position()
+                    .map(macos::windows_at_point)
+                    .unwrap_or_default(),
+            );
         }
         if self.mouse_was_down && !mouse_down {
-            let final_frame = self
+            let frames = self
                 .gesture_tracker
-                .window()
-                .and_then(macos::window_server_frame);
-            if let Some(gesture) = self
-                .gesture_tracker
-                .finish(final_frame, macos::mouse_position())
-            {
+                .is_active()
+                .then(macos::window_server_frames)
+                .flatten();
+            if let Some(gesture) = self.gesture_tracker.finish(
+                |window| frames.as_ref()?.get(&window.window_id).copied(),
+                macos::mouse_position(),
+            ) {
                 if self.worker.is_interruptible_busy() {
                     self.cancelled.store(true, Ordering::Release);
                 }
@@ -66,13 +70,13 @@ impl MainThreadAgent {
         } else if mouse_down
             && !self.worker.is_busy()
             && self.pending_inputs.is_empty()
-            && let Some(current) = self
-                .gesture_tracker
-                .window()
-                .and_then(macos::window_server_frame)
-            && let Some(gesture) = self
-                .gesture_tracker
-                .preview(current, macos::mouse_position())
+            && self.gesture_tracker.is_active()
+            // One window-list copy per tick, however many windows the gesture may be about.
+            && let Some(frames) = macos::window_server_frames()
+            && let Some(gesture) = self.gesture_tracker.preview(
+                |window| frames.get(&window.window_id).copied(),
+                macos::mouse_position(),
+            )
         {
             self.worker
                 .send_with_outputs(|outputs| WorkerCommand::Gesture(gesture, true, outputs));
