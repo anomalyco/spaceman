@@ -556,6 +556,19 @@ fn with_managed_window_result<T>(
     Err(WindowAccessError::Gone)
 }
 
+/// Reads `AXMinimized` from the cached handle only, with a short timeout, so
+/// an unresponsive app cannot hold up the cycle; no handle means no evidence.
+pub(super) fn cached_window_is_minimized(id: &PhysicalWindowId) -> bool {
+    let Some(window) = MANAGED_WINDOWS.with(|windows| windows.borrow().get(id).cloned()) else {
+        return false;
+    };
+    // SAFETY: `window` is a live cached `AXUIElement`; the timeout is restored below.
+    let _: AXError = unsafe { window.set_messaging_timeout(0.05) };
+    let minimized = optional_bool_attribute(&window, "AXMinimized").unwrap_or(false);
+    set_ax_timeout(&window);
+    minimized
+}
+
 pub(super) fn cache_managed_window(id: &PhysicalWindowId, window: &AXUIElement) {
     // SAFETY: `window` is a valid `AXUIElement` reference backed by Core Foundation refcounting.
     let retained = unsafe { CFRetained::retain(NonNull::from(window)) };

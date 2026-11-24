@@ -427,6 +427,15 @@ pub(crate) fn confirms_no_windows(id: &AppInstanceId) -> bool {
     attribute::<CFArray>(&element, "AXWindows").is_ok_and(|windows| windows.count() == 0)
 }
 
+/// The user set the window aside: its app is hidden (⌘H) or the window is
+/// minimized (⌘M). Its ordered-out surface then proves it left the layout,
+/// unlike a snapshot that merely omitted it.
+pub(crate) fn confirms_set_aside(window: &PhysicalWindowId) -> bool {
+    running_application(&window.app).is_some_and(|application| {
+        application.isHidden() || apply::cached_window_is_minimized(window)
+    })
+}
+
 fn observe_application(
     application: &NSRunningApplication,
     pid: i32,

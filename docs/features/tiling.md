@@ -83,6 +83,8 @@ pause, quit, or hotkey loss.
   `a_possible_tab_replacement_or_incomplete_snapshot_keeps_its_tile`,
   `closed_window_its_app_keeps_ordered_out_gives_up_its_tile` (an app closes its window by ordering it out),
   `workspace_whose_windows_all_leave_the_screen_keeps_its_tiles` (another Space is showing).
+  `src/app/tests/set_aside.rs`: `hidden_or_minimized_window_reflows_the_sibling_in_the_same_cycle`,
+  `an_app_keeps_its_tiles_while_one_of_its_windows_is_still_settling`.
 - Unit (FakeBackend), `src/app/tests/minimums.rs`: a window that refuses its tile width gets a wider
   tile (middle, last, several at once, and observation-cycle cases); a three-window row that cannot fit stacks two neighbors, and a wider display restores the requested row; Fullscreen Layout ignores minimums. `src/app/tests/stacked_resize.rs`: a resize while a pair is stacked keeps the saved row (issue 197). `src/layout_tree.rs`:
   `fitting_minimums_reaches_into_nested_splits_and_leaves_impossible_splits_alone`.
@@ -114,9 +116,10 @@ pause, quit, or hotkey loss.
   listing it. When a sibling stays visible and the app had one tile on this workspace, an empty
   Accessibility window list can confirm the close immediately. An inconclusive check gets one
   retry after 75 ms. A surface that stays ordered out then follows the usual two-second settling
-  period. Minimizing an app's only window or hiding the app (Command-H) does the
-  same; the window comes back as a new tile at the end of the layout. While nothing on the display
-  is observed (another macOS Space is showing), tiles are kept.
+  period. Minimizing an app's only window (Command-M) or hiding the app (Command-H) skips that
+  period: Accessibility confirms it, so the siblings reflow at once, and the window comes back as a
+  new tile at the end of the layout. While nothing on the display is observed (another macOS Space
+  is showing), tiles are kept.
 - `balance` has no default hotkey; it is CLI-only.
 - With gaps, a drop that lands in the gap between two tiles misses both and leaves the layout as it
   was. The Workspace HUD's layout previews stay schematic and ignore spacing.
