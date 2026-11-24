@@ -151,8 +151,10 @@ on the same letter.
 - Unit (FakeBackend), `src/app/tests/cross_display.rs`: moving a window to a workspace on
   another display, on screen (tiled, floating, focus history) or hidden (parked on its own display
   even when a write off the other display's edge is refused, shown on the target display later,
-  left where it was when it cannot be parked), and `move_app_moves_every_managed_window_of_the_app`
-  (issue 121) and `move_app_moves_floating_windows_too` (issue 136). Unit, `src/macos/apply.rs`: a refused size write
+  left where it was when it cannot be parked), dragged floats parking off their actual display on
+  switch or move (issue 148) and relocating from a third display onto the target display (issue
+  152), and `move_app_moves_every_managed_window_of_the_app` (issue 121) and
+  `move_app_moves_floating_windows_too` (issue 136). Unit, `src/macos/apply.rs`: a refused size write
   before a move no longer stops the move; focusing raises the window before bringing its app
   forward, and either `AXFrontmost` or AppKit activation brings the app forward (issue 92).
 - Unit (FakeBackend), `src/app/tests/focus.rs`:

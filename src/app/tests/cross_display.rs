@@ -317,3 +317,186 @@ workspace = 2",
         );
     }
 }
+
+/// #148: a floating window dragged onto another display parks off that
+/// display when leaving its workspace, keeping its exact recovery frame.
+#[test]
+fn switching_away_parks_a_floating_window_dragged_to_another_display_off_that_display() {
+    for refuse in [true, false] {
+        let floating = window(20);
+        let config = Config::parse(
+            "version = 1
+[[rules]]
+bundle_id = 'com.example.Test'
+action = 'float'",
+        )
+        .unwrap();
+        let backend = FakeBackend {
+            frames: [(floating.clone(), frame(50))].into_iter().collect(),
+            observation: Some(observation(&floating, frame(50))),
+            refuses_position: refuse.then_some(|target: crate::Rect| target.x < 0),
+            ..FakeBackend::default()
+        };
+        let mut rt = runtime_with_config(backend, config);
+        let cancelled = AtomicBool::new(false);
+        rt.cycle(outputs(), &cancelled).unwrap();
+        assert_eq!(
+            rt.workspaces.floating_workspace_of(&floating),
+            Some(WorkspaceId::ONE)
+        );
+
+        rt.backend.frames.insert(floating.clone(), frame(1050));
+        rt.backend.observation = Some(observation(&floating, frame(1050)));
+        rt.drop_window(floating.clone(), (1250, 30), false, outputs(), &cancelled)
+            .unwrap();
+        assert_eq!(
+            rt.workspaces.floating_workspace_of(&floating),
+            Some(WorkspaceId::ONE)
+        );
+        rt.backend.calls.clear();
+
+        let two = WorkspaceId::new(2).unwrap();
+        rt.switch(two, outputs(), &cancelled)
+            .expect("workspace switch should park its dragged floating window");
+        let displays = outputs().frames().collect::<Vec<_>>();
+        let secondary = outputs().displays()[1].frame;
+        assert_eq!(
+            rt.backend.frames[&floating],
+            crate::geometry::parked_frame(secondary, &displays, frame(1050))
+        );
+        assert!(!crate::geometry::shows_on(
+            rt.backend.frames[&floating],
+            &displays
+        ));
+        assert_eq!(rt.parked[&floating], frame(1050));
+        assert_eq!(rt.backend.persisted[&floating], frame(1050));
+
+        rt.switch(WorkspaceId::ONE, outputs(), &cancelled).unwrap();
+        assert_eq!(rt.backend.frames[&floating], frame(1050));
+        assert!(!rt.parked.contains_key(&floating));
+    }
+}
+
+/// #148: moving a workspace-1-owned float dragged onto Secondary to hidden
+/// workspace 2 on Main parks off Secondary and relocates recovery onto Main.
+#[test]
+fn moving_a_dragged_floating_window_to_a_hidden_workspace_on_main_parks_off_its_actual_display() {
+    let floating = window(20);
+    let config = Config::parse(
+        "version = 1
+[[rules]]
+bundle_id = 'com.example.Test'
+action = 'float'",
+    )
+    .unwrap();
+    let backend = FakeBackend {
+        focused: Some(floating.clone()),
+        frames: [(floating.clone(), frame(50))].into_iter().collect(),
+        observation: Some(observation(&floating, frame(50))),
+        refuses_position: Some(|target: crate::Rect| target.x < 0),
+        ..FakeBackend::default()
+    };
+    let mut rt = runtime_with_config(backend, config);
+    let cancelled = AtomicBool::new(false);
+    rt.cycle(outputs(), &cancelled).unwrap();
+    rt.backend.frames.insert(floating.clone(), frame(1050));
+    rt.backend.observation = Some(observation(&floating, frame(1050)));
+    rt.drop_window(floating.clone(), (1250, 30), false, outputs(), &cancelled)
+        .unwrap();
+
+    let two = WorkspaceId::new(2).unwrap();
+    rt.move_focused(two, outputs(), &cancelled).unwrap();
+    let displays = outputs().frames().collect::<Vec<_>>();
+    let secondary = outputs().displays()[1].frame;
+    assert_eq!(
+        rt.backend.frames[&floating],
+        crate::geometry::parked_frame(secondary, &displays, frame(1050))
+    );
+    assert_eq!(rt.parked[&floating], frame(50));
+
+    rt.switch(two, outputs(), &cancelled).unwrap();
+    assert_eq!(rt.backend.frames[&floating], frame(50));
+    assert!(!rt.parked.contains_key(&floating));
+}
+
+/// #152: moving a floating window dragged to a third display translates its
+/// recovery frame (and direct carry) from the display it actually occupies.
+#[test]
+fn moving_a_floating_window_dragged_to_a_third_display_restores_it_on_the_target_display() {
+    let setup = |x: i32| {
+        let id = window(20);
+        let initial = frame(1100);
+        let mut observed = observation(&id, initial);
+        if let crate::AppObservation::Complete { windows, .. } = &mut observed.applications[0] {
+            windows[0].resizable = false;
+        }
+        let backend = FakeBackend {
+            focused: Some(id.clone()),
+            frontmost: Some(id.app.clone()),
+            frames: HashMap::from([(id.clone(), initial)]),
+            observation: Some(observed),
+            refuses_position: Some(|target: crate::Rect| target.x < 0),
+            ..FakeBackend::default()
+        };
+        let mut rt = runtime(backend);
+        let cancelled = AtomicBool::new(false);
+        rt.cycle(three_outputs(), &cancelled).unwrap();
+        assert_eq!(
+            rt.workspaces.floating_workspace_of(&id),
+            Some(WorkspaceId::SIX)
+        );
+        rt.backend.frames.insert(id.clone(), frame(x));
+        rt.cycle(three_outputs(), &cancelled).unwrap();
+        assert_eq!(
+            rt.workspaces.floating_workspace_of(&id),
+            Some(WorkspaceId::SIX)
+        );
+        assert_eq!(rt.backend.frames[&id], frame(x));
+        (rt, id)
+    };
+
+    let cancelled = AtomicBool::new(false);
+    let target = WorkspaceId::new(2).unwrap();
+
+    // Direct cross-display move from the 3rd display to hidden workspace 2 on Main.
+    let (mut rt, id) = setup(2500);
+    assert_eq!(
+        rt.move_focused(target, three_outputs(), &cancelled)
+            .unwrap()
+            .failed,
+        0
+    );
+    assert_eq!(rt.workspaces.floating_workspace_of(&id), Some(target));
+    let displays = three_outputs().frames().collect::<Vec<_>>();
+    let third = three_outputs().displays()[2].frame;
+    assert_eq!(
+        rt.backend.frames[&id],
+        crate::geometry::parked_frame(third, &displays, frame(2500))
+    );
+    assert_eq!(rt.parked[&id], frame(500));
+    assert_eq!(rt.backend.persisted[&id], frame(500));
+
+    assert_eq!(
+        rt.switch(target, three_outputs(), &cancelled)
+            .unwrap()
+            .failed,
+        0
+    );
+    assert_eq!(rt.backend.frames[&id], frame(500));
+    assert!(!rt.parked.contains_key(&id));
+    assert!(rt.backend.persisted.is_empty());
+    rt.cycle(three_outputs(), &cancelled).unwrap();
+    assert_eq!(rt.backend.frames[&id], frame(500));
+    assert_eq!(rt.workspaces.floating_workspace_of(&id), Some(target));
+
+    // Moving to visible workspace 1 on Main also translates from the 3rd display.
+    let (mut visible_rt, visible_id) = setup(2500);
+    assert_eq!(
+        visible_rt
+            .move_focused(WorkspaceId::ONE, three_outputs(), &cancelled)
+            .unwrap()
+            .failed,
+        0
+    );
+    assert_eq!(visible_rt.backend.frames[&visible_id], frame(500));
+}

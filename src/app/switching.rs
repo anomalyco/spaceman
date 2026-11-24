@@ -630,12 +630,18 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
         let is_floating = self.workspaces.floating_workspace_of(&window).is_some();
         let source_output = output_for(&self.workspaces, source, &outputs);
         let target_output = output_for(&self.workspaces, target, &outputs);
+        let window_output = if is_floating {
+            self.window_display_output(&window, &outputs)
+                .unwrap_or(source_output)
+        } else {
+            source_output
+        };
         let target_is_active = self.is_visible(target, &outputs);
         if !target_is_active {
-            let parked = if source_output == target_output {
+            let parked = if window_output == target_output {
                 self.park_window(&window, target_output, &outputs)
             } else {
-                self.park_window_across(&window, source_output, target_output, &outputs)
+                self.park_window_across(&window, window_output, target_output, &outputs)
             };
             if !matches!(parked, macos::ApplyOutcome::Applied) {
                 return Err("Window could not be parked in the target workspace".into());
@@ -673,8 +679,8 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
             if !is_floating {
                 let layout = self.layout_workspace(target, target_output, cancelled);
                 failed += layout.failed;
-            } else if source_output != target_output
-                && !self.carry_floating_window(&window, source_output, target_output)
+            } else if window_output != target_output
+                && !self.carry_floating_window(&window, window_output, target_output)
             {
                 failed += 1;
             }
