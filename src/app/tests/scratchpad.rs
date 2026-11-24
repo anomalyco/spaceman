@@ -443,3 +443,50 @@ fn adding_a_display_reparks_hidden_scratchpad_windows_without_dropping_membershi
         &all_displays
     ));
 }
+
+#[test]
+fn delayed_scratchpad_summon_stays_centered_when_a_later_cycle_confirms_it() {
+    let mut runtime = scratchpad_runtime(lab());
+    let w = window(10);
+
+    // Tile and then hide into scratchpad.
+    let _ = runtime.cycle(outputs(), &AtomicBool::new(false)).unwrap();
+    scratchpad(&mut runtime, ScratchpadCommand::Mark).unwrap();
+    assert!(runtime.parked.contains_key(&w));
+    let parked_pos = runtime.backend.frames[&w];
+
+    // Simulate a lagging window server: reports the old parked frame during summon's immediate check.
+    runtime.backend.server_frames.insert(w.clone(), parked_pos);
+    runtime.backend.frozen_server_frames = true;
+    scratchpad(&mut runtime, ScratchpadCommand::Toggle).unwrap();
+    runtime.backend.frozen_server_frames = false;
+    let centered = runtime.backend.frames[&w];
+    assert_eq!(
+        centered,
+        crate::Rect {
+            x: 125,
+            y: 100,
+            width: 750,
+            height: 600
+        }
+    );
+    assert!(
+        runtime.parked.contains_key(&w),
+        "recovery frame stays persisted until confirmed"
+    );
+    assert_eq!(runtime.scratchpad.pending_summon(&w), Some(centered));
+
+    // Expire the retry throttle and let the window server catch up to the centered frame.
+    runtime
+        .recently_parked
+        .insert(w.clone(), Instant::now() - Duration::from_secs(5));
+    runtime.backend.server_frames.insert(w.clone(), centered);
+    runtime.cycle(outputs(), &AtomicBool::new(false)).unwrap();
+
+    assert_eq!(
+        runtime.backend.frames[&w], centered,
+        "later cycle must confirm the centered summon frame, not restore the old tile position"
+    );
+    assert!(!runtime.parked.contains_key(&w));
+    assert_eq!(runtime.scratchpad.pending_summon(&w), None);
+}

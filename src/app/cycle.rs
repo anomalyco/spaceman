@@ -50,13 +50,22 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
             if !self.parked.contains_key(&window) {
                 continue;
             }
-            // Throttle retries of restores awaiting window-server confirmation
-            // so a slow app is not written to and logged about every cycle.
-            if self
+            let retry_throttled = self
                 .recently_parked
                 .get(&window)
-                .is_some_and(|attempted_at| attempted_at.elapsed() < RESTORE_RETRY_INTERVAL)
-            {
+                .is_some_and(|attempted_at| attempted_at.elapsed() < RESTORE_RETRY_INTERVAL);
+            if let Some(target) = self.scratchpad.pending_summon(&window) {
+                if !matches!(
+                    self.finish_scratchpad_summon(&window, target, retry_throttled),
+                    macos::ApplyOutcome::Applied | macos::ApplyOutcome::Gone
+                ) {
+                    *failed += 1;
+                }
+                continue;
+            }
+            // Throttle retries of restores awaiting window-server confirmation
+            // so a slow app is not written to and logged about every cycle.
+            if retry_throttled {
                 continue;
             }
             if !matches!(

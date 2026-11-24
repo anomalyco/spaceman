@@ -212,23 +212,29 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
             &settings,
             cancelled,
         ));
+        self.workspaces
+            .own_floating(window.clone(), target.workspace);
+        self.manual_floating.insert(window.clone());
+        self.scratchpad.mark_shown(&window, target.workspace);
         // Like any restore, the recovery frame is retired only once the window server
-        // confirms the window arrived; until then its owner's cycles retry the restore.
-        if let Some(recovery) = recovery
-            && self
+        // confirms the window arrived at its centered summon frame; until then its owner's
+        // cycles confirm or retry the centered destination rather than the former tile frame.
+        if let Some(recovery) = recovery {
+            if self
                 .backend
                 .window_server_frame(&window)
                 .is_some_and(|actual| {
                     actual.position_approximately_equals(frame, RESTORE_CONFIRM_TOLERANCE)
                 })
-        {
-            self.commit_unparked(&window);
-            self.persist_removals_or_rollback(vec![(window.clone(), recovery)]);
+            {
+                self.scratchpad.set_pending_summon(&window, None);
+                self.commit_unparked(&window);
+                self.persist_removals_or_rollback(vec![(window.clone(), recovery)]);
+            } else {
+                self.scratchpad.set_pending_summon(&window, Some(frame));
+                self.recently_parked.insert(window.clone(), Instant::now());
+            }
         }
-        self.workspaces
-            .own_floating(window.clone(), target.workspace);
-        self.manual_floating.insert(window.clone());
-        self.scratchpad.mark_shown(&window, target.workspace);
         if !self.backend.focus_window(&window) {
             log_event!("scratchpad: could not focus {window:?}");
         }
@@ -241,6 +247,60 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
         let mut status = self.status(failed, outputs);
         status.hud = Some(self.hud_for(target.workspace, UiHudKind::Workspace, None, outputs));
         Ok(status)
+    }
+
+    /// Confirms or retries a summoned scratchpad window's centered destination without
+    /// replacing it with the old parked recovery frame.
+    pub(super) fn finish_scratchpad_summon(
+        &mut self,
+        window: &crate::PhysicalWindowId,
+        target: crate::Rect,
+        retry_throttled: bool,
+    ) -> macos::ApplyOutcome {
+        let Some(&recovery) = self.parked.get(window) else {
+            self.scratchpad.set_pending_summon(window, None);
+            return macos::ApplyOutcome::Applied;
+        };
+        if self
+            .backend
+            .window_server_frame(window)
+            .is_some_and(|actual| {
+                actual.position_approximately_equals(target, RESTORE_CONFIRM_TOLERANCE)
+            })
+        {
+            self.scratchpad.set_pending_summon(window, None);
+            self.commit_unparked(window);
+            self.persist_removals_or_rollback(vec![(window.clone(), recovery)]);
+            return macos::ApplyOutcome::Applied;
+        }
+        if retry_throttled {
+            return macos::ApplyOutcome::Applied;
+        }
+        let outcome = self.write_restore_position(window, target);
+        match outcome {
+            macos::ApplyOutcome::Applied => {
+                if self
+                    .backend
+                    .window_server_frame(window)
+                    .is_some_and(|actual| {
+                        actual.position_approximately_equals(target, RESTORE_CONFIRM_TOLERANCE)
+                    })
+                {
+                    self.scratchpad.set_pending_summon(window, None);
+                    self.commit_unparked(window);
+                    self.persist_removals_or_rollback(vec![(window.clone(), recovery)]);
+                } else {
+                    self.recently_parked.insert(window.clone(), Instant::now());
+                }
+            }
+            macos::ApplyOutcome::Gone => {
+                self.scratchpad.set_pending_summon(window, None);
+                self.commit_unparked(window);
+                self.persist_removals_or_rollback(vec![(window.clone(), recovery)]);
+            }
+            _ => {}
+        }
+        outcome
     }
 
     fn hide_scratchpad(
