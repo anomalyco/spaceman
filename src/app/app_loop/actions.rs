@@ -201,7 +201,14 @@ impl MainThreadAgent {
                     self.option_key_down(key_code, modifiers);
                 }
                 Action::Worker(action) => {
-                    if self.automatic {
+                    if self.automatic
+                        && !(matches!(action, WorkerAction::Swipe(..))
+                            && crate::app::input::should_ignore_swipe(
+                                macos::mouse_down(),
+                                self.mouse_was_down,
+                                self.gesture_tracker.window().is_some(),
+                            ))
+                    {
                         self.queue_worker_input(QueuedInput::Action(action));
                     }
                 }

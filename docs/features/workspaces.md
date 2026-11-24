@@ -16,8 +16,10 @@ Switch workspace                                           // ws.switch
 └── Already active -> stays, re-focuses its remembered tile (keeps current focus if it is there)
 
 Swipe                                                      // ws.swipe
-└── Three-finger swipe left/right -> next/previous workspace in the menu section of the display
-    under the pointer (visible + occupied), stops at either end
+├── Three-finger swipe left/right -> next/previous workspace in the menu section of the display
+│   under the pointer (visible + occupied), stops at either end
+└── Suppressed while a pointer button is down or a window drag is active (including macOS
+    Accessibility "Three Finger Drag")
 
 Back-and-forth                                             // ws.back-and-forth
 ├── Option+Tab / ctl back-and-forth -> the workspace focused before this one, on any display
@@ -78,7 +80,9 @@ Displays                                                    // ws.displays
 │   saved UUID renders back as that display's name
 ├── Preferred display unplugged -> its workspaces fall back to main, return on reconnect; its
 │   saved assignment keeps a Disconnected displays card with the picker on Not connected
-└── Display added or removed -> hidden windows re-parked against the new displays
+└── Display added or removed -> hidden windows re-parked against the new displays; visible owned
+    windows left with their center off every remaining display keep their slots and snap back onto
+    their workspace's display
 
 Workspace HUD ([settings] hud, on by default)               // ws.hud
 ├── A switch, a window moved to another workspace, a split-axis or Fullscreen Layout toggle
@@ -198,9 +202,11 @@ on the same letter.
   `status_menu_lists_each_displays_visible_and_occupied_workspaces` (menu rows per display, checks,
   app order). The AppKit rows themselves (icons, tooltip of app names) are not covered.
 - Unit: `swipes_step_through_the_occupied_workspaces_of_the_display_under_the_pointer`
-  (`src/app/tests/switching.rs`) and the recognizer in `src/swipe.rs` (fires once per swipe; ignores
-  short, vertical and four-finger swipes). The event tap itself (`src/macos/swipes.rs`) is not
-  covered.
+  (`src/app/tests/switching.rs`), the recognizer in `src/swipe.rs` (fires once per swipe; ignores
+  short, vertical and four-finger swipes), pointer-button / three-finger-drag suppression in
+  `src/macos/swipes.rs` and `src/app/input.rs` (issue 151), and visible stranded-window recovery
+  after display disconnect in `src/app/tests/display_disconnect.rs` (issue 150). Live CGEventTap
+  callback delivery in `src/macos/swipes.rs` is not covered.
 - Unit (FakeBackend), `src/app/tests/reconciliation.rs`: adoption order
   (`bundle_route_applies_to_initial_window_while_secondary_windows_stay_on_active_workspace`,
   `title_route_rule_routes_matching_secondary_window`,

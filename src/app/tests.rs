@@ -1,6 +1,7 @@
 mod benchmarks;
 mod cross_display;
 mod dispatch;
+mod display_disconnect;
 mod float;
 mod focus;
 mod fullscreen;

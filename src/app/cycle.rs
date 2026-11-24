@@ -176,6 +176,7 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
         );
         self.restore_visible(&visible, cancelled, &mut failed);
         self.park_inactive(&outputs, &visible, server_frames, cancelled, &mut failed);
+        self.recover_stranded_visible(&outputs, &visible, server_frames, cancelled, &mut failed);
         if cancelled.load(Ordering::Acquire) {
             return Err("workspace operation cancelled".into());
         }
@@ -269,19 +270,22 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
         Ok(status)
     }
 
-    /// A bound window the window server still shows on screen inside this
-    /// output, but which the app's Accessibility snapshot omitted, has not
-    /// gone anywhere: the snapshot is incomplete for that app. Downgrade the
-    /// app to `Unavailable` so reconciliation keeps its slots instead of
+    /// A bound window the window server still shows on screen, but which the
+    /// app's Accessibility snapshot omitted (including a visible window left
+    /// with its center off-display after a display disconnect or shrink), has
+    /// not gone anywhere: the snapshot is incomplete for that app. Downgrade
+    /// the app to `Unavailable` so reconciliation keeps its slots instead of
     /// retiring one and re-adopting the window as new a cycle later. The
     /// omission is believed once it outlasts [`OMISSION_SETTLE`].
     fn guard_omitted_windows(
         &mut self,
         workspace: WorkspaceId,
-        output: crate::Rect,
         observation: &mut crate::NativeObservation,
         onscreen_frames: Option<&HashMap<u32, crate::Rect>>,
     ) {
+        if observation.mouse_down {
+            return;
+        }
         let Some(onscreen_frames) = onscreen_frames else {
             return;
         };
@@ -303,11 +307,7 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
             let settling = bound
                 .iter()
                 .filter(|window| window.app == app.id && !observed.contains(*window))
-                .filter(|window| {
-                    onscreen_frames
-                        .get(&window.window_id)
-                        .is_some_and(|frame| output.contains_center(*frame))
-                })
+                .filter(|window| onscreen_frames.contains_key(&window.window_id))
                 .filter(|window| {
                     let omission = self
                         .omitted_windows
@@ -501,7 +501,7 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
                 }
             }
         }
-        self.guard_omitted_windows(workspace, output, &mut scoped_observation, onscreen_frames);
+        self.guard_omitted_windows(workspace, &mut scoped_observation, onscreen_frames);
         let apps_with_window_server_evidence = self.apps_with_window_server_evidence(
             workspace,
             &scoped_observation,
