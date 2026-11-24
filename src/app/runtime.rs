@@ -85,6 +85,8 @@ pub(super) struct WorkspaceRuntime<B = MacWorkspaceBackend> {
     pub(super) suppressed_app: Option<crate::AppInstanceId>,
     /// The window a focus command just focused, until Accessibility reports it.
     pub(super) pending_focus: Option<super::commands::PendingFocus>,
+    /// When the latest focus follow that failed (not cancelled) began.
+    pub(super) failed_follow_at: Option<Instant>,
     pub(super) warp_context: super::commands::WarpContext,
     pub(super) pending_fullscreen_focus_restore: HashSet<WorkspaceId>,
     pub(super) exact_spacing_workspaces: HashSet<WorkspaceId>,
@@ -228,7 +230,10 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
         let result = self.with_warp_context(warp_context, |rt| match action {
             WorkerAction::Retile => {
                 let mut status = rt.cycle(outputs.clone(), cancelled)?;
-                if !rt.exact_spacing_workspaces.is_empty() && !rt.backend.mouse_down() {
+                if !rt.exact_spacing_workspaces.is_empty()
+                    && !rt.backend.mouse_down()
+                    && rt.space_transition_until().is_none()
+                {
                     for r in rt.visible_workspaces(&outputs) {
                         if rt.scope.manages_selector(&r.selector)
                             && rt.exact_spacing_workspaces.contains(&r.workspace)
@@ -365,6 +370,7 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
             suppressed_focus: None,
             suppressed_app: None,
             pending_focus: None,
+            failed_follow_at: None,
             warp_context: super::commands::WarpContext::Direct,
             pending_fullscreen_focus_restore,
             exact_spacing_workspaces: WorkspaceId::all().filter(|_| has_spacing).collect(),

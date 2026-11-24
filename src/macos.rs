@@ -6,6 +6,7 @@ mod displays;
 mod events;
 mod keys;
 mod presenter;
+mod spaces;
 mod swipes;
 #[cfg(test)]
 mod tests;
@@ -44,6 +45,7 @@ pub use presenter::{
     AppSink, AxBackend, EnhancedUi, InteractivePresenter, PresenterBackend, PresenterStats,
     WriteOutcome,
 };
+pub use spaces::{last_active_space_change, take_active_space_changed};
 pub use swipes::SwipeMonitor;
 
 use apply::{cache_managed_window, evict_managed_app, prune_managed_app};

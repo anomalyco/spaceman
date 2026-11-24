@@ -32,6 +32,20 @@ impl MainThreadAgent {
                 self.cancelled.store(true, Ordering::Release);
             }
         }
+        if macos::take_active_space_changed() {
+            // A desktop or fullscreen slide: a background cycle under way
+            // would lay out both Spaces' windows together, so stop it, and
+            // retile once the slide settles (#334).
+            self.last_activity = Instant::now();
+            if self.worker.is_interruptible_busy() {
+                self.cancelled.store(true, Ordering::Release);
+            }
+            let settled = Instant::now() + SPACE_TRANSITION_SETTLE;
+            self.observation_recheck = Some(
+                self.observation_recheck
+                    .map_or(settled, |recheck| recheck.min(settled)),
+            );
+        }
         let activation_ready = self
             .activation_refresh_at
             .is_none_or(|refresh_at| Instant::now() >= refresh_at);

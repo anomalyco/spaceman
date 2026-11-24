@@ -56,6 +56,7 @@ mod move_workspace;
 mod parking;
 mod runtime;
 mod scratchpad;
+mod space_transition;
 mod state_writer;
 mod switching;
 mod worker;
@@ -98,6 +99,9 @@ const APPLICATION_REFRESH_INTERVAL: Duration = Duration::from_secs(1);
 const ACCESSIBILITY_POLL_INTERVAL: Duration = Duration::from_millis(120);
 const RESTORE_RETRY_INTERVAL: Duration = Duration::from_secs(1);
 const APPLICATION_ACTIVATION_SETTLE: Duration = Duration::from_millis(50);
+/// How long after macOS changes the active Space background cycles hold
+/// layout: the desktop and fullscreen slides finish well within it.
+const SPACE_TRANSITION_SETTLE: Duration = Duration::from_millis(700);
 
 // AX creation and app activation can both precede the first on-screen frame.
 const WINDOW_OPENING_SETTLE: Duration = Duration::from_millis(500);

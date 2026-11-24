@@ -17,9 +17,9 @@ use block2::RcBlock;
 use objc2::{rc::Retained, rc::autoreleasepool, runtime::ProtocolObject};
 use objc2_app_kit::{
     NSApplicationActivationPolicy, NSRunningApplication, NSWorkspace,
-    NSWorkspaceDidActivateApplicationNotification, NSWorkspaceDidHideApplicationNotification,
-    NSWorkspaceDidLaunchApplicationNotification, NSWorkspaceDidTerminateApplicationNotification,
-    NSWorkspaceDidUnhideApplicationNotification,
+    NSWorkspaceActiveSpaceDidChangeNotification, NSWorkspaceDidActivateApplicationNotification,
+    NSWorkspaceDidHideApplicationNotification, NSWorkspaceDidLaunchApplicationNotification,
+    NSWorkspaceDidTerminateApplicationNotification, NSWorkspaceDidUnhideApplicationNotification,
 };
 use objc2_application_services::{AXError, AXObserver, AXUIElement};
 use objc2_core_foundation::{
@@ -236,11 +236,21 @@ fn observe_workspace(
         let activate = RcBlock::new(move |_: NonNull<NSNotification>| {
             activated.frontmost_changed.store(true, Ordering::Release);
         });
-        let mut observers = Vec::with_capacity(5);
+        let mut observers = Vec::with_capacity(6);
         // SAFETY: AppKit's notification name constants are immutable statics.
         observers.push(observe(
             unsafe { NSWorkspaceDidActivateApplicationNotification },
             activate,
+        ));
+        // A Space slide shows both Spaces' windows at once; the worker holds
+        // layout until it settles (#334, #329).
+        let space_changed = RcBlock::new(|_: NonNull<NSNotification>| {
+            super::spaces::note_active_space_change();
+        });
+        // SAFETY: Same as above.
+        observers.push(observe(
+            unsafe { NSWorkspaceActiveSpaceDidChangeNotification },
+            space_changed,
         ));
         // ⌘H posts no window notification (unlike ⌘M's `AXWindowMiniaturized`), so without
         // these the siblings waited for the fallback refresh before re-filling the hole.

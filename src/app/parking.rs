@@ -446,13 +446,27 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
 
     /// Whether an Accessibility "gone" for `window` is real: the window
     /// server no longer lists it, its process exited, or Accessibility has
-    /// failed to find it for [`INACCESSIBLE_GRACE`].
+    /// failed to find it for [`INACCESSIBLE_GRACE`]. A parked window never
+    /// times out: Accessibility cannot reach a window on another macOS
+    /// desktop, and dropping its recovery frame would strand it off screen
+    /// (#328), so only the window server or its process may retire it.
     fn confirm_gone(&mut self, window: &crate::PhysicalWindowId) -> bool {
         if self.backend.window_server_frame(window).is_none()
             || !self.backend.is_process_running(&window.app)
         {
             self.inaccessible_since.remove(window);
             return true;
+        }
+        if self.parked.contains_key(window) {
+            if !self.inaccessible_since.contains_key(window) {
+                log_event!(
+                    "keeping recovery for {:?}: Accessibility cannot reach it but the window server lists it (another macOS desktop?); it restores once that desktop is shown",
+                    window
+                );
+                self.inaccessible_since
+                    .insert(window.clone(), Instant::now());
+            }
+            return false;
         }
         let since = *self
             .inaccessible_since
@@ -782,6 +796,7 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
         self.parked.remove(window);
         self.recently_parked.remove(window);
         self.repark_attempts.remove(window);
+        self.inaccessible_since.remove(window);
     }
 
     pub(super) fn persist_removals_or_rollback(
