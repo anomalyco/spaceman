@@ -184,7 +184,9 @@ impl Engine {
         else {
             return false;
         };
-        let mut layout = self.display_layout().clone();
+        // Swap inside the requested layout so swapping two tiles while a
+        // minimum-width fit temporarily stacks them does not save that stack.
+        let mut layout = self.layout.clone();
         if !layout.swap(first, second) {
             return false;
         }

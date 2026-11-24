@@ -83,3 +83,75 @@ fn flipping_there_and_back_after_a_resize_keeps_the_row() {
     rt.layout_workspace(WorkspaceId::ONE, wide, &AtomicBool::new(false));
     assert_ne!(rt.backend.frames[&a].x, rt.backend.frames[&b].x);
 }
+
+fn swap_retains_requested_row(pointer: bool) {
+    let (mut runtime, windows) = stacked_pair();
+    let [a, b] = &windows;
+    let command = if pointer {
+        let target = runtime.backend.frames[b];
+        WorkerCommand::Gesture(
+            FinalGesture::Drop(
+                a.clone(),
+                (target.x + target.width / 2, target.y + target.height / 2),
+            ),
+            false,
+            outputs(),
+        )
+    } else {
+        WorkerCommand::Action(WorkerAction::Reorder(Direction::Down), outputs())
+    };
+    let Some(WorkerResult::Status { result, .. }) =
+        runtime.execute(command, &AtomicBool::new(false))
+    else {
+        panic!("missing status");
+    };
+    assert_eq!(result.unwrap().failed, 0);
+    assert_eq!(
+        runtime.workspaces.engine(WorkspaceId::ONE).bound_windows(),
+        [b.clone(), a.clone()]
+    );
+    assert_eq!(
+        runtime
+            .workspaces
+            .engine(WorkspaceId::ONE)
+            .layout()
+            .root_axis(),
+        crate::Axis::Horizontal
+    );
+
+    // On a wide display the reversed row returns, including after persistence round-trip.
+    let wide = crate::Rect {
+        width: 1400,
+        ..outputs().main().frame
+    };
+    runtime.layout_workspace(WorkspaceId::ONE, wide, &AtomicBool::new(false));
+    assert_eq!(runtime.backend.frames[b].x, 0);
+    assert!(runtime.backend.frames[a].x > runtime.backend.frames[b].x);
+
+    let state = runtime.backend.workspace_state.clone().unwrap();
+    let backend = FakeBackend {
+        frames: runtime.backend.frames.clone(),
+        focused: Some(a.clone()),
+        ..FakeBackend::default()
+    };
+    let mut restored = WorkspaceRuntime::with_backend_config_state(
+        ManagementScope::Both,
+        backend,
+        HashMap::new(),
+        Config::default(),
+        Some(state),
+    );
+    restored.layout_workspace(WorkspaceId::ONE, wide, &AtomicBool::new(false));
+    assert_eq!(restored.backend.frames[b].x, 0);
+    assert!(restored.backend.frames[a].x > restored.backend.frames[b].x);
+}
+
+#[test]
+fn keyboard_swap_of_temporarily_stacked_tiles_keeps_requested_row() {
+    swap_retains_requested_row(false);
+}
+
+#[test]
+fn pointer_swap_of_temporarily_stacked_tiles_keeps_requested_row() {
+    swap_retains_requested_row(true);
+}
