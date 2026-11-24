@@ -42,6 +42,17 @@ Move window without switching                              // ws.move-window
 │   frame moves onto the target's display, so showing the workspace brings it up there
 └── ctl move-app <bundle-id> <ws>     -> every current window of that app
 
+Mouse follows focus ([settings] mouse_follows_focus)       // ws.mouse-follows-focus
+├── "off" (default) -> never moves the pointer
+├── "display"       -> on explicit keyboard/ctl focus changes (switch, back-and-forth,
+│                      move-workspace, focus, move onto an active workspace), if the pointer is not
+│                      already on the target display, warps to the center of the focused window (or
+│                      the target display when empty)
+├── "window"        -> same explicit triggers, warping whenever the pointer is outside the newly
+│                      focused window (or empty display)
+└── Never warps on passive cycles, focus-follow, Cmd+Tab, mouse clicks, swipes, drags, or while a
+    mouse button is held; re-associates mouse movement immediately after warping
+
 Focus follows                                              // ws.focus-follow
 ├── Focusing a window that lives on a hidden workspace (Dock, Cmd+Tab, notification)
 │   -> that workspace becomes active, with focus on that window (not its remembered tile)
@@ -146,8 +157,12 @@ on the same letter.
   forward, and either `AXFrontmost` or AppKit activation brings the app forward (issue 92).
 - Unit (FakeBackend), `src/app/tests/focus.rs`:
   `a_workspace_switch_that_cannot_focus_keeps_the_focus_restore_pending`,
-  `a_workspace_switch_that_focuses_settles_the_focus_restore`. Whether keys really land in the
-  incoming app on macOS 14 and later is not covered by a test.
+  `a_workspace_switch_that_focuses_settles_the_focus_restore`, and the `mouse_follows_focus_*`
+  tests covering `off` / `display` / `window`, empty-display centering, same-display and
+  in-window skips, `move-workspace` / `move`, passive `cycle()` focus-follow suppression, and
+  `mouse_down` guarding (plus `warp_reassociates_immediately_after_warping_and_skips_while_mouse_is_down`
+  in `src/macos/apply.rs`). Whether keys really land in the incoming app on macOS 14 and later,
+  and live `CGWarpMouseCursorPosition` behavior on hardware displays, are not covered by a test.
 - Unit (FakeBackend), `src/app/tests/move_workspace.rs`:
   `move_workspace_to_occupied_display_promotes_source_previous_and_parks_displaced`,
   `option_tab_after_moving_the_focused_workspace_never_reveals_the_displaced_one` (issue 76),

@@ -163,6 +163,7 @@ pub(crate) fn config_help(executable: &str) -> String {
         "  hud             true | false      Show the Workspace HUD overlay (default: true)",
         "  hud_style       icons | layouts   Workspace HUD drawing style (default: icons)",
         "  update_channel  stable | dev      In-app updater release channel (default: stable)",
+        "  mouse_follows_focus  off | display | window  Move pointer on focus changes (default: off)",
         "  gaps.inner      0-48              Points between tiled windows (default: 0)",
         "  gaps.top        0-128             Outer padding at the screen's top edge (default: 0;",
         "  gaps.bottom     0-128               likewise gaps.bottom, gaps.left, gaps.right)",

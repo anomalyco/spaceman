@@ -35,6 +35,7 @@ version = 1
 hud = true                            # optional (default: true); non-activating Workspace HUD
 hud_style = "icons"                   # optional (default: "icons"); or "layouts"
 update_channel = "stable"             # optional (default: "stable"); or "dev", a build of every merge
+mouse_follows_focus = "off"           # optional (default: "off"); or "display", "window"
 single_window_max_width = 0           # optional (default: 0, off); or 320 through 16384 points
 
 [settings.gaps]                       # optional; every key defaults to 0
@@ -241,7 +242,8 @@ normal recovery data.
 ## Applying Changes
 
 Edits saved in Spaceman Settings or in an external editor take effect automatically: rule changes,
-workspace display assignments, `settings.hud`, `settings.hud_style`, `settings.gaps`, and
+workspace display assignments, `settings.hud`, `settings.hud_style`,
+`settings.mouse_follows_focus`, `settings.gaps`, and
 `settings.single_window_max_width` reload without restarting (Settings › Layout retiles at once; an
 external edit applies on the next retile);
 `settings.update_channel` applies at the next update check. Global shortcuts for a

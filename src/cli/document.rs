@@ -7,7 +7,7 @@ use std::{
 use serde::{Deserialize, Serialize};
 use spaceman::{
     DisplaySelector, WorkspaceId, Workspaces,
-    config::{Config, HudStyle, UpdateChannel, config_path},
+    config::{Config, HudStyle, MouseFollowsFocus, UpdateChannel, config_path},
     spacing::{Spacing, SpacingKey},
     state_file::write_atomic,
 };
@@ -65,6 +65,12 @@ pub(crate) struct SettingsDoc {
         serialize_with = "serialize_optional_update_channel"
     )]
     pub update_channel: Option<UpdateChannel>,
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        serialize_with = "serialize_optional_mouse_follows_focus"
+    )]
+    pub mouse_follows_focus: Option<MouseFollowsFocus>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub single_window_max_width: Option<i64>,
     #[serde(default, skip_serializing_if = "GapsDoc::is_empty")]
@@ -102,6 +108,7 @@ impl SettingsDoc {
         self.hud.is_none()
             && self.hud_style.is_none()
             && self.update_channel.is_none()
+            && self.mouse_follows_focus.is_none()
             && self.single_window_max_width.is_none()
             && self.gaps.is_empty()
     }
@@ -146,6 +153,10 @@ impl SettingsDoc {
     pub(crate) fn effective_update_channel(&self) -> UpdateChannel {
         self.update_channel.unwrap_or_default()
     }
+
+    pub(crate) fn effective_mouse_follows_focus(&self) -> MouseFollowsFocus {
+        self.mouse_follows_focus.unwrap_or_default()
+    }
 }
 
 fn serialize_optional_hud_style<S: serde::Serializer>(
@@ -164,6 +175,16 @@ fn serialize_optional_update_channel<S: serde::Serializer>(
 ) -> Result<S::Ok, S::Error> {
     match channel {
         Some(channel) => serializer.serialize_str(channel.as_str()),
+        None => serializer.serialize_none(),
+    }
+}
+
+fn serialize_optional_mouse_follows_focus<S: serde::Serializer>(
+    mode: &Option<MouseFollowsFocus>,
+    serializer: S,
+) -> Result<S::Ok, S::Error> {
+    match mode {
+        Some(mode) => serializer.serialize_str(mode.as_str()),
         None => serializer.serialize_none(),
     }
 }
@@ -192,6 +213,7 @@ pub(crate) struct EffectiveSettings {
     pub hud: bool,
     pub hud_style: &'static str,
     pub update_channel: &'static str,
+    pub mouse_follows_focus: &'static str,
     pub single_window_max_width: i32,
     pub gaps: EffectiveGaps,
 }
@@ -262,6 +284,7 @@ impl ConfigDoc {
             hud: self.settings.effective_hud(),
             hud_style: self.settings.effective_hud_style().as_str(),
             update_channel: self.settings.effective_update_channel().as_str(),
+            mouse_follows_focus: self.settings.effective_mouse_follows_focus().as_str(),
             single_window_max_width: spacing.single_window_max_width,
             gaps: EffectiveGaps {
                 inner: spacing.inner,

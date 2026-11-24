@@ -180,6 +180,36 @@ fn update_channel_round_trips_and_leaves_stable_out() {
 }
 
 #[test]
+fn mouse_follows_focus_round_trips_preserving_comments_and_leaves_off_out() {
+    use spaceman::config::{Config, MouseFollowsFocus};
+    let mut doc = Doc::parse(SOURCE);
+    assert_eq!(doc.mouse_follows_focus(), MouseFollowsFocus::Off);
+    doc.set_mouse_follows_focus(MouseFollowsFocus::Display);
+    assert_eq!(doc.mouse_follows_focus(), MouseFollowsFocus::Display);
+    let display = doc.source();
+    assert!(display.contains("# OpenCode Browser's agent window."));
+    assert!(display.contains("mouse_follows_focus = \"display\""));
+    assert_eq!(
+        Config::parse(&display).unwrap().mouse_follows_focus(),
+        MouseFollowsFocus::Display
+    );
+
+    doc.set_mouse_follows_focus(MouseFollowsFocus::Window);
+    assert_eq!(doc.mouse_follows_focus(), MouseFollowsFocus::Window);
+    let window = doc.source();
+    assert!(window.contains("mouse_follows_focus = \"window\""));
+    assert_eq!(
+        Config::parse(&window).unwrap().mouse_follows_focus(),
+        MouseFollowsFocus::Window
+    );
+
+    doc.set_mouse_follows_focus(MouseFollowsFocus::Off);
+    assert_eq!(doc.mouse_follows_focus(), MouseFollowsFocus::Off);
+    assert!(!doc.source().contains("[settings]"));
+    assert!(doc.source().contains("# OpenCode Browser's agent window."));
+}
+
+#[test]
 fn spacing_round_trips_and_leaves_the_file_as_it_was() {
     use spaceman::{config::Config, spacing::Spacing};
     let mut doc = Doc::parse(SOURCE);

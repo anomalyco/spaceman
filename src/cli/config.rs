@@ -2,7 +2,7 @@ use std::path::{Path, PathBuf};
 
 use serde::Serialize;
 use spaceman::{
-    config::{HudStyle, UpdateChannel, load_path},
+    config::{HudStyle, MouseFollowsFocus, UpdateChannel, load_path},
     spacing::SpacingKey,
 };
 
@@ -50,6 +50,7 @@ enum SettingKey {
     Hud,
     HudStyle,
     UpdateChannel,
+    MouseFollowsFocus,
     Spacing(SpacingKey),
 }
 
@@ -59,11 +60,12 @@ impl SettingKey {
             "hud" => Ok(Self::Hud),
             "hud_style" => Ok(Self::HudStyle),
             "update_channel" => Ok(Self::UpdateChannel),
+            "mouse_follows_focus" => Ok(Self::MouseFollowsFocus),
             other => SpacingKey::parse(other).map(Self::Spacing).ok_or_else(|| {
                 format!(
                     "unknown setting {raw:?}; valid keys: hud, hud_style, update_channel, \
-                     gaps.inner, gaps.top, gaps.bottom, gaps.left, gaps.right, \
-                     single_window_max_width"
+                     mouse_follows_focus, gaps.inner, gaps.top, gaps.bottom, gaps.left, \
+                     gaps.right, single_window_max_width"
                 )
             }),
         }
@@ -74,6 +76,7 @@ impl SettingKey {
             Self::Hud => "hud",
             Self::HudStyle => "hud_style",
             Self::UpdateChannel => "update_channel",
+            Self::MouseFollowsFocus => "mouse_follows_focus",
             Self::Spacing(key) => key.path(),
         }
     }
@@ -193,6 +196,10 @@ fn run_get(args: &[&str], path_override: Option<&Path>) -> Result<String, String
                 serde_json::Value::String(channel.to_owned()),
             )
         }
+        SettingKey::MouseFollowsFocus => {
+            let mode = doc.settings.effective_mouse_follows_focus().as_str();
+            (mode.to_owned(), serde_json::Value::String(mode.to_owned()))
+        }
         SettingKey::Spacing(key) => {
             let value = key.get(&doc.settings.effective_spacing());
             (value.to_string(), serde_json::Value::from(value))
@@ -256,6 +263,18 @@ fn run_set(args: &[&str], path_override: Option<&Path>) -> Result<String, String
             doc.settings.update_channel = Some(parsed);
             (
                 format!("set update_channel = {}", parsed.as_str()),
+                serde_json::Value::String(parsed.as_str().to_owned()),
+            )
+        }
+        SettingKey::MouseFollowsFocus => {
+            let parsed = MouseFollowsFocus::parse(raw_value).ok_or_else(|| {
+                format!(
+                    "invalid value for mouse_follows_focus: expected 'off', 'display', or 'window', got {raw_value:?}"
+                )
+            })?;
+            doc.settings.mouse_follows_focus = Some(parsed);
+            (
+                format!("set mouse_follows_focus = {}", parsed.as_str()),
                 serde_json::Value::String(parsed.as_str().to_owned()),
             )
         }

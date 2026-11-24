@@ -6,7 +6,7 @@ use std::path::PathBuf;
 
 use spaceman::{
     WorkspaceId,
-    config::{HudStyle, UpdateChannel},
+    config::{HudStyle, MouseFollowsFocus, UpdateChannel},
 };
 use toml_edit::{ArrayOfTables, DocumentMut, Item, Table, value};
 
@@ -190,6 +190,25 @@ impl Doc {
         self.set_setting(
             "update_channel",
             (channel != UpdateChannel::default()).then(|| value(channel.as_str())),
+        );
+    }
+
+    /// Whether Spaceman moves the pointer on explicit focus changes, from
+    /// `settings.mouse_follows_focus` (defaults to off).
+    pub fn mouse_follows_focus(&self) -> MouseFollowsFocus {
+        self.doc
+            .get("settings")
+            .and_then(Item::as_table_like)
+            .and_then(|table| table.get("mouse_follows_focus"))
+            .and_then(Item::as_str)
+            .and_then(MouseFollowsFocus::parse)
+            .unwrap_or_default()
+    }
+
+    pub fn set_mouse_follows_focus(&mut self, mode: MouseFollowsFocus) {
+        self.set_setting(
+            "mouse_follows_focus",
+            (mode != MouseFollowsFocus::default()).then(|| value(mode.as_str())),
         );
     }
 

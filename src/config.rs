@@ -13,6 +13,7 @@ struct AppSettings {
     hud: bool,
     hud_style: HudStyle,
     update_channel: UpdateChannel,
+    mouse_follows_focus: MouseFollowsFocus,
     spacing: Spacing,
 }
 
@@ -22,6 +23,7 @@ impl Default for AppSettings {
             hud: true,
             hud_style: HudStyle::default(),
             update_channel: UpdateChannel::default(),
+            mouse_follows_focus: MouseFollowsFocus::default(),
             spacing: Spacing::default(),
         }
     }
@@ -52,6 +54,41 @@ impl UpdateChannel {
         match value {
             "stable" => Some(Self::Stable),
             "dev" => Some(Self::Dev),
+            _ => None,
+        }
+    }
+}
+
+/// Whether Spaceman moves the pointer when an explicit focus action lands elsewhere:
+/// `settings.mouse_follows_focus`.
+#[derive(Clone, Copy, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "lowercase")]
+pub enum MouseFollowsFocus {
+    /// Leave the pointer where it is.
+    #[default]
+    Off,
+    /// Move the pointer to the focused window (or empty display) when it is on another display.
+    Display,
+    /// Move the pointer to the focused window (or empty display) whenever it is outside it.
+    Window,
+}
+
+impl MouseFollowsFocus {
+    #[must_use]
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Off => "off",
+            Self::Display => "display",
+            Self::Window => "window",
+        }
+    }
+
+    #[must_use]
+    pub fn parse(value: &str) -> Option<Self> {
+        match value {
+            "off" => Some(Self::Off),
+            "display" => Some(Self::Display),
+            "window" => Some(Self::Window),
             _ => None,
         }
     }
@@ -141,6 +178,8 @@ struct RawSettings {
     #[serde(default)]
     update_channel: UpdateChannel,
     #[serde(default)]
+    mouse_follows_focus: MouseFollowsFocus,
+    #[serde(default)]
     single_window_max_width: i64,
     #[serde(default)]
     gaps: RawGaps,
@@ -152,6 +191,7 @@ impl Default for RawSettings {
             hud: true,
             hud_style: HudStyle::default(),
             update_channel: UpdateChannel::default(),
+            mouse_follows_focus: MouseFollowsFocus::default(),
             single_window_max_width: 0,
             gaps: RawGaps::default(),
         }
@@ -271,6 +311,7 @@ impl Config {
                 hud: raw.settings.hud,
                 hud_style: raw.settings.hud_style,
                 update_channel: raw.settings.update_channel,
+                mouse_follows_focus: raw.settings.mouse_follows_focus,
                 spacing: raw.settings.spacing()?,
             },
             rules,
@@ -298,6 +339,11 @@ impl Config {
     #[must_use]
     pub const fn update_channel(&self) -> UpdateChannel {
         self.settings.update_channel
+    }
+
+    #[must_use]
+    pub const fn mouse_follows_focus(&self) -> MouseFollowsFocus {
+        self.settings.mouse_follows_focus
     }
 
     /// Gaps between tiles, outer screen padding and the lone-window width cap.
@@ -511,6 +557,8 @@ struct EditableSettings {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     update_channel: Option<UpdateChannel>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    mouse_follows_focus: Option<MouseFollowsFocus>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     single_window_max_width: Option<i64>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     gaps: Option<toml::Table>,
@@ -521,6 +569,7 @@ impl EditableSettings {
         self.hud.is_none()
             && self.hud_style.is_none()
             && self.update_channel.is_none()
+            && self.mouse_follows_focus.is_none()
             && self.single_window_max_width.is_none()
             && self.gaps.is_none()
     }
@@ -752,6 +801,55 @@ monitor = "main"
             assert_eq!(UpdateChannel::parse(channel.as_str()), Some(channel));
         }
         assert!(Config::parse("version = 1\n[settings]\nupdate_channel = \"beta\"\n").is_err());
+    }
+
+    #[test]
+    fn parses_mouse_follows_focus_with_off_default() {
+        assert_eq!(
+            Config::default().mouse_follows_focus(),
+            MouseFollowsFocus::Off
+        );
+        assert_eq!(
+            Config::parse("version = 1").unwrap().mouse_follows_focus(),
+            MouseFollowsFocus::Off
+        );
+        for mode in [
+            MouseFollowsFocus::Off,
+            MouseFollowsFocus::Display,
+            MouseFollowsFocus::Window,
+        ] {
+            let source = format!(
+                "version = 1\n[settings]\nmouse_follows_focus = {:?}\n",
+                mode.as_str()
+            );
+            assert_eq!(Config::parse(&source).unwrap().mouse_follows_focus(), mode);
+            assert_eq!(MouseFollowsFocus::parse(mode.as_str()), Some(mode));
+        }
+        assert!(
+            Config::parse("version = 1\n[settings]\nmouse_follows_focus = \"monitor\"\n").is_err()
+        );
+        assert!(Config::parse("version = 1\n[settings]\nmouse_follows_focus = true\n").is_err());
+        assert_eq!(MouseFollowsFocus::parse("Display"), None);
+    }
+
+    #[test]
+    fn saving_a_workspace_monitor_keeps_mouse_follows_focus() {
+        let dir = std::env::temp_dir().join(format!(
+            "spaceman-config-mff-{}-{}",
+            std::process::id(),
+            now().as_nanos()
+        ));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("config.toml");
+        std::fs::write(
+            &path,
+            "version = 1\n[settings]\nmouse_follows_focus = \"display\"\n",
+        )
+        .unwrap();
+        let saved = save_workspace_monitor_at(&path, WorkspaceId::TWO, &DisplaySelector::Secondary)
+            .unwrap();
+        assert_eq!(saved.mouse_follows_focus(), MouseFollowsFocus::Display);
+        drop(std::fs::remove_dir_all(dir));
     }
 
     #[test]

@@ -16,7 +16,108 @@ pub(super) struct PendingFocus {
     pub(super) at: Instant,
 }
 
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub(super) enum WarpContext {
+    /// Direct method call outside `execute_action` (unit tests).
+    #[default]
+    Direct,
+    /// Explicit keyboard or `ctl` focus-moving action.
+    Explicit,
+    /// Passive cycle, gesture, swipe, or non-focus action: never warp.
+    Suppressed,
+}
+
+pub(super) enum WorkspaceFocusOutcome {
+    Focused(crate::PhysicalWindowId),
+    Empty,
+    Failed,
+}
+
+const fn rect_center(rect: crate::Rect) -> (i32, i32) {
+    (rect.x + rect.width / 2, rect.y + rect.height / 2)
+}
+
 impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
+    pub(super) fn with_warp_context<T>(
+        &mut self,
+        context: WarpContext,
+        f: impl FnOnce(&mut Self) -> T,
+    ) -> T {
+        let previous = std::mem::replace(&mut self.warp_context, context);
+        let result = f(self);
+        self.warp_context = previous;
+        result
+    }
+
+    pub(super) fn focus_window_frame(
+        &mut self,
+        window: &crate::PhysicalWindowId,
+        workspace: WorkspaceId,
+        output: crate::Rect,
+    ) -> Option<crate::Rect> {
+        let settings = self.layout_settings(output);
+        let tile_frame = if self.workspaces.uses_fullscreen_layout(workspace)
+            && self.workspaces.workspace_of(window) == Some(workspace)
+        {
+            Some(settings.single())
+        } else {
+            self.workspaces
+                .engine(workspace)
+                .placements(&settings)
+                .into_iter()
+                .find(|placement| placement.window.as_ref() == Some(window))
+                .map(|placement| placement.frame)
+        };
+        tile_frame.or_else(|| {
+            self.backend
+                .window_server_frame(window)
+                .or_else(|| self.backend.frame(window).ok())
+        })
+    }
+
+    pub(super) fn follow_pointer_to(
+        &mut self,
+        output: crate::Rect,
+        focused_window: Option<crate::Rect>,
+    ) {
+        let mode = self.config.mouse_follows_focus();
+        if mode == crate::config::MouseFollowsFocus::Off
+            || self.warp_context == WarpContext::Suppressed
+            || self.backend.mouse_down()
+        {
+            return;
+        }
+        let target_rect = focused_window.unwrap_or(output);
+        let containment = match mode {
+            crate::config::MouseFollowsFocus::Off => return,
+            crate::config::MouseFollowsFocus::Display => output,
+            crate::config::MouseFollowsFocus::Window => target_rect,
+        };
+        if self
+            .backend
+            .pointer_location()
+            .is_some_and(|(x, y)| containment.contains(x, y))
+        {
+            return;
+        }
+        let _: bool = self.backend.warp_pointer(rect_center(target_rect));
+    }
+
+    pub(super) fn follow_pointer_for_workspace(
+        &mut self,
+        workspace: WorkspaceId,
+        output: crate::Rect,
+        outcome: WorkspaceFocusOutcome,
+    ) {
+        match outcome {
+            WorkspaceFocusOutcome::Focused(window) => {
+                let frame = self.focus_window_frame(&window, workspace, output);
+                self.follow_pointer_to(output, frame);
+            }
+            WorkspaceFocusOutcome::Empty => self.follow_pointer_to(output, None),
+            WorkspaceFocusOutcome::Failed => {}
+        }
+    }
     pub(super) fn reorder_focused(
         &mut self,
         direction: Direction,
@@ -62,7 +163,9 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
         let Some(target) = crate::navigation::target(&tiles, &window, direction) else {
             return Ok(self.status(0, &outputs));
         };
-        self.move_window(window, target.workspace, outputs, cancelled)
+        self.with_warp_context(WarpContext::Suppressed, |rt| {
+            rt.move_window(window, target.workspace, outputs, cancelled)
+        })
     }
 
     pub(super) fn drop_window(
@@ -90,7 +193,9 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
                 if preview {
                     return Ok(self.status(0, &outputs));
                 }
-                return self.move_window(window, target.workspace, outputs, cancelled);
+                return self.with_warp_context(WarpContext::Suppressed, |rt| {
+                    rt.move_window(window, target.workspace, outputs, cancelled)
+                });
             }
             let direction = drop_direction(point, target.frame);
             let changed = match direction {
@@ -127,7 +232,9 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
             if preview {
                 return Ok(self.status(0, &outputs));
             }
-            return self.move_window(window, target, outputs, cancelled);
+            return self.with_warp_context(WarpContext::Suppressed, |rt| {
+                rt.move_window(window, target, outputs, cancelled)
+            });
         }
         let layout = self.layout_workspace(
             source,
@@ -201,7 +308,7 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
         let Some(target) = target else {
             return Ok(self.status(0, &outputs));
         };
-        self.focus_tile(origin, &target)?;
+        self.focus_tile(origin, &target, &outputs)?;
         Ok(self.status(0, &outputs))
     }
 
@@ -255,6 +362,7 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
         &mut self,
         origin: Option<crate::PhysicalWindowId>,
         target: &crate::PhysicalWindowId,
+        outputs: &macos::DisplayOutputs,
     ) -> Result<(), String> {
         let mut stale = self
             .pending_focus
@@ -272,6 +380,9 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
         });
         if let Some(workspace) = self.workspaces.workspace_of(target) {
             self.remember_fullscreen_focus(workspace, target)?;
+            let output = output_for(&self.workspaces, workspace, outputs);
+            let frame = self.focus_window_frame(target, workspace, output);
+            self.follow_pointer_to(output, frame);
         }
         Ok(())
     }
@@ -312,7 +423,7 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
             return Ok(self.status(0, &outputs));
         }
         let target = windows[(index + 1) % windows.len()].clone();
-        self.focus_tile(Some(focused), &target)?;
+        self.focus_tile(Some(focused), &target, &outputs)?;
         Ok(self.status(0, &outputs))
     }
 
@@ -340,7 +451,9 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
         let workspace = match self.workspaces.workspace_of(window) {
             Some(workspace) => workspace,
             None if refresh_if_unmanaged => {
-                self.cycle(outputs.clone(), cancelled)?;
+                self.with_warp_context(WarpContext::Suppressed, |rt| {
+                    rt.cycle(outputs.clone(), cancelled)
+                })?;
                 self.workspaces
                     .workspace_of(window)
                     .ok_or("Focused window is not managed by Spaceman")?

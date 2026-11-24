@@ -9,6 +9,9 @@ version = 1
 hud = true
 hud_style = "icons"
 update_channel = "stable"
+# Move the mouse pointer on explicit keyboard/ctl focus changes: "off" (default),
+# "display" (only when focus lands on another display), or "window" (every focus change).
+# mouse_follows_focus = "off"
 # Center a window that is alone on its display (or in Fullscreen Layout) at this width;
 # 0 (the default) lets it fill the display. 320 through 16384 points.
 single_window_max_width = 0

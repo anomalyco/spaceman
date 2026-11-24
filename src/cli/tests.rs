@@ -7,7 +7,7 @@ use std::{
 use serde_json::Value;
 use spaceman::{
     AppInstanceId, ObservedWindow, PhysicalWindowId, Rect, WorkspaceId,
-    config::{Config, HudStyle, WindowDisposition},
+    config::{Config, HudStyle, MouseFollowsFocus, WindowDisposition},
 };
 
 use super::{Outcome, try_run_with_config_path};
@@ -215,6 +215,69 @@ fn config_path_show_get_set_and_check_round_trip() {
     assert_eq!(
         check_explicit.stdout.as_deref(),
         Some("configuration is valid")
+    );
+}
+
+#[test]
+fn config_gets_sets_and_shows_mouse_follows_focus() {
+    let temp = TempConfig::new("config-mff");
+    assert_eq!(
+        temp.run(&["config", "get", "mouse_follows_focus"])
+            .stdout
+            .as_deref(),
+        Some("off")
+    );
+    assert_eq!(
+        temp.run(&["config", "get", "settings.mouse_follows_focus"])
+            .stdout
+            .as_deref(),
+        Some("off")
+    );
+
+    let set_display = temp.run(&["config", "set", "mouse_follows_focus", "display"]);
+    assert_eq!(set_display.exit_code, 0);
+    assert_eq!(
+        set_display.stdout.as_deref(),
+        Some("set mouse_follows_focus = display")
+    );
+    assert_eq!(
+        Config::parse(&temp.read()).unwrap().mouse_follows_focus(),
+        MouseFollowsFocus::Display
+    );
+    assert_eq!(
+        temp.run(&["config", "get", "mouse_follows_focus"])
+            .stdout
+            .as_deref(),
+        Some("display")
+    );
+
+    let set_window = temp.run(&[
+        "config",
+        "set",
+        "settings.mouse_follows_focus",
+        "window",
+        "--json",
+    ]);
+    assert_eq!(set_window.exit_code, 0);
+    let set_json: Value = serde_json::from_str(&set_window.stdout.unwrap()).unwrap();
+    assert_eq!(set_json["key"], "mouse_follows_focus");
+    assert_eq!(set_json["value"], "window");
+
+    let show: Value = serde_json::from_str(
+        temp.run(&["config", "show", "--json"])
+            .stdout
+            .as_deref()
+            .unwrap(),
+    )
+    .unwrap();
+    assert_eq!(show["settings"]["mouse_follows_focus"], "window");
+
+    let bad = temp.run(&["config", "set", "mouse_follows_focus", "monitor"]);
+    assert_eq!(bad.exit_code, 1);
+    assert!(
+        bad.stderr
+            .unwrap()
+            .contains("expected 'off', 'display', or 'window'")
     );
 }
 
