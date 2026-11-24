@@ -586,3 +586,46 @@ fn mouse_follows_focus_never_warps_on_passive_cycle_focus_follow_or_mouse_down()
         .unwrap();
     assert!(warp_calls(&runtime).is_empty());
 }
+
+/// #120: reselecting the active split workspace keeps focus on the tile of
+/// that workspace that already has it, rather than its remembered tile.
+#[test]
+fn reselecting_the_active_split_workspace_keeps_the_focused_tile() {
+    let first = window(10);
+    let second = window(20);
+    let mut backend = FakeBackend {
+        focused: Some(first.clone()),
+        ..FakeBackend::default()
+    };
+    backend.frames.insert(first.clone(), frame(50));
+    backend.frames.insert(second.clone(), frame(500));
+    let mut runtime = runtime(backend);
+    bind(&mut runtime, WorkspaceId::ONE, &first);
+    bind(&mut runtime, WorkspaceId::ONE, &second);
+    let cancelled = AtomicBool::new(false);
+    let two = WorkspaceId::new(2).unwrap();
+
+    runtime.switch(two, outputs(), &cancelled).unwrap();
+    runtime
+        .switch(WorkspaceId::ONE, outputs(), &cancelled)
+        .unwrap();
+    assert_eq!(
+        runtime.workspaces.preferred_focus(WorkspaceId::ONE),
+        Some(first.clone())
+    );
+    runtime.backend.focused = Some(second.clone());
+
+    runtime
+        .switch(WorkspaceId::ONE, outputs(), &cancelled)
+        .unwrap();
+    assert_eq!(runtime.backend.focused, Some(second.clone()));
+
+    // Entering from another workspace still lands on the remembered tile.
+    runtime.switch(two, outputs(), &cancelled).unwrap();
+    runtime.backend.focused = None;
+    runtime.workspaces.remember_focus(WorkspaceId::ONE, &first);
+    runtime
+        .switch(WorkspaceId::ONE, outputs(), &cancelled)
+        .unwrap();
+    assert_eq!(runtime.backend.focused, Some(first));
+}

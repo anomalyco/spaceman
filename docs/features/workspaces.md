@@ -40,7 +40,7 @@ Move window without switching                              // ws.move-window
 │   size and relative place); focus follows it and Option+Tab goes back
 ├── Target hidden on another display -> parked off the edge of the display it is on; its recovery
 │   frame moves onto the target's display, so showing the workspace brings it up there
-└── ctl move-app <bundle-id> <ws>     -> every current window of that app
+└── ctl move-app <bundle-id> <ws>     -> every current tiled window of that app, in one request
 
 Mouse follows focus ([settings] mouse_follows_focus)       // ws.mouse-follows-focus
 ├── "off" (default) -> never moves the pointer
@@ -151,12 +151,14 @@ on the same letter.
 - Unit (FakeBackend), `src/app/tests/cross_display.rs`: moving a window to a workspace on
   another display, on screen (tiled, floating, focus history) or hidden (parked on its own display
   even when a write off the other display's edge is refused, shown on the target display later,
-  left where it was when it cannot be parked). Unit, `src/macos/apply.rs`: a refused size write
+  left where it was when it cannot be parked), and `move_app_moves_every_managed_window_of_the_app`
+  (issue 121). Unit, `src/macos/apply.rs`: a refused size write
   before a move no longer stops the move; focusing raises the window before bringing its app
   forward, and either `AXFrontmost` or AppKit activation brings the app forward (issue 92).
 - Unit (FakeBackend), `src/app/tests/focus.rs`:
   `a_workspace_switch_that_cannot_focus_keeps_the_focus_restore_pending`,
-  `a_workspace_switch_that_focuses_settles_the_focus_restore`, and the `mouse_follows_focus_*`
+  `a_workspace_switch_that_focuses_settles_the_focus_restore`,
+  `reselecting_the_active_split_workspace_keeps_the_focused_tile` (issue 120), and the `mouse_follows_focus_*`
   tests covering `off` / `display` / `window`, empty-display centering, same-display and
   in-window skips, `move-workspace` / `move`, passive `cycle()` focus-follow suppression, and
   `mouse_down` guarding (plus `warp_reassociates_immediately_after_warping_and_skips_while_mouse_is_down`

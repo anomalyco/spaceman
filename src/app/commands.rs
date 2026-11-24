@@ -160,12 +160,44 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
         {
             return self.relayout_persist(workspace, &outputs, cancelled);
         }
-        let Some(target) = crate::navigation::target(&tiles, &window, direction) else {
+        let mut candidates = self.empty_display_targets(&outputs, &tiles);
+        candidates.extend(tiles);
+        let Some(target) = crate::navigation::target(&candidates, &window, direction) else {
             return Ok(self.status(0, &outputs));
         };
         self.with_warp_context(WarpContext::Suppressed, |rt| {
             rt.move_window(window, target.workspace, outputs, cancelled)
         })
+    }
+
+    /// A display whose workspace has no tiles offers no window to move toward,
+    /// so its single-tile frame stands in for one. The stand-in's window id
+    /// is never a real window; only its workspace is used.
+    fn empty_display_targets(
+        &self,
+        outputs: &macos::DisplayOutputs,
+        tiles: &[NavigationTile],
+    ) -> Vec<NavigationTile> {
+        self.visible_workspaces(outputs)
+            .into_iter()
+            .filter(|resolved| {
+                self.scope.manages_selector(&resolved.selector)
+                    && !tiles
+                        .iter()
+                        .any(|tile| tile.workspace == resolved.workspace)
+            })
+            .map(|resolved| NavigationTile {
+                workspace: resolved.workspace,
+                window: crate::PhysicalWindowId {
+                    app: crate::AppInstanceId {
+                        pid: -1,
+                        launched_at: 0,
+                    },
+                    window_id: u32::try_from(resolved.workspace.index()).unwrap_or(u32::MAX),
+                },
+                frame: self.layout_settings(resolved.output).single(),
+            })
+            .collect()
     }
 
     pub(super) fn drop_window(

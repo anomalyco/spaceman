@@ -46,8 +46,9 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
                 return Ok(status);
             }
             let frontmost = self.backend.frontmost_application();
-            let outcome =
-                self.focus_workspace_entry(workspace, &windows, focused, frontmost, false);
+            // A tile of this workspace that already has focus keeps it; only
+            // focus elsewhere moves to the remembered tile.
+            let outcome = self.focus_workspace_entry(workspace, &windows, focused, frontmost, true);
             self.follow_pointer_for_workspace(workspace, output, outcome);
             // Selecting a workspace that is already up still moves focus there
             // when it lives on another display, so it belongs in the history.
@@ -579,15 +580,15 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
             })?;
             windows = self.windows_for_bundle(bundle_id);
         }
-        match windows.as_slice() {
-            [] => Err(format!("No managed window found for {bundle_id}")),
-            [window] => self.with_warp_context(WarpContext::Suppressed, |rt| {
-                rt.move_window(window.clone(), target, outputs, cancelled)
-            }),
-            _ => Err(format!(
-                "{bundle_id} has multiple managed windows; use move on the focused window"
-            )),
+        let mut status: Option<CycleStatus> = None;
+        for window in windows {
+            let mut moved = self.with_warp_context(WarpContext::Suppressed, |rt| {
+                rt.move_window(window, target, outputs.clone(), cancelled)
+            })?;
+            moved.failed += status.map_or(0, |earlier| earlier.failed);
+            status = Some(moved);
         }
+        status.ok_or_else(|| format!("No managed window found for {bundle_id}"))
     }
 
     fn windows_for_bundle(&self, bundle_id: &str) -> Vec<crate::PhysicalWindowId> {

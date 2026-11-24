@@ -21,7 +21,7 @@ Focus                                                   // tile.focus
 
 Reorder                                                 // tile.reorder
 ├── Option+Shift+H/J/K/L / ctl move-direction <dir> -> swap/move within the tree
-│   ├── At the workspace edge -> moves to the adjacent display's active workspace
+│   ├── At the workspace edge -> moves to the adjacent display's active workspace, even an empty one
 │   └── Perpendicular move    -> re-orients or creates a mixed split
 └── Pointer drag
     ├── Over a sibling     -> live-previewed swap, applied on mouse-up
@@ -66,6 +66,7 @@ pause, quit, or hotkey loss.
   `keyboard_resize_applies_and_persists_the_focused_layout`,
   `balance_applies_and_persists_the_focused_parent_split`,
   `reorder_moves_to_the_adjacent_display_at_a_tile_boundary`,
+  `reorder_moves_to_an_empty_workspace_on_the_adjacent_display` (issue 119),
   `perpendicular_reorder_creates_a_mixed_split_for_three_windows`,
   `layout_toggle_repartitions_and_persists_the_focused_workspace`.
 - Engine and layout tree: `new_window_joins_the_focused_nested_split` and

@@ -153,3 +153,60 @@ fn a_floating_window_moved_to_a_hidden_workspace_on_another_display_shows_up_the
     assert_eq!(runtime.backend.frames[&floating], at(100));
     assert!(!runtime.parked.contains_key(&floating));
 }
+
+/// #121: move-app moves every managed window of the app, and leaves other
+/// apps' windows where they are.
+#[test]
+fn move_app_moves_every_managed_window_of_the_app() {
+    let first = window(10);
+    let second = window(11);
+    let other = crate::PhysicalWindowId {
+        app: AppInstanceId {
+            pid: 3,
+            launched_at: 3,
+        },
+        window_id: 20,
+    };
+    let mut backend = FakeBackend {
+        focused: Some(first.clone()),
+        ..FakeBackend::default()
+    };
+    backend.frames.insert(first.clone(), frame(50));
+    backend.frames.insert(second.clone(), frame(300));
+    backend.frames.insert(other.clone(), frame(500));
+    let mut runtime = runtime(backend);
+    bind(&mut runtime, WorkspaceId::ONE, &first);
+    bind(&mut runtime, WorkspaceId::ONE, &second);
+    bind(&mut runtime, WorkspaceId::ONE, &other);
+    runtime
+        .memory
+        .bundles
+        .insert(first.app.clone(), "com.example.Test".into());
+    runtime
+        .memory
+        .bundles
+        .insert(other.app.clone(), "com.example.Other".into());
+
+    let status = runtime
+        .move_app(
+            "com.example.Test",
+            WorkspaceId::SIX,
+            outputs(),
+            &AtomicBool::new(false),
+        )
+        .unwrap();
+
+    assert_eq!(status.failed, 0);
+    assert_eq!(
+        runtime.workspaces.workspace_of(&first),
+        Some(WorkspaceId::SIX)
+    );
+    assert_eq!(
+        runtime.workspaces.workspace_of(&second),
+        Some(WorkspaceId::SIX)
+    );
+    assert_eq!(
+        runtime.workspaces.workspace_of(&other),
+        Some(WorkspaceId::ONE)
+    );
+}
