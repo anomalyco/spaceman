@@ -306,6 +306,33 @@ mod tests {
     }
 
     #[test]
+    fn a_side_dock_moves_parking_to_the_other_corner() {
+        let screen = Rect {
+            width: 1920,
+            height: 1080,
+            ..Rect::default()
+        };
+        // The Dock on the right ends above the bottom: a window parked under it
+        // would show a Dock-wide block below its end.
+        let display = Rect {
+            y: 25,
+            width: 1850,
+            height: 1055,
+            ..Rect::default()
+        };
+        let window = Rect {
+            width: 600,
+            height: 400,
+            ..Rect::default()
+        };
+
+        let parked = parked_frame_clear_of(display, &[display], &[screen], window);
+
+        assert_eq!(parked.x, -599);
+        assert!(!shows_on(parked, &[screen]));
+    }
+
+    #[test]
     fn a_window_held_above_its_parking_corner_is_still_parked() {
         let target = Rect {
             x: 1919,

@@ -247,7 +247,8 @@ on the same letter.
 - Unit, `src/geometry.rs`: `parking_leaves_a_single_corner_pixel_on_screen`,
   `a_window_held_above_its_parking_corner_is_still_parked` and
   `a_window_held_up_by_its_title_bar_stays_off_a_shorter_neighbor` and
-  `a_window_held_up_stays_off_a_neighbors_menu_bar` (parking targets a bottom corner, accepts macOS
+  `a_window_held_up_stays_off_a_neighbors_menu_bar` and `a_side_dock_moves_parking_to_the_other_corner`
+  (parking targets a bottom corner, accepts macOS
   holding the window up by its title bar, and keeps every held-up position off other displays, menu
   bar and Dock included). How far macOS holds it up is not covered.
 - Unit (FakeBackend), `src/app/tests/reconciliation.rs`:

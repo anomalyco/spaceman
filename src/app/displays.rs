@@ -112,7 +112,7 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
         });
         if corner_unchanged
             && crate::geometry::parked_at(current, target, 0)
-            && !crate::geometry::shows_on(current, displays)
+            && !crate::geometry::shows_on(current, screens)
         {
             return true;
         }
