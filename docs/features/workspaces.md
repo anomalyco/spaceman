@@ -96,7 +96,6 @@ Workspace HUD ([settings] hud, on by default)               // ws.hud
 │   ├── Hover over the capsule -> pauses auto-dismiss (and rescues a mid-exit capsule); resumes
 │   │   0.6 s after the pointer leaves
 │   ├── Click a workspace slot -> switches that display to that workspace without activating
-│   ├── Trailing Settings gear -> opens Spaceman Settings and glides the capsule out
 │   └── Right-click (or Ctrl+click) an app icon -> native Float/Tile and Pin/Unpin menu writing
 │       through config.toml rules
 ├── Another switch while it's up, or on its way out -> the same capsule carries on from where it
