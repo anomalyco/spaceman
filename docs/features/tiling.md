@@ -98,6 +98,14 @@ pause, quit, or hotkey loss.
 - Fixture replay: `cargo run -- replay fixtures/ghostty-tab-replacement.json` (reconciliation of a
   native-tab replacement, without the runtime).
 - Live harness (not run): `scripts/live-ghostty-tabs.sh` for native-tab slot preservation.
+- Live gauntlet, `scripts/gauntlet.sh`: three windows tile the display with no overlap or gap and
+  match `ctl debug`; directional focus, repeat switch and `focus next` move real macOS focus; the
+  rest re-fill after a minimize or hide (500 ms budget from when the window leaves the screen);
+  float and un-float re-tile.
+- Observed (2026-11-24, gauntlet in a macOS 27 VM): after a minimize the rest re-fill about 30 ms
+  after the window leaves the screen, but after a hide (Cmd+H) it takes about 700 ms. Spaceman
+  observes `AXWindowMiniaturized` but no hide notification, so a hide is only seen through the
+  activation change and its settle delay.
 
 ## Gotchas
 

@@ -250,6 +250,12 @@ on the same letter.
   covered.
 - Live harness (not run): `scripts/live-workspaces.sh` switches 6/7/8 by real hotkeys, moves without
   switching, rapid-switch coalescing, and hard-kill recovery. Needs two displays and AeroSpace.
+- Live gauntlet, `scripts/gauntlet.sh`: `ctl switch` parks every window to at most a one-point strip,
+  records each original frame in `parked-windows.json`, restores the exact frames on the way back and
+  empties the file; `ctl move` parks the window with its frame recorded.
+- Observed (2026-11-24, gauntlet): after `ctl move`, the moved (now parked) window keeps keyboard
+  focus and its app stays frontmost. Spaceman's in-memory focus suppression stops it following
+  that focus, but a relaunch in that state follows it to the target workspace.
 
 - Unit, `src/app/tests/dispatch.rs` and `src/app/tests/switching.rs`: the HUD event's rows per
   display, the visible workspace on each, and `from` only on the display that switched.

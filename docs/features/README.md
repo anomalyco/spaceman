@@ -52,6 +52,10 @@ Each feature file labels evidence as one of:
 - **Live harness**: `scripts/live-workspaces.sh` and `scripts/live-ghostty-tabs.sh` drive real
   hotkeys against disposable Ghostty windows. They require AeroSpace enabled initially and two
   displays.
+- **Live gauntlet**: `scripts/gauntlet.sh` (see [Development](../development.md#live-gauntlet)) runs a
+  real Spaceman.app against disposable windows on one display and asserts each step against both
+  the window server and Spaceman's state files, with a JSON receipt. Proves real frames, parking,
+  focus, timing and restoration; it does not drive hotkeys or a second display.
 - **Observed**: behavior seen in `agent.log` or `journal.jsonl` on the maintainer's machine, with the
   date. A log line proves what Spaceman requested, not what the user saw.
 - **User report**: what the user saw, unverified by tooling.
