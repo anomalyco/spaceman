@@ -37,7 +37,8 @@ workspace becomes active again. Pressing an already-active workspace shortcut pr
 focus when one of that workspace's windows is already focused; otherwise it focuses the remembered
 tile.
 
-Fullscreen Layout is a workspace mode: every tiled window receives the full display frame, and the
+Fullscreen Layout is a workspace mode: every tiled window receives the full display frame (less any
+`settings.gaps` edge padding, and centered at `settings.single_window_max_width` when set), and the
 focused window is raised above the others. Its menu-bar workspace glyph is filled while the mode is
 active. Option-backtick focuses the next tiled window and wraps
 through the workspace's stable tile order; it provides the same ordering in split layouts. In
@@ -91,7 +92,7 @@ The menu-bar control shows active workspace/layout glyphs and runtime errors. It
 - `Workspace HUD`, checked while the non-activating workspace capsule (`[settings] hud = true`) is enabled;
   `Settings > General > Workspace HUD` picks `Off`, `Icons`, or `Layouts` (`[settings] hud` and `hud_style`, default `Icons`);
 - `Launch at Login`, shown checked when macOS has enabled the signed app bundle;
-- `Settings...` (`⌘,`), opening the Rune Settings window (`General`, `Rules`, `Workspaces`, `Shortcuts`, and `Activity`, plus `⇧⌘D` Playground);
+- `Settings...` (`⌘,`), opening the Rune Settings window (`General`, `Layout`, `Rules`, `Workspaces`, `Shortcuts`, and `Activity`, plus `⇧⌘D` Playground);
 - `Check for Updates...`, which checks and opens Settings (its sidebar and `General > Updates` show
   the result), or `Install Spaceman <version> and Restart` once an update is downloaded and verified;
 - `Quit Spaceman` (`⌘Q`).

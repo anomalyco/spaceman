@@ -141,7 +141,7 @@ fn a_sibling_minimum_revealed_by_refitting_is_fitted_too() {
         (second.clone(), 400),
         (third.clone(), 0),
     ]);
-    let output = outputs().main().frame;
+    let output = Settings::for_output(outputs().main().frame);
     // Start from [350, 450, 200]: only the first window refuses its tile.
     let frames = tile_frames(&runtime);
     let engine = runtime.workspaces.engine_mut(WorkspaceId::ONE);
@@ -151,7 +151,7 @@ fn a_sibling_minimum_revealed_by_refitting_is_fitted_too() {
             width: 350,
             ..frames[0]
         },
-        output,
+        &output,
     );
     engine.resize_window(
         &second,
@@ -160,7 +160,7 @@ fn a_sibling_minimum_revealed_by_refitting_is_fitted_too() {
             width: 450,
             ..frames[1]
         },
-        output,
+        &output,
     );
     assert_eq!(
         tile_frames(&runtime)
@@ -170,7 +170,7 @@ fn a_sibling_minimum_revealed_by_refitting_is_fitted_too() {
         [350, 450, 200]
     );
 
-    runtime.layout_workspace(WorkspaceId::ONE, output, &AtomicBool::new(false));
+    runtime.layout_workspace(WorkspaceId::ONE, output.output, &AtomicBool::new(false));
 
     let widths = tile_frames(&runtime)
         .iter()

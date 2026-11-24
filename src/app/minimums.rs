@@ -71,15 +71,16 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
         if !refused {
             return false;
         }
+        let settings = self.layout_settings(output);
         let engine = self.workspaces.engine_mut(workspace);
-        if !engine.fit_minimums(output, &self.minimum_sizes) {
+        if !engine.fit_minimums(&settings, &self.minimum_sizes) {
             log_event!(
                 "minimum size: workspace {} cannot fit its windows' minimum sizes",
                 workspace
             );
             return false;
         }
-        for placement in engine.placements(&Settings::for_output(output)) {
+        for placement in engine.placements(&settings) {
             engine.record_placement_target(placement.slot, placement.frame);
         }
         log_event!(

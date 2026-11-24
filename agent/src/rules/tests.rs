@@ -178,3 +178,65 @@ fn update_channel_round_trips_and_leaves_stable_out() {
     doc.set_update_channel(UpdateChannel::Stable);
     assert!(!doc.source().contains("[settings]"));
 }
+
+#[test]
+fn spacing_round_trips_and_leaves_the_file_as_it_was() {
+    use spaceman::{config::Config, spacing::Spacing};
+    let mut doc = Doc::parse(SOURCE);
+    assert_eq!(doc.spacing(), Spacing::NONE);
+    let spacing = Spacing {
+        inner: 8,
+        single_window_max_width: 1680,
+        ..Spacing::NONE.with_edges(12)
+    };
+    doc.set_spacing(spacing);
+    assert_eq!(doc.spacing(), spacing);
+    let saved = doc.source();
+    assert_eq!(Config::parse(&saved).unwrap().spacing(), spacing);
+    assert!(saved.contains("# OpenCode Browser's agent window."));
+    assert!(saved.contains("[settings.gaps]\ninner = 8\n"), "{saved}");
+    assert!(saved.contains("single_window_max_width = 1680"), "{saved}");
+    assert_eq!(Doc::parse(&saved).spacing(), spacing);
+
+    doc.set_spacing(Spacing { top: 30, ..spacing });
+    assert_eq!(Config::parse(&doc.source()).unwrap().spacing().top, 30);
+    assert_eq!(Config::parse(&doc.source()).unwrap().spacing().left, 12);
+
+    doc.set_spacing(Spacing::NONE);
+    assert_eq!(doc.source(), SOURCE);
+}
+
+#[test]
+fn spacing_lands_beside_existing_settings_and_keeps_their_comments() {
+    use spaceman::{config::Config, spacing::Spacing};
+    let source = format!(
+        "[settings]\n# Quiet.\nhud = false\n\n{}",
+        &SOURCE[SOURCE.find("[[rules]]").unwrap()..]
+    );
+    let source = format!("version = 1\n{source}");
+    let mut doc = Doc::parse(&source);
+    doc.set_spacing(Spacing {
+        inner: 6,
+        left: 40,
+        ..Spacing::NONE
+    });
+    let saved = doc.source();
+    let config = Config::parse(&saved).unwrap();
+    assert!(!config.hud());
+    assert_eq!((config.spacing().inner, config.spacing().left), (6, 40));
+    assert!(saved.contains("# Quiet.\nhud = false"), "{saved}");
+    assert!(
+        saved.find("[settings.gaps]").unwrap() < saved.find("[[rules]]").unwrap(),
+        "gaps sit with their settings:\n{saved}"
+    );
+    doc.set_spacing(Spacing::NONE);
+    assert_eq!(doc.source(), source);
+}
+
+#[test]
+fn spacing_ignores_values_the_engine_would_refuse() {
+    let doc = Doc::parse("version = 1\n[settings.gaps]\ninner = 999\ntop = 9\n");
+    assert!(doc.error.is_some());
+    assert_eq!(doc.spacing().inner, 0);
+    assert_eq!(doc.spacing().top, 9);
+}

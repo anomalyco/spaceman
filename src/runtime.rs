@@ -77,7 +77,7 @@ impl Engine {
                 .insertion_focus
                 .filter(|&id| result.model.slot(id).is_some());
         }
-        result.placements = placements_for(self.display_layout(), &result.model, settings.output);
+        result.placements = placements_for(self.display_layout(), &result.model, settings);
         self.evidence.previous_placements = result
             .placements
             .iter()
@@ -108,7 +108,7 @@ impl Engine {
 
     #[must_use]
     pub fn placements(&self, settings: &Settings) -> Vec<Placement> {
-        placements_for(self.display_layout(), &self.model, settings.output)
+        placements_for(self.display_layout(), &self.model, settings)
     }
 
     pub(crate) fn record_placement_target(&mut self, slot: crate::SlotId, frame: crate::Rect) {
@@ -193,13 +193,16 @@ impl Engine {
         true
     }
 
+    /// Reads a window the user resized to `current` as the split boundaries it moved.
     pub(crate) fn resize_window(
         &mut self,
         window: &PhysicalWindowId,
         current: crate::Rect,
-        output: crate::Rect,
+        settings: &Settings,
     ) -> bool {
-        self.edit_slot(window, |layout, slot| layout.resize(slot, current, output))
+        let canvas = settings.canvas();
+        let current = settings.spacing.untile(current);
+        self.edit_slot(window, |layout, slot| layout.resize(slot, current, canvas))
     }
 
     pub(crate) fn remember_insertion_focus(&mut self, window: &PhysicalWindowId) {
@@ -217,9 +220,12 @@ impl Engine {
     /// display can make the original split usable again.
     pub(crate) fn fit_minimums(
         &mut self,
-        output: crate::Rect,
+        settings: &Settings,
         minimums: &std::collections::HashMap<PhysicalWindowId, (i32, i32)>,
     ) -> bool {
+        let output = settings.canvas();
+        // Every cell gives one whole gap to the space around its window.
+        let gap = settings.spacing.inner;
         if minimums.is_empty() {
             return self.fit.take().is_some_and(|fit| fit.tree.is_some());
         }
@@ -228,7 +234,10 @@ impl Engine {
             .workspace
             .slots
             .iter()
-            .filter_map(|slot| Some((slot.id, *minimums.get(slot.bound_window()?)?)))
+            .filter_map(|slot| {
+                let (width, height) = *minimums.get(slot.bound_window()?)?;
+                Some((slot.id, (width + gap, height + gap)))
+            })
             .collect();
         if slots.is_empty() {
             return self.fit.take().is_some_and(|fit| fit.tree.is_some());
@@ -255,19 +264,21 @@ impl Engine {
         window: &PhysicalWindowId,
         direction: crate::ResizeDirection,
         amount: i32,
-        output: crate::Rect,
+        settings: &Settings,
     ) -> bool {
+        let canvas = settings.canvas();
         self.edit_slot(window, |layout, slot| {
-            layout.resize_by(slot, direction, amount, output)
+            layout.resize_by(slot, direction, amount, canvas)
         })
     }
 
     pub(crate) fn balance_focused_parent(
         &mut self,
         window: &PhysicalWindowId,
-        output: crate::Rect,
+        settings: &Settings,
     ) -> bool {
-        self.edit_slot(window, |layout, slot| layout.balance(slot, output))
+        let canvas = settings.canvas();
+        self.edit_slot(window, |layout, slot| layout.balance(slot, canvas))
     }
 
     pub(crate) fn create_implicit_split(
@@ -304,7 +315,11 @@ impl Engine {
 
     /// Each tile's slot, window and frame in `output`, in layout order.
     pub(crate) fn preview_placements(&self, output: crate::Rect) -> Vec<Placement> {
-        placements_for(self.display_layout(), &self.model, output)
+        placements_for(
+            self.display_layout(),
+            &self.model,
+            &Settings::for_output(output),
+        )
     }
 
     pub(crate) fn preview(&self, output: crate::Rect) -> Vec<crate::Rect> {
@@ -366,9 +381,10 @@ impl Engine {
     }
 }
 
-fn placements_for(layout: &LayoutTree, model: &Model, output: crate::Rect) -> Vec<Placement> {
-    layout
-        .placements(output)
+fn placements_for(layout: &LayoutTree, model: &Model, settings: &Settings) -> Vec<Placement> {
+    settings
+        .spacing
+        .place(settings.usable(), layout.placements(settings.canvas()))
         .into_iter()
         .filter_map(|(id, frame)| {
             let slot = model.slot(id)?;
@@ -453,7 +469,12 @@ mod tests {
             height: 800,
             ..Rect::default()
         };
-        assert!(engine.resize_focused_tile(&windows[0], crate::ResizeDirection::Grow, 50, output));
+        assert!(engine.resize_focused_tile(
+            &windows[0],
+            crate::ResizeDirection::Grow,
+            50,
+            &Settings::for_output(output)
+        ));
         assert!(engine.create_implicit_split(&windows[1], crate::Direction::Up));
         assert_eq!(engine.model().workspace.axis, crate::Axis::Vertical);
         assert_eq!(engine.model().workspace.slots[1].weight, 1);
@@ -502,6 +523,7 @@ mod tests {
                 ..Rect::default()
             },
             frame_tolerance: 2,
+            spacing: crate::spacing::Spacing::NONE,
         }
     }
 

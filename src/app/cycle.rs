@@ -444,7 +444,7 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
         };
         let mut scoped_observation = observation.clone();
         scoped_observation.cycle = ticket.cycle;
-        let settings = Settings::for_output(output);
+        let settings = self.layout_settings(output);
         for app in &mut scoped_observation.applications {
             if let crate::AppObservation::Complete {
                 app: _,
@@ -596,12 +596,12 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
         let observed_frames = live::observed_frames(&scoped_observation);
         let filter_unchanged = routes.is_empty();
         let engine = self.workspaces.engine_mut(workspace);
-        engine.fit_minimums(output, &self.minimum_sizes);
+        engine.fit_minimums(&settings, &self.minimum_sizes);
         let mut placements = engine.placements(&settings);
         for placement in &placements {
             engine.record_placement_target(placement.slot, placement.frame);
         }
-        self.apply_fullscreen_layout(workspace, &mut placements, output);
+        self.apply_fullscreen_layout(workspace, &mut placements, &settings);
         if !scoped_observation.mouse_down {
             for placement in &placements {
                 let Some(window) = placement.window.as_ref() else {
@@ -698,12 +698,10 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
                 let target_output = output_for(&self.workspaces, target, outputs);
                 let layout = self.layout_workspace(target, target_output, cancelled);
                 *failed += layout.failed;
+                let settings = self.layout_settings(target_output);
                 update_observed_frames(
                     observation,
-                    &self
-                        .workspaces
-                        .engine(target)
-                        .placements(&Settings::for_output(target_output)),
+                    &self.workspaces.engine(target).placements(&settings),
                 );
             }
         }

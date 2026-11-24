@@ -20,6 +20,9 @@ pub struct Settings {
     pub output: Rect,
     #[serde(default = "default_frame_tolerance")]
     pub frame_tolerance: i32,
+    /// Gaps, outer padding and the lone-window width cap applied to every tile.
+    #[serde(default, skip_serializing_if = "crate::spacing::Spacing::is_none")]
+    pub spacing: crate::spacing::Spacing,
 }
 
 pub const DEFAULT_FRAME_TOLERANCE: i32 = 2;
@@ -30,7 +33,31 @@ impl Settings {
         Self {
             output,
             frame_tolerance: DEFAULT_FRAME_TOLERANCE,
+            spacing: crate::spacing::Spacing::NONE,
         }
+    }
+
+    #[must_use]
+    pub const fn spaced(self, spacing: crate::spacing::Spacing) -> Self {
+        Self { spacing, ..self }
+    }
+
+    /// The rect the layout partitions: the output less its outer padding.
+    #[must_use]
+    pub fn usable(&self) -> Rect {
+        self.spacing.usable(self.output)
+    }
+
+    /// The rect the layout tree partitions: [`crate::spacing::Spacing::canvas`].
+    #[must_use]
+    pub fn canvas(&self) -> Rect {
+        self.spacing.canvas(self.usable())
+    }
+
+    /// A lone tile's window frame: Fullscreen Layout's frame, and a single tiled window's.
+    #[must_use]
+    pub fn single(&self) -> Rect {
+        self.spacing.single(self.usable())
     }
 }
 
@@ -92,11 +119,7 @@ pub fn reconcile(
         let mut model = model.clone();
         reset_settling(&mut model, observation.cycle, None);
         return Reconciliation {
-            placements: flat_placements(
-                settings.output,
-                model.workspace.axis,
-                &model.workspace.slots,
-            ),
+            placements: flat_placements(settings, model.workspace.axis, &model.workspace.slots),
             model,
             decisions: vec![Decision::MouseDownDeferred],
         };
@@ -199,7 +222,7 @@ pub fn reconcile(
         }
     }
 
-    let placements = flat_placements(settings.output, next.workspace.axis, &next.workspace.slots);
+    let placements = flat_placements(settings, next.workspace.axis, &next.workspace.slots);
     Reconciliation {
         model: next,
         placements,
@@ -415,10 +438,11 @@ fn insert_windows(model: &mut Model, windows: &[PhysicalWindowId], decisions: &m
     }
 }
 
-fn flat_placements(output: Rect, axis: crate::Axis, slots: &[Slot]) -> Vec<Placement> {
+fn flat_placements(settings: &Settings, axis: crate::Axis, slots: &[Slot]) -> Vec<Placement> {
+    let cells = LayoutTree::weighted_flat(axis, slots.iter()).placements(settings.canvas());
     slots
         .iter()
-        .zip(LayoutTree::weighted_flat(axis, slots.iter()).placements(output))
+        .zip(settings.spacing.place(settings.usable(), cells))
         .map(|(slot, (slot_id, frame))| Placement {
             slot: slot_id,
             window: slot.bound_window().cloned(),

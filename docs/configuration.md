@@ -34,6 +34,14 @@ version = 1
 hud = true                            # optional (default: true); non-activating Workspace HUD
 hud_style = "icons"                   # optional (default: "icons"); or "layouts"
 update_channel = "stable"             # optional (default: "stable"); or "dev", a build of every merge
+single_window_max_width = 0           # optional (default: 0, off); or 320 through 16384 points
+
+[settings.gaps]                       # optional; every key defaults to 0
+inner = 0                             # points between tiled windows, 0 through 48
+top = 0                               # outer padding at each screen edge, 0 through 128
+bottom = 0
+left = 0
+right = 0
 
 [[rules]]
 bundle_id = "com.example.Application" # optional exact match
@@ -77,6 +85,31 @@ memory.
 
 Title matching occurs only in memory. Titles are not serialized into persisted state, snapshots,
 `ctl debug`, or the HUD.
+
+## Gaps, Screen Edges, and Single-Window Width
+
+`[settings.gaps]` spaces tiles out. `inner` is the distance between neighboring tiles, in every split
+and at every nesting level; `top`, `bottom`, `left`, and `right` pad the tiled area away from each
+screen edge (for example, room for a custom menu bar on top). Outer padding gives way before the
+tiled area would get smaller than 320 × 240 points. Equal weights still give equal windows with gaps.
+
+`single_window_max_width` caps the width of a window that is alone on its display, either the only
+tiled window of a workspace or any window in Fullscreen Layout. The window is centered at that width
+inside the padded area; on a display that is narrower, it fills the area as before. It suits wide and
+ultrawide displays, where one full-width window is hard to read.
+
+Out-of-range values are rejected with a message naming the key and its range, like any other invalid
+configuration. Every key defaults to `0`, so a file without them tiles exactly as before.
+
+Settings › Layout edits the same keys over a live miniature of the result, and `spaceman config`
+reads and writes them by dotted key:
+
+```sh
+spaceman config set gaps.inner 8
+spaceman config set gaps.top 32
+spaceman config set single_window_max_width 1680
+spaceman config get gaps.inner
+```
 
 ## Remembered Placements
 
@@ -145,7 +178,9 @@ normal recovery data.
 ## Applying Changes
 
 Edits saved in Spaceman Settings or in an external editor take effect automatically: rule changes,
-workspace display assignments, `settings.hud`, and `settings.hud_style` reload without restarting;
+workspace display assignments, `settings.hud`, `settings.hud_style`, `settings.gaps`, and
+`settings.single_window_max_width` reload without restarting (Settings › Layout retiles at once; an
+external edit applies on the next retile);
 `settings.update_channel` applies at the next update check. Global shortcuts for a
 newly added named workspace letter (`Option+A` ... `Option+Z`) register on the next app start:
 

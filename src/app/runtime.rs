@@ -485,13 +485,14 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
     ) -> Vec<NavigationTile> {
         let mut tiles = Vec::new();
         for resolved in visible {
+            let settings = self.layout_settings(resolved.output);
             let mut placements = self
                 .workspaces
                 .engine(resolved.workspace)
-                .placements(&Settings::for_output(resolved.output));
+                .placements(&settings);
             if self.workspaces.uses_fullscreen_layout(resolved.workspace) {
                 for placement in &mut placements {
-                    placement.frame = resolved.output;
+                    placement.frame = settings.single();
                 }
             }
             tiles.extend(placements.into_iter().filter_map(|placement| {
@@ -596,11 +597,11 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
         dragged: Option<&crate::PhysicalWindowId>,
         cancelled: &AtomicBool,
     ) -> (LayoutStatus, Vec<macos::ApplyResult>) {
-        let settings = Settings::for_output(output);
+        let settings = self.layout_settings(output);
         let engine = self.workspaces.engine_mut(workspace);
-        engine.fit_minimums(output, &self.minimum_sizes);
+        engine.fit_minimums(&settings, &self.minimum_sizes);
         let mut placements = engine.placements(&settings);
-        self.apply_fullscreen_layout(workspace, &mut placements, output);
+        self.apply_fullscreen_layout(workspace, &mut placements, &settings);
         let attempts = &mut self.apply_attempts[workspace.index()];
         for placement in &placements {
             if let Some(window) = placement.window.as_ref() {
@@ -666,16 +667,17 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
         &mut self,
         workspace: WorkspaceId,
         placements: &mut [crate::Placement],
-        output: crate::Rect,
+        settings: &Settings,
     ) {
         if !self.workspaces.uses_fullscreen_layout(workspace) {
             return;
         }
+        let frame = settings.single();
         for placement in placements {
-            placement.frame = output;
+            placement.frame = frame;
             self.workspaces
                 .engine_mut(workspace)
-                .record_placement_target(placement.slot, output);
+                .record_placement_target(placement.slot, frame);
         }
     }
 

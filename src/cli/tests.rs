@@ -217,6 +217,66 @@ fn config_path_show_get_set_and_check_round_trip() {
 }
 
 #[test]
+fn config_gets_sets_and_shows_spacing() {
+    let temp = TempConfig::new("config-spacing");
+    temp.write("# Mine.\nversion = 1\n[settings]\nhud = false\n");
+    assert_eq!(
+        temp.run(&["config", "get", "gaps.inner"]).stdout.as_deref(),
+        Some("0")
+    );
+    for (key, value) in [
+        ("gaps.inner", "8"),
+        ("settings.gaps.top", "32"),
+        ("gaps.right", "12"),
+        ("single_window_max_width", "1600"),
+    ] {
+        let set = temp.run(&["config", "set", key, value]);
+        assert_eq!(set.exit_code, 0, "{:?}", set.stderr);
+    }
+    let spacing = Config::parse(&temp.read()).unwrap().spacing();
+    assert_eq!(
+        (spacing.inner, spacing.top, spacing.right, spacing.bottom),
+        (8, 32, 12, 0)
+    );
+    assert_eq!(spacing.single_window_max_width, 1600);
+    assert!(!Config::parse(&temp.read()).unwrap().hud());
+    assert_eq!(
+        temp.run(&["config", "get", "gaps.top"]).stdout.as_deref(),
+        Some("32")
+    );
+
+    let show: Value = serde_json::from_str(
+        temp.run(&["config", "show", "--json"])
+            .stdout
+            .as_deref()
+            .unwrap(),
+    )
+    .unwrap();
+    assert_eq!(show["settings"]["gaps"]["inner"], 8);
+    assert_eq!(show["settings"]["gaps"]["left"], 0);
+    assert_eq!(show["settings"]["single_window_max_width"], 1600);
+    let shown = temp.run(&["config", "show"]).stdout.unwrap();
+    assert_eq!(Config::parse(&shown).unwrap().spacing(), spacing);
+
+    // Zero is the default and leaves the file.
+    assert_eq!(temp.run(&["config", "set", "gaps.inner", "0"]).exit_code, 0);
+    assert!(!temp.read().contains("inner"), "{}", temp.read());
+
+    let too_big = temp.run(&["config", "set", "gaps.inner", "49"]);
+    assert_eq!(too_big.exit_code, 1);
+    assert!(
+        too_big
+            .stderr
+            .unwrap()
+            .contains("settings.gaps.inner must be between 0 and 48 px, got 49")
+    );
+    let not_a_number = temp.run(&["config", "set", "gaps.left", "wide"]);
+    assert_eq!(not_a_number.exit_code, 1);
+    assert!(not_a_number.stderr.unwrap().contains("whole number"));
+    assert_eq!(Config::parse(&temp.read()).unwrap().spacing().right, 12);
+}
+
+#[test]
 fn config_rejects_unknown_keys_invalid_values_and_corrupt_existing_file() {
     let temp = TempConfig::new("config-invalid");
 

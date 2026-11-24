@@ -18,12 +18,12 @@ fn weighted_slot(id: u64, weight: u32) -> Slot {
 #[test]
 fn flat_placements_partition_without_gaps_or_rounding_loss() {
     let placements = flat_placements(
-        Rect {
+        &Settings::for_output(Rect {
             x: 10,
             y: 20,
             width: 101,
             height: 50,
-        },
+        }),
         crate::Axis::Horizontal,
         &[
             weighted_slot(1, 1),
@@ -50,11 +50,11 @@ fn flat_placements_reserve_unresolved_slots() {
     };
 
     let placements = flat_placements(
-        Rect {
+        &Settings::for_output(Rect {
             width: 100,
             height: 50,
             ..Rect::default()
-        },
+        }),
         crate::Axis::Horizontal,
         &[weighted_slot(1, 1), unresolved],
     );
@@ -67,12 +67,12 @@ fn flat_placements_reserve_unresolved_slots() {
 #[test]
 fn flat_placements_preserve_cumulative_weight_rounding() {
     let placements = flat_placements(
-        Rect {
+        &Settings::for_output(Rect {
             x: 10,
             y: 20,
             width: 50,
             height: 101,
-        },
+        }),
         crate::Axis::Vertical,
         &[
             weighted_slot(1, 2),
@@ -143,6 +143,7 @@ fn run(model: &Model, cycle: u64, applications: Vec<AppObservation>) -> Reconcil
         &Settings {
             output: OUTPUT,
             frame_tolerance: 2,
+            spacing: crate::spacing::Spacing::NONE,
         },
     )
 }
@@ -321,6 +322,7 @@ fn valid_ghostty_replacement_preserves_slot() {
         &Settings {
             output: OUTPUT,
             frame_tolerance: 2,
+            spacing: crate::spacing::Spacing::NONE,
         },
     );
 
@@ -503,6 +505,7 @@ fn incomplete_observations_do_not_advance_ghostty_settling() {
         &Settings {
             output: OUTPUT,
             frame_tolerance: 2,
+            spacing: crate::spacing::Spacing::NONE,
         },
     );
     let unavailable = run(
@@ -553,6 +556,7 @@ fn mouse_down_defers_all_model_changes() {
         &Settings {
             output: OUTPUT,
             frame_tolerance: 2,
+            spacing: crate::spacing::Spacing::NONE,
         },
     );
 

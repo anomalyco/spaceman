@@ -124,6 +124,7 @@ mod tests {
                 ..Rect::default()
             },
             frame_tolerance: 2,
+            spacing: crate::spacing::Spacing::NONE,
         };
         let mut observation = NativeObservation {
             cycle: 1,
@@ -181,6 +182,7 @@ mod tests {
                 ..Rect::default()
             },
             frame_tolerance: 2,
+            spacing: crate::spacing::Spacing::NONE,
         };
         let initial = reconcile(
             &Model::default(),

@@ -8,6 +8,7 @@ use serde::{Deserialize, Serialize};
 use spaceman::{
     DisplaySelector, WorkspaceId, Workspaces,
     config::{Config, HudStyle, UpdateChannel, config_path},
+    spacing::{Spacing, SpacingKey},
     state_file::write_atomic,
 };
 
@@ -51,11 +52,74 @@ pub(crate) struct SettingsDoc {
         serialize_with = "serialize_optional_update_channel"
     )]
     pub update_channel: Option<UpdateChannel>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub single_window_max_width: Option<i64>,
+    #[serde(default, skip_serializing_if = "GapsDoc::is_empty")]
+    pub gaps: GapsDoc,
+}
+
+/// `[settings.gaps]` as written: only the keys the file sets.
+#[derive(Clone, Copy, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(deny_unknown_fields)]
+pub(crate) struct GapsDoc {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub inner: Option<i64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub top: Option<i64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub bottom: Option<i64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub left: Option<i64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub right: Option<i64>,
+}
+
+impl GapsDoc {
+    fn is_empty(&self) -> bool {
+        self.inner.is_none()
+            && self.top.is_none()
+            && self.bottom.is_none()
+            && self.left.is_none()
+            && self.right.is_none()
+    }
 }
 
 impl SettingsDoc {
     fn is_empty(&self) -> bool {
-        self.hud.is_none() && self.hud_style.is_none() && self.update_channel.is_none()
+        self.hud.is_none()
+            && self.hud_style.is_none()
+            && self.update_channel.is_none()
+            && self.single_window_max_width.is_none()
+            && self.gaps.is_empty()
+    }
+
+    fn spacing_slot(&mut self, key: SpacingKey) -> &mut Option<i64> {
+        match key {
+            SpacingKey::Inner => &mut self.gaps.inner,
+            SpacingKey::Top => &mut self.gaps.top,
+            SpacingKey::Bottom => &mut self.gaps.bottom,
+            SpacingKey::Left => &mut self.gaps.left,
+            SpacingKey::Right => &mut self.gaps.right,
+            SpacingKey::SingleWindowMaxWidth => &mut self.single_window_max_width,
+        }
+    }
+
+    /// The spacing the file asks for, every unset key at its default `0`.
+    pub(crate) fn effective_spacing(&self) -> Spacing {
+        let mut doc = *self;
+        let mut spacing = Spacing::NONE;
+        for key in SpacingKey::ALL {
+            let value = doc.spacing_slot(key).unwrap_or(0);
+            key.set(&mut spacing, i32::try_from(value).unwrap_or(0));
+        }
+        spacing
+    }
+
+    /// Sets one spacing key after checking its range; `0` removes it, back to the default.
+    pub(crate) fn set_spacing(&mut self, key: SpacingKey, value: i64) -> Result<i32, String> {
+        let checked = key.check(value)?;
+        *self.spacing_slot(key) = (checked != 0).then_some(i64::from(checked));
+        Ok(checked)
     }
 
     pub(crate) fn effective_hud(&self) -> bool {
@@ -115,6 +179,17 @@ pub(crate) struct EffectiveSettings {
     pub hud: bool,
     pub hud_style: &'static str,
     pub update_channel: &'static str,
+    pub single_window_max_width: i32,
+    pub gaps: EffectiveGaps,
+}
+
+#[derive(Clone, Debug, Serialize)]
+pub(crate) struct EffectiveGaps {
+    pub inner: i32,
+    pub top: i32,
+    pub bottom: i32,
+    pub left: i32,
+    pub right: i32,
 }
 
 #[derive(Clone, Debug, Serialize)]
@@ -169,10 +244,19 @@ impl ConfigDoc {
     }
 
     pub(crate) fn effective_settings(&self) -> EffectiveSettings {
+        let spacing = self.settings.effective_spacing();
         EffectiveSettings {
             hud: self.settings.effective_hud(),
             hud_style: self.settings.effective_hud_style().as_str(),
             update_channel: self.settings.effective_update_channel().as_str(),
+            single_window_max_width: spacing.single_window_max_width,
+            gaps: EffectiveGaps {
+                inner: spacing.inner,
+                top: spacing.top,
+                bottom: spacing.bottom,
+                left: spacing.left,
+                right: spacing.right,
+            },
         }
     }
 

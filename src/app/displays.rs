@@ -13,6 +13,11 @@ pub(super) struct DisplayWatch {
 }
 
 impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
+    /// How tiles fill `output`: its frame with the configured gaps, padding and width cap.
+    pub(super) fn layout_settings(&self, output: crate::Rect) -> Settings {
+        Settings::for_output(output).spaced(self.config.spacing())
+    }
+
     /// Record the current displays. When they differ from the last ones, every
     /// parked window is due a re-park against them.
     pub(super) fn note_outputs(&mut self, outputs: &macos::DisplayOutputs) {

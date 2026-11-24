@@ -2,13 +2,17 @@ use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
 
-use crate::{DisplaySelector, ObservedWindow, WorkspaceId, Workspaces};
+use crate::{
+    DisplaySelector, ObservedWindow, WorkspaceId, Workspaces,
+    spacing::{Spacing, SpacingKey},
+};
 
 #[derive(Clone, Copy, Debug)]
 struct AppSettings {
     hud: bool,
     hud_style: HudStyle,
     update_channel: UpdateChannel,
+    spacing: Spacing,
 }
 
 impl Default for AppSettings {
@@ -17,6 +21,7 @@ impl Default for AppSettings {
             hud: true,
             hud_style: HudStyle::default(),
             update_channel: UpdateChannel::default(),
+            spacing: Spacing::default(),
         }
     }
 }
@@ -131,6 +136,10 @@ struct RawSettings {
     hud_style: HudStyle,
     #[serde(default)]
     update_channel: UpdateChannel,
+    #[serde(default)]
+    single_window_max_width: i64,
+    #[serde(default)]
+    gaps: RawGaps,
 }
 
 impl Default for RawSettings {
@@ -139,7 +148,46 @@ impl Default for RawSettings {
             hud: true,
             hud_style: HudStyle::default(),
             update_channel: UpdateChannel::default(),
+            single_window_max_width: 0,
+            gaps: RawGaps::default(),
         }
+    }
+}
+
+/// `[settings.gaps]`, read wide so out-of-range values get a clear message.
+#[derive(Default, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct RawGaps {
+    #[serde(default)]
+    inner: i64,
+    #[serde(default)]
+    top: i64,
+    #[serde(default)]
+    bottom: i64,
+    #[serde(default)]
+    left: i64,
+    #[serde(default)]
+    right: i64,
+}
+
+impl RawSettings {
+    fn spacing(&self) -> Result<Spacing, String> {
+        let gaps = &self.gaps;
+        let mut spacing = Spacing::default();
+        for (key, value) in [
+            (SpacingKey::Inner, gaps.inner),
+            (SpacingKey::Top, gaps.top),
+            (SpacingKey::Bottom, gaps.bottom),
+            (SpacingKey::Left, gaps.left),
+            (SpacingKey::Right, gaps.right),
+            (
+                SpacingKey::SingleWindowMaxWidth,
+                self.single_window_max_width,
+            ),
+        ] {
+            key.set(&mut spacing, key.check(value)?);
+        }
+        Ok(spacing)
     }
 }
 
@@ -219,6 +267,7 @@ impl Config {
                 hud: raw.settings.hud,
                 hud_style: raw.settings.hud_style,
                 update_channel: raw.settings.update_channel,
+                spacing: raw.settings.spacing()?,
             },
             rules,
             workspace_monitors,
@@ -238,6 +287,12 @@ impl Config {
     #[must_use]
     pub const fn update_channel(&self) -> UpdateChannel {
         self.settings.update_channel
+    }
+
+    /// Gaps between tiles, outer screen padding and the lone-window width cap.
+    #[must_use]
+    pub const fn spacing(&self) -> Spacing {
+        self.settings.spacing
     }
 
     pub fn load() -> Result<Self, String> {
@@ -440,11 +495,19 @@ struct EditableSettings {
     hud_style: Option<HudStyle>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     update_channel: Option<UpdateChannel>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    single_window_max_width: Option<i64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    gaps: Option<toml::Table>,
 }
 
 impl EditableSettings {
     const fn is_empty(&self) -> bool {
-        self.hud.is_none() && self.hud_style.is_none() && self.update_channel.is_none()
+        self.hud.is_none()
+            && self.hud_style.is_none()
+            && self.update_channel.is_none()
+            && self.single_window_max_width.is_none()
+            && self.gaps.is_none()
     }
 }
 
@@ -712,6 +775,103 @@ monitor = "main"
         let written = std::fs::read_to_string(&path).unwrap();
         assert!(written.contains("workspace = \"D\""), "{written}");
 
+        drop(std::fs::remove_dir_all(dir));
+    }
+
+    #[test]
+    fn spacing_defaults_to_none_and_parses_every_key() {
+        assert!(Config::default().spacing().is_none());
+        assert!(Config::parse("version = 1").unwrap().spacing().is_none());
+        assert!(
+            Config::parse("version = 1\n[settings]\nhud = false\n")
+                .unwrap()
+                .spacing()
+                .is_none()
+        );
+        let config = Config::parse(
+            r#"
+version = 1
+[settings]
+single_window_max_width = 1600
+[settings.gaps]
+inner = 8
+top = 32
+bottom = 4
+left = 0
+right = 128
+"#,
+        )
+        .unwrap();
+        assert_eq!(
+            config.spacing(),
+            Spacing {
+                inner: 8,
+                top: 32,
+                bottom: 4,
+                left: 0,
+                right: 128,
+                single_window_max_width: 1600,
+            }
+        );
+        let partial = Config::parse("version = 1\n[settings.gaps]\ninner = 12\n").unwrap();
+        assert_eq!(partial.spacing().inner, 12);
+        assert_eq!(partial.spacing().top, 0);
+    }
+
+    #[test]
+    fn spacing_rejects_out_of_range_and_unknown_keys_with_clear_messages() {
+        for (source, message) in [
+            (
+                "[settings.gaps]\ninner = -1",
+                "settings.gaps.inner must be between 0 and 48 px, got -1",
+            ),
+            (
+                "[settings.gaps]\ninner = 49",
+                "settings.gaps.inner must be between 0 and 48 px, got 49",
+            ),
+            (
+                "[settings.gaps]\ntop = 129",
+                "settings.gaps.top must be between 0 and 128 px, got 129",
+            ),
+            (
+                "[settings.gaps]\nright = -4",
+                "settings.gaps.right must be between 0 and 128 px, got -4",
+            ),
+            (
+                "[settings]\nsingle_window_max_width = 100",
+                "settings.single_window_max_width must be 0 (off) or between 320 and 16384 px, got 100",
+            ),
+            (
+                "[settings]\nsingle_window_max_width = 99999",
+                "settings.single_window_max_width must be 0 (off) or between 320 and 16384 px, got 99999",
+            ),
+        ] {
+            let error = Config::parse(&format!("version = 1\n{source}\n")).unwrap_err();
+            assert_eq!(error, message);
+        }
+        assert!(Config::parse("version = 1\n[settings.gaps]\nouter = 4\n").is_err());
+        assert!(Config::parse("version = 1\n[settings.gaps]\ninner = 1.5\n").is_err());
+    }
+
+    #[test]
+    fn saving_a_workspace_monitor_keeps_spacing() {
+        let dir = std::env::temp_dir().join(format!(
+            "spaceman-config-spacing-{}-{}",
+            std::process::id(),
+            now().as_nanos()
+        ));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("config.toml");
+        std::fs::write(
+            &path,
+            "version = 1\n[settings]\nsingle_window_max_width = 1440\n[settings.gaps]\ninner = 6\nleft = 20\n",
+        )
+        .unwrap();
+        let saved = save_workspace_monitor_at(&path, WorkspaceId::TWO, &DisplaySelector::Secondary)
+            .unwrap();
+        assert_eq!(saved.spacing().inner, 6);
+        assert_eq!(saved.spacing().left, 20);
+        assert_eq!(saved.spacing().single_window_max_width, 1440);
         drop(std::fs::remove_dir_all(dir));
     }
 }

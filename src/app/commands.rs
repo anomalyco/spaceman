@@ -157,10 +157,11 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
         self.constrained[workspace.index()].remove(&window);
         self.applied[workspace.index()].remove(&window);
         let output = output_for(&self.workspaces, workspace, &outputs);
+        let settings = self.layout_settings(output);
         let failed = if self
             .workspaces
             .engine_mut(workspace)
-            .resize_window(&window, frame, output)
+            .resize_window(&window, frame, &settings)
         {
             self.layout_workspace_during_drag(workspace, output, Some(&window), cancelled)
                 .failed
@@ -392,12 +393,12 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
         if self.workspaces.uses_fullscreen_layout(workspace) {
             return Err("Exit Fullscreen Layout before resizing the split layout".into());
         }
-        let output = output_for(&self.workspaces, workspace, &outputs);
+        let settings = self.layout_settings(output_for(&self.workspaces, workspace, &outputs));
         if !self.workspaces.engine_mut(workspace).resize_focused_tile(
             &window,
             direction,
             KEYBOARD_RESIZE_INCREMENT,
-            output,
+            &settings,
         ) {
             return Ok(self.status(0, &outputs));
         }
@@ -413,11 +414,11 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
         if self.workspaces.uses_fullscreen_layout(workspace) {
             return Err("Exit Fullscreen Layout before balancing the split layout".into());
         }
-        let output = output_for(&self.workspaces, workspace, &outputs);
+        let settings = self.layout_settings(output_for(&self.workspaces, workspace, &outputs));
         if !self
             .workspaces
             .engine_mut(workspace)
-            .balance_focused_parent(&window, output)
+            .balance_focused_parent(&window, &settings)
         {
             return Ok(self.status(0, &outputs));
         }

@@ -258,10 +258,19 @@ fn to_json(value: impl Serialize) -> Result<String, String> {
         .map_err(|error| format!("failed to encode output: {error}"))
 }
 
+/// The probes tile like the agent: with `config.toml`'s spacing, or none when it can't be read.
+#[cfg(target_os = "macos")]
+fn configured_spacing() -> spaceman::spacing::Spacing {
+    spaceman::config::Config::load()
+        .map(|config| config.spacing())
+        .unwrap_or_default()
+}
+
 #[cfg(target_os = "macos")]
 fn run_retile(should_apply: bool) -> Result<SnapshotOutput, String> {
     let (observation, settings) =
         spaceman::macos::snapshot(1).map_err(|error| error.to_string())?;
+    let settings = settings.spaced(configured_spacing());
     if should_apply
         && observation
             .applications
@@ -309,6 +318,7 @@ fn run_watch(
             (None, _) => spaceman::macos::snapshot(ticket.cycle),
         }
         .map_err(|error| error.to_string())?;
+        settings.spacing = configured_spacing();
         if let Some(initial_window_id) = initial_window_id {
             let active_scope = match &mut scope {
                 Some(scope) => scope,
@@ -352,13 +362,14 @@ fn run_persistent(should_apply: bool) -> Result<String, String> {
 
     let mut engine = Engine::default();
     let mut known_apps = HashMap::new();
+    let spacing = configured_spacing();
     let mut output = io::BufWriter::new(io::stdout().lock());
     let mut completed_cycles = 0_u64;
 
     while running.load(Ordering::Acquire) {
         engine.invalidate();
         let ticket = engine.begin_cycle();
-        let (mut observation, settings) = match spaceman::macos::snapshot(ticket.cycle) {
+        let (mut observation, mut settings) = match spaceman::macos::snapshot(ticket.cycle) {
             Ok(snapshot) => snapshot,
             Err(spaceman::macos::SnapshotError::AccessibilityPermissionRequired) => {
                 return Err(
@@ -383,6 +394,7 @@ fn run_persistent(should_apply: bool) -> Result<String, String> {
             break;
         }
         spaceman::live::add_absent_applications(&mut observation, &mut known_apps);
+        settings.spacing = spacing;
         let reconciliation = engine
             .accept(ticket, &observation, &settings)
             .map_err(|error| format!("stale synchronous cycle: {error:?}"))?;
