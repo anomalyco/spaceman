@@ -172,10 +172,10 @@ on the same letter.
   `workspace_back_and_forth_bounces_between_the_last_two_focused_workspaces`,
   `workspace_back_and_forth_on_one_display_switches_like_before`,
   `switching_to_an_unconfigured_named_workspace_is_rejected`.
-- Unit (FakeBackend), `src/app/tests/workspace_order.rs`: `settings.workspace_order` sets the
-  order of `listed_workspaces`, the HUD row, the menu bar list and three-finger swipes; unlisted
-  workspaces follow in the default order, an entry neither enables a letter nor lists an empty
-  workspace, and a config reload applies and clears it. Unit, `src/config.rs`:
+- Unit (FakeBackend), `src/app/tests/workspace_order.rs`: `settings.workspace_order` orders
+  `listed_workspaces` (unlisted workspaces follow in the default order; an entry neither enables a
+  letter nor lists an empty workspace), the HUD row and three-finger swipes, and a config reload
+  applies and clears it. Unit, `src/config.rs`:
   `workspace_order_accepts_numbers_and_letters_in_the_given_order`,
   `workspace_order_rejects_duplicate_and_unknown_workspaces`, and
   `saving_a_workspace_monitor_keeps_the_workspace_order` (Settings › Workspaces); CLI,

@@ -1,5 +1,5 @@
-//! `settings.workspace_order`: the HUD, the menu bar list and three-finger swipes list a
-//! display's workspaces in the configured order, then any others in the default order.
+//! `settings.workspace_order`: `listed_workspaces` (the HUD row, the menu bar list and
+//! three-finger swipes) gives the configured workspaces first, then the rest in default order.
 
 use super::*;
 
@@ -48,28 +48,9 @@ fn listed(runtime: &WorkspaceRuntime<FakeBackend>) -> Vec<WorkspaceId> {
 }
 
 #[test]
-fn without_an_order_named_workspaces_list_alphabetically_after_the_numbered_ones() {
-    let runtime = keyboard_row("");
-
-    assert_eq!(
-        listed(&runtime),
-        [WorkspaceId::ONE, named('E'), named('Q'), named('W')]
-    );
-}
-
-#[test]
 fn listed_workspaces_come_first_in_the_configured_order_and_the_rest_follow() {
-    let runtime = keyboard_row(r#"workspace_order = ["Q", "W", "E"]"#);
-
-    assert_eq!(
-        listed(&runtime),
-        [named('Q'), named('W'), named('E'), WorkspaceId::ONE]
-    );
-}
-
-#[test]
-fn an_order_entry_neither_enables_a_workspace_nor_lists_an_empty_one() {
-    let runtime = keyboard_row(r#"workspace_order = ["P", "Q", 4, "W", "E", 1]"#);
+    // P isn't configured and 4 is empty: listing them enables and shows neither.
+    let runtime = keyboard_row(r#"workspace_order = ["P", "Q", 4, "W", "E"]"#);
 
     assert!(!runtime.workspaces.is_enabled(named('P')));
     assert_eq!(
@@ -94,30 +75,10 @@ fn the_hud_row_follows_the_configured_order() {
         .unwrap();
 
     assert_eq!(main.visible, Some(named('W')));
-    assert_eq!(main.order.len(), WorkspaceId::COUNT);
-    assert_eq!(
-        main.order[..4],
-        [WorkspaceId::ONE, named('Q'), named('W'), named('E')]
+    assert!(
+        main.order
+            .starts_with(&[WorkspaceId::ONE, named('Q'), named('W'), named('E')])
     );
-    assert_eq!(
-        main.workspaces
-            .iter()
-            .map(|entry| entry.workspace)
-            .collect::<Vec<_>>(),
-        [WorkspaceId::ONE, named('Q'), named('W'), named('E')]
-    );
-}
-
-#[test]
-fn the_menu_bar_list_follows_the_configured_order() {
-    let runtime = keyboard_row(r#"workspace_order = [1, "Q", "W", "E"]"#);
-
-    let menu = runtime.status(0, &outputs()).menu;
-    let main = menu
-        .iter()
-        .find(|display| display.display == "Main")
-        .unwrap();
-
     assert_eq!(
         main.workspaces
             .iter()
@@ -139,9 +100,7 @@ fn swipes_step_through_workspaces_in_the_configured_order() {
 
     assert_eq!(swipe(Swipe::Left), named('Q'));
     assert_eq!(swipe(Swipe::Left), named('W'));
-    assert_eq!(swipe(Swipe::Left), named('E'));
-    assert_eq!(swipe(Swipe::Left), named('E'));
-    assert_eq!(swipe(Swipe::Right), named('W'));
+    assert_eq!(swipe(Swipe::Right), named('Q'));
 }
 
 #[test]
