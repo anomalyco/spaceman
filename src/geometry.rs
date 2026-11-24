@@ -94,8 +94,11 @@ pub fn parked_at(actual: Rect, target: Rect, tolerance: i32) -> bool {
 pub fn parked_frame(output: Rect, displays: &[Rect], window: Rect) -> Rect {
     // Keep one pixel of a top corner at a display's bottom corner so macOS
     // does not clamp the window back on-screen; a strip along the whole edge
-    // would show a sliver of every hidden window. Score whole rectangles, not
-    // corners: the nearest output may have a neighbor on both sides.
+    // would show a sliver of every hidden window. macOS may hold a titled
+    // window up, as far as bottom-aligned, to keep its title bar on screen, so
+    // every position in between must stay off the other displays. Score whole
+    // rectangles, not corners: the nearest output may have a neighbor on both
+    // sides.
     std::iter::once(&output)
         .chain(displays)
         .flat_map(|display| {
@@ -110,25 +113,33 @@ pub fn parked_frame(output: Rect, displays: &[Rect], window: Rect) -> Rect {
                     y: display.y + display.height - window.height.clamp(0, 2) / 2,
                     ..window
                 };
+                let held = Rect {
+                    y: display.y + (display.height - window.height).max(0),
+                    ..frame
+                };
                 let distance = (i64::from(display.x) - i64::from(output.x)).abs()
                     + (i64::from(display.y) - i64::from(output.y)).abs();
-                (frame, distance)
+                (frame, held, distance)
             })
         })
-        .filter(|(frame, _)| {
-            !shows_on(*frame, displays)
-                && !displays
-                    .iter()
-                    .any(|display| display.contains_center(*frame))
+        .filter(|(frame, held, _)| {
+            let swept = Rect {
+                height: frame.y + frame.height - held.y,
+                ..*held
+            };
+            !shows_on(swept, displays)
+                && !displays.iter().any(|display| {
+                    display.contains_center(*frame) || display.contains_center(*held)
+                })
         })
-        .min_by_key(|(_, distance)| *distance)
+        .min_by_key(|(_, _, distance)| *distance)
         .map_or(
             Rect {
                 x: output.x + output.width,
                 y: output.y,
                 ..window
             },
-            |(frame, _)| frame,
+            |(frame, _, _)| frame,
         )
 }
 
@@ -224,6 +235,36 @@ mod tests {
     }
 
     #[test]
+    fn a_window_held_up_by_its_title_bar_stays_off_a_shorter_neighbor() {
+        let left = Rect {
+            width: 1920,
+            height: 1080,
+            ..Rect::default()
+        };
+        let right = Rect {
+            x: 1920,
+            width: 1920,
+            height: 1050,
+            ..Rect::default()
+        };
+        let window = Rect {
+            width: 600,
+            height: 400,
+            ..Rect::default()
+        };
+        let parked = parked_frame(left, &[left, right], window);
+
+        assert_eq!(parked.x, -599);
+        for held in [0, 65, 400] {
+            let held = Rect {
+                y: parked.y - held,
+                ..parked
+            };
+            assert!(!shows_on(held, &[left, right]), "{held:?}");
+        }
+    }
+
+    #[test]
     fn a_window_held_above_its_parking_corner_is_still_parked() {
         let target = Rect {
             x: 1919,
@@ -272,6 +313,14 @@ mod tests {
                                 "parked {parked:?} overlaps {display:?}"
                             );
                             assert!(!display.contains_center(parked));
+                        }
+                        // macOS may hold it up to keep its title bar on screen.
+                        for held in [65, (height - 1).min(799)] {
+                            let held = Rect {
+                                y: parked.y - held,
+                                ..parked
+                            };
+                            assert!(!shows_on(held, &displays), "held {held:?} shows");
                         }
                     }
                 }

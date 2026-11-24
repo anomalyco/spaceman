@@ -242,9 +242,11 @@ on the same letter.
 - Unit (FakeBackend), `src/app/tests/parking.rs`: parking without minimizing, re-parking windows that
   drift back, honoring windows that keep un-parking (parking exemption, working tree), and keeping
   slots when Accessibility briefly cannot find a hidden window.
-- Unit, `src/geometry.rs`: `parking_leaves_a_single_corner_pixel_on_screen` and
-  `a_window_held_above_its_parking_corner_is_still_parked` (parking targets a bottom corner and
-  accepts macOS holding the window up by its title bar). How far macOS holds it up is not covered.
+- Unit, `src/geometry.rs`: `parking_leaves_a_single_corner_pixel_on_screen`,
+  `a_window_held_above_its_parking_corner_is_still_parked` and
+  `a_window_held_up_by_its_title_bar_stays_off_a_shorter_neighbor` (parking targets a bottom corner,
+  accepts macOS holding the window up by its title bar, and keeps every held-up position off other
+  displays). How far macOS holds it up is not covered.
 - Unit (FakeBackend), `src/app/tests/reconciliation.rs`:
   `an_app_that_quits_while_hidden_releases_its_tiles_and_recovery_metadata` (an app that quits
   while its windows are parked frees their tiles without the workspace being shown).
