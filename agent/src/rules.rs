@@ -298,7 +298,7 @@ impl Doc {
             *entry = Item::Table(Table::new());
         }
         if let Some(table) = entry.as_table_mut() {
-            table.insert(key, item);
+            set_table_item(table, key, item);
         }
     }
 
@@ -426,13 +426,13 @@ impl Doc {
         let remove_index = match (found, monitor) {
             (Some(index), Some(monitor)) => {
                 if let Some(table) = tables.get_mut(index) {
-                    set_table_string(table, "monitor", monitor);
+                    set_table_item(table, "monitor", value(monitor));
                 }
                 None
             }
             (Some(index), None) if keep_named => {
                 if let Some(table) = tables.get_mut(index) {
-                    set_table_string(table, "monitor", "main");
+                    set_table_item(table, "monitor", value("main"));
                 }
                 None
             }
@@ -616,8 +616,8 @@ fn workspace_value(workspace: WorkspaceId) -> Item {
 fn set_place(table: &mut dyn TableLike, place: Place) {
     match place {
         Place::Workspace(workspace) => {
-            table.insert("action", value("route"));
-            table.insert("workspace", workspace_value(workspace));
+            set_table_item(table, "action", value("route"));
+            set_table_item(table, "workspace", workspace_value(workspace));
         }
         Place::Float | Place::Ignore => {
             let action = if place == Place::Float {
@@ -625,7 +625,7 @@ fn set_place(table: &mut dyn TableLike, place: Place) {
             } else {
                 "ignore"
             };
-            table.insert("action", value(action));
+            set_table_item(table, "action", value(action));
             table.remove("workspace");
         }
     }
@@ -637,18 +637,15 @@ mod spacing;
 #[cfg(test)]
 mod tests;
 
-/// Updates an existing string key in place so its key comment decor and value
-/// spacing/trailing comments are preserved.
-fn set_table_string(table: &mut Table, key: &str, val: &str) {
-    if let Some(item) = table.get_mut(key) {
-        let decor = item
-            .as_value()
-            .map(|existing| existing.decor().clone())
-            .unwrap_or_default();
-        let mut next = Value::from(val);
-        *next.decor_mut() = decor;
-        *item = Item::Value(next);
+/// Updates an existing key in place so its key comment decor and value
+/// spacing/trailing comments are preserved across Settings edits.
+pub(super) fn set_table_item(table: &mut dyn TableLike, key: &str, mut item: Item) {
+    if let Some(existing) = table.get_mut(key) {
+        if let (Some(old), Some(new)) = (existing.as_value(), item.as_value_mut()) {
+            *new.decor_mut() = old.decor().clone();
+        }
+        *existing = item;
     } else {
-        table.insert(key, value(val));
+        table.insert(key, item);
     }
 }

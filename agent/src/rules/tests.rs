@@ -828,3 +828,52 @@ fn workspace_display_edits_preserve_key_and_detached_comments() {
     assert!(!doc.source().contains("# Display note."));
     assert!(spaceman::config::Config::parse(&doc.source()).is_ok());
 }
+
+#[test]
+fn rule_placement_and_settings_edits_preserve_retained_key_comments() {
+    const SOURCE: &str = "version = 1\n\n# Detached rules heading.\n\n[[rules]]\n# Bundle note.\nbundle_id = \"com.example.App\"\n# Action note.\naction = \"route\"\n# Workspace note.\nworkspace = 2\n";
+
+    // Route -> route keeps comments above both retained action and workspace keys.
+    let mut doc = Doc::parse(SOURCE);
+    doc.place(0, Place::Workspace(WorkspaceId::new(3).unwrap()));
+    let saved = doc.source();
+    assert!(spaceman::config::Config::parse(&saved).is_ok());
+    assert!(saved.contains("# Detached rules heading."));
+    assert!(saved.contains("# Bundle note."));
+    assert!(saved.contains("# Action note."));
+    assert!(saved.contains("# Workspace note."));
+    assert_eq!(
+        doc.rules()[0].place,
+        Place::Workspace(WorkspaceId::new(3).unwrap())
+    );
+
+    // Route -> float removes workspace and keeps the comment above retained action.
+    let mut doc = Doc::parse(SOURCE);
+    doc.place(0, Place::Float);
+    let saved = doc.source();
+    assert!(spaceman::config::Config::parse(&saved).is_ok());
+    assert!(!saved.contains("workspace ="));
+    assert!(saved.contains("# Bundle note."));
+    assert!(saved.contains("# Action note."));
+    assert_eq!(doc.rules()[0].place, Place::Float);
+
+    // Settings / gaps / shortcut modifier updates also preserve comments above retained keys.
+    let mut doc = Doc::parse(
+        "version = 1\n\n[settings]\n# Mode note.\nmouse_follows_focus = \"display\"\n\n[settings.gaps]\n# Gap note.\ninner = 8\n\n[shortcuts]\n# Modifier note.\nmodifier = \"control\"\n",
+    );
+    doc.set_mouse_follows_focus(spaceman::config::MouseFollowsFocus::Window);
+    let mut spacing = doc.spacing();
+    spaceman::spacing::SpacingKey::Inner.set(&mut spacing, 12);
+    doc.set_spacing(spacing);
+    doc.set_shortcut_modifier(spaceman::shortcuts::Modifiers {
+        control: true,
+        option: true,
+        command: false,
+        shift: false,
+    });
+    let saved = doc.source();
+    assert!(spaceman::config::Config::parse(&saved).is_ok());
+    assert!(saved.contains("# Mode note."));
+    assert!(saved.contains("# Gap note."));
+    assert!(saved.contains("# Modifier note."));
+}

@@ -100,7 +100,7 @@ impl Doc {
             if let (None, Some(position)) = (gaps.position(), position) {
                 gaps.set_position(position);
             }
-            gaps.insert(name, item);
+            super::set_table_item(gaps, name, item);
         }
     }
 }

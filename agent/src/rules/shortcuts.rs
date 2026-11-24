@@ -105,7 +105,7 @@ impl Doc {
         if modifier == Modifiers::OPTION {
             table.remove("modifier");
         } else {
-            table.insert("modifier", value(modifier.source()));
+            super::set_table_item(table, "modifier", value(modifier.source()));
         }
         self.tidy_shortcuts();
     }
