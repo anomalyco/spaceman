@@ -185,6 +185,34 @@ fn a_failed_re_park_after_a_display_change_is_retried() {
     assert_hidden(&runtime, &hidden);
 }
 
+/// macOS holds a parked window up to keep its title bar on screen. A display
+/// change that leaves its parking corner where it was does not write it again.
+#[test]
+fn a_display_change_leaves_a_held_up_parked_window_alone() {
+    let (mut runtime, hidden) = parked_on_laptop();
+    let cancelled = AtomicBool::new(false);
+    runtime.recently_parked.clear();
+    runtime.cycle(outputs(), &cancelled).unwrap();
+    runtime.cycle(outputs(), &cancelled).unwrap();
+    for frames in [
+        &mut runtime.backend.frames,
+        &mut runtime.backend.server_frames,
+    ] {
+        if let Some(frame) = frames.get_mut(&hidden) {
+            frame.y -= 31;
+        }
+    }
+    runtime.backend.parked_writes.clear();
+    runtime.recently_parked.clear();
+
+    runtime.cycle(three_outputs(), &cancelled).unwrap();
+    runtime.cycle(three_outputs(), &cancelled).unwrap();
+
+    assert!(!runtime.backend.parked_writes.contains(&hidden));
+    assert!(!runtime.awaiting_display_repark(&hidden));
+    assert_hidden(&runtime, &hidden);
+}
+
 /// Laptop only: a window sent to workspace 2 while its app stays frontmost on 1.
 fn parked_on_laptop() -> (WorkspaceRuntime<FakeBackend>, crate::PhysicalWindowId) {
     let hidden = app_window(1, 10);

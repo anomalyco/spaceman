@@ -91,7 +91,9 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
             return false;
         };
         let target = crate::geometry::parked_frame(output, displays, current);
-        if (target.x, target.y) == (current.x, current.y) {
+        if crate::geometry::parked_at(current, target, 0)
+            && !crate::geometry::shows_on(current, displays)
+        {
             return true;
         }
         let outcome = self.backend.set_parked_position(window, target);

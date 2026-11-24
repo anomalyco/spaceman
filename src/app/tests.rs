@@ -62,6 +62,8 @@ struct FakeBackend {
     observation: Option<crate::NativeObservation>,
     persisted: HashMap<crate::PhysicalWindowId, crate::Rect>,
     calls: Vec<BackendCall>,
+    /// Windows whose position writes went through the parking path.
+    parked_writes: Vec<crate::PhysicalWindowId>,
     fail_persist: bool,
     frame_outcome: Option<macos::WindowAccessError>,
     managed_outcome: Option<macos::ApplyOutcome>,
@@ -187,6 +189,15 @@ impl WorkspaceBackend for FakeBackend {
 
     fn onscreen_window_order(&mut self) -> Option<Vec<u32>> {
         self.stacking.clone()
+    }
+
+    fn set_parked_position(
+        &mut self,
+        window: &crate::PhysicalWindowId,
+        target: crate::Rect,
+    ) -> macos::ApplyOutcome {
+        self.parked_writes.push(window.clone());
+        self.set_position(window, target)
     }
 
     fn set_position(

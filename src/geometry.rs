@@ -236,31 +236,28 @@ mod tests {
 
     #[test]
     fn a_window_held_up_by_its_title_bar_stays_off_a_shorter_neighbor() {
-        let left = Rect {
-            width: 1920,
-            height: 1080,
-            ..Rect::default()
+        let rect = |x, y, width, height| Rect {
+            x,
+            y,
+            width,
+            height,
         };
-        let right = Rect {
-            x: 1920,
-            width: 1920,
-            height: 1050,
-            ..Rect::default()
-        };
-        let window = Rect {
-            width: 600,
-            height: 400,
-            ..Rect::default()
-        };
-        let parked = parked_frame(left, &[left, right], window);
+        // A shorter neighbor, and a neighbor whose Dock shortens its visible frame.
+        for [left, right] in [
+            [rect(0, 0, 1920, 1080), rect(1920, 0, 1920, 1050)],
+            [rect(0, 25, 1920, 1055), rect(1920, 25, 1920, 985)],
+        ] {
+            let window = rect(0, 0, 600, 400);
+            let parked = parked_frame(left, &[left, right], window);
 
-        assert_eq!(parked.x, -599);
-        for held in [0, 65, 400] {
-            let held = Rect {
-                y: parked.y - held,
-                ..parked
-            };
-            assert!(!shows_on(held, &[left, right]), "{held:?}");
+            assert_eq!(parked.x, -599);
+            for held in [0, 65, 399] {
+                let held = Rect {
+                    y: parked.y - held,
+                    ..parked
+                };
+                assert!(!shows_on(held, &[left, right]), "{held:?}");
+            }
         }
     }
 

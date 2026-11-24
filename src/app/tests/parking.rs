@@ -31,6 +31,7 @@ fn inactive_windows_are_positioned_offscreen_without_a_minimize_operation() {
         runtime.backend.calls[1],
         BackendCall::SetPosition(_, target) if target == expected
     ));
+    assert_eq!(runtime.backend.parked_writes, vec![window]);
 }
 
 #[test]
