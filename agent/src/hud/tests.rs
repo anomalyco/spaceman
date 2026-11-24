@@ -6,9 +6,39 @@ use spaceman::{
 use crate::rules::Place;
 
 use super::{
-    FRESH_MS, HOLD_MS, HudFlow, HudTick, HudTransition, LEAVE_MS, RESUME_HOLD_MS, assign_panels,
-    grow, icons, menu,
+    FRESH_MS, HOLD_MS, HudFlow, HudTick, HudTransition, LEAVE_MS, OVERLAY_MARGIN, OVERLAY_SIZE,
+    RESUME_HOLD_MS, assign_panels, grow, icons, menu, panel_edge, pill,
 };
+
+#[test]
+fn the_capsule_sits_sixty_points_inside_the_edge_it_picks() {
+    use rune::ScreenEdge;
+    use spaceman::config::HudPosition;
+
+    assert_eq!(panel_edge(HudPosition::Bottom), ScreenEdge::Bottom);
+    assert_eq!(panel_edge(HudPosition::Top), ScreenEdge::Top);
+    // The panel is the capsule plus its shadow above and below, so the capsule's centre is one
+    // shadow reach in from the panel's edge, and the panel itself `OVERLAY_MARGIN` in.
+    let panel_inset = OVERLAY_MARGIN + pill::SHADOW_REACH;
+    assert_eq!(panel_inset, pill::CAPSULE_INSET);
+    assert_eq!(panel_inset, 60.0);
+    let capsule_top = OVERLAY_MARGIN + (OVERLAY_SIZE.1 - pill::PILL_HEIGHT) / 2.0;
+    assert_eq!(capsule_top, pill::CAPSULE_INSET);
+}
+
+#[test]
+fn a_top_capsule_drops_into_place_and_a_bottom_one_rises() {
+    use spaceman::config::HudPosition;
+
+    // Away from its resting place, the capsule starts 6 pt outside the display edge it sits on.
+    assert_eq!(pill::enter_offset(HudPosition::Bottom, false, false), 6.0);
+    assert_eq!(pill::enter_offset(HudPosition::Top, false, false), -6.0);
+    // Shown, or under Reduce Motion, it rests exactly where it is drawn.
+    assert_eq!(pill::enter_offset(HudPosition::Top, true, false), 0.0);
+    assert_eq!(pill::enter_offset(HudPosition::Bottom, true, false), 0.0);
+    assert_eq!(pill::enter_offset(HudPosition::Top, false, true), 0.0);
+    assert_eq!(pill::enter_offset(HudPosition::Bottom, false, true), 0.0);
+}
 
 fn id(number: u8) -> WorkspaceId {
     WorkspaceId::new(number).unwrap()
@@ -52,6 +82,7 @@ fn row(visible: u8, from: Option<u8>) -> UiHudDisplay {
         visible: Some(id(visible)),
         from: from.map(id),
         workspaces,
+        order: Vec::new(),
     }
 }
 
@@ -308,6 +339,46 @@ fn visited_empty_workspaces_stay_in_the_row_until_hud_hides() {
     assert_eq!(flow.tick(240 + HOLD_MS + LEAVE_MS), HudTick::Gone);
     arrived(&mut flow, row(2, None), 240 + HOLD_MS + LEAVE_MS + 50);
     assert_eq!(numbers(&flow), [id(1), id(2), id(3)]);
+}
+
+#[test]
+fn visited_empty_workspaces_keep_the_configured_workspace_order() {
+    let named = |letter| WorkspaceId::named(letter).unwrap();
+    let keyboard_row = [id(1), named('Q'), named('W'), named('E')];
+    let order: Vec<WorkspaceId> = keyboard_row
+        .into_iter()
+        .chain(WorkspaceId::all().filter(|workspace| !keyboard_row.contains(workspace)))
+        .collect();
+    // As the runtime sends it: occupied 1, then the visible (empty) one, in `order`.
+    let row = |visible: char, from: Option<char>| UiHudDisplay {
+        id: "main".to_owned(),
+        visible: Some(named(visible)),
+        from: from.map(named),
+        workspaces: vec![
+            workspace(1, &["a"]),
+            UiHudWorkspace {
+                workspace: named(visible),
+                fullscreen: false,
+                tiles: Vec::new(),
+                floating: Vec::new(),
+            },
+        ],
+        order: order.clone(),
+    };
+    let mut flow = HudFlow::new(true);
+    arrived(&mut flow, row('Q', None), 0);
+
+    // Flick across the empty Q, W and E: the ones left stay where `order` puts them.
+    flow.trigger(row('W', Some('Q')), 80);
+    flow.trigger(row('E', Some('W')), 160);
+    let entries: Vec<_> = flow
+        .view(false)
+        .unwrap()
+        .entries()
+        .iter()
+        .map(|entry| entry.workspace)
+        .collect();
+    assert_eq!(entries, keyboard_row);
 }
 
 #[test]

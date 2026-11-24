@@ -132,6 +132,15 @@ impl DisplayOutputs {
         self.displays.iter().map(|display| display.frame)
     }
 
+    /// Each display's full bounds, menu bar and Dock included, or its visible
+    /// frame when only those were provided.
+    #[must_use]
+    pub fn screens(&self) -> Vec<Rect> {
+        self.bounds
+            .clone()
+            .unwrap_or_else(|| self.frames().collect())
+    }
+
     #[must_use]
     pub fn union(&self) -> Rect {
         self.frames().fold(self.main().frame, union_rect)

@@ -224,6 +224,9 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
         let Some(source) = self.workspaces.workspace_of(&window) else {
             return self.cycle(outputs, cancelled);
         };
+        if !self.is_visible(source, &outputs) || self.parked.contains_key(&window) {
+            return Ok(self.status(0, &outputs));
+        }
         if self.workspaces.uses_fullscreen_layout(source) {
             return Ok(self.status(0, &outputs));
         }
@@ -303,6 +306,9 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
         let Some(workspace) = self.workspaces.workspace_of(&window) else {
             return self.cycle(outputs, cancelled);
         };
+        if !self.is_visible(workspace, &outputs) || self.parked.contains_key(&window) {
+            return Ok(self.status(0, &outputs));
+        }
         if self.workspaces.uses_fullscreen_layout(workspace) {
             return Ok(self.status(0, &outputs));
         }
@@ -410,6 +416,24 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
     pub(super) fn current_focus(&mut self) -> Option<crate::PhysicalWindowId> {
         let reported = self.backend.focused_window();
         self.resolve_focus(reported)
+    }
+
+    /// Drains an unexpired `pending_focus` into its stale-report list (prior
+    /// stale windows plus its superseded target) so a replacement focus request
+    /// still ignores earlier targets in the same burst (#307).
+    pub(super) fn take_pending_focus_stale(&mut self) -> Vec<Option<crate::PhysicalWindowId>> {
+        let Some(pending) = self.pending_focus.take() else {
+            return Vec::new();
+        };
+        if pending.at.elapsed() >= FOCUS_SETTLE {
+            return Vec::new();
+        }
+        let mut stale = pending.stale;
+        let previous = Some(pending.target);
+        if !stale.contains(&previous) {
+            stale.push(previous);
+        }
+        stale
     }
 
     pub(super) fn focus_tile(

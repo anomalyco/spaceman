@@ -129,7 +129,8 @@ The menu-bar control shows active workspace/layout glyphs and runtime errors. It
   hover) and its `Option` shortcut. Choosing one switches to it;
 - `Pause Tiling`, or `Resume Tiling` while paused;
 - `Workspace HUD`, checked while the non-activating workspace capsule (`[settings] hud = true`) is enabled;
-  `Settings > General > Workspace HUD` picks `Off`, `Icons`, or `Layouts` (`[settings] hud` and `hud_style`, default `Icons`);
+  `Settings > General > Workspace HUD` picks `Off`, `Icons`, or `Layouts` (`[settings] hud` and `hud_style`, default `Icons`),
+  and its `Position` picks `Bottom` or `Top` (`[settings] hud_position`, default `Bottom`) while the HUD is on;
 - `Launch at Login`, shown checked when macOS has enabled the signed app bundle;
 - `Settings...` (`⌘,`), opening the Rune Settings window (`General`, `Layout`, `Rules`, `Workspaces`, `Shortcuts`, and `Activity`, plus `⇧⌘D` Playground);
 - `Check for Updates...`, which checks and opens Settings (its sidebar and `General > Updates` show
@@ -167,6 +168,7 @@ spaceman ctl move-workspace
 spaceman ctl move-workspace prev
 spaceman ctl move-workspace secondary
 spaceman ctl move 7
+spaceman ctl move 7 --follow
 spaceman ctl move-app com.tinyspeck.slackmacgap 6
 spaceman ctl focus left
 spaceman ctl focus next

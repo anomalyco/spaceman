@@ -449,6 +449,59 @@ fn newly_opened_non_resizable_dialog_floats_without_tiling() {
 }
 
 #[test]
+fn a_tile_rule_tiles_a_window_that_looks_like_a_dialog_until_toggled_to_float() {
+    let tiled = window(10);
+    let dialog = window(11);
+    let cancelled = AtomicBool::new(false);
+    let mut observed = observation_for_windows(
+        "com.example.Test",
+        &dialog,
+        &[(tiled.clone(), frame(50)), (dialog.clone(), frame(300))],
+    );
+    let crate::AppObservation::Complete { windows, .. } = &mut observed.applications[0] else {
+        unreachable!();
+    };
+    windows[1].resizable = false;
+    let mut backend = FakeBackend {
+        focused: Some(dialog.clone()),
+        frontmost: Some(dialog.app.clone()),
+        observation: Some(observed),
+        ..FakeBackend::default()
+    };
+    backend.frames.insert(tiled.clone(), frame(50));
+    backend.frames.insert(dialog.clone(), frame(300));
+    let config =
+        Config::parse("version = 1\n[[rules]]\nbundle_id = 'com.example.Test'\naction = 'tile'")
+            .unwrap();
+    let mut runtime = runtime_with_config(backend, config);
+    bind(&mut runtime, WorkspaceId::ONE, &tiled);
+
+    runtime.cycle(outputs(), &cancelled).unwrap();
+
+    assert_eq!(
+        runtime.workspaces.workspace_of(&dialog),
+        Some(WorkspaceId::ONE)
+    );
+    assert_eq!(runtime.workspaces.floating_workspace_of(&dialog), None);
+    assert!(
+        runtime
+            .backend
+            .calls
+            .iter()
+            .any(|call| matches!(call, BackendCall::Apply(window, _) if window == &dialog))
+    );
+
+    // Toggle Float still wins over the tile rule, and keeps winning.
+    runtime.toggle_float(outputs(), &cancelled).unwrap();
+    runtime.cycle(outputs(), &cancelled).unwrap();
+    assert_eq!(runtime.workspaces.workspace_of(&dialog), None);
+    assert_eq!(
+        runtime.workspaces.floating_workspace_of(&dialog),
+        Some(WorkspaceId::ONE)
+    );
+}
+
+#[test]
 fn manual_float_and_float_rule_still_release_tiled_windows_immediately() {
     let first = window(10);
     let sibling = window(11);

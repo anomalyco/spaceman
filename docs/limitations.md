@@ -14,7 +14,7 @@ Spaceman is an experimental public preview, not a broadly qualified release.
   floating state, not its tile position, weight, or nesting within the layout. Without titles,
   windows of a multi-window application that reopen with identical frames are matched in creation
   order and may swap workspaces.
-- Configuration supports ordered exact-match `float`/`route`/`ignore` rules and display assignment. It
+- Configuration supports ordered exact-match `float`/`tile`/`route`/`ignore` rules and display assignment. It
   intentionally does not support orthogonal named app spaces or regex title matching.
 - Configuration changes to rules, display assignments, and `[settings]` apply automatically; newly
   referenced named workspace letters register their global shortcuts on the next app start. `ctl restart`
@@ -26,8 +26,8 @@ Spaceman is an experimental public preview, not a broadly qualified release.
 - Global shortcuts may collide with other applications or fail on keyboard layouts that cannot
   produce required characters.
 - Settings covers Accessibility, Launch at Login, Workspace HUD, app-wide placement rules, workspace
-  display assignments, keyboard shortcuts, and Activity diagnostics; title-specific rules are edited in
-  `config.toml`. There is no telemetry or analytics.
+  display assignments, keyboard shortcuts, and Activity diagnostics; title-specific rules and
+  `settings.workspace_order` are edited in `config.toml`. There is no telemetry or analytics.
 - The repository still lacks a concise product demo.
 
 Use the isolated live harnesses in [Development](development.md) before changing window-management,

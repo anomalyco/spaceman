@@ -34,9 +34,11 @@ version = 1
 [settings]
 hud = true                            # optional (default: true); non-activating Workspace HUD
 hud_style = "icons"                   # optional (default: "icons"); or "layouts"
+hud_position = "bottom"               # optional (default: "bottom"); or "top"
 update_channel = "stable"             # optional (default: "stable"); or "dev", a build of every merge
 mouse_follows_focus = "off"           # optional (default: "off"); or "display", "window"
 single_window_max_width = 0           # optional (default: 0, off); or 320 through 16384 points
+workspace_order = []                  # optional (default: []); workspaces listed first, in this order
 
 [settings.gaps]                       # optional; every key defaults to 0
 inner = 0                             # points between tiled windows, 0 through 48
@@ -48,12 +50,12 @@ right = 0
 [[rules]]
 bundle_id = "com.example.Application" # optional exact match
 title = "Preferences"                 # optional exact match
-action = "float"                      # required: "float", "route", or "ignore"
+action = "float"                      # required: "float", "tile", "route", or "ignore"
 
 [[rules]]
 bundle_id = "com.tinyspeck.slackmacgap"
 action = "route"
-workspace = 2                         # required for route; forbidden for float and ignore
+workspace = 2                         # required for route; forbidden for float, tile, and ignore
 
 [[rules]]
 bundle_id = "ai.opencode.desktop"
@@ -71,6 +73,10 @@ Rules run in file order and the first matching rule wins. An unmatched window is
 - `float` excludes the window from tiling and resizing, preserves its native frame, and keeps it with
   its logical workspace (a remembered workspace during recall, or the active workspace where it was
   first observed).
+- `tile` tiles the window even when Spaceman would float it as a dialog, settings window, or
+  non-resizable window (see [Compatibility](compatibility.md)), like an unmatched resizable window.
+  A window that refuses its tile size keeps its own size inside the tile. Toggle Float still floats
+  it until toggled back.
 - `route` assigns a newly inserted resizable logical window to workspace 1 through 10 or a configured
   named workspace A through Z. A bundle-level `route` rule (without `title`) applies to the
   application's initial window while secondary windows opened later stay on the active workspace; a
@@ -88,6 +94,24 @@ may return to a remembered workspace; see [Remembered Placements](#remembered-pl
 
 Title matching occurs only in memory. Titles are not serialized into persisted state, snapshots,
 `ctl debug`, or the HUD.
+
+## Workspace HUD
+
+`settings.hud` turns the non-activating Workspace HUD capsule on (the default) or off, and
+`settings.hud_style` picks `"icons"` (each workspace's number and its apps' icons, the default) or
+`"layouts"`. `settings.hud_position` puts the capsule on each display's `"bottom"` edge (the
+default, just above the Dock) or its `"top"` edge (just below the menu bar); a top capsule slides
+down into place and back up, and a bottom one rises and settles back down. A file without the key
+keeps the bottom position.
+
+```sh
+spaceman config set settings.hud_position top
+spaceman config get settings.hud_position
+spaceman config reset settings.hud_position
+```
+
+Settings › General shows **Position** under **Workspace HUD** while the HUD is not **Off**, and
+`spaceman config reset` removes any settings key, back to its default.
 
 ## Gaps, Screen Edges, and Single-Window Width
 
@@ -291,6 +315,19 @@ precedence over a built-in letter shortcut when they overlap. A named workspace 
 persisted active/previous history, tiled or floating windows, or Fullscreen Layout remains enabled
 across config edits until that state no longer refers to it.
 
+`settings.workspace_order` sets the order a display's workspaces appear in the Workspace HUD, the
+menu bar menu, and three-finger swipes. Listed workspaces come first, in the order given; every other
+workspace follows in the default order (1 through 10, then A through Z), so a partial list is fine
+and an empty or missing list changes nothing. Entries are workspaces `1` through `10` or `"A"`
+through `"Z"`, as numbers or strings; an unknown or repeated entry is rejected. The order only
+changes where workspaces are listed: listing a letter does not enable it, and shortcuts, routes and
+saved state are unaffected. For the top keyboard row:
+
+```toml
+[settings]
+workspace_order = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, "Q", "W", "E", "R", "T", "Y", "U", "I", "O", "P"]
+```
+
 ## Process Scope
 
 `SPACEMAN_MANAGED_DISPLAY` is an internal process-scope override used by isolated tests. It accepts
@@ -306,7 +343,7 @@ normal recovery data.
 
 Edits saved in Spaceman Settings or in an external editor take effect automatically: rule changes,
 workspace display assignments, `settings.hud`, `settings.hud_style`,
-`settings.mouse_follows_focus`, `settings.gaps`, and
+`settings.hud_position`, `settings.mouse_follows_focus`, `settings.workspace_order`, `settings.gaps`, and
 `settings.single_window_max_width` reload without restarting (Settings › Layout retiles at once; an
 external edit applies on the next retile);
 `settings.update_channel` applies at the next update check. Global shortcuts for a

@@ -228,17 +228,26 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
         // Focus, switch, and workspace-move actions keep an in-flight focus
         // command so they resolve against the just-focused window even when
         // Accessibility has not caught up yet; other workspace/window actions
-        // start from whatever focus is reported now.
-        if matches!(
+        // start from whatever focus is reported now. Workspace-entry actions
+        // still carry unexpired stale targets into any new entry focus (#318).
+        let carried_stale = if matches!(
             action,
             WorkerAction::SelectWorkspace(_)
                 | WorkerAction::WorkspaceBackAndForth
                 | WorkerAction::Swipe(..)
-                | WorkerAction::MoveFocused(_)
-                | WorkerAction::MoveApp(..)
         ) {
-            self.pending_focus = None;
-        }
+            self.take_pending_focus_stale()
+        } else {
+            if matches!(
+                action,
+                WorkerAction::MoveFocused(_)
+                    | WorkerAction::MoveFocusedFollow(_)
+                    | WorkerAction::MoveApp(..)
+            ) {
+                self.pending_focus = None;
+            }
+            Vec::new()
+        };
         let warp_context = if matches!(
             action,
             WorkerAction::SwitchWorkspace(_)
@@ -248,12 +257,13 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
                 | WorkerAction::CycleFocusPrevious
                 | WorkerAction::Focus(_)
                 | WorkerAction::MoveFocused(_)
+                | WorkerAction::MoveFocusedFollow(_)
         ) {
             super::commands::WarpContext::Explicit
         } else {
             super::commands::WarpContext::Suppressed
         };
-        self.with_warp_context(warp_context, |rt| match action {
+        let result = self.with_warp_context(warp_context, |rt| match action {
             WorkerAction::Retile => {
                 let mut status = rt.cycle(outputs.clone(), cancelled)?;
                 if !rt.exact_spacing_workspaces.is_empty() && !rt.backend.mouse_down() {
@@ -283,6 +293,9 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
             }
             WorkerAction::Swipe(swipe, point) => rt.swipe(swipe, point, outputs, cancelled),
             WorkerAction::MoveFocused(workspace) => rt.move_focused(workspace, outputs, cancelled),
+            WorkerAction::MoveFocusedFollow(workspace) => {
+                rt.move_focused_follow(workspace, outputs, cancelled)
+            }
             WorkerAction::MoveApp(bundle_id, workspace) => {
                 rt.move_app(&bundle_id, workspace, outputs, cancelled)
             }
@@ -303,7 +316,15 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
                 rt.mark_wrong();
                 Ok(rt.status(0, &outputs))
             }
-        })
+        });
+        if let Some(pending) = &mut self.pending_focus {
+            for entry in carried_stale {
+                if entry.as_ref() != Some(&pending.target) && !pending.stale.contains(&entry) {
+                    pending.stale.push(entry);
+                }
+            }
+        }
+        result
     }
 
     #[cfg(test)]
@@ -789,7 +810,8 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
         current: Option<WorkspaceId>,
         outputs: &macos::DisplayOutputs,
     ) -> Vec<WorkspaceId> {
-        WorkspaceId::all()
+        self.config
+            .ordered_workspaces()
             .filter(|workspace| {
                 let selector = self.workspaces.assignment(*workspace);
                 self.workspaces.is_enabled(*workspace)

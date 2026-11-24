@@ -102,6 +102,11 @@ const APPLICATION_ACTIVATION_SETTLE: Duration = Duration::from_millis(50);
 // AX creation and app activation can both precede the first on-screen frame.
 const WINDOW_OPENING_SETTLE: Duration = Duration::from_millis(500);
 const WINDOW_OPENING_RECHECK: Duration = Duration::from_millis(40);
+/// A cancelled cycle may have been a focus follow (Cmd+Tab, Dock, a
+/// notification) interrupted by the activation it answers. Accessibility can
+/// still report the old focus on the cycle right after, and no further event
+/// arrives once it catches up, so retile at the opening cadence for this long.
+const CANCELLED_CYCLE_RETRY: Duration = Duration::from_millis(500);
 
 fn opening_recheck(
     now: Instant,
@@ -112,6 +117,12 @@ fn opening_recheck(
     let deadline = until?;
     let next = now + WINDOW_OPENING_RECHECK;
     (frontmost? == missing? && next <= deadline).then_some(next)
+}
+
+/// The next retile while a cancelled cycle's retry window is open.
+fn cancelled_cycle_recheck(now: Instant, until: Option<Instant>) -> Option<Instant> {
+    let next = now + WINDOW_OPENING_RECHECK;
+    (next <= until?).then_some(next)
 }
 
 /// How long since the last refresh a retile without an event waits.
@@ -223,6 +234,7 @@ pub(crate) enum WorkerAction {
     /// under the pointer.
     Swipe(Swipe, (i32, i32)),
     MoveFocused(WorkspaceId),
+    MoveFocusedFollow(WorkspaceId),
     MoveApp(String, WorkspaceId),
     CycleFocus,
     /// Option-Shift-backtick: the same ring as `CycleFocus`, walked backward.
@@ -255,6 +267,9 @@ impl WorkerAction {
             Self::MoveWorkspaceToDisplay(_) => "move workspace to display queued".into(),
             Self::Swipe(..) => "swipe queued".into(),
             Self::MoveFocused(workspace) => format!("move to workspace {workspace} queued"),
+            Self::MoveFocusedFollow(workspace) => {
+                format!("move and switch to workspace {workspace} queued")
+            }
             Self::MoveApp(_, workspace) => format!("move app to workspace {workspace} queued"),
             Self::CycleFocus => "focus cycle queued".into(),
             Self::CycleFocusPrevious => "reverse focus cycle queued".into(),

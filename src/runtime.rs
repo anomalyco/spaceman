@@ -178,21 +178,10 @@ impl Engine {
         first: &PhysicalWindowId,
         second: &PhysicalWindowId,
     ) -> bool {
-        let first = self.slot_for_window(first);
-        let second = self.slot_for_window(second);
-        let Some((first, second)) = first.zip(second).filter(|(first, second)| first != second)
-        else {
+        let Some(second) = self.slot_for_window(second) else {
             return false;
         };
-        // Swap inside the requested layout so swapping two tiles while a
-        // minimum-width fit temporarily stacks them does not save that stack.
-        let mut layout = self.layout.clone();
-        if !layout.swap(first, second) {
-            return false;
-        }
-        self.layout = layout;
-        self.commit_layout();
-        true
+        self.edit_requested(first, |layout, first| layout.swap(first, second))
     }
 
     /// Reads a window the user resized to `current` as the split boundaries it moved.
@@ -303,7 +292,7 @@ impl Engine {
             crate::Axis::Horizontal => cell.width,
             crate::Axis::Vertical => cell.height,
         };
-        self.edit_slot(window, |layout, slot| {
+        self.edit_weights(window, |layout, slot| {
             layout.resize_to(slot, axis, target, canvas)
         })
     }
@@ -313,7 +302,7 @@ impl Engine {
         window: &PhysicalWindowId,
         direction: crate::Direction,
     ) -> bool {
-        self.edit_slot(window, |layout, slot| {
+        self.edit_requested(window, |layout, slot| {
             layout.create_implicit_split(slot, direction)
         })
     }
@@ -327,7 +316,7 @@ impl Engine {
         let Some(target) = self.slot_for_window(target) else {
             return false;
         };
-        self.edit_slot(moved, |layout, moved| {
+        self.edit_requested(moved, |layout, moved| {
             layout.move_relative(moved, target, direction)
         })
     }
@@ -372,7 +361,10 @@ impl Engine {
             .map(|slot| slot.id)
     }
 
-    fn edit_slot(
+    /// Edits the layout on display, a fit included, and saves it. Only for
+    /// size edits through a fit that keeps the requested grouping (see
+    /// `edit_weights`); structural edits go through `edit_requested`.
+    fn edit_shown(
         &mut self,
         window: &PhysicalWindowId,
         op: impl FnOnce(&mut LayoutTree, crate::SlotId) -> bool,
@@ -381,6 +373,25 @@ impl Engine {
             return false;
         };
         let mut layout = self.display_layout().clone();
+        if !op(&mut layout, slot) {
+            return false;
+        }
+        self.layout = layout;
+        self.commit_layout();
+        true
+    }
+
+    /// Edits the requested layout, never the temporary fit on display, so a
+    /// structural edit made while a fit stacks tiles does not save the stack.
+    fn edit_requested(
+        &mut self,
+        window: &PhysicalWindowId,
+        op: impl FnOnce(&mut LayoutTree, crate::SlotId) -> bool,
+    ) -> bool {
+        let Some(slot) = self.slot_for_window(window) else {
+            return false;
+        };
+        let mut layout = self.layout.clone();
         if !op(&mut layout, slot) {
             return false;
         }
@@ -404,7 +415,7 @@ impl Engine {
             .and_then(|fit| fit.tree.as_mut())
             .filter(|tree| tree.regroups(requested))
         else {
-            return self.edit_slot(window, op);
+            return self.edit_shown(window, op);
         };
         let Some(slot) = self
             .model

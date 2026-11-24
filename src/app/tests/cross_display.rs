@@ -730,3 +730,115 @@ fn display_pointer_follow_uses_dragged_floats_actual_display() {
     );
     assert_eq!(warps(&rt), vec![(1250, 170)]);
 }
+
+#[test]
+fn move_app_retires_confirmed_closed_hidden_window_and_moves_live_siblings() {
+    let third = WorkspaceId::new(3).unwrap();
+    let other_app_win = crate::PhysicalWindowId {
+        app: AppInstanceId {
+            pid: 2,
+            launched_at: 2,
+        },
+        window_id: 90,
+    };
+    let make_fixture = || {
+        let windows = [
+            (window(10), frame(50)),
+            (window(20), frame(350)),
+            (window(30), frame(650)),
+        ];
+        let mut obs = observation_for_windows("com.example.Test", &window(10), &windows);
+        obs.applications
+            .extend(observation_for("com.example.Other", &other_app_win, frame(50)).applications);
+        let backend = FakeBackend {
+            frames: windows
+                .into_iter()
+                .chain([(other_app_win.clone(), frame(50))])
+                .collect(),
+            focused: Some(other_app_win.clone()),
+            frontmost: Some(other_app_win.app.clone()),
+            observation: Some(obs),
+            running_apps: Some([other_app_win.app.clone(), window(10).app].into()),
+            ..FakeBackend::default()
+        };
+        let mut rt = runtime(backend);
+        bind(&mut rt, WorkspaceId::ONE, &other_app_win);
+        for id in [10, 20, 30] {
+            bind(&mut rt, WorkspaceId::TWO, &window(id));
+        }
+        rt.switch(WorkspaceId::TWO, outputs(), &AtomicBool::new(false))
+            .unwrap();
+        rt.switch(WorkspaceId::ONE, outputs(), &AtomicBool::new(false))
+            .unwrap();
+        rt
+    };
+
+    // Closed window in first, middle, or last position is retired while live siblings move to 3.
+    for closed_id in [10, 20, 30] {
+        let mut rt = make_fixture();
+        rt.backend.frames.remove(&window(closed_id));
+        for _ in 0..3 {
+            rt.cycle(outputs(), &AtomicBool::new(false)).unwrap();
+        }
+        let status = rt
+            .move_app(
+                "com.example.Test",
+                third,
+                outputs(),
+                &AtomicBool::new(false),
+            )
+            .expect("closed hidden window must not abort moving live windows");
+        assert_eq!(status.failed, 0);
+        assert!(status.hud.is_some());
+        assert_eq!(rt.workspaces.workspace_of(&window(closed_id)), None);
+        assert!(!rt.parked.contains_key(&window(closed_id)));
+        assert!(!rt.backend.persisted.contains_key(&window(closed_id)));
+        for live_id in [10, 20, 30].into_iter().filter(|id| *id != closed_id) {
+            assert_eq!(rt.workspaces.workspace_of(&window(live_id)), Some(third));
+            assert!(rt.parked.contains_key(&window(live_id)));
+        }
+    }
+
+    // If every retained binding of the app is confirmed closed, retire them and report none found.
+    let mut all_closed = make_fixture();
+    for id in [10, 20, 30] {
+        all_closed.backend.frames.remove(&window(id));
+    }
+    let err = all_closed
+        .move_app(
+            "com.example.Test",
+            third,
+            outputs(),
+            &AtomicBool::new(false),
+        )
+        .err()
+        .unwrap();
+    assert_eq!(err, "No managed window found for com.example.Test");
+    for id in [10, 20, 30] {
+        assert_eq!(all_closed.workspaces.workspace_of(&window(id)), None);
+        assert!(!all_closed.parked.contains_key(&window(id)));
+    }
+
+    // Control: transient AX Gone while the window server still lists the window must NOT retire it.
+    let mut transient = make_fixture();
+    transient
+        .backend
+        .server_frames
+        .insert(window(10), transient.backend.frames[&window(10)]);
+    transient.backend.frames.remove(&window(10));
+    let err = transient
+        .move_app(
+            "com.example.Test",
+            third,
+            outputs(),
+            &AtomicBool::new(false),
+        )
+        .err()
+        .unwrap();
+    assert_eq!(err, "Window could not be parked in the target workspace");
+    assert_eq!(
+        transient.workspaces.workspace_of(&window(10)),
+        Some(WorkspaceId::TWO)
+    );
+    assert!(transient.parked.contains_key(&window(10)));
+}
