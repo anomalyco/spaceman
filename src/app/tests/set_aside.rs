@@ -43,3 +43,24 @@ fn an_app_keeps_its_tiles_while_one_of_its_windows_is_still_settling() {
     }
     assert_ne!(runtime.backend.frames[&kept], column(0, 2560));
 }
+
+#[test]
+fn a_parked_window_keeps_its_tile_through_the_settle() {
+    let (mut runtime, kept, missing) = ordered_out_pair("com.example.Parked");
+    let right = runtime.backend.server_frames[&missing];
+    runtime.parked.insert(missing.clone(), right);
+    runtime
+        .recently_parked
+        .insert(missing.clone(), Instant::now());
+    runtime.backend.set_aside.insert(missing.clone());
+
+    runtime
+        .cycle(studio_display(), &AtomicBool::new(false))
+        .unwrap();
+
+    assert_eq!(
+        runtime.workspaces.workspace_of(&missing),
+        Some(WorkspaceId::ONE)
+    );
+    assert_eq!(runtime.backend.frames[&kept], column(0, 1280));
+}
