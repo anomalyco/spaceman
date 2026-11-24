@@ -73,6 +73,8 @@ pub(crate) fn blank_fixture() -> Ui {
         running: Vec::new(),
         displays: panes::workspaces::fixture_pair(),
         displays_at: None,
+        highlight_lab: None,
+        highlight_feature: None,
         error: None,
         fixture: true,
     };
@@ -87,6 +89,8 @@ pub(crate) fn reset_fixture(ui: &mut Ui, pane: Pane) {
     ui.hud_preview = None;
     ui.displays = panes::workspaces::fixture_pair();
     ui.displays_at = None;
+    ui.highlight_lab = None;
+    ui.highlight_feature = None;
     ui.doc = Doc::parse(include_str!("../fixtures/config.toml"));
     ui.look_up_apps();
     ui.agent = Some(UiAgentSnapshot {

@@ -43,12 +43,50 @@ pub fn bring_window_forward(window: &rune::AppHandle<Ui>) {
     window.open();
 }
 
+fn launch_links() -> Vec<spaceman::deep_link::DeepLink> {
+    std::env::args()
+        .skip(1)
+        .filter(|arg| arg.contains("://"))
+        .filter_map(|arg| match spaceman::deep_link::parse_url(&arg) {
+            Ok(link) => Some(link),
+            Err(error) => {
+                let line = format!("spaceman: ignored launch deep link ({error})\n");
+                drop(std::io::Write::write_all(
+                    &mut std::io::stderr().lock(),
+                    line.as_bytes(),
+                ));
+                None
+            }
+        })
+        .collect()
+}
+
 pub fn run() -> Result<(), String> {
-    let (prepared, bridge) = spaceman::app::prepare()?;
+    let links = launch_links();
+    let (prepared, bridge) = match spaceman::app::prepare() {
+        Ok(ready) => ready,
+        Err(error) => {
+            // If another Spaceman agent already owns control.sock, hand off any
+            // launch deep links to the running instance and exit cleanly.
+            if !links.is_empty() {
+                let mut forwarded = false;
+                for link in &links {
+                    if spaceman::control::send(&["open".into(), link.canonical_url()]).is_ok() {
+                        forwarded = true;
+                    }
+                }
+                if forwarded {
+                    return Ok(());
+                }
+            }
+            return Err(error);
+        }
+    };
+    let initial_target = links.last().map(spaceman::deep_link::DeepLink::resolve);
     let accessibility = spaceman::macos::accessibility_trusted();
     let initial_tour = crate::onboarding::launch_step(accessibility);
-    let open_at_launch = initial_tour.is_some() || !accessibility;
-    let mut app = crate::live_app(bridge, initial_tour, accessibility)
+    let open_at_launch = initial_tour.is_some() || !accessibility || initial_target.is_some();
+    let mut app = crate::live_app(bridge, initial_tour, accessibility, initial_target)
         .args(Vec::new())
         .accessory();
     app = if open_at_launch {
@@ -91,10 +129,19 @@ fn start_main_thread() {
         return;
     };
     let settings_window = window.clone();
+    let target_window = window.clone();
     let setup_window = window.clone();
     let callbacks = HostCallbacks {
         open_settings: Box::new(move || {
             bring_window_forward(&settings_window);
+            Ok(())
+        }),
+        open_target: Box::new(move |target| {
+            target_window.update_if(move |ui, _| {
+                ui.open_target(target);
+                true
+            });
+            bring_window_forward(&target_window);
             Ok(())
         }),
         open_setup: Box::new(move || {

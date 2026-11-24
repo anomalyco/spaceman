@@ -3,6 +3,7 @@ pub mod app;
 pub mod config;
 #[cfg(target_os = "macos")]
 pub mod control;
+pub mod deep_link;
 pub mod geometry;
 #[cfg(target_os = "macos")]
 #[allow(unsafe_code)]
@@ -41,6 +42,9 @@ pub mod swipe;
 mod termination;
 #[cfg(target_os = "macos")]
 mod updater;
+#[cfg(target_os = "macos")]
+#[allow(unsafe_code)]
+mod url_handler;
 pub mod window_memory;
 pub mod workspace;
 

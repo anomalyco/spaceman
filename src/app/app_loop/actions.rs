@@ -89,6 +89,14 @@ impl MainThreadAgent {
                         status_item::set_status(&format!("Could not open Settings: {error}"));
                     }
                 }
+                Action::OpenTarget(target) => {
+                    if let Some(note) = &target.diagnostic {
+                        log_event!("deep link: {note}");
+                    }
+                    if let Err(error) = (self.callbacks.open_target)(target) {
+                        status_item::set_status(&format!("Could not open Settings: {error}"));
+                    }
+                }
                 Action::OpenSetup => {
                     if let Err(error) = (self.callbacks.open_setup)() {
                         status_item::set_status(&format!("Could not open Setup: {error}"));

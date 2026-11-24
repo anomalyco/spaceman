@@ -24,6 +24,10 @@ impl MainThreadAgent {
                     Ok(self.snapshot().to_settings_json().to_string())
                 }
                 ControlCommand::App(ref action) => self.queue_action(action.clone(), "queued"),
+                ControlCommand::Open(ref link) => {
+                    let ack = format!("opened {}", link.canonical_url());
+                    self.queue_action(Action::OpenTarget(link.resolve()), &ack)
+                }
                 ControlCommand::Debug => self
                     .latest_debug
                     .as_ref()

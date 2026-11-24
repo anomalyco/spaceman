@@ -14,6 +14,7 @@ use std::{
 use crate::{
     DisplaySelector, DisplayTarget, ResizeDirection, WorkspaceId,
     app::{Action, WorkerAction},
+    deep_link::{self, DeepLink},
 };
 
 const MAX_REQUEST_BYTES: u64 = 4 * 1024;
@@ -21,7 +22,7 @@ const REQUEST_READ_TIMEOUT: Duration = Duration::from_millis(250);
 const RESPONSE_TIMEOUT: Duration = Duration::from_secs(5);
 const CLIENT_TIMEOUT: Duration = Duration::from_secs(6);
 
-pub const COMMAND_USAGE: &str = "status|debug|settings|open-settings|open-accessibility|check-for-updates|toggle-launch-at-login|switch WORKSPACE|back-and-forth|move-workspace [next|prev|DISPLAY]|move WORKSPACE|move-app ID WORKSPACE|focus DIR|focus next|move-direction DIR|layout|fullscreen|float|resize shrink|resize grow|balance|pause|resume|retile|wrong|restart|quit";
+pub const COMMAND_USAGE: &str = "status|debug|settings|open TARGET|open-settings|open-accessibility|check-for-updates|toggle-launch-at-login|switch WORKSPACE|back-and-forth|move-workspace [next|prev|DISPLAY]|move WORKSPACE|move-app ID WORKSPACE|focus DIR|focus next|move-direction DIR|layout|fullscreen|float|resize shrink|resize grow|balance|pause|resume|retile|wrong|restart|quit";
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub(crate) enum Command {
@@ -29,6 +30,8 @@ pub(crate) enum Command {
     Debug,
     /// What the settings window shows that only the agent knows.
     Settings,
+    /// Open Settings to a validated `spaceman://` deep-link target.
+    Open(DeepLink),
     App(crate::app::Action),
     Queue(WorkerAction),
     Pause,
@@ -197,6 +200,10 @@ fn parse_line(line: &str) -> Result<Command, String> {
         ["status"] => return Ok(Command::Status),
         ["debug"] => return Ok(Command::Debug),
         ["settings"] => return Ok(Command::Settings),
+        ["open", target] => {
+            let link = deep_link::parse_input(target).map_err(|error| error.to_string())?;
+            return Ok(Command::Open(link));
+        }
         ["open-settings"] => return Ok(Command::App(Action::OpenSettings)),
         ["open-accessibility"] => return Ok(Command::App(Action::OpenAccessibility)),
         ["check-for-updates"] => return Ok(Command::App(Action::CheckForUpdates)),
@@ -306,6 +313,22 @@ mod tests {
         assert_eq!(queued("focus next"), WorkerAction::CycleFocus);
         assert_eq!(queued("fullscreen"), WorkerAction::ToggleFullscreenLayout);
         assert_eq!(queued("float"), WorkerAction::ToggleFloat);
+        assert_eq!(
+            parse_line("open spaceman://settings/workspaces").unwrap(),
+            Command::Open(DeepLink::Settings {
+                pane: Some(deep_link::DeepLinkPane::Workspaces),
+                unknown_pane: None,
+                focus: None,
+            })
+        );
+        assert_eq!(
+            parse_line("open labs/scrolling-strip").unwrap(),
+            Command::Open(DeepLink::Labs {
+                slug: Some("scrolling-strip".into()),
+            })
+        );
+        assert!(parse_line("open https://evil.example/labs").is_err());
+        assert!(parse_line("open labs/%2e%2e").is_err());
     }
 
     #[test]

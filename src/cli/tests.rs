@@ -100,6 +100,8 @@ fn help_and_version_exit_zero_on_stdout() {
         &["ctl", "-h"][..],
         &["ctl", "help"][..],
         &["help", "ctl"][..],
+        &["open", "--help"][..],
+        &["help", "open"][..],
         &["snapshot", "--help"][..],
         &["displays", "--help"][..],
     ] {

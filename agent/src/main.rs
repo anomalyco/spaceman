@@ -61,6 +61,11 @@ pub struct Ui {
     pub(crate) displays: Vec<panes::workspaces::ConnectedDisplay>,
     /// When the display list was last read, on Rune's clock.
     pub(crate) displays_at: Option<f64>,
+    /// Lab slug requested by a `spaceman://labs/<slug>` deep link, preserved
+    /// cleanly for Labs cards to highlight.
+    pub highlight_lab: Option<String>,
+    /// Setting or feature slug requested by a `spaceman://` deep link.
+    pub highlight_feature: Option<String>,
     /// The last save that failed.
     pub error: Option<String>,
     /// Scenes render fixed data and ignore the live agent and file.
@@ -74,6 +79,7 @@ impl Ui {
         bridge: UiBridge,
         initial_tour: Option<onboarding::Step>,
         accessibility: bool,
+        initial_target: Option<spaceman::deep_link::OpenTarget>,
     ) -> Ui {
         let mut ui = Ui {
             pane: Pane::Rules,
@@ -93,12 +99,17 @@ impl Ui {
             running: Vec::new(),
             displays: Vec::new(),
             displays_at: None,
+            highlight_lab: None,
+            highlight_feature: None,
             error: None,
             fixture: false,
         };
         ui.look_up_apps();
         if let Some(step) = initial_tour {
             ui.tour = Some(onboarding::Tour::from_launch(step, accessibility, &mut ui));
+        }
+        if let Some(target) = initial_target {
+            ui.open_target(target);
         }
         ui
     }
@@ -119,10 +130,50 @@ impl Ui {
         self.navigated = true;
         self.menu = None;
         self.drag = None;
+        self.highlight_lab = None;
+        self.highlight_feature = None;
         if pane == Pane::Workspaces {
             // Read the displays before the next frame paints them.
             self.displays_at = None;
         }
+    }
+
+    /// Opens Settings onto a validated `spaceman://` deep-link target.
+    ///
+    /// Security invariant: only changes UI pane selection and highlight state;
+    /// never mutates `self.doc` or enables any setting/Lab.
+    pub fn open_target(&mut self, target: spaceman::deep_link::OpenTarget) {
+        onboarding::dismiss(self);
+        self.hud_preview = None;
+        let pane = match target.pane {
+            Some(deep_pane) => match Pane::from_deep_link(deep_pane) {
+                Some(pane) => pane,
+                None => {
+                    let line = format!(
+                        "spaceman: deep link pane '{}' is not registered in this build; opening General\n",
+                        deep_pane.as_str()
+                    );
+                    drop(std::io::Write::write_all(
+                        &mut std::io::stderr().lock(),
+                        line.as_bytes(),
+                    ));
+                    Pane::General
+                }
+            },
+            None => {
+                if let Some(note) = &target.diagnostic {
+                    let line = format!("spaceman: deep link: {note}\n");
+                    drop(std::io::Write::write_all(
+                        &mut std::io::stderr().lock(),
+                        line.as_bytes(),
+                    ));
+                }
+                Pane::General
+            }
+        };
+        self.select_pane(pane);
+        self.highlight_lab = target.highlight_lab;
+        self.highlight_feature = target.highlight_feature;
     }
 
     /// Releases the first-run setup tour's hold on automatic tiling.
@@ -341,6 +392,25 @@ fn on_reopen(ui: &mut Ui, _has_visible_windows: bool, _tx: &mut Tx) -> bool {
     true
 }
 
+#[cfg(target_os = "macos")]
+fn on_open_url(ui: &mut Ui, link: &str, _tx: &mut Tx) {
+    match spaceman::deep_link::parse_url(link) {
+        Ok(parsed) => {
+            ui.open_target(parsed.resolve());
+            if let Some(window) = &ui.window {
+                host::bring_window_forward(window);
+            }
+        }
+        Err(error) => {
+            let line = format!("spaceman: ignored deep link ({error})\n");
+            drop(std::io::Write::write_all(
+                &mut std::io::stderr().lock(),
+                line.as_bytes(),
+            ));
+        }
+    }
+}
+
 fn spec() -> AppSpec<Ui> {
     AppSpec {
         title: "Spaceman",
@@ -391,14 +461,16 @@ pub(crate) fn live_app(
     bridge: spaceman::app::UiBridge,
     initial_tour: Option<onboarding::Step>,
     accessibility: bool,
+    initial_target: Option<spaceman::deep_link::OpenTarget>,
 ) -> rune::App<Ui> {
     let doc = Doc::load();
     let initial_hud = doc.hud();
     let initial_style = doc.hud_style();
     let hud_bridge = bridge.clone();
     let mut app = base_app()
-        .init(move || Ui::load_live(doc, bridge, initial_tour, accessibility))
-        .on_reopen(on_reopen);
+        .init(move || Ui::load_live(doc, bridge, initial_tour, accessibility, initial_target))
+        .on_reopen(on_reopen)
+        .on_open_url(on_open_url);
     let hud_sink = Arc::new(hud::LiveHudSink::new(hud_bridge, app.handle()));
     let hud_driver = hud::install(&mut app, initial_hud, initial_style, hud_sink);
     app.handle().update_if(move |ui, _| {
@@ -430,4 +502,51 @@ fn main() {
     }
     #[cfg(not(target_os = "macos"))]
     base_app().run();
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use spaceman::deep_link::parse_url;
+
+    #[test]
+    fn open_target_selects_pane_and_preserves_highlights_without_mutating_config() {
+        let mut ui = playground::blank_fixture();
+        let initial_hud = ui.doc.hud();
+        let initial_rules = ui.doc.rules().len();
+
+        let workspaces = parse_url("spaceman://settings/workspaces")
+            .unwrap()
+            .resolve();
+        ui.open_target(workspaces);
+        assert_eq!(ui.pane, Pane::Workspaces);
+        assert_eq!(ui.highlight_lab, None);
+        assert_eq!(ui.highlight_feature, None);
+
+        let lab = parse_url("spaceman://labs/scrolling-strip")
+            .unwrap()
+            .resolve();
+        ui.open_target(lab);
+        // Labs pane isn't registered yet, so it falls back to General while
+        // preserving highlight_lab for when Labs cards are present.
+        assert_eq!(ui.pane, Pane::General);
+        assert_eq!(ui.highlight_lab.as_deref(), Some("scrolling-strip"));
+        assert_eq!(ui.highlight_feature.as_deref(), Some("scrolling-strip"));
+
+        let hud_feature = parse_url("spaceman://features/hud").unwrap().resolve();
+        ui.open_target(hud_feature);
+        assert_eq!(ui.pane, Pane::General);
+        assert_eq!(ui.highlight_lab, None);
+        assert_eq!(ui.highlight_feature.as_deref(), Some("hud"));
+
+        // Manual pane switching clears deep-link highlights.
+        ui.select_pane(Pane::Shortcuts);
+        assert_eq!(ui.pane, Pane::Shortcuts);
+        assert_eq!(ui.highlight_lab, None);
+        assert_eq!(ui.highlight_feature, None);
+
+        // Security invariant: config doc is untouched.
+        assert_eq!(ui.doc.hud(), initial_hud);
+        assert_eq!(ui.doc.rules().len(), initial_rules);
+    }
 }

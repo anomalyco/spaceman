@@ -84,6 +84,10 @@ fn main() -> ExitCode {
         #[cfg(target_os = "macos")]
         ("ctl", _) => spaceman::control::send(&arguments),
         #[cfg(target_os = "macos")]
+        ("open", [target]) => spaceman::deep_link::parse_input(target)
+            .map_err(|error| error.to_string())
+            .and_then(|link| spaceman::control::send(&["open".into(), link.canonical_url()])),
+        #[cfg(target_os = "macos")]
         ("hud", []) => run_hud(),
         #[cfg(target_os = "macos")]
         ("retile", [] | ["--apply"]) => run_retile(apply).and_then(to_json),
@@ -134,6 +138,8 @@ const KNOWN_COMMANDS: &[&str] = &[
     "displays",
     #[cfg(target_os = "macos")]
     "ctl",
+    #[cfg(target_os = "macos")]
+    "open",
     #[cfg(target_os = "macos")]
     "hud",
     #[cfg(target_os = "macos")]

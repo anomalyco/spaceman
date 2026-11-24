@@ -1,6 +1,8 @@
 // Serves Spaceman's static site (dist/) under /spaceman on anoma.ly. The route also matches
 // paths like /spacemanx, which aren't ours. /spaceman redirects to /spaceman/ so the page's
 // relative asset URLs resolve under it.
+import { parseTargetString, renderBounceHtml, resolveBounceRoute } from "./src/deepLinks.ts"
+
 const BASE = "/spaceman"
 const RELEASE_SERVICE = "https://anoma.ly/release"
 
@@ -23,6 +25,21 @@ export default {
     const path = stripBase(url.pathname)
     if (path === undefined) return new Response("Not found", { status: 404 })
     if (path.startsWith("/download/")) return download(request, path.slice("/download/".length))
+    const bounce = resolveBounceRoute(path, url.searchParams)
+    if (bounce) {
+      if (request.method !== "GET" && request.method !== "HEAD") {
+        return new Response("Method not allowed", { status: 405, headers: { Allow: "GET, HEAD" } })
+      }
+      const isOk = bounce.kind === "ok"
+      const target = isOk ? bounce.target : parseTargetString("settings")!
+      const html = renderBounceHtml(target, { allowQueryOverride: false, invalidNote: !isOk })
+      const headers = new Headers({
+        "Content-Type": "text/html; charset=utf-8",
+        "Cache-Control": isOk ? "public, max-age=0, must-revalidate" : "no-store",
+      })
+      secure(headers)
+      return new Response(request.method === "HEAD" ? null : html, { status: isOk ? 200 : 400, headers })
+    }
     const assetUrl = new URL(url)
     assetUrl.pathname = path
     const response = await env.ASSETS.fetch(new Request(assetUrl, request))

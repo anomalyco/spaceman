@@ -98,6 +98,24 @@ impl Pane {
         let index = digit.to_digit(10)?.checked_sub(1)? as usize;
         Self::ALL.get(index).copied()
     }
+
+    /// Maps a `spaceman://` deep-link pane to a registered Settings pane.
+    ///
+    /// Returns `None` for panes not registered in this build (such as `Labs`
+    /// or `Layout` before those panes are wired in) so the caller can fall back
+    /// cleanly while preserving `highlight_lab` / `highlight_feature`.
+    pub const fn from_deep_link(pane: spaceman::deep_link::DeepLinkPane) -> Option<Pane> {
+        match pane {
+            spaceman::deep_link::DeepLinkPane::General => Some(Pane::General),
+            spaceman::deep_link::DeepLinkPane::Rules => Some(Pane::Rules),
+            spaceman::deep_link::DeepLinkPane::Workspaces => Some(Pane::Workspaces),
+            spaceman::deep_link::DeepLinkPane::Shortcuts => Some(Pane::Shortcuts),
+            spaceman::deep_link::DeepLinkPane::Activity => Some(Pane::Activity),
+            spaceman::deep_link::DeepLinkPane::Labs
+            | spaceman::deep_link::DeepLinkPane::Layout
+            | spaceman::deep_link::DeepLinkPane::WhatsNew => None,
+        }
+    }
 }
 
 pub(crate) const SCENES: &[Scene] = &[

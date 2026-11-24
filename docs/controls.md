@@ -140,6 +140,9 @@ spaceman ctl retile
 spaceman ctl wrong
 spaceman ctl restart
 spaceman ctl quit
+spaceman open spaceman://settings/workspaces
+spaceman open spaceman://labs/scrolling-strip
+spaceman ctl open features/gaps
 spaceman hud
 spaceman doctor
 spaceman doctor 24
@@ -179,3 +182,20 @@ arrangement. It reads files directly and works while the agent is stopped. The j
 The agent listens at `~/Library/Application Support/Spaceman/control.sock`; both socket and lock file
 are mode `0600`. Requests are newline-delimited, limited to 4 KiB, and served locally over a Unix
 socket. The lock prevents two agents from running at once.
+
+## Deep Links (`spaceman://`)
+
+Spaceman registers the `spaceman://` URL scheme (and clickable web bounce links under
+`https://anoma.ly/spaceman/labs/<slug>`, `https://anoma.ly/spaceman/features/<slug>`, and
+`https://anoma.ly/spaceman/open/?to=...`) to open Settings directly onto a pane, feature, or Lab:
+
+- `spaceman://settings` — open Settings
+- `spaceman://settings/<pane>` — open `general`, `rules`, `workspaces`, `shortcuts`, `labs`, `layout`, or `activity` (plus optional `/<focus>`)
+- `spaceman://labs` / `spaceman://labs/<slug>` — open Settings › Labs and highlight `<slug>` (e.g. `scrolling-strip`, `playground`)
+- `spaceman://features/<slug>` — open the Settings pane and highlight for a feature (e.g. `workspaces`, `rules`, `shortcuts`, `gaps`, `hud`)
+
+Deep links only open Settings and highlight the requested pane or card. They never modify
+`config.toml`, never enable a Lab, and never run window-tiling or destructive commands.
+Unrecognized hosts, panes, or slugs log a diagnostic line and open Settings cleanly; malformed or
+percent-encoded URLs are rejected. You can also drive deep links locally over `control.sock` with
+`spaceman open <url-or-target>` or `spaceman ctl open <url-or-target>`.

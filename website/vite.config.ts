@@ -2,6 +2,7 @@ import { readFileSync } from "node:fs";
 import tailwindcss from "@tailwindcss/vite";
 import react from "@vitejs/plugin-react";
 import { defineConfig, type Plugin } from "vite";
+import { parseTargetString, renderBounceHtml, resolveBounceRoute } from "./src/deepLinks.ts";
 import { DOWNLOAD_URL, RELEASE_VERSION, SITE_URL } from "./src/release.ts";
 
 // The agent files that come from elsewhere: the JSON-LD, from the release the page offers, and
@@ -28,9 +29,23 @@ function forAgents(): Plugin {
     transformIndexHtml: () => [{ tag: "script", attrs: { type: "application/ld+json" }, children: jsonLd, injectTo: "head" }],
     configureServer(server) {
       server.middlewares.use((req, res, next) => {
-        if (!req.url?.split("?")[0].endsWith("/skill.md")) return next();
-        res.setHeader("Content-Type", "text/markdown; charset=utf-8");
-        res.end(skill());
+        if (!req.url) return next();
+        const url = new URL(req.url, "http://localhost");
+        if (url.pathname.endsWith("/skill.md")) {
+          res.setHeader("Content-Type", "text/markdown; charset=utf-8");
+          res.end(skill());
+          return;
+        }
+        const stripped = url.pathname.startsWith("/spaceman/")
+          ? url.pathname.slice("/spaceman".length)
+          : url.pathname;
+        const bounce = resolveBounceRoute(stripped, url.searchParams);
+        if (!bounce) return next();
+        const isOk = bounce.kind === "ok";
+        const target = isOk ? bounce.target : parseTargetString("settings")!;
+        res.statusCode = isOk ? 200 : 400;
+        res.setHeader("Content-Type", "text/html; charset=utf-8");
+        res.end(renderBounceHtml(target, { allowQueryOverride: false, invalidNote: !isOk }));
       });
     },
     generateBundle() {

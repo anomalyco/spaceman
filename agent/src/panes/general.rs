@@ -45,42 +45,56 @@ pub fn pane(ui: &Ui, p: Paint) -> El {
             );
             sections.push(controls::card(p, "accessibility-card", vec![access]));
         }
-        let tiling = if agent.accessibility {
-            controls::toggle_row(
-                p,
-                "tiling",
-                "Automatic tiling",
-                (!agent.automatic)
-                    .then(|| ("Windows stay where you place them.".into(), p.muted())),
-                agent.automatic,
-                |ui| ui.toggle_automatic(),
-            )
-        } else {
+        let focus = ui.highlight_feature.as_deref();
+        let highlight = |el: El, key: &str| {
+            if focus == Some(key) {
+                el.fill(c.layer_02).border(p.hair, c.border_focus)
+            } else {
+                el
+            }
+        };
+        let tiling = highlight(
+            if agent.accessibility {
+                controls::toggle_row(
+                    p,
+                    "tiling",
+                    "Automatic tiling",
+                    (!agent.automatic)
+                        .then(|| ("Windows stay where you place them.".into(), p.muted())),
+                    agent.automatic,
+                    |ui| ui.toggle_automatic(),
+                )
+            } else {
+                controls::setting_row(
+                    p,
+                    "tiling",
+                    "Automatic tiling",
+                    Some(("Requires Accessibility permission.".into(), p.muted())),
+                    controls::status_dot(c.border_strong),
+                )
+            },
+            "tiling",
+        );
+        let hud = highlight(
             controls::setting_row(
                 p,
-                "tiling",
-                "Automatic tiling",
-                Some(("Requires Accessibility permission.".into(), p.muted())),
-                controls::status_dot(c.border_strong),
-            )
-        };
-        let hud = controls::setting_row(
-            p,
+                "hud",
+                "Workspace HUD",
+                Some(("Shown when switching workspaces.".into(), p.muted())),
+                SegmentedControl::new(
+                    &HUD_MODES.map(|(label, _)| label.to_owned()),
+                    Some(hud_mode_index(ui.doc.hud(), ui.doc.hud_style())),
+                )
+                .fit()
+                .on_pick(|ui: &mut Ui, index, _: &mut Tx| {
+                    if let Some((_, mode)) = HUD_MODES.get(index) {
+                        ui.set_hud(*mode);
+                    }
+                })
+                .build(p.k)
+                .key("hud-mode-picker"),
+            ),
             "hud",
-            "Workspace HUD",
-            Some(("Shown when switching workspaces.".into(), p.muted())),
-            SegmentedControl::new(
-                &HUD_MODES.map(|(label, _)| label.to_owned()),
-                Some(hud_mode_index(ui.doc.hud(), ui.doc.hud_style())),
-            )
-            .fit()
-            .on_pick(|ui: &mut Ui, index, _: &mut Tx| {
-                if let Some((_, mode)) = HUD_MODES.get(index) {
-                    ui.set_hud(*mode);
-                }
-            })
-            .build(p.k)
-            .key("hud-mode-picker"),
         );
         let (on, description) = match &agent.launch_at_login {
             UiLaunchAtLogin::On => (true, None),
@@ -94,41 +108,58 @@ pub fn pane(ui: &Ui, p: Paint) -> El {
             ),
             UiLaunchAtLogin::Failed(error) => (false, Some((error.clone(), c.danger.fg))),
         };
-        let login = controls::toggle_row(p, "login", "Launch at Login", description, on, |ui| {
-            ui.toggle_launch_at_login();
-        });
+        let login = highlight(
+            controls::toggle_row(p, "login", "Launch at Login", description, on, |ui| {
+                ui.toggle_launch_at_login();
+            }),
+            "login",
+        );
         sections.push(controls::card(p, "agent", vec![tiling, hud, login]));
     }
     sections.push(crate::updates::section(ui, p));
-    let config_file = controls::setting_row(
-        p,
-        "file",
-        "config.toml",
-        Some((ui.doc.display_path(), p.muted())),
-        controls::button(
+    let focus = ui.highlight_feature.as_deref();
+    let highlight = |el: El, key: &str| {
+        if focus == Some(key) {
+            el.fill(c.layer_02).border(p.hair, c.border_focus)
+        } else {
+            el
+        }
+    };
+    let config_file = highlight(
+        controls::setting_row(
             p,
-            "reveal",
-            "Show in Finder",
-            ButtonKind::Secondary,
-            |_: &mut Ui, _: &mut Tx| {
-                if let Some(path) = spaceman::config::config_path() {
-                    controls::reveal_in_finder(&path);
-                }
-            },
+            "file",
+            "config.toml",
+            Some((ui.doc.display_path(), p.muted())),
+            controls::button(
+                p,
+                "reveal",
+                "Show in Finder",
+                ButtonKind::Secondary,
+                |_: &mut Ui, _: &mut Tx| {
+                    if let Some(path) = spaceman::config::config_path() {
+                        controls::reveal_in_finder(&path);
+                    }
+                },
+            ),
         ),
+        "config",
     );
-    let setup_tour = controls::setting_row(
-        p,
-        "setup-tour",
-        "Setup tour",
-        None,
-        controls::button(
+    let setup_tour = highlight(
+        controls::setting_row(
             p,
-            "run-tour",
-            "Run Setup Tour…",
-            ButtonKind::Secondary,
-            |ui, _| ui.start_tour(),
+            "setup-tour",
+            "Setup tour",
+            None,
+            controls::button(
+                p,
+                "run-tour",
+                "Run Setup Tour…",
+                ButtonKind::Secondary,
+                |ui, _| ui.start_tour(),
+            ),
         ),
+        "setup-tour",
     );
     sections.push(controls::section(
         p,
