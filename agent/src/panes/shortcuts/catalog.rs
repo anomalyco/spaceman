@@ -184,6 +184,21 @@ pub fn occupant(shortcuts: &Shortcuts, chord: Chord) -> Option<Occupant> {
                 ),
         );
     }
+    if shortcuts.scratchpad
+        && chord.key == Key::Character('\\')
+        && !chord.modifiers.control
+        && !chord.modifiers.command
+        && chord.modifiers.option
+    {
+        return Some(Occupant::Other(
+            if chord.modifiers.shift {
+                "Move window to or from the scratchpad"
+            } else {
+                "Show or hide the scratchpad"
+            }
+            .into(),
+        ));
+    }
     if !shortcuts.defaults {
         return None;
     }
@@ -298,5 +313,14 @@ mod tests {
             occupant(&bound, chord("ctrl+alt+v")).unwrap().title(),
             "Switch workspace 4"
         );
+        let scratchpad = Shortcuts {
+            scratchpad: true,
+            ..Shortcuts::default()
+        };
+        assert_eq!(
+            occupant(&scratchpad, chord("alt+\\")).unwrap().title(),
+            "Show or hide the scratchpad"
+        );
+        assert_eq!(occupant(&defaults, chord("alt+\\")), None);
     }
 }

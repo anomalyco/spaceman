@@ -53,6 +53,7 @@ impl Shortcuts {
         }
         self.defaults != other.defaults
             || self.modifier != other.modifier
+            || self.scratchpad != other.scratchpad
             || meaning(self) != meaning(other)
     }
 
@@ -686,5 +687,10 @@ mod tests {
         );
         assert!(base.differs_from(&modifier));
         assert!(Shortcuts::default().differs_from(&base));
+        let scratchpad = Shortcuts {
+            scratchpad: true,
+            ..base.clone()
+        };
+        assert!(base.differs_from(&scratchpad));
     }
 }
