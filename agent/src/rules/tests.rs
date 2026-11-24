@@ -439,12 +439,72 @@ fn inline_settings_keep_outer_when_something_else_changes() {
 }
 
 #[test]
-fn spacing_without_outer_still_drops_zeros() {
+fn spacing_without_outer_still_drops_an_edge_set_to_zero() {
     use spaceman::spacing::Spacing;
-    let mut doc = gaps("inner = 6\ntop = 0\nleft = 20\n");
-    let before = doc.spacing();
-    doc.set_spacing(Spacing { left: 0, ..before });
+    let mut doc = gaps("inner = 6\nleft = 20\n");
+    doc.set_spacing(Spacing {
+        left: 0,
+        ..doc.spacing()
+    });
     assert_eq!(doc.source(), gaps("inner = 6\n").source());
     doc.set_spacing(Spacing::NONE);
     assert_eq!(doc.source(), "# Mine.\nversion = 1\n");
+}
+
+#[test]
+fn unrelated_edits_leave_an_explicit_zero_for_a_later_outer() {
+    use spaceman::spacing::Spacing;
+    for source in [
+        "version = 1\n\n[settings] # Displays.\n\n[settings.gaps]\ninner = 6\ntop = 0\n",
+        "version = 1\n\n[settings] # Displays.\ngaps = { inner = 6, top = 0 } # Flush.\n",
+        "version = 1\n\n[settings] # Displays.\ngaps = { top = 0 } # Flush.\n",
+    ] {
+        let mut doc = Doc::parse(source);
+        doc.set_spacing(Spacing {
+            single_window_max_width: 1680,
+            ..doc.spacing()
+        });
+        let saved = doc.source();
+        assert_eq!(
+            saved.replace("single_window_max_width = 1680\n", ""),
+            source
+        );
+        let padded = Doc::parse(&saved.replace("top = 0", "outer = 8, top = 0").replace(
+            "inner = 6\nouter = 8, top = 0",
+            "inner = 6\nouter = 8\ntop = 0",
+        ));
+        assert_eq!(padded.error, None);
+        assert_eq!((padded.spacing().top, padded.spacing().left), (0, 8));
+    }
+}
+
+#[test]
+fn edits_keep_the_comments_around_outer() {
+    use spaceman::spacing::Spacing;
+    for source in [
+        "version = 1\n[settings.gaps]\nouter = 8 # Around.\n# Between.\ninner = 6 # Tight.\ntop = 0\n",
+        "version = 1\n[settings]\ngaps = {\n  outer = 8, # Around.\n  inner = 6, # Tight.\n  top = 0,\n}\n",
+    ] {
+        let mut doc = Doc::parse(source);
+        assert_eq!(doc.error, None);
+        // `toml_edit` reflows a multiline inline table even unedited.
+        let unedited = doc.source();
+        assert!(unedited.contains("outer = 8"), "{unedited}");
+        doc.set_spacing(Spacing {
+            inner: 10,
+            ..doc.spacing()
+        });
+        assert_eq!(doc.source(), unedited.replace("inner = 6", "inner = 10"));
+    }
+
+    let source = "version = 1\nsettings = {\n  gaps = { outer = 8 }, # Around.\n  single_window_max_width = 1440, # Wide.\n}\n";
+    let mut doc = Doc::parse(source);
+    assert_eq!(doc.error, None);
+    let unedited = doc.source();
+    assert!(unedited.contains("1440"), "{unedited}");
+    doc.set_spacing(Spacing {
+        single_window_max_width: 1680,
+        ..doc.spacing()
+    });
+    assert_eq!(doc.source(), unedited.replace("1440", "1680"));
 }

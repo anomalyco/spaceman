@@ -8,7 +8,7 @@ use spaceman::{
     WorkspaceId,
     config::{HudStyle, MouseFollowsFocus, UpdateChannel},
 };
-use toml_edit::{ArrayOfTables, DocumentMut, Item, Table, value};
+use toml_edit::{ArrayOfTables, DocumentMut, Item, Table, TableLike, value};
 
 const EMPTY: &str = "# Spaceman configuration.\nversion = 1\n";
 
@@ -238,7 +238,7 @@ impl Doc {
             *entry = Item::Table(Table::new());
         }
         if let Some(table) = entry.as_table_like_mut() {
-            table.insert(key, item);
+            put(table, key, item);
         }
     }
 
@@ -352,6 +352,18 @@ impl Doc {
         spaceman::state_file::write_atomic(path, source.as_bytes())
             .map_err(|error| error.to_string())
     }
+}
+
+/// Sets `key` in `table`, keeping the comments around a value it replaces.
+fn put(table: &mut dyn TableLike, key: &str, mut item: Item) {
+    let Some(slot) = table.get_mut(key) else {
+        table.insert(key, item);
+        return;
+    };
+    if let (Some(old), Some(new)) = (slot.as_value(), item.as_value_mut()) {
+        *new.decor_mut() = old.decor().clone();
+    }
+    *slot = item;
 }
 
 fn string(table: &Table, key: &str) -> Option<String> {

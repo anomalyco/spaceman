@@ -1,11 +1,11 @@
 //! `[settings.gaps]` and `settings.single_window_max_width`, edited in place like the rest of
-//! the file. A value at its default `0` leaves the file, and so does a table it empties.
+//! the file. A value set to its default `0` leaves the file, and so does a table it empties.
 //! `gaps.outer` is the file's own: Settings shows the edges it resolves to and never writes it.
 
 use spaceman::spacing::{Spacing, SpacingKey, check_outer};
 use toml_edit::{Item, Table, TableLike};
 
-use super::Doc;
+use super::{Doc, put};
 
 impl Doc {
     /// The spacing the file asks for; a missing or out-of-range key reads as its fallback.
@@ -23,18 +23,20 @@ impl Doc {
         spacing
     }
 
-    /// Writes every spacing key that differs from what the file holds, removing the ones that
-    /// need no key. An edge that follows `gaps.outer` keeps following it until it changes.
+    /// Writes every spacing key whose value changes, removing the ones that need no key. The
+    /// rest stay as the file has them: an edge that follows `gaps.outer` keeps following it, and
+    /// an explicit zero keeps overriding it.
     pub fn set_spacing(&mut self, spacing: Spacing) {
         let current = self.spacing();
         let outer = self.outer();
         for key in SpacingKey::ALL {
             let value = key.get(&spacing);
-            let written = key.is_written(value, outer);
-            if key.get(&current) == value && (written || self.spacing_item(key).is_none()) {
+            if key.get(&current) == value {
                 continue;
             }
-            let item = written.then(|| toml_edit::value(i64::from(value)));
+            let item = key
+                .is_written(value, outer)
+                .then(|| toml_edit::value(i64::from(value)));
             match key.gap_name() {
                 Some(name) => self.set_gap(name, item),
                 None => self.set_setting(key.path(), item),
@@ -114,7 +116,7 @@ impl Doc {
             gaps.set_position(position);
         }
         if let Some(gaps) = gaps.as_table_like_mut() {
-            gaps.insert(name, item);
+            put(gaps, name, item);
         }
     }
 }
