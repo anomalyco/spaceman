@@ -83,10 +83,14 @@ Where a new window goes (first match wins)                 // ws.adoption
 
 Displays                                                    // ws.displays
 ├── Default: 1-5 main, 6-10 secondary; [[workspaces]] monitor = main | secondary | UUID | name
-├── Settings › Workspaces offers every connected display: Main, Secondary, then each further
-│   display as its own picker segment and section card (numbered Display 3/4 past three
-│   displays); picking one writes its UUID, the same selector Option+Shift+Tab persists, and a
-│   saved UUID renders back as that display's name
+├── Settings › Workspaces offers every connected display as its own picker segment and card:
+│   Main and Secondary with two displays, and past two Main then each display by its own name,
+│   numbered when two share one (Studio Display 1 / Studio Display 2; Display 2/3/4 in the
+│   segments past three displays); picking one writes its UUID, the same selector
+│   Option+Shift+Tab persists, and a saved UUID renders back as that display's name
+├── A row set to a display other than its built-in default says Default: <that display> in the
+│   picker's own words; a row already on its default says nothing, including one saved by the
+│   UUID of the display that is also Secondary
 ├── Preferred display unplugged -> its workspaces fall back to main, return on reconnect; its
 │   saved assignment keeps a Disconnected displays card with the picker on Not connected
 └── Display added or removed -> hidden windows re-parked against the new displays; visible owned
@@ -239,12 +243,15 @@ on the same letter.
   `switching_away_parks_a_window_that_overflows_the_display_edge`,
   `laying_out_a_parked_window_retires_its_stale_recovery_frame`.
 - Unit, `agent/src/panes/workspaces.rs`: the display picker with two displays (Main | Secondary
-  kept, section captions name the real displays), three displays (two identically named externals
-  told apart as `Secondary` and `Studio Display 2`, picking the third writes its UUID, a saved
-  UUID renders as its label, a saved UUID for Main resolves to Main), one display (Secondary still
-  offered), an unplugged display (an extra `Not connected` segment, its `config.toml` entry
-  kept), and four displays (numbered segments `Display 3`/`Display 4`, names kept in the
-  headings). Section cards and segments themselves are seen in the Playground
+  kept, section captions name the real displays, a saved Secondary or Main UUID says no default
+  note), three displays (two identically named externals told apart as `Studio Display 1` and
+  `Studio Display 2`, picking the third writes its UUID, a saved UUID renders as its label, a
+  saved UUID for Main resolves to Main, and a workspace saved by the Secondary display's UUID
+  shows no `Default:` note while the third display names it as the default it differs from —
+  issue 337), one display (Secondary still offered), an unplugged display (an extra `Not
+  connected` segment, its `config.toml` entry kept), and four displays (numbered segments
+  `Display 2`/`Display 3`/`Display 4`, names kept in the headings). Section cards and segments
+  themselves are seen in the Playground
   (`Workspaces/workspaces-three-displays`, `Workspaces/workspaces-four-displays`,
   `Workspaces/workspaces-unplugged`), not by a test.
 - Unit, `src/macos/displays.rs`: `selector_for` (`main`/`secondary`/UUID) and `ordered` (left to

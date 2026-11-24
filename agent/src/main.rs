@@ -27,8 +27,12 @@ use rules::{Doc, Place};
 use rune::{AppSpec, KeyEvent, PointerPress, Tx, Waker};
 use spaceman::app::{UiAction, UiAgentSnapshot, UiBridge};
 
-/// One fixed size: tiling window managers float such a window, and every pane fits it.
-pub const WINDOW_SIZE: (f32, f32) = (860.0, 580.0);
+/// The smallest Settings window: every pane fits it, so no resize can clip a row.
+pub const MIN_WINDOW_SIZE: (f32, f32) = (860.0, 580.0);
+
+/// The size Settings opens at, with room past the smallest: more of a long pane's rows
+/// show before it scrolls.
+pub const WINDOW_SIZE: (f32, f32) = (920.0, 620.0);
 
 /// The one anchored menu that is open.
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -498,7 +502,7 @@ fn spec() -> AppSpec<Ui> {
     AppSpec {
         title: "Spaceman",
         size: WINDOW_SIZE,
-        min_size: Some(WINDOW_SIZE),
+        min_size: Some(MIN_WINDOW_SIZE),
         init: playground::blank_fixture,
         view: view::view,
         scenes: playground::scenes(),
@@ -510,6 +514,16 @@ fn spec() -> AppSpec<Ui> {
     }
 }
 
+/// Settings resizes freely, but never below `MIN_WINDOW_SIZE`: a titlebar double click or a
+/// dragged edge can then make the window bigger, while every row keeps fitting.
+fn window_options() -> rune::WindowOptions {
+    rune::WindowOptions {
+        min_size: Some(MIN_WINDOW_SIZE),
+        resizable: true,
+        ..Default::default()
+    }
+}
+
 fn base_app() -> rune::App<Ui> {
     let app = playground::attach(
         rune::App::new(spec())
@@ -518,12 +532,7 @@ fn base_app() -> rune::App<Ui> {
                 traffic_lights: Some((18.0, 18.0)),
                 drag_regions: true,
             })
-            .window_options(rune::WindowOptions {
-                min_size: Some(WINDOW_SIZE),
-                max_size: Some(WINDOW_SIZE),
-                resizable: false,
-                ..Default::default()
-            })
+            .window_options(window_options())
             .on_close(on_close)
             .dev_stats(activity::process_vitals)
             .standard_menus(),
@@ -598,6 +607,23 @@ fn main() {
 mod tests {
     use super::*;
     use spaceman::deep_link::parse_url;
+
+    #[test]
+    fn the_settings_window_grows_but_never_below_the_panes() {
+        // Issue 338: a titlebar double click shrank the window to 800×600, which clipped the
+        // Workspaces rows. It resizes freely now, with a floor every pane fits in.
+        let options = window_options();
+        assert!(options.resizable, "a bigger window shows more of a pane");
+        assert_eq!(options.min_size, Some(MIN_WINDOW_SIZE));
+        assert_eq!(options.max_size, None, "no ceiling to grow into");
+        assert!(
+            !options.borderless,
+            "a titled window keeps its traffic lights"
+        );
+        assert!(WINDOW_SIZE.0 >= MIN_WINDOW_SIZE.0 && WINDOW_SIZE.1 >= MIN_WINDOW_SIZE.1);
+        assert_eq!(spec().size, WINDOW_SIZE);
+        assert_eq!(spec().min_size, Some(MIN_WINDOW_SIZE));
+    }
 
     #[test]
     fn open_target_selects_pane_and_preserves_highlights_without_mutating_config() {

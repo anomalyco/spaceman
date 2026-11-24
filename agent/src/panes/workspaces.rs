@@ -179,23 +179,34 @@ fn override_for(workspace: WorkspaceId, chosen: &str) -> Option<String> {
     (chosen != default_monitor(workspace)).then(|| chosen.to_owned())
 }
 
-/// The row's muted caption: an unplugged preferred display always falls back to Main in
-/// `DisplayInventory::resolve`, even for workspaces 6–10 whose built-in default is Secondary.
-fn row_description(workspace: WorkspaceId, effective: &str, unplugged: bool) -> Option<String> {
-    if unplugged {
+/// The row's muted caption: the display the row differs from, named as its card and picker do,
+/// or the fallback note for an unplugged one. An unplugged preferred display always falls back to
+/// Main in `DisplayInventory::resolve`, even for workspaces 6–10 whose built-in default is
+/// Secondary.
+///
+/// `effective` is the row's saved `monitor` text, which may be a UUID or a name, so both it and
+/// the built-in default resolve to displays first: a workspace saved by the Secondary display's
+/// UUID picks that display, and needs no note about a default it already is.
+fn row_description(choices: &[Choice], workspace: WorkspaceId, effective: &str) -> Option<String> {
+    let Some(current) = displays::index_of(choices, effective) else {
         return Some("Not connected · uses Main until it returns".to_owned());
-    }
+    };
     let default = default_monitor(workspace);
-    if effective != default {
-        let default_label = if default == SECONDARY {
-            "Secondary"
-        } else {
-            "Main"
-        };
-        Some(format!("Default: {default_label}"))
-    } else {
-        None
+    let built_in = displays::index_of(choices, default);
+    if built_in == Some(current) {
+        return None;
     }
+    let name = built_in.map_or_else(
+        || {
+            if default == SECONDARY {
+                "Secondary"
+            } else {
+                "Main"
+            }
+        },
+        |index| choices[index].note.as_str(),
+    );
+    Some(format!("Default: {name}"))
 }
 
 /// The picker's segments and the selected one: every display's label, then `Not connected` when
@@ -231,8 +242,7 @@ fn monitor_row(p: Paint, choices: &[Choice], workspace: WorkspaceId, effective: 
         Some(_) => format!("Workspace {workspace}"),
         None => format!("Workspace {workspace} (named)"),
     };
-    let description = row_description(workspace, effective, selected >= choices.len())
-        .map(|copy| (copy, p.faint()));
+    let description = row_description(choices, workspace, effective).map(|copy| (copy, p.faint()));
     controls::setting_row(
         p,
         &format!("workspace-{workspace}"),
@@ -310,16 +320,18 @@ mod tests {
                 .collect::<Vec<_>>(),
             [MAIN, SECONDARY, THIRD_FIXTURE_ID]
         );
-        // Two identically named external monitors are told apart.
+        // Two identically named external monitors are told apart by their own names.
         assert_eq!(
             picker(&choices, THIRD_FIXTURE_ID).0,
             [
                 "Main".to_owned(),
-                "Secondary".to_owned(),
+                "Studio Display 1".to_owned(),
                 "Studio Display 2".to_owned()
             ]
         );
         assert_eq!(picker(&choices, THIRD_FIXTURE_ID).1, 2);
+        assert_eq!(choices[1].title, "Studio Display 1");
+        assert_eq!(choices[1].caption, "Secondary · Default for 6–10");
         assert_eq!(choices[2].title, "Studio Display 2");
         assert_eq!(choices[2].caption, "Display 3");
 
@@ -346,7 +358,7 @@ mod tests {
                 .iter()
                 .map(|choice| choice.label.as_str())
                 .collect::<Vec<_>>(),
-            ["Main", "Secondary", "Display 3", "Display 4"]
+            ["Main", "Display 2", "Display 3", "Display 4"]
         );
         assert_eq!(
             choices
@@ -355,7 +367,7 @@ mod tests {
                 .collect::<Vec<_>>(),
             [
                 "Main display",
-                "Secondary display",
+                "Studio Display 1",
                 "Studio Display 2",
                 "LG UltraFine 5K"
             ]
@@ -363,6 +375,12 @@ mod tests {
         assert_eq!(
             choose(&choices, 3, WorkspaceId::new(9).unwrap()).as_deref(),
             Some(FOURTH_FIXTURE_ID)
+        );
+
+        // A row's note names the display it differs from by its card, not its numbered segment.
+        assert_eq!(
+            row_description(&choices, WorkspaceId::new(9).unwrap(), MAIN).as_deref(),
+            Some("Default: Studio Display 1")
         );
     }
 
@@ -391,6 +409,71 @@ mod tests {
             effective_monitor(&doc, WorkspaceId::new(7).unwrap()),
             saved,
             "rendering keeps the config.toml entry"
+        );
+    }
+
+    #[test]
+    fn a_workspace_saved_by_the_secondary_displays_uuid_needs_no_default_note() {
+        // Settings never writes this (choosing Secondary saves `secondary`), but
+        // `spaceman workspaces assign` and a hand-edited config.toml do, and a display can
+        // become Secondary after its UUID was saved. Issue 337.
+        let displays = fixture_three();
+        let choices = choices(&displays);
+        let six = WorkspaceId::new(6).unwrap();
+        let nine = WorkspaceId::new(9).unwrap();
+        let mut doc = Doc::parse("version = 1\n");
+        doc.set_monitor(six, Some(displays[1].id.as_str()));
+        doc.set_monitor(nine, Some(THIRD_FIXTURE_ID));
+
+        // Row 6 sits in the Secondary card and picks it: the UUID resolves to that display, so
+        // the row says no default it already is.
+        let saved = effective_monitor(&doc, six);
+        let (labels, selected) = picker(&choices, &saved);
+        assert_eq!(selected, 1);
+        assert_eq!(labels[selected], "Studio Display 1");
+        assert_eq!(row_description(&choices, six, &saved), None);
+        assert_eq!(
+            sections(&doc, &choices, vec![six, nine])[1].workspaces,
+            [six]
+        );
+
+        // Row 9 on the third display keeps its note, which names the display that differs.
+        let saved = effective_monitor(&doc, nine);
+        let (labels, selected) = picker(&choices, &saved);
+        assert_eq!(labels[selected], "Studio Display 2");
+        assert_eq!(
+            row_description(&choices, nine, &saved).as_deref(),
+            Some("Default: Studio Display 1")
+        );
+    }
+
+    #[test]
+    fn a_two_display_secondary_uuid_is_still_just_secondary() {
+        // With two displays Secondary keeps its short label, and its UUID resolves to it: no
+        // note, because the row already says the display it is set to.
+        let displays = fixture_pair();
+        let choices = choices(&displays);
+        let seven = WorkspaceId::new(7).unwrap();
+        let mut doc = Doc::parse("version = 1\n");
+        doc.set_monitor(seven, Some(displays[1].id.as_str()));
+        let saved = effective_monitor(&doc, seven);
+        assert_eq!(
+            picker(&choices, &saved),
+            (vec!["Main".to_owned(), "Secondary".to_owned()], 1)
+        );
+        assert_eq!(row_description(&choices, seven, &saved), None);
+
+        // Main's UUID is a workspace 1–5 row's default too, and the other display's is not.
+        let two = WorkspaceId::new(2).unwrap();
+        let mut doc = Doc::parse("version = 1\n");
+        doc.set_monitor(two, Some(displays[0].id.as_str()));
+        let saved = effective_monitor(&doc, two);
+        assert_eq!(row_description(&choices, two, &saved), None);
+        doc.set_monitor(two, Some(displays[1].id.as_str()));
+        let saved = effective_monitor(&doc, two);
+        assert_eq!(
+            row_description(&choices, two, &saved).as_deref(),
+            Some("Default: Main")
         );
     }
 
@@ -456,7 +539,7 @@ mod tests {
             .collect();
         assert_eq!(
             titles,
-            ["Main display", "Secondary display", "Studio Display 2"]
+            ["Main display", "Studio Display 1", "Studio Display 2"]
         );
         assert_eq!(sections[0].workspaces.len(), 5);
         assert_eq!(sections[1].workspaces.len(), 4);
@@ -501,18 +584,19 @@ mod tests {
         let (_, selected) = picker(&pair_choices, &saved);
         assert_eq!(selected, pair_choices.len());
         assert_eq!(
-            row_description(seven, &saved, selected >= pair_choices.len()).as_deref(),
+            row_description(&pair_choices, seven, &saved).as_deref(),
             Some("Not connected · uses Main until it returns")
         );
         assert_eq!(doc.monitor(seven).as_deref(), Some(THIRD_FIXTURE_ID));
 
-        // Reconnecting the third display resumes showing it without losing the assignment.
+        // Reconnecting the third display resumes showing it without losing the assignment, and
+        // the note names the display it differs from as the picker does.
         let three_choices = choices(&fixture_three());
         let (_, reconnected) = picker(&three_choices, &saved);
         assert_eq!(reconnected, 2);
         assert_eq!(
-            row_description(seven, &saved, reconnected >= three_choices.len()).as_deref(),
-            Some("Default: Secondary")
+            row_description(&three_choices, seven, &saved).as_deref(),
+            Some("Default: Studio Display 1")
         );
 
         // An ordinary workspace 7 on Secondary still shows Secondary with no override note.
@@ -521,11 +605,7 @@ mod tests {
         let (_, default_selected) = picker(&pair_choices, &default_effective);
         assert_eq!(default_selected, 1);
         assert_eq!(
-            row_description(
-                seven,
-                &default_effective,
-                default_selected >= pair_choices.len()
-            ),
+            row_description(&pair_choices, seven, &default_effective),
             None
         );
     }
@@ -542,18 +622,18 @@ mod tests {
             .collect();
         assert_eq!(
             titles(fixture_three()),
-            ["Main display", "Secondary display", "Studio Display 2"]
+            ["Main display", "Studio Display 1", "Studio Display 2"]
         );
         assert_eq!(
             titles(fixture_quad()),
             [
                 "Main display",
-                "Secondary display",
+                "Studio Display 1",
                 "Studio Display 2",
                 "LG UltraFine 5K"
             ]
         );
-        assert_eq!(labels, ["Main", "Secondary", "Display 3", "Display 4"]);
+        assert_eq!(labels, ["Main", "Display 2", "Display 3", "Display 4"]);
 
         let three_sections = cards(&doc, fixture_three());
         assert!(three_sections[2].workspaces.is_empty());
@@ -571,7 +651,7 @@ mod tests {
                 .iter()
                 .map(|s| s.title.as_str())
                 .collect::<Vec<_>>(),
-            ["Main display", "Secondary display", "Studio Display 2"]
+            ["Main display", "Studio Display 1", "Studio Display 2"]
         );
         assert!(after_move[2].workspaces.is_empty());
 

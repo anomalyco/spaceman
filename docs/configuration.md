@@ -347,10 +347,15 @@ A missing `secondary`, UUID, or name falls back to the main display. Spaceman re
 assignment as its own active lane; reconnecting that display makes its assigned active workspace
 visible again.
 
-Settings › Workspaces offers every connected display: `Main`, `Secondary`, then each further
-display, whose assignment it writes as that display's UUID (the same selector
-`Option+Shift+Tab` persists). A saved UUID renders back as its display's name, and a saved display
-that is unplugged keeps a `Disconnected displays` card so its assignment is never lost.
+Settings › Workspaces offers every connected display. With two displays the choices are `Main`
+and `Secondary`; with three or more, Main stays `Main` and every other display is named after
+itself, numbered when two share a name (`Studio Display 1`, `Studio Display 2`). Assigning a
+display past Secondary writes its UUID (the same selector `Option+Shift+Tab` persists), and a
+saved UUID renders back as that display's name, in the same words as its picker segment and
+card. A row set to a display other than its built-in default says which default it differs
+from (`Default: Studio Display 1`); a row already on its default says nothing, including one
+saved by the UUID of the display that is also Secondary. A saved display that is unplugged
+keeps a `Disconnected displays` card so its assignment is never lost.
 
 Named workspaces are opt-in: reference a letter in a route or `[[workspaces]]` entry to enable it.
 They default to `main`. An enabled letter registers `Option+letter` to switch and

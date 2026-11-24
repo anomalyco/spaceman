@@ -57,6 +57,10 @@ pub(crate) struct Choice {
     pub label: String,
     /// The section heading above the workspaces assigned to it.
     pub title: String,
+    /// How a row's `Default:` note names this display: the built-in word (`Main`, `Secondary`)
+    /// while the picker uses it, else the display's own name, so the note points at a card the
+    /// reader can find.
+    pub note: String,
     /// The heading's trailing caption.
     pub caption: String,
     /// The display's UUID, so a saved `monitor` naming it resolves here.
@@ -125,13 +129,27 @@ pub(crate) fn choices(displays: &[ConnectedDisplay]) -> Vec<Choice> {
         let label = extra_label(choices.len() + 1, &title, ordered.len());
         choices.push(Choice {
             selector: display.selector.clone(),
-            title,
+            title: title.clone(),
+            note: title,
             label,
             caption: format!("Display {}", choices.len() + 1),
             id: Some(display.id.clone()),
             name: Some(display.name.clone()),
             connected: true,
         });
+    }
+    // Past two displays the picker names every screen, so Secondary names its own too: with two
+    // identically named monitors that reads "Studio Display 1" | "Studio Display 2" rather than
+    // "Secondary" | "Studio Display 2", and a row saved by its UUID says the same thing the card
+    // and the picker do.
+    if !extras.is_empty()
+        && let Some(display) = secondary
+    {
+        let title = extra_name(2, display, &ordered);
+        choices[1].label = extra_label(2, &title, ordered.len());
+        choices[1].note = title.clone();
+        choices[1].title = title;
+        choices[1].caption = "Secondary · Default for 6–10".to_owned();
     }
     choices
 }
@@ -156,6 +174,7 @@ fn built_in(
         selector: selector.to_owned(),
         label: label.to_owned(),
         title: title.to_owned(),
+        note: label.to_owned(),
         caption: String::new(),
         id: display.map(|display| display.id.clone()),
         name: display.map(|display| display.name.clone()),

@@ -9,7 +9,9 @@ use spaceman::{
     app::{UiAgentSnapshot, UiLaunchAtLogin, UiUpdateStatus},
 };
 
-use crate::{Pane, Ui, WINDOW_SIZE, activity, apps, hud, map, onboarding, panes, rules::Doc};
+use crate::{
+    MIN_WINDOW_SIZE, Pane, Ui, WINDOW_SIZE, activity, apps, hud, map, onboarding, panes, rules::Doc,
+};
 
 pub(crate) type Scene = (&'static str, fn(&mut Ui));
 
@@ -26,7 +28,11 @@ pub fn attach(app: App<Ui>) -> App<Ui> {
         .enabled(true)
         .bar(false)
         .scenes(|name| name.contains('/'))
-        .sizes(&[("Spaceman window", WINDOW_SIZE)]);
+        .sizes(&[
+            ("Spaceman window", WINDOW_SIZE),
+            ("Smallest window", MIN_WINDOW_SIZE),
+            ("Wide window", (1200.0, 840.0)),
+        ]);
     app.playground(hud::triggers(playground))
 }
 
