@@ -281,6 +281,9 @@ on the same letter.
   that only called it showed the incoming window while keys stayed in the app focus left (issue
   92). Spaceman sets `AXFrontmost` on the incoming app instead. When focusing still fails,
   `agent.log` gets `switch focus failed: workspace <ws> window <id>` (never a title).
+- Some apps (Arc) answer `AXFrontmost` with success and still stay behind the app focus left.
+  After focusing, Spaceman polls the frontmost app every 10 ms and repeats the focus every 50 ms,
+  at most three times (200 ms bound).
 - Panels and non-standard windows are never parked, so they show on every workspace; an empty
   workspace exposes whatever unmanaged windows sit behind managed ones.
 - macOS can stop delivering Carbon hotkeys to a running agent (seen twice on Nov 9, 2026, cause
