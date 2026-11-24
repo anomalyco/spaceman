@@ -518,3 +518,70 @@ fn second_toggle_supersedes_an_unconfirmed_scratchpad_summon_with_a_park_write()
     assert_eq!(rt.scratchpad.pending_summon(&w), None);
     assert_hidden(&rt, &w);
 }
+
+#[test]
+fn background_bounds_reassertion_reparks_hidden_scratchpad_window_while_frontmost_honors_it() {
+    let target = window(10);
+    let mut other = window(20);
+    other.app.pid = 2;
+    let mut snapshot = observation_for("com.example.Target", &target, frame(50));
+    snapshot
+        .applications
+        .extend(observation_for("com.example.Other", &other, frame(500)).applications);
+    let backend = FakeBackend {
+        frames: [(target.clone(), frame(50)), (other.clone(), frame(500))]
+            .into_iter()
+            .collect(),
+        focused: Some(target.clone()),
+        frontmost: Some(target.app.clone()),
+        observation: Some(snapshot),
+        ..FakeBackend::default()
+    };
+    let mut rt = runtime_with_config(backend, lab());
+    run(&mut rt, WorkerAction::Retile).unwrap();
+    scratchpad(&mut rt, ScratchpadCommand::Mark).unwrap();
+    assert_hidden(&rt, &target);
+    let recovery = rt.parked[&target];
+
+    // Expire settle grace and simulate a background app reasserting saved bounds
+    // while another app stays frontmost.
+    rt.backend.focused = Some(other.clone());
+    rt.backend.frontmost = Some(other.app.clone());
+    rt.recently_parked
+        .insert(target.clone(), Instant::now() - Duration::from_secs(5));
+    rt.backend.frames.insert(target.clone(), recovery);
+    rt.backend.server_frames.insert(target.clone(), recovery);
+
+    for _ in 0..3 {
+        run(&mut rt, WorkerAction::Retile).unwrap();
+    }
+    assert_hidden(&rt, &target);
+    assert_eq!(rt.parked.get(&target), Some(&recovery));
+    assert_eq!(rt.backend.persisted.get(&target), Some(&recovery));
+    assert_eq!(rt.workspaces.workspace_of_any(&target), None);
+
+    // Still summonable via Toggle.
+    scratchpad(&mut rt, ScratchpadCommand::Toggle).unwrap();
+    assert_eq!(
+        rt.scratchpad.entry(&target).and_then(|e| e.shown_on),
+        Some(WorkspaceId::ONE)
+    );
+    scratchpad(&mut rt, ScratchpadCommand::Toggle).unwrap();
+    assert_hidden(&rt, &target);
+
+    // Control: frontmost activation still honors the reappearance and adopts it.
+    let recovery = rt.parked[&target];
+    rt.recently_parked
+        .insert(target.clone(), Instant::now() - Duration::from_secs(5));
+    rt.backend.frames.insert(target.clone(), recovery);
+    rt.backend.server_frames.insert(target.clone(), recovery);
+    rt.backend.focused = Some(target.clone());
+    rt.backend.frontmost = Some(target.app.clone());
+    run(&mut rt, WorkerAction::Retile).unwrap();
+    assert!(!rt.scratchpad.contains(&target));
+    assert!(!rt.parked.contains_key(&target));
+    assert_eq!(
+        rt.workspaces.workspace_of_any(&target),
+        Some(WorkspaceId::ONE)
+    );
+}

@@ -76,6 +76,17 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
             let mut app_owns_window = self.workspaces.app_owns_windows(&app.id);
             for window in windows {
                 self.heal_reappeared_window(window, visible, server_frames);
+                if self.parked.contains_key(&window.id)
+                    && self
+                        .scratchpad
+                        .entry(&window.id)
+                        .is_some_and(|entry| entry.shown_on.is_none())
+                {
+                    // Still hidden in the scratchpad (re-parked or settling); only an
+                    // honored reappearance clears its parked record and lets it adopt.
+                    affinities.insert(window.id.clone(), FrozenWindowAffinity::Ignored);
+                    continue;
+                }
                 let disposition = self.config.disposition(&app.bundle_id, window);
                 if disposition == WindowDisposition::Ignored {
                     if let Some(owner) = self.workspaces.workspace_of_any(&window.id) {

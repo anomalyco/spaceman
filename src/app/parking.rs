@@ -203,6 +203,19 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
             server_frames,
             visible,
         };
+        // Hidden scratchpad windows intentionally have no workspace owner, so
+        // re-park any background bounds reassertions here before affinity sees them.
+        for window in self.scratchpad.hidden() {
+            if cancelled.load(Ordering::Acquire) {
+                return;
+            }
+            if self.parking_exempt.contains(&window) {
+                continue;
+            }
+            if let Some(original) = self.parked.get(&window).copied() {
+                self.repark_drifted_window(&window, original, outputs.main().frame, &context);
+            }
+        }
         let mut candidates = Vec::new();
         for (workspace, window) in inactive {
             if cancelled.load(Ordering::Acquire) {
