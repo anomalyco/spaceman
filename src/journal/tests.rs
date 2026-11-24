@@ -253,6 +253,72 @@ fn summary_reconstructs_the_arrangement_and_counts_anomalies() {
 }
 
 #[test]
+fn lookback_reconstructs_arrangement_from_snapshot_before_cutoff() {
+    let minute = 60_000;
+    let now = 10_000_000;
+    let since = now - 60 * minute;
+    let display = Rect {
+        x: 0,
+        y: 0,
+        width: 1200,
+        height: 800,
+    };
+    let initial = Arrangement {
+        displays: vec![display],
+        active: vec![WorkspaceId::ONE],
+        windows: vec![window(1, Some(1), 0)],
+    };
+    let before_cutoff = Arrangement {
+        displays: vec![display],
+        active: vec![WorkspaceId::ONE],
+        windows: vec![window(1, Some(1), 0), window(2, Some(3), 0)],
+    };
+    let after_cutoff = Arrangement {
+        displays: vec![display],
+        active: vec![WorkspaceId::new(2).unwrap()],
+        windows: vec![window(1, Some(1), 0), window(2, Some(3), 0)],
+    };
+    let lines = vec![
+        JournalLine {
+            t: now - 75 * minute,
+            event: JournalEvent::Snapshot {
+                arrangement: initial.clone(),
+            },
+        },
+        JournalLine {
+            t: now - 70 * minute,
+            event: diff(&initial, &before_cutoff).unwrap(),
+        },
+        JournalLine {
+            t: now - 50 * minute,
+            event: diff(&before_cutoff, &after_cutoff).unwrap(),
+        },
+    ];
+
+    let lookback = summarize(&lines, since, now, 0);
+    assert!(
+        lookback.starts_with("1 events from 50m ago to 50m ago"),
+        "{lookback}"
+    );
+    assert!(
+        lookback.contains("Last known arrangement: active 2"),
+        "{lookback}"
+    );
+    assert!(lookback.contains("  1: App"), "{lookback}");
+    assert!(lookback.contains("  3: App"), "{lookback}");
+
+    let all_time = summarize(&lines, 0, now, 0);
+    assert!(
+        all_time.starts_with("3 events from 1h 15m ago to 50m ago"),
+        "{all_time}"
+    );
+    assert!(
+        all_time.contains("Last known arrangement: active 2"),
+        "{all_time}"
+    );
+}
+
+#[test]
 fn every_anomaly_kind_has_prose_meaning_distinct_from_its_label() {
     for kind in [
         AnomalyKind::Leaked,

@@ -44,7 +44,11 @@ impl<'a> Summary<'a> {
     pub fn new(lines: &'a [JournalLine], since_ms: u64, now_ms: u64) -> Self {
         let mut summary = Self::default();
         let mut open: HashMap<(AnomalyKind, u32), u64> = HashMap::new();
-        for line in lines.iter().filter(|line| line.t >= since_ms) {
+        for line in lines {
+            if line.t < since_ms {
+                apply_arrangement(&mut summary.arrangement, &line.event);
+                continue;
+            }
             summary.lines.push(line);
             match &line.event {
                 JournalEvent::Start { .. } => {
@@ -101,17 +105,8 @@ impl<'a> Summary<'a> {
                         }
                     }
                 }
-                JournalEvent::Snapshot { arrangement } => {
-                    summary.arrangement = Some(arrangement.clone());
-                }
-                JournalEvent::Diff {
-                    active,
-                    displays,
-                    changes,
-                } => {
-                    if let Some(current) = summary.arrangement.as_mut() {
-                        apply_diff(current, active.as_ref(), displays.as_ref(), changes);
-                    }
+                JournalEvent::Snapshot { .. } | JournalEvent::Diff { .. } => {
+                    apply_arrangement(&mut summary.arrangement, &line.event);
                 }
                 JournalEvent::MarkedWrong => summary.marked.push(line.t),
                 JournalEvent::Remembered { .. } => {}
@@ -328,6 +323,24 @@ fn top_bundles<'a>(bundles: impl Iterator<Item = (&'a str, usize)>) -> String {
         .map(|(bundle, count)| format!("{bundle} ({count})"))
         .collect::<Vec<_>>()
         .join(", ")
+}
+
+fn apply_arrangement(arrangement: &mut Option<Arrangement>, event: &JournalEvent) {
+    match event {
+        JournalEvent::Snapshot {
+            arrangement: snapshot,
+        } => *arrangement = Some(snapshot.clone()),
+        JournalEvent::Diff {
+            active,
+            displays,
+            changes,
+        } => {
+            if let Some(current) = arrangement.as_mut() {
+                apply_diff(current, active.as_ref(), displays.as_ref(), changes);
+            }
+        }
+        _ => {}
+    }
 }
 
 fn apply_diff(
