@@ -66,7 +66,7 @@ ln -sf "/Applications/Spaceman.app/Contents/MacOS/spaceman" "$HOME/.local/bin/sp
 | `Option+Shift+1` … `Option+Shift+0` | Move focused window to workspace 1 … 10 |
 | `Option+A` … `Option+Z` | Switch to a configured named workspace |
 | `Option+Shift+A` … `Option+Shift+Z` | Move focused window to a configured named workspace |
-| `Option+Tab` | Previous workspace on the focused display |
+| `Option+Tab` | Focus the workspace focused before this one, on any display |
 | `Option+backtick` | Focus the next tiled window in workspace order |
 | `Option+H/J/K/L` | Focus left/down/up/right |
 | `Option+Shift+H/J/K/L` | Move the focused tile |
