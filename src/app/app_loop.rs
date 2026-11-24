@@ -311,7 +311,7 @@ impl MainThreadAgent {
                     // genuine failures are worth a log line.
                     if let Err(error) = &result
                         && self.last_error.as_ref() != Some(error)
-                        && !error.ends_with("cancelled")
+                        && !is_cancelled_error(error)
                     {
                         log_event!("worker error: {error}");
                     }
@@ -349,8 +349,9 @@ impl MainThreadAgent {
                 WorkerResult::Status { result, debug } => {
                     self.worker.finish_command();
                     self.latest_debug = Some(*debug);
-                    if let Err(error) = result {
-                        self.last_error = Some(error);
+                    if let Err(error) = result
+                        && record_paused_worker_error(&mut self.last_error, error)
+                    {
                         self.ui_dirty = true;
                     }
                 }
@@ -637,6 +638,20 @@ pub(super) fn automatic_started_status<'a>(
     }
 }
 
+fn is_cancelled_error(error: &str) -> bool {
+    error.ends_with("cancelled")
+}
+
+/// Records a worker error that arrived after automatic tiling paused, ignoring
+/// routine cancellations caused by pausing or superseding input.
+fn record_paused_worker_error(last_error: &mut Option<String>, error: String) -> bool {
+    if is_cancelled_error(&error) {
+        return false;
+    }
+    *last_error = Some(error);
+    true
+}
+
 /// Applies a worker cycle result to `last_error` and returns the status line for
 /// the menu bar (`None` hides the status item).
 fn worker_status_update(
@@ -645,6 +660,13 @@ fn worker_status_update(
     result: Result<usize, &str>,
 ) -> Option<String> {
     match result {
+        Err(error) if is_cancelled_error(error) => {
+            // Routine cancellation is not a failure: keep any retained status
+            // error intact instead of overwriting it or flashing an error.
+            is_update_failed_error(last_error.as_deref())
+                .then(|| last_error.clone())
+                .flatten()
+        }
         Err(error) => {
             *last_error = Some(error.to_owned());
             Some(error.to_owned())
@@ -730,5 +752,56 @@ mod tests {
             shortcuts_error.as_deref(),
             Some("Shortcuts not applied: conflict")
         );
+    }
+
+    #[test]
+    fn routine_cancellations_preserve_retained_errors_and_never_store_cancelled() {
+        let reason = format!("{UPDATE_FAILED_PREFIX}could not write update receipt");
+        let mut last_error = Some(reason.clone());
+
+        // Routine cancellation while automatic preserves the retained install failure.
+        assert_eq!(
+            worker_status_update(&mut last_error, false, Err("workspace operation cancelled")),
+            Some(reason.clone())
+        );
+        assert_eq!(last_error.as_deref(), Some(reason.as_str()));
+
+        // The following clean cycle still retains the install failure.
+        assert_eq!(
+            worker_status_update(&mut last_error, false, Ok(0)),
+            Some(reason.clone())
+        );
+        assert_eq!(last_error.as_deref(), Some(reason.as_str()));
+
+        // Routine cancellation arriving after pause does not overwrite or populate last_error.
+        assert!(!record_paused_worker_error(
+            &mut last_error,
+            "workspace operation cancelled".into()
+        ));
+        assert_eq!(last_error.as_deref(), Some(reason.as_str()));
+
+        let mut empty = None;
+        assert_eq!(
+            worker_status_update(&mut empty, false, Err("workspace switch cancelled")),
+            None
+        );
+        assert_eq!(empty, None);
+        assert!(!record_paused_worker_error(
+            &mut empty,
+            "workspace operation cancelled".into()
+        ));
+        assert_eq!(empty, None);
+
+        // Genuine failures still report and store their error in both states.
+        assert_eq!(
+            worker_status_update(&mut empty, false, Err("Observation error: unavailable")),
+            Some("Observation error: unavailable".into())
+        );
+        assert_eq!(empty.as_deref(), Some("Observation error: unavailable"));
+        assert!(record_paused_worker_error(
+            &mut empty,
+            "Restore error".into()
+        ));
+        assert_eq!(empty.as_deref(), Some("Restore error"));
     }
 }
