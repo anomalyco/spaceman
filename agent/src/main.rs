@@ -556,6 +556,18 @@ mod tests {
         assert_eq!(ui.highlight_lab.as_deref(), Some("scrolling-strip"));
         assert_eq!(ui.highlight_feature.as_deref(), Some("scrolling-strip"));
 
+        for (url, expected_feature) in [
+            ("spaceman://settings/layout", None),
+            ("spaceman://features/gaps", Some("gaps")),
+            ("spaceman://features/max-width", Some("max-width")),
+        ] {
+            let target = parse_url(url).unwrap().resolve();
+            ui.open_target(target);
+            assert_eq!(ui.pane, Pane::Layout, "{url}");
+            assert_eq!(ui.highlight_lab, None, "{url}");
+            assert_eq!(ui.highlight_feature.as_deref(), expected_feature, "{url}");
+        }
+
         let hud_feature = parse_url("spaceman://features/hud").unwrap().resolve();
         ui.open_target(hud_feature);
         assert_eq!(ui.pane, Pane::General);

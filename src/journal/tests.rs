@@ -251,3 +251,25 @@ fn summary_reconstructs_the_arrangement_and_counts_anomalies() {
         "No journal events in this period."
     );
 }
+
+#[test]
+fn every_anomaly_kind_has_prose_meaning_distinct_from_its_label() {
+    for kind in [
+        AnomalyKind::Leaked,
+        AnomalyKind::Stranded,
+        AnomalyKind::ParkedVisible,
+        AnomalyKind::Unadopted,
+        AnomalyKind::ConstrainedOverlap,
+        AnomalyKind::Misplaced,
+        AnomalyKind::Missing,
+        AnomalyKind::ParkingExempt,
+    ] {
+        assert_ne!(
+            kind.meaning(),
+            kind.label(),
+            "anomaly {:?} meaning should explain the condition rather than repeating its label",
+            kind
+        );
+        assert!(kind.meaning().contains(' '), "expected prose for {kind:?}");
+    }
+}
