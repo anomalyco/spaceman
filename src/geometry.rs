@@ -82,11 +82,20 @@ pub fn onto_displays(frame: Rect, displays: &[Rect], fallback: Rect) -> Rect {
     }
 }
 
+/// Whether a window at `actual` sits where parking it at `target` leaves it.
+/// macOS keeps a window's title bar on screen, so it may hold the window above
+/// the requested bottom corner; the horizontal position is what hides it.
+#[must_use]
+pub fn parked_at(actual: Rect, target: Rect, tolerance: i32) -> bool {
+    (actual.x - target.x).abs() <= tolerance && actual.y <= target.y + tolerance
+}
+
 #[must_use]
 pub fn parked_frame(output: Rect, displays: &[Rect], window: Rect) -> Rect {
-    // Keep a one-pixel strip at an actual display edge so macOS does not
-    // clamp the window back on-screen. Score whole rectangles, not corners:
-    // the nearest output may have a neighbor on both sides.
+    // Keep one pixel of a top corner at a display's bottom corner so macOS
+    // does not clamp the window back on-screen; a strip along the whole edge
+    // would show a sliver of every hidden window. Score whole rectangles, not
+    // corners: the nearest output may have a neighbor on both sides.
     std::iter::once(&output)
         .chain(displays)
         .flat_map(|display| {
@@ -98,7 +107,7 @@ pub fn parked_frame(output: Rect, displays: &[Rect], window: Rect) -> Rect {
                     } else {
                         display.x - window.width + strip
                     },
-                    y: display.y + (display.height - window.height).max(0),
+                    y: display.y + display.height - window.height.clamp(0, 2) / 2,
                     ..window
                 };
                 let distance = (i64::from(display.x) - i64::from(output.x)).abs()
@@ -191,7 +200,42 @@ mod tests {
 
         assert_eq!(parked_frame(left, &[left, right], window).x, -399);
         assert_eq!(parked_frame(right, &[left, right], window).x, 1999);
-        assert_eq!(parked_frame(left, &[left, right], window).y, 500);
+        assert_eq!(parked_frame(left, &[left, right], window).y, 799);
+    }
+
+    #[test]
+    fn parking_leaves_a_single_corner_pixel_on_screen() {
+        let display = Rect {
+            y: 40,
+            width: 1920,
+            height: 1000,
+            ..Rect::default()
+        };
+        for (width, height) in [(400, 300), (1920, 1000), (3000, 1500)] {
+            let window = Rect {
+                width,
+                height,
+                ..Rect::default()
+            };
+            let parked = parked_frame(display, &[display], window);
+
+            assert_eq!(overlap(parked, display), (1, 1), "{parked:?}");
+        }
+    }
+
+    #[test]
+    fn a_window_held_above_its_parking_corner_is_still_parked() {
+        let target = Rect {
+            x: 1919,
+            y: 1079,
+            width: 600,
+            height: 400,
+        };
+
+        assert!(parked_at(target, target, 1));
+        assert!(parked_at(Rect { y: 1014, ..target }, target, 1));
+        assert!(!parked_at(Rect { y: 1081, ..target }, target, 1));
+        assert!(!parked_at(Rect { x: 1900, ..target }, target, 1));
     }
 
     #[test]

@@ -234,9 +234,26 @@ pub fn frame(id: &PhysicalWindowId) -> Result<Rect, WindowAccessError> {
 }
 
 pub fn set_position_only(id: &PhysicalWindowId, target: Rect) -> ApplyOutcome {
+    write_position(id, target, position_matches)
+}
+
+/// Park a window at `target`, a [`crate::geometry::parked_frame`] position.
+/// macOS may hold it above the requested corner to keep its title bar on
+/// screen, which still parks it.
+pub fn set_parked_position(id: &PhysicalWindowId, target: Rect) -> ApplyOutcome {
+    write_position(id, target, |actual, target| {
+        crate::geometry::parked_at(actual, target, POSITION_CONFIRM_TOLERANCE)
+    })
+}
+
+fn write_position(
+    id: &PhysicalWindowId,
+    target: Rect,
+    confirmed: impl Fn(Rect, Rect) -> bool,
+) -> ApplyOutcome {
     match with_managed_window_result(id, |window| {
         let result = without_window_animations(&id.app, || set_position(window, target));
-        if window_frame(window).is_some_and(|actual| position_matches(actual, target)) {
+        if window_frame(window).is_some_and(|actual| confirmed(actual, target)) {
             Ok(())
         } else if matches!(result, AXError::InvalidUIElement) {
             Err(WindowAccessError::Gone)

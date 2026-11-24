@@ -253,42 +253,49 @@ fn second_confirmed_self_un_park_keeps_tiling_but_stops_parking_the_window() {
 
 #[test]
 fn frontmost_window_relaunched_at_a_spaceman_parking_edge_is_recovered() {
-    let stranded = window(10);
     let outputs = outputs();
     let display = outputs.main().frame;
     let normal = frame(50);
     let displays = outputs.frames().collect::<Vec<_>>();
     let parked = crate::geometry::parked_frame(display, &displays, normal);
-    let mut backend = FakeBackend {
-        observation: Some(observation(&stranded, parked)),
-        focused: Some(stranded.clone()),
-        frontmost: Some(stranded.app.clone()),
-        ..FakeBackend::default()
+    // macOS holds a titled window above the requested corner to keep its title bar on screen.
+    let held_up = crate::Rect {
+        y: parked.y - 31,
+        ..parked
     };
-    backend.frames.insert(stranded.clone(), parked);
-    backend.server_frames.insert(stranded.clone(), parked);
-    let mut runtime = runtime(backend);
+    for at in [parked, held_up] {
+        let stranded = window(10);
+        let mut backend = FakeBackend {
+            observation: Some(observation(&stranded, at)),
+            focused: Some(stranded.clone()),
+            frontmost: Some(stranded.app.clone()),
+            ..FakeBackend::default()
+        };
+        backend.frames.insert(stranded.clone(), at);
+        backend.server_frames.insert(stranded.clone(), at);
+        let mut runtime = runtime(backend);
 
-    runtime
-        .cycle(outputs.clone(), &AtomicBool::new(false))
-        .unwrap();
+        runtime
+            .cycle(outputs.clone(), &AtomicBool::new(false))
+            .unwrap();
 
-    assert_eq!(
-        runtime.workspaces.workspace_of(&stranded),
-        Some(WorkspaceId::ONE)
-    );
-    assert!(
-        outputs
-            .union()
-            .contains_center(runtime.backend.frames[&stranded])
-    );
-    assert!(runtime.backend.calls.iter().any(|call| {
-        matches!(
-            call,
-            BackendCall::SetPosition(window, target)
-                if window == &stranded && target.x == display.x && target.y == display.y
-        )
-    }));
+        assert_eq!(
+            runtime.workspaces.workspace_of(&stranded),
+            Some(WorkspaceId::ONE)
+        );
+        assert!(
+            outputs
+                .union()
+                .contains_center(runtime.backend.frames[&stranded])
+        );
+        assert!(runtime.backend.calls.iter().any(|call| {
+            matches!(
+                call,
+                BackendCall::SetPosition(window, target)
+                    if window == &stranded && target.x == display.x && target.y == display.y
+            )
+        }));
+    }
 }
 
 #[test]

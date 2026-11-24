@@ -157,9 +157,7 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
         let displays = outputs.frames().collect::<Vec<_>>();
         let Some(output) = outputs.displays().iter().find_map(|display| {
             let parked = crate::geometry::parked_frame(display.frame, &displays, frame);
-            parked
-                .position_approximately_equals(frame, 1)
-                .then_some(display.frame)
+            crate::geometry::parked_at(frame, parked, 1).then_some(display.frame)
         }) else {
             return;
         };
@@ -289,7 +287,7 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
                 workspace,
                 frame
             );
-            let mut outcome = self.backend.set_position(&window, target);
+            let mut outcome = self.backend.set_parked_position(&window, target);
             if outcome == macos::ApplyOutcome::Gone && !self.confirm_gone(&window) {
                 outcome = macos::ApplyOutcome::Unavailable;
             }
@@ -396,7 +394,7 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
             server
         );
         if matches!(
-            self.backend.set_position(window, target),
+            self.backend.set_parked_position(window, target),
             macos::ApplyOutcome::Applied
         ) {
             // Only a confirmed park write that the app later undoes proves the
@@ -627,7 +625,7 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
             ..frame
         };
         let parked = crate::geometry::parked_frame(park_output, &displays, park_size);
-        let outcome = self.backend.set_position(window, parked);
+        let outcome = self.backend.set_parked_position(window, parked);
         log_event!("park: {:?} from {:?} ({:?})", window, recovery, outcome);
         if matches!(outcome, macos::ApplyOutcome::Applied) {
             self.recently_parked.insert(window.clone(), Instant::now());

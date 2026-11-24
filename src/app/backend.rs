@@ -46,6 +46,14 @@ pub(super) trait WorkspaceBackend {
         window: &crate::PhysicalWindowId,
         target: crate::Rect,
     ) -> macos::ApplyOutcome;
+    /// Move `window` to a parked position; see [`macos::set_parked_position`].
+    fn set_parked_position(
+        &mut self,
+        window: &crate::PhysicalWindowId,
+        target: crate::Rect,
+    ) -> macos::ApplyOutcome {
+        self.set_position(window, target)
+    }
     fn focused_window(&mut self) -> Option<crate::PhysicalWindowId>;
     fn frontmost_application(&mut self) -> Option<AppInstanceId>;
     /// Diagnostics only: recent user input timing for focus-follow logs.
@@ -170,6 +178,14 @@ impl WorkspaceBackend for MacWorkspaceBackend {
         target: crate::Rect,
     ) -> macos::ApplyOutcome {
         macos::set_position_only(window, target)
+    }
+
+    fn set_parked_position(
+        &mut self,
+        window: &crate::PhysicalWindowId,
+        target: crate::Rect,
+    ) -> macos::ApplyOutcome {
+        macos::set_parked_position(window, target)
     }
 
     fn focused_window(&mut self) -> Option<crate::PhysicalWindowId> {

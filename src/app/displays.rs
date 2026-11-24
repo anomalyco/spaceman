@@ -94,7 +94,7 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
         if (target.x, target.y) == (current.x, current.y) {
             return true;
         }
-        let outcome = self.backend.set_position(window, target);
+        let outcome = self.backend.set_parked_position(window, target);
         log_event!("displays changed: re-park {window:?} at {target:?} ({outcome:?})");
         if outcome != macos::ApplyOutcome::Applied {
             return false;
