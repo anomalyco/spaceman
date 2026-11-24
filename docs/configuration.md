@@ -34,6 +34,7 @@ version = 1
 [settings]
 hud = true                            # optional (default: true); non-activating Workspace HUD
 hud_style = "icons"                   # optional (default: "icons"); or "layouts"
+hud_position = "bottom"               # optional (default: "bottom"); or "top"
 update_channel = "stable"             # optional (default: "stable"); or "dev", a build of every merge
 mouse_follows_focus = "off"           # optional (default: "off"); or "display", "window"
 single_window_max_width = 0           # optional (default: 0, off); or 320 through 16384 points
@@ -121,6 +122,24 @@ its position and speed and continues on the new spring.
 
 Title matching occurs only in memory. Titles are not serialized into persisted state, snapshots,
 `ctl debug`, or the HUD.
+
+## Workspace HUD
+
+`settings.hud` turns the non-activating Workspace HUD capsule on (the default) or off, and
+`settings.hud_style` picks `"icons"` (each workspace's number and its apps' icons, the default) or
+`"layouts"`. `settings.hud_position` puts the capsule on each display's `"bottom"` edge (the
+default, just above the Dock) or its `"top"` edge (just below the menu bar); a top capsule slides
+down into place and back up, and a bottom one rises and settles back down. A file without the key
+keeps the bottom position.
+
+```sh
+spaceman config set settings.hud_position top
+spaceman config get settings.hud_position
+spaceman config reset settings.hud_position
+```
+
+Settings › General shows **Position** under **Workspace HUD** while the HUD is not **Off**, and
+`spaceman config reset` removes any settings key, back to its default.
 
 ## Gaps, Screen Edges, and Single-Window Width
 
@@ -328,9 +347,9 @@ normal recovery data.
 
 Edits saved in Spaceman Settings or in an external editor take effect automatically: rule changes,
 workspace display assignments, `settings.hud`, `settings.hud_style`,
-`settings.mouse_follows_focus`, `settings.gaps`, `settings.single_window_max_width`, and `[labs]`
-(including the Scrolling Strip's shortcut) reload without restarting (Settings › Layout retiles at
-once; an external edit applies on the next retile);
+`settings.hud_position`, `settings.mouse_follows_focus`, `settings.gaps`, `settings.single_window_max_width`,
+and `[labs]` (including the Scrolling Strip's shortcut and glide tuning) reload without restarting
+(Settings › Layout retiles at once; an external edit applies on the next retile);
 `settings.update_channel` applies at the next update check. Global shortcuts for a
 newly added named workspace letter (`Option+A` ... `Option+Z`) register on the next app start:
 

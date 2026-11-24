@@ -6,7 +6,7 @@ use std::path::PathBuf;
 
 use spaceman::{
     WorkspaceId,
-    config::{HudStyle, MouseFollowsFocus, UpdateChannel},
+    config::{HudPosition, HudStyle, MouseFollowsFocus, UpdateChannel},
     labs::{LabFeature, LabShortcut},
 };
 use toml_edit::{
@@ -235,6 +235,25 @@ impl Doc {
         self.set_setting(
             "hud_style",
             (style != HudStyle::default()).then(|| value(style.as_str())),
+        );
+    }
+
+    /// Where the Workspace HUD capsule sits, from `settings.hud_position` (defaults to the
+    /// bottom of each display).
+    pub fn hud_position(&self) -> HudPosition {
+        self.doc
+            .get("settings")
+            .and_then(Item::as_table_like)
+            .and_then(|table| table.get("hud_position"))
+            .and_then(Item::as_str)
+            .and_then(HudPosition::parse)
+            .unwrap_or_default()
+    }
+
+    pub fn set_hud_position(&mut self, position: HudPosition) {
+        self.set_setting(
+            "hud_position",
+            (position != HudPosition::default()).then(|| value(position.as_str())),
         );
     }
 

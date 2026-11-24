@@ -1,4 +1,8 @@
-use std::{path::Path, process::ExitCode};
+use std::{
+    io::{self, Write},
+    path::Path,
+    process::ExitCode,
+};
 
 pub(crate) mod config;
 pub(crate) mod document;
@@ -42,13 +46,34 @@ impl Outcome {
     }
 
     pub(crate) fn into_exit_code(self) -> ExitCode {
-        if let Some(stdout) = self.stdout {
-            println!("{stdout}");
+        let mut exit_code = ExitCode::from(self.exit_code);
+        if let Some(stdout) = self.stdout
+            && write_stdout_line(&stdout) != ExitCode::SUCCESS
+        {
+            exit_code = ExitCode::FAILURE;
         }
         if let Some(stderr) = self.stderr {
-            eprintln!("{stderr}");
+            drop(writeln!(io::stderr().lock(), "{stderr}"));
         }
-        ExitCode::from(self.exit_code)
+        exit_code
+    }
+}
+
+pub(crate) fn write_stdout_line(text: &str) -> ExitCode {
+    write_stdout_line_to(&mut io::stdout().lock(), text)
+}
+
+pub(crate) fn write_stdout_line_to(writer: &mut impl Write, text: &str) -> ExitCode {
+    match writeln!(writer, "{text}").and_then(|()| writer.flush()) {
+        Ok(()) => ExitCode::SUCCESS,
+        Err(error) if error.kind() == io::ErrorKind::BrokenPipe => ExitCode::SUCCESS,
+        Err(error) => {
+            drop(writeln!(
+                io::stderr().lock(),
+                "failed to write output: {error}"
+            ));
+            ExitCode::FAILURE
+        }
     }
 }
 

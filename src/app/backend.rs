@@ -19,6 +19,8 @@ pub(super) trait WorkspaceBackend {
     fn is_process_running(&mut self, app: &AppInstanceId) -> bool;
     /// True only when a visible app successfully reports an empty AXWindows list.
     fn confirms_no_windows(&mut self, app: &AppInstanceId) -> bool;
+    /// True only when the window's app is hidden or the window is minimized.
+    fn confirms_set_aside(&mut self, window: &crate::PhysicalWindowId) -> bool;
     fn apply_observed(
         &mut self,
         placements: &[crate::Placement],
@@ -46,6 +48,14 @@ pub(super) trait WorkspaceBackend {
         window: &crate::PhysicalWindowId,
         target: crate::Rect,
     ) -> macos::ApplyOutcome;
+    /// Move `window` to a parked position; see [`macos::set_parked_position`].
+    fn set_parked_position(
+        &mut self,
+        window: &crate::PhysicalWindowId,
+        target: crate::Rect,
+    ) -> macos::ApplyOutcome {
+        self.set_position(window, target)
+    }
     fn focused_window(&mut self) -> Option<crate::PhysicalWindowId>;
     fn frontmost_application(&mut self) -> Option<AppInstanceId>;
     /// Diagnostics only: recent user input timing for focus-follow logs.
@@ -142,6 +152,10 @@ impl WorkspaceBackend for MacWorkspaceBackend {
         macos::confirms_no_windows(app)
     }
 
+    fn confirms_set_aside(&mut self, window: &crate::PhysicalWindowId) -> bool {
+        macos::confirms_set_aside(window)
+    }
+
     fn is_process_running(&mut self, app: &AppInstanceId) -> bool {
         macos::is_process_incarnation_running(app)
     }
@@ -175,6 +189,14 @@ impl WorkspaceBackend for MacWorkspaceBackend {
         target: crate::Rect,
     ) -> macos::ApplyOutcome {
         macos::set_position_only(window, target)
+    }
+
+    fn set_parked_position(
+        &mut self,
+        window: &crate::PhysicalWindowId,
+        target: crate::Rect,
+    ) -> macos::ApplyOutcome {
+        macos::set_parked_position(window, target)
     }
 
     fn focused_window(&mut self) -> Option<crate::PhysicalWindowId> {

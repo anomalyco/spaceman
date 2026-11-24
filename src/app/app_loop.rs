@@ -132,6 +132,8 @@ pub struct MainThreadAgent {
     last_refresh: Instant,
     observation_recheck: Option<Instant>,
     opening_until: Option<Instant>,
+    /// Retile every `WINDOW_OPENING_RECHECK` until then after a cancelled cycle.
+    cancelled_retry_until: Option<Instant>,
     /// Last input, activation, or window event; idle loops retile less often.
     last_activity: Instant,
     last_frontmost_check: Instant,
@@ -236,6 +238,7 @@ impl MainThreadAgent {
             last_refresh: initial_refresh,
             observation_recheck: None,
             opening_until: None,
+            cancelled_retry_until: None,
             last_activity: Instant::now(),
             last_frontmost_check: Instant::now(),
             last_hotkey_refresh: initial_refresh,
@@ -339,6 +342,18 @@ impl MainThreadAgent {
                             .map(|status| status.failed)
                             .map_err(String::as_str),
                     );
+                    let now = Instant::now();
+                    if matches!(&result, Err(error) if error.ends_with("cancelled")) {
+                        self.cancelled_retry_until = Some(now + CANCELLED_CYCLE_RETRY);
+                    }
+                    let cancelled_retry = cancelled_cycle_recheck(now, self.cancelled_retry_until);
+                    if cancelled_retry.is_none() {
+                        self.cancelled_retry_until = None;
+                    }
+                    self.observation_recheck = [self.observation_recheck, cancelled_retry]
+                        .into_iter()
+                        .flatten()
+                        .min();
                     if let Ok(status) = &result {
                         let opening = opening_recheck(
                             Instant::now(),

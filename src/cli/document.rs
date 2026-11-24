@@ -8,7 +8,7 @@ use serde::{Deserialize, Serialize};
 use spaceman::{
     DisplaySelector, WorkspaceId, Workspaces,
     config::{
-        Config, HudStyle, MouseFollowsFocus, UpdateChannel, config_path, lock_config,
+        Config, HudPosition, HudStyle, MouseFollowsFocus, UpdateChannel, config_path, lock_config,
         write_config_atomic,
     },
     labs::LabsConfig,
@@ -70,6 +70,12 @@ pub(crate) struct SettingsDoc {
     #[serde(
         default,
         skip_serializing_if = "Option::is_none",
+        serialize_with = "serialize_optional_hud_position"
+    )]
+    pub hud_position: Option<HudPosition>,
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
         serialize_with = "serialize_optional_update_channel"
     )]
     pub update_channel: Option<UpdateChannel>,
@@ -115,6 +121,7 @@ impl SettingsDoc {
     fn is_empty(&self) -> bool {
         self.hud.is_none()
             && self.hud_style.is_none()
+            && self.hud_position.is_none()
             && self.update_channel.is_none()
             && self.mouse_follows_focus.is_none()
             && self.single_window_max_width.is_none()
@@ -158,6 +165,10 @@ impl SettingsDoc {
         self.hud_style.unwrap_or_default()
     }
 
+    pub(crate) fn effective_hud_position(&self) -> HudPosition {
+        self.hud_position.unwrap_or_default()
+    }
+
     pub(crate) fn effective_update_channel(&self) -> UpdateChannel {
         self.update_channel.unwrap_or_default()
     }
@@ -173,6 +184,16 @@ fn serialize_optional_hud_style<S: serde::Serializer>(
 ) -> Result<S::Ok, S::Error> {
     match style {
         Some(style) => serializer.serialize_str(style.as_str()),
+        None => serializer.serialize_none(),
+    }
+}
+
+fn serialize_optional_hud_position<S: serde::Serializer>(
+    position: &Option<HudPosition>,
+    serializer: S,
+) -> Result<S::Ok, S::Error> {
+    match position {
+        Some(position) => serializer.serialize_str(position.as_str()),
         None => serializer.serialize_none(),
     }
 }
@@ -220,6 +241,7 @@ pub(crate) struct WorkspaceDoc {
 pub(crate) struct EffectiveSettings {
     pub hud: bool,
     pub hud_style: &'static str,
+    pub hud_position: &'static str,
     pub update_channel: &'static str,
     pub mouse_follows_focus: &'static str,
     pub single_window_max_width: i32,
@@ -295,6 +317,7 @@ impl ConfigDoc {
         EffectiveSettings {
             hud: self.settings.effective_hud(),
             hud_style: self.settings.effective_hud_style().as_str(),
+            hud_position: self.settings.effective_hud_position().as_str(),
             update_channel: self.settings.effective_update_channel().as_str(),
             mouse_follows_focus: self.settings.effective_mouse_follows_focus().as_str(),
             single_window_max_width: spacing.single_window_max_width,

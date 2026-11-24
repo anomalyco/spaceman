@@ -63,3 +63,35 @@ fn a_focused_window_on_a_visible_workspace_still_wins() {
         Some(ws(1))
     );
 }
+
+#[test]
+fn moving_with_follow_switches_and_focuses_the_moved_window() {
+    let moved = window(10);
+    let existing = window(20);
+    let target = WorkspaceId::new(2).unwrap();
+    let mut backend = FakeBackend {
+        focused: Some(moved.clone()),
+        observation: Some(observation(&moved, frame(50))),
+        ..FakeBackend::default()
+    };
+    backend.frames.insert(moved.clone(), frame(50));
+    backend
+        .frames
+        .insert(existing.clone(), main_parked_frame(frame(100)));
+    let mut runtime = runtime_with_parked(backend, HashMap::from([(existing.clone(), frame(100))]));
+    bind(&mut runtime, WorkspaceId::ONE, &moved);
+    bind(&mut runtime, target, &existing);
+    runtime.workspaces.remember_focus(target, &existing);
+
+    runtime
+        .move_focused_follow(target, outputs(), &AtomicBool::new(false))
+        .unwrap();
+
+    assert_eq!(
+        runtime.workspaces.active_for(&DisplaySelector::Main),
+        Some(target)
+    );
+    assert_eq!(runtime.workspaces.workspace_of(&moved), Some(target));
+    assert!(!runtime.parked.contains_key(&moved));
+    assert_eq!(runtime.backend.focused.as_ref(), Some(&moved));
+}

@@ -1,6 +1,11 @@
 use super::parking::RESTORE_CONFIRM_TOLERANCE;
 use super::*;
 
+enum MoveWindowOutcome {
+    Moved(CycleStatus),
+    Retired(CycleStatus),
+}
+
 const REVEAL_SETTLE_LIMIT: Duration = Duration::from_millis(300);
 /// Poll interval while waiting for incoming windows to arrive. The on-screen
 /// window list costs about half a millisecond, so polling this often is cheap
@@ -649,6 +654,27 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
         self.move_window(window, target, outputs, cancelled)
     }
 
+    pub(super) fn move_focused_follow(
+        &mut self,
+        target: WorkspaceId,
+        outputs: macos::DisplayOutputs,
+        cancelled: &AtomicBool,
+    ) -> Result<CycleStatus, String> {
+        let window = self
+            .backend
+            .focused_window()
+            .ok_or("Focused window is unavailable")?;
+        let was_visible = self.is_visible(target, &outputs);
+        let moved = self.move_window(window.clone(), target, outputs.clone(), cancelled)?;
+        if was_visible {
+            return Ok(moved);
+        }
+        self.workspaces.remember_focus(target, &window);
+        let mut switched = self.switch(target, outputs, cancelled)?;
+        switched.failed += moved.failed;
+        Ok(switched)
+    }
+
     pub(super) fn move_app(
         &mut self,
         bundle_id: &str,
@@ -664,12 +690,26 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
             windows = self.windows_for_bundle(bundle_id);
         }
         let mut status: Option<CycleStatus> = None;
+        let mut retired_failed = 0;
         for window in windows {
-            let mut moved = self.with_warp_context(WarpContext::Suppressed, |rt| {
-                rt.move_window(window, target, outputs.clone(), cancelled)
-            })?;
-            moved.failed += status.map_or(0, |earlier| earlier.failed);
-            status = Some(moved);
+            match self.with_warp_context(WarpContext::Suppressed, |rt| {
+                rt.move_window_outcome(window, target, outputs.clone(), cancelled)
+            })? {
+                MoveWindowOutcome::Moved(mut moved) => {
+                    moved.failed += status.map_or(retired_failed, |earlier| earlier.failed);
+                    retired_failed = 0;
+                    status = Some(moved);
+                }
+                MoveWindowOutcome::Retired(mut retired) => {
+                    if let Some(earlier) = status.take() {
+                        retired.failed += earlier.failed;
+                        retired.hud = earlier.hud;
+                        status = Some(retired);
+                    } else {
+                        retired_failed += retired.failed;
+                    }
+                }
+            }
         }
         status.ok_or_else(|| format!("No managed window found for {bundle_id}"))
     }
@@ -696,6 +736,18 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
         outputs: macos::DisplayOutputs,
         cancelled: &AtomicBool,
     ) -> Result<CycleStatus, String> {
+        match self.move_window_outcome(window, target, outputs, cancelled)? {
+            MoveWindowOutcome::Moved(status) | MoveWindowOutcome::Retired(status) => Ok(status),
+        }
+    }
+
+    fn move_window_outcome(
+        &mut self,
+        window: crate::PhysicalWindowId,
+        target: WorkspaceId,
+        outputs: macos::DisplayOutputs,
+        cancelled: &AtomicBool,
+    ) -> Result<MoveWindowOutcome, String> {
         self.ensure_managed_workspace(target)?;
         let source = if let Some(source) = self.workspaces.workspace_of_any(&window) {
             source
@@ -708,7 +760,7 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
                 .ok_or("Window is not managed by Spaceman")?
         };
         if source == target {
-            return Ok(self.status(0, &outputs));
+            return Ok(MoveWindowOutcome::Moved(self.status(0, &outputs)));
         }
         let is_floating = self.workspaces.floating_workspace_of(&window).is_some();
         if is_floating {
@@ -729,6 +781,18 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
             } else {
                 self.park_window_across(&window, window_output, target_output, &outputs)
             };
+            if parked == macos::ApplyOutcome::Gone
+                && self.retire_confirmed_gone_window(source, &window)
+            {
+                let mut failed = 0;
+                if !is_floating && self.is_visible(source, &outputs) {
+                    failed += self
+                        .layout_workspace(source, source_output, cancelled)
+                        .failed;
+                }
+                self.persist_workspace_state_if_changed()?;
+                return Ok(MoveWindowOutcome::Retired(self.status(failed, &outputs)));
+            }
             if !matches!(parked, macos::ApplyOutcome::Applied) {
                 return Err("Window could not be parked in the target workspace".into());
             }
@@ -812,7 +876,7 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
         self.persist_workspace_state_if_changed()?;
         let mut status = self.status(failed, &outputs);
         status.hud = Some(self.hud_for(target, UiHudKind::Moved, None, &outputs));
-        Ok(status)
+        Ok(MoveWindowOutcome::Moved(status))
     }
 
     /// A floating window has no tile to carry it, so moving it to a workspace

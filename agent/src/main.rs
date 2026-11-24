@@ -263,6 +263,16 @@ impl Ui {
         }
     }
 
+    /// Saves where the Workspace HUD capsule sits, then moves every panel to that edge.
+    pub fn set_hud_position(&mut self, position: spaceman::config::HudPosition) {
+        self.edit(|doc| doc.set_hud_position(position));
+        if self.error.is_none()
+            && let Some(driver) = &self.hud_driver
+        {
+            driver.set_position(position);
+        }
+    }
+
     /// Saves gaps, edge padding and the single-window width, then retiles so every display
     /// takes them at once.
     pub fn set_spacing(&mut self, spacing: spaceman::spacing::Spacing) {
@@ -337,6 +347,7 @@ impl Ui {
         if let Some(driver) = &self.hud_driver {
             driver.set_enabled(self.doc.hud());
             driver.set_style(self.doc.hud_style());
+            driver.set_position(self.doc.hud_position());
         }
     }
 
@@ -555,13 +566,20 @@ pub(crate) fn live_app(
     let doc = Doc::load();
     let initial_hud = doc.hud();
     let initial_style = doc.hud_style();
+    let initial_position = doc.hud_position();
     let hud_bridge = bridge.clone();
     let mut app = base_app()
         .init(move || Ui::load_live(doc, bridge, initial_tour, accessibility, initial_target))
         .on_reopen(on_reopen)
         .on_open_url(on_open_url);
     let hud_sink = Arc::new(hud::LiveHudSink::new(hud_bridge, app.handle()));
-    let hud_driver = hud::install(&mut app, initial_hud, initial_style, hud_sink);
+    let hud_driver = hud::install(
+        &mut app,
+        initial_hud,
+        initial_style,
+        initial_position,
+        hud_sink,
+    );
     app.handle().update_if(move |ui, _| {
         ui.hud_driver = Some(hud_driver);
         false

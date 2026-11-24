@@ -9,6 +9,8 @@ use super::*;
 #[derive(Default)]
 pub(super) struct DisplayWatch {
     pub(super) known: Option<macos::DisplayOutputs>,
+    /// The displays before the last change, which pending windows were parked against.
+    previous: Option<macos::DisplayOutputs>,
     repark_pending: HashSet<crate::PhysicalWindowId>,
 }
 
@@ -28,6 +30,13 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
             .is_some_and(|known| !known.frames().eq(outputs.frames()))
         {
             log_event!("displays changed: re-parking hidden windows");
+            // A window still due a re-park never reached its corner for the last
+            // displays, so they are no baseline: every window is written again.
+            self.displays.previous = if self.displays.repark_pending.is_empty() {
+                self.displays.known.clone()
+            } else {
+                None
+            };
             self.displays.repark_pending = self.parked.keys().cloned().collect();
             self.repark_attempts.clear();
             // macOS moves windows off a removed display, and Spaceman parks and
@@ -57,6 +66,12 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
             .map(|(_, window)| window)
             .collect();
         let displays: Vec<_> = outputs.frames().collect();
+        let screens = outputs.screens();
+        let previous = self
+            .displays
+            .previous
+            .as_ref()
+            .map(|previous| (previous.frames().collect::<Vec<_>>(), previous.screens()));
         for window in std::mem::take(&mut self.displays.repark_pending) {
             if !self.parked.contains_key(&window) || self.parking_exempt.contains(&window) {
                 continue;
@@ -77,7 +92,7 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
             } else {
                 continue;
             };
-            if !self.repark_for_displays(&window, output, &displays) {
+            if !self.repark_for_displays(&window, output, &displays, &screens, previous.as_ref()) {
                 self.displays.repark_pending.insert(window);
             }
         }
@@ -89,15 +104,28 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
         window: &crate::PhysicalWindowId,
         output: crate::Rect,
         displays: &[crate::Rect],
+        screens: &[crate::Rect],
+        previous: Option<&(Vec<crate::Rect>, Vec<crate::Rect>)>,
     ) -> bool {
         let Some(current) = self.backend.window_server_frame(window) else {
             return false;
         };
-        let target = crate::geometry::parked_frame(output, displays, current);
-        if (target.x, target.y) == (current.x, current.y) {
+        let target = crate::geometry::parked_frame_clear_of(output, displays, screens, current);
+        // macOS may hold a parked window above its corner, so its position alone
+        // cannot tell whether the corner moved (a display that grew at the bottom
+        // would show more of it). Leave it only where the corner did not move.
+        let corner_unchanged = previous.is_some_and(|(frames, screens)| {
+            frames.contains(&output)
+                && crate::geometry::parked_frame_clear_of(output, frames, screens, current)
+                    == target
+        });
+        if corner_unchanged
+            && crate::geometry::parked_at(current, target, 0)
+            && !crate::geometry::shows_on(current, screens)
+        {
             return true;
         }
-        let outcome = self.backend.set_position(window, target);
+        let outcome = self.backend.set_parked_position(window, target);
         log_event!("displays changed: re-park {window:?} at {target:?} ({outcome:?})");
         if outcome != macos::ApplyOutcome::Applied {
             return false;

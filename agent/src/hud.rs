@@ -1,6 +1,6 @@
-//! Non-activating Workspace HUD overlay: a capsule near the bottom of each display showing its
-//! row of workspaces, with a marker on the one you are on, when you switch workspaces, move a
-//! window or change a layout. Never includes window titles or steals focus.
+//! Non-activating Workspace HUD overlay: a capsule near the bottom (or top) of each display
+//! showing its row of workspaces, with a marker on the one you are on, when you switch
+//! workspaces, move a window or change a layout. Never includes window titles or steals focus.
 //!
 //! Each display gets its own panel from a fixed pool, at a fixed size, only ordered in and out.
 //! The capsule's entrance, exit and content changes are drawn inside it (`pill.rs`), so every
@@ -30,7 +30,7 @@ use rune::{
 use spaceman::{
     WorkspaceId,
     app::{UiHudDisplay, UiHudEvent},
-    config::HudStyle,
+    config::{HudPosition, HudStyle},
 };
 
 use flow::FRESH_MS;
@@ -58,8 +58,17 @@ const REVEAL_FADE: Duration = Duration::from_millis(40);
 /// Room on every side of the capsule for its shadow, which the panel's edge would cut, and
 /// for ten or so workspaces before the row scrolls.
 const OVERLAY_SIZE: (f32, f32) = (860.0, pill::PILL_HEIGHT + 2.0 * pill::SHADOW_REACH);
-/// Keeps the capsule 60 pt above the bottom of the display.
-const OVERLAY_MARGIN: f32 = 60.0 - pill::SHADOW_REACH;
+/// Keeps the capsule 60 pt inside the display edge it sits on, above the bottom or below the top.
+pub const OVERLAY_MARGIN: f32 = pill::CAPSULE_INSET - pill::SHADOW_REACH;
+
+/// The edge of each display the capsule sits on.
+#[must_use]
+pub const fn panel_edge(position: HudPosition) -> ScreenEdge {
+    match position {
+        HudPosition::Bottom => ScreenEdge::Bottom,
+        HudPosition::Top => ScreenEdge::Top,
+    }
+}
 /// One panel per display, up to this many displays.
 const PANEL_NAMES: [&str; 4] = [
     "Spaceman HUD",
@@ -71,6 +80,8 @@ const PANEL_NAMES: [&str; 4] = [
 pub(super) struct HudOverlay {
     flow: HudFlow,
     style: HudStyle,
+    /// Which edge of its display the capsule sits on.
+    position: HudPosition,
     icons: Icons,
     names: HashMap<String, String>,
     sink: Arc<dyn HudSink>,
@@ -89,10 +100,11 @@ pub(super) struct HudOverlay {
 }
 
 impl HudOverlay {
-    fn new(enabled: bool, style: HudStyle, sink: Arc<dyn HudSink>) -> Self {
+    fn new(enabled: bool, style: HudStyle, position: HudPosition, sink: Arc<dyn HudSink>) -> Self {
         Self {
             flow: HudFlow::new(enabled),
             style,
+            position,
             icons: Icons::new(),
             names: HashMap::new(),
             sink,
@@ -232,6 +244,7 @@ pub fn install<S: 'static>(
     app: &mut rune::App<S>,
     enabled: bool,
     style: HudStyle,
+    position: HudPosition,
     sink: Arc<dyn HudSink>,
 ) -> HudDriver {
     let panels: Vec<Panel> = PANEL_NAMES
@@ -240,7 +253,7 @@ pub fn install<S: 'static>(
             let spec = OverlaySpec {
                 name,
                 size: OVERLAY_SIZE,
-                edge: ScreenEdge::Bottom,
+                edge: panel_edge(position),
                 margin: OVERLAY_MARGIN,
                 align: Align::Center,
                 inset: 0.0,
@@ -256,7 +269,10 @@ pub fn install<S: 'static>(
             // Showing must not settle the view: the capsule enters from the pose it left in.
             .animate_reveal()
             .poll(overlay_poll);
-            let handle = app.overlay(spec, HudOverlay::new(enabled, style, Arc::clone(&sink)));
+            let handle = app.overlay(
+                spec,
+                HudOverlay::new(enabled, style, position, Arc::clone(&sink)),
+            );
             let inner = handle.clone();
             handle.update(move |overlay, _| {
                 overlay.handle = Some(inner);
@@ -362,6 +378,18 @@ impl HudDriver {
         self.each(move |overlay, _| {
             let changed = overlay.style != style;
             overlay.style = style;
+            changed
+        });
+    }
+
+    /// Moves every panel to the other screen edge; the capsule's entry follows it in `pill`.
+    pub fn set_position(&self, position: HudPosition) {
+        self.each(move |overlay, _| {
+            let changed = overlay.position != position;
+            overlay.position = position;
+            if changed && let Some(handle) = &overlay.handle {
+                handle.set_edge(panel_edge(position));
+            }
             changed
         });
     }
@@ -501,7 +529,14 @@ fn overlay_view(overlay: &HudOverlay, cx: &mut Cx<HudOverlay>) -> El {
     overlay.flow.mark_drawn();
     row().key("hud-root").w_full().h_full().center().children(
         overlay.flow.view(cx.is_reduced_motion()).map(|view| {
-            pill::interactive_slot(&view, overlay.style, &overlay.icons, OVERLAY_SIZE.0, p)
+            pill::interactive_slot(
+                &view,
+                overlay.position,
+                overlay.style,
+                &overlay.icons,
+                OVERLAY_SIZE.0,
+                p,
+            )
         }),
     )
 }

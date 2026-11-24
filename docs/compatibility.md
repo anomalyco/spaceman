@@ -46,7 +46,7 @@ twice within five minutes becomes parking-exempt for the rest of the session: it
 tiled on its workspace, but is left visible when another workspace is active rather than being fought
 indefinitely. Parking-exempt windows appear in the `parking_exempt` list of `spaceman ctl debug`; an
 `ignore` config rule instead opts an application out of management permanently. If a newly identified
-frontmost window appears at the exact one-pixel-edge position produced by Spaceman parking, it is
+frontmost window appears at the bottom-corner position produced by Spaceman parking, it is
 revealed so normal workspace adoption can recover an app that relaunched with stale saved bounds.
 Other windows an application keeps off screen itself are left alone rather than parked, and never
 recorded as recovery frames.
@@ -68,7 +68,7 @@ to main until they reconnect.
 
 Parking checks the full window rectangle against all attached displays and chooses an exposed edge,
 including when the window's assigned display has neighbors on both sides. A window counts as on
-screen when more than its one-pixel parking strip shows on a display, so one wider than its tile that
+screen when more than a one-pixel-wide column of it shows on a display, so one wider than its tile that
 overflows the display edge is still parked. When a display is added or removed, every hidden window
 is re-parked against the new arrangement before focus follow or reappearance handling runs (a failed
 write is retried each cycle), and a recovery frame whose display is gone is restored onto the main

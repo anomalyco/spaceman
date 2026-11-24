@@ -92,6 +92,9 @@ impl WorkspaceBackend for ToleranceAwareBackend {
     fn confirms_no_windows(&mut self, app: &AppInstanceId) -> bool {
         self.0.confirms_no_windows(app)
     }
+    fn confirms_set_aside(&mut self, window: &crate::PhysicalWindowId) -> bool {
+        self.0.confirms_set_aside(window)
+    }
     fn frame(
         &mut self,
         window: &crate::PhysicalWindowId,

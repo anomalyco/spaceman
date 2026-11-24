@@ -157,11 +157,13 @@ pub(crate) fn config_help(executable: &str) -> String {
         &format!("  {executable} config show [--json]"),
         &format!("  {executable} config get <key> [--json]"),
         &format!("  {executable} config set <key> <value> [--json]"),
+        &format!("  {executable} config reset <key> [--json]"),
         &format!("  {executable} config check [path] [--json]"),
         "",
         "Settings keys:",
         "  hud             true | false      Show the Workspace HUD overlay (default: true)",
         "  hud_style       icons | layouts   Workspace HUD drawing style (default: icons)",
+        "  hud_position    bottom | top      Workspace HUD screen edge (default: bottom)",
         "  update_channel  stable | dev      In-app updater release channel (default: stable)",
         "  mouse_follows_focus  off | display | window  Move pointer on focus changes (default: off)",
         "  gaps.inner      0-48              Points between tiled windows (default: 0)",
@@ -182,6 +184,7 @@ pub(crate) fn config_help(executable: &str) -> String {
         "Notes:",
         "  - Respects SPACEMAN_CONFIG and SPACEMAN_APPLICATION_SUPPORT.",
         "  - Every write is validated against version-1 schema and replaced atomically.",
+        "  - 'reset' removes a key, and any table it empties, back to its default.",
     ]
     .join("\n")
 }
@@ -248,7 +251,7 @@ pub(crate) fn ctl_help(executable: &str) -> String {
         "  back-and-forth             Toggle between the current and previous workspace",
         "  move-workspace [next|prev|<display>]",
         "                             Move the focused workspace to another display (default: next)",
-        "  move <workspace>           Move the focused window to a workspace",
+        "  move <workspace> [--follow] Move the focused window to a workspace (and switch with --follow)",
         "  move-app <bundle-id> <ws>  Move an application's windows to a workspace",
         "",
         "Windows & layout:",

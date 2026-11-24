@@ -350,3 +350,28 @@ fn config_show_includes_shortcuts_and_labs_in_toml_and_json() {
     assert!(plain_json.get("labs").is_none());
     assert!(plain_json.get("shortcuts").is_none());
 }
+
+#[test]
+fn write_stdout_line_handles_broken_pipe_cleanly_and_reports_other_write_errors() {
+    use std::io::{self, Write};
+    use std::process::ExitCode;
+
+    struct FailingWriter(io::ErrorKind);
+    impl Write for FailingWriter {
+        fn write(&mut self, _: &[u8]) -> io::Result<usize> {
+            Err(io::Error::new(self.0, "simulated write failure"))
+        }
+        fn flush(&mut self) -> io::Result<()> {
+            Ok(())
+        }
+    }
+
+    assert_eq!(
+        super::super::write_stdout_line_to(&mut FailingWriter(io::ErrorKind::BrokenPipe), "hello"),
+        ExitCode::SUCCESS
+    );
+    assert_eq!(
+        super::super::write_stdout_line_to(&mut FailingWriter(io::ErrorKind::Other), "hello"),
+        ExitCode::FAILURE
+    );
+}

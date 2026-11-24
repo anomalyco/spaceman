@@ -29,7 +29,7 @@ use crate::{
 
 pub use apply::{
     ApplyOutcome, ApplyResult, WindowAccessError, apply, apply_managed, apply_while, focus_window,
-    frame, raise_window, set_position_only, warp_pointer,
+    frame, raise_window, set_parked_position, set_position_only, warp_pointer,
 };
 pub use ax::{
     onscreen_window_frames, onscreen_window_order, window_at_point, window_server_frame,
@@ -425,6 +425,15 @@ pub(crate) fn confirms_no_windows(id: &AppInstanceId) -> bool {
         return false;
     }
     attribute::<CFArray>(&element, "AXWindows").is_ok_and(|windows| windows.count() == 0)
+}
+
+/// The user set the window aside: its app is hidden (⌘H) or the window is
+/// minimized (⌘M). Its ordered-out surface then proves it left the layout,
+/// unlike a snapshot that merely omitted it.
+pub(crate) fn confirms_set_aside(window: &PhysicalWindowId) -> bool {
+    running_application(&window.app).is_some_and(|application| {
+        application.isHidden() || apply::cached_window_is_minimized(window)
+    })
 }
 
 fn observe_application(

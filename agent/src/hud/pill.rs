@@ -25,7 +25,7 @@ use rune::{Color, El, Pixels, Spring, Transition, el, row, text, tok::motion::pa
 use spaceman::{
     WorkspaceId,
     app::{UiHudDisplay, UiHudWorkspace},
-    config::HudStyle,
+    config::{HudPosition, HudStyle},
 };
 
 use super::{grow, icons};
@@ -34,8 +34,11 @@ use crate::controls::Paint;
 pub const PILL_HEIGHT: f32 = 44.0;
 /// The capsule inside its border, where the row is laid out.
 pub const INNER: f32 = PILL_HEIGHT - 2.0;
-/// How far the capsule's shadow reaches below it: the lowest layer's offset plus its blur.
+/// How far the capsule's shadow reaches past it: the lowest layer's offset plus its blur.
 pub const SHADOW_REACH: f32 = 48.0;
+/// How far the capsule rests from the display edge it sits on, clear of the Dock below and
+/// the menu bar above.
+pub const CAPSULE_INSET: f32 = 60.0;
 /// Room each side of the capsule for its shadow's widest blur.
 pub const SHADOW_SIDE: f32 = 32.0;
 
@@ -115,9 +118,29 @@ pub fn max_row_width(panel_width: f32) -> f32 {
     panel_width - 2.0 * SHADOW_SIDE - 2.0
 }
 
+/// Where the capsule starts when it is about to appear: below the bottom edge it rises from,
+/// or above the top edge it drops from. Shown (or still) it rests where it is drawn.
+#[must_use]
+pub const fn enter_offset(position: HudPosition, shown: bool, still: bool) -> f32 {
+    if shown || still {
+        return 0.0;
+    }
+    match position {
+        HudPosition::Bottom => DROP,
+        HudPosition::Top => -DROP,
+    }
+}
+
 /// Passive capsule used by Playground previews (no `HudOverlay` event handlers).
-pub fn slot(view: &HudView, style: HudStyle, icons: &Icons, panel_width: f32, p: Paint) -> El {
-    render_slot(view, style, icons, panel_width, p, false)
+pub fn slot(
+    view: &HudView,
+    position: HudPosition,
+    style: HudStyle,
+    icons: &Icons,
+    panel_width: f32,
+    p: Paint,
+) -> El {
+    render_slot(view, position, style, icons, panel_width, p, false)
 }
 
 /// Interactive capsule used by the live HUD overlay and its 120 Hz tests: marks the capsule as a
@@ -125,16 +148,18 @@ pub fn slot(view: &HudView, style: HudStyle, icons: &Icons, panel_width: f32, p:
 /// on secondary click.
 pub fn interactive_slot(
     view: &HudView,
+    position: HudPosition,
     style: HudStyle,
     icons: &Icons,
     panel_width: f32,
     p: Paint,
 ) -> El {
-    render_slot(view, style, icons, panel_width, p, true)
+    render_slot(view, position, style, icons, panel_width, p, true)
 }
 
 fn render_slot(
     view: &HudView,
+    position: HudPosition,
     style: HudStyle,
     icons: &Icons,
     panel_width: f32,
@@ -146,11 +171,12 @@ fn render_slot(
     } else {
         (EXIT, 0.0)
     };
-    let (scale, drop) = if view.shown || view.still {
-        (1.0, 0.0)
+    let scale = if view.shown || view.still {
+        1.0
     } else {
-        (REST_SCALE, DROP)
+        REST_SCALE
     };
+    let drop = enter_offset(position, view.shown, view.still);
     let entries = view.entries();
     let track = match style {
         HudStyle::Layouts => grow::track_with_mode(&entries, view.focus, icons, p, interactive),

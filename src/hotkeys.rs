@@ -327,6 +327,7 @@ fn worker_action(command: &Command) -> WorkerAction {
     match command {
         Command::Switch(workspace) => WorkerAction::SwitchWorkspace(*workspace),
         Command::Move(workspace) => WorkerAction::MoveFocused(*workspace),
+        Command::MoveFollow(workspace) => WorkerAction::MoveFocusedFollow(*workspace),
         Command::BackAndForth => WorkerAction::WorkspaceBackAndForth,
         Command::MoveWorkspace(target) => WorkerAction::MoveWorkspaceToDisplay(target.clone()),
         Command::Focus(direction) => WorkerAction::Focus(*direction),
