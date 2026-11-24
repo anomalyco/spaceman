@@ -89,9 +89,7 @@ impl MainThreadAgent {
 /// (`Update failed:` and `Shortcuts not applied:`).
 pub(super) fn clear_hotkey_reinstall_error(last_error: &mut Option<String>) {
     let keep = is_update_failed_error(last_error.as_deref())
-        || last_error
-            .as_deref()
-            .is_some_and(|error| error.starts_with(live_shortcuts::NOT_APPLIED));
+        || is_shortcuts_not_applied_error(last_error.as_deref());
     if !keep {
         *last_error = None;
     }

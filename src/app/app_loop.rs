@@ -627,9 +627,14 @@ pub(super) fn is_update_failed_error(error: Option<&str>) -> bool {
     error.is_some_and(|error| error.starts_with(UPDATE_FAILED_PREFIX))
 }
 
+pub(super) fn is_shortcuts_not_applied_error(error: Option<&str>) -> bool {
+    error.is_some_and(|error| error.starts_with(live_shortcuts::NOT_APPLIED))
+}
+
 /// Updates `last_error` when automatic tiling starts and returns the status text
 /// to show in the menu bar. A failed update installation is unrelated to tiling
-/// and survives the automatic resume that follows it.
+/// and survives the automatic resume that follows it; an unapplied shortcut table
+/// also stays retained while the previous table remains active.
 pub(super) fn automatic_started_status<'a>(
     last_error: &'a mut Option<String>,
     automatic_status: &'a str,
@@ -637,7 +642,9 @@ pub(super) fn automatic_started_status<'a>(
     if is_update_failed_error(last_error.as_deref()) {
         last_error.as_deref().unwrap_or(automatic_status)
     } else {
-        *last_error = None;
+        if !is_shortcuts_not_applied_error(last_error.as_deref()) {
+            *last_error = None;
+        }
         automatic_status
     }
 }
@@ -761,6 +768,17 @@ mod tests {
         assert_eq!(worker_error, None);
 
         let mut shortcuts_error = Some("Shortcuts not applied: conflict".to_owned());
+        assert_eq!(
+            automatic_started_status(
+                &mut shortcuts_error,
+                "Automatic tiling enabled · Workspaces 1 / 6",
+            ),
+            "Automatic tiling enabled · Workspaces 1 / 6"
+        );
+        assert_eq!(
+            shortcuts_error.as_deref(),
+            Some("Shortcuts not applied: conflict")
+        );
         assert_eq!(
             worker_status_update(&mut shortcuts_error, true, Ok(0)),
             None
