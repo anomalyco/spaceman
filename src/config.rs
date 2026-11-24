@@ -179,6 +179,8 @@ pub struct Config {
 pub enum WindowDisposition {
     Managed,
     Floating,
+    /// Tiled even when the window looks like a dialog or non-resizable panel.
+    Tiled,
     Route(WorkspaceId),
     /// Never tiled, owned, moved, or parked. For windows whose applications
     /// insist on managing them themselves.
@@ -326,9 +328,11 @@ impl Config {
             let action = match (rule.action.as_str(), rule.workspace) {
                 ("float", None) => WindowDisposition::Floating,
                 ("ignore", None) => WindowDisposition::Ignored,
+                ("tile", None) => WindowDisposition::Tiled,
                 ("route", Some(workspace)) => WindowDisposition::Route(workspace),
                 ("float", Some(_)) => return Err("float rule cannot specify workspace".into()),
                 ("ignore", Some(_)) => return Err("ignore rule cannot specify workspace".into()),
+                ("tile", Some(_)) => return Err("tile rule cannot specify workspace".into()),
                 ("route", None) => return Err("route rule requires workspace".into()),
                 (action, _) => return Err(format!("unknown window rule action {action:?}")),
             };
@@ -842,6 +846,30 @@ workspace = 7
         assert_eq!(
             config.disposition("com.example.App", &window(Some("Document"))),
             WindowDisposition::Route(WorkspaceId::new(7).unwrap())
+        );
+    }
+
+    #[test]
+    fn tile_rule_parses_and_rejects_a_workspace() {
+        let config = Config::parse(
+            "version = 1\n[[rules]]\nbundle_id = 'com.apple.systempreferences'\naction = 'tile'",
+        )
+        .unwrap();
+        assert_eq!(
+            config.disposition("com.apple.systempreferences", &window(None)),
+            WindowDisposition::Tiled
+        );
+        assert_eq!(
+            config.disposition("com.example.Other", &window(None)),
+            WindowDisposition::Managed
+        );
+        assert_eq!(
+            Config::parse(
+                "version = 1\n[[rules]]\nbundle_id = 'x'\naction = 'tile'\nworkspace = 2"
+            )
+            .err()
+            .as_deref(),
+            Some("tile rule cannot specify workspace")
         );
     }
 

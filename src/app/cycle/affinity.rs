@@ -108,12 +108,13 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
                 }
                 // A window that already holds a tile keeps it while it temporarily
                 // looks non-resizable (for example while an attached window-modal
-                // close or save sheet disables its fullscreen button or AXSize).
-                // A float rule or Toggle Float still releases the tile immediately.
+                // close or save sheet disables its fullscreen button or AXSize),
+                // and a tile rule tiles it whatever it looks like. A float rule or
+                // Toggle Float still releases the tile immediately.
                 let tiled = self.workspaces.workspace_of(&window.id).is_some();
                 let floating = disposition == WindowDisposition::Floating
                     || self.manual_floating.contains(&window.id)
-                    || (!window.resizable && !tiled);
+                    || (!window.resizable && !tiled && disposition != WindowDisposition::Tiled);
                 if floating {
                     if let Some(owner) = self.workspaces.workspace_of(&window.id) {
                         self.forget_window(owner, &window.id);
@@ -207,7 +208,7 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
                                 FrozenWindowAffinity::CurrentDisplay
                             }
                         }
-                        WindowDisposition::Managed => {
+                        WindowDisposition::Managed | WindowDisposition::Tiled => {
                             app_owns_window = true;
                             app_owns_tiled = true;
                             self.memory

@@ -188,7 +188,7 @@ pub(crate) fn rules_help(executable: &str) -> String {
         "Usage:",
         &format!("  {executable} rules list [--json]"),
         &format!(
-            "  {executable} rules add --app <bundle-id> (--workspace <ws> | --float | --ignore)"
+            "  {executable} rules add --app <bundle-id> (--workspace <ws> | --float | --tile | --ignore)"
         ),
         "                         [--title <title>] [--position <index>] [--json]",
         &format!("  {executable} rules remove <index-or-bundle-id> [--json]"),
@@ -199,6 +199,7 @@ pub(crate) fn rules_help(executable: &str) -> String {
         "  --title <title>            Require an exact window title match",
         "  --workspace <ws>           Route matching windows to workspace 1-10 or A-Z",
         "  --float                    Float matching windows without tiling",
+        "  --tile                     Tile matching windows even if they look like dialogs",
         "  --ignore                   Ignore matching windows completely",
         "  --position <index>         Insert at 1-based rule index (default: append)",
         "  --json                     Emit machine-readable JSON output",

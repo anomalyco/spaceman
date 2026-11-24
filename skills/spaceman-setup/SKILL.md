@@ -84,7 +84,7 @@ Config lives at `~/Library/Application Support/Spaceman/config.toml`, read at st
 (`SPACEMAN_CONFIG` overrides the path). Workspaces 1–5 prefer the main display, 6–10 the
 secondary; assignments accept `main`, `secondary`, a display UUID, or a display name. Schema
 version is `1`; rules are ordered and first-match. A rule accepts exact `bundle_id` and/or `title`
-matching, with an `action` of `float`, `route`, or `ignore`; `route` also requires `workspace`.
+matching, with an `action` of `float`, `tile`, `route`, or `ignore`; `route` also requires `workspace`.
 
 ```sh
 spaceman config-check "$HOME/Library/Application Support/Spaceman/config.toml"

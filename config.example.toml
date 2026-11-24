@@ -28,7 +28,8 @@ left = 0
 right = 0
 
 # Rules are optional, ordered, and first-match wins. Every matcher present in a
-# rule must match exactly. Valid actions are "float", "route", and "ignore".
+# rule must match exactly. Valid actions are "float", "tile", "route", and
+# "ignore". "tile" tiles a window Spaceman would otherwise float as a dialog.
 [[rules]]
 bundle_id = "com.apple.systempreferences"
 action = "float"

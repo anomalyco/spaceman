@@ -586,6 +586,52 @@ fn rules_list_add_position_and_remove_by_index_and_bundle_id() {
 }
 
 #[test]
+fn rules_add_tile_writes_a_tile_rule() {
+    let temp = TempConfig::new("rules-tile");
+
+    let added = temp.run(&[
+        "rules",
+        "add",
+        "--app",
+        "com.apple.systempreferences",
+        "--tile",
+    ]);
+    assert_eq!(added.exit_code, 0);
+    assert_eq!(
+        added.stdout.as_deref(),
+        Some("added rule 1: bundle_id=com.apple.systempreferences -> tile")
+    );
+    let config = Config::parse(&temp.read()).unwrap();
+    assert_eq!(
+        config.disposition("com.apple.systempreferences", &sample_window(None)),
+        WindowDisposition::Tiled
+    );
+
+    for conflicting in [
+        &["--tile", "--float"][..],
+        &["--ignore", "--tile"],
+        &["--tile=yes"],
+    ] {
+        let mut args = vec!["rules", "add", "--app", "com.example.App"];
+        args.extend_from_slice(conflicting);
+        assert_eq!(temp.run(&args).exit_code, 1, "{conflicting:?}");
+    }
+    assert_eq!(
+        temp.run(&[
+            "rules",
+            "add",
+            "--app",
+            "com.example.App",
+            "--tile",
+            "--workspace",
+            "2"
+        ])
+        .exit_code,
+        1
+    );
+}
+
+#[test]
 fn rules_rejects_invalid_inputs() {
     let temp = TempConfig::new("rules-invalid");
 

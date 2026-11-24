@@ -90,6 +90,14 @@ pause, quit, or hotkey loss.
 - Unit (FakeBackend), `src/app/tests/minimums.rs`: a window that refuses its tile width gets a wider
   tile (middle, last, several at once, and observation-cycle cases); a three-window row that cannot fit stacks two neighbors, and a wider display restores the requested row; Fullscreen Layout ignores minimums. `src/app/tests/stacked_resize.rs`: a resize (issue 197), swap, or drag-nest (with or without a preview) while a pair is stacked never saves the temporary stack; a drag-nest through a fit that only reweights keeps the requested weights; a perpendicular move through a stack saves A above `B | C`; and a drop held on the other stacked tile follows the preview. `src/layout_tree.rs`:
   `fitting_minimums_reaches_into_nested_splits_and_leaves_impossible_splits_alone`.
+- Window classification (`src/macos/classify.rs`), `src/macos/tests.rs`:
+  `primary_windows_without_a_working_fullscreen_button_still_tile` (FaceTime, Phone, News, Podcasts,
+  Games, Shortcuts, System Settings, windows showing a sheet) and
+  `settings_windows_modals_and_accessory_panels_still_float`.
+- `tile` rule: `src/app/tests/rules.rs`
+  `a_tile_rule_tiles_a_window_that_looks_like_a_dialog_until_toggled_to_float`; `src/config.rs`
+  `tile_rule_parses_and_rejects_a_workspace`; `src/cli/tests.rs` `rules_add_tile_writes_a_tile_rule`;
+  `agent/src/rules/tests.rs` `a_tile_rule_reads_back_and_the_hud_float_replaces_it_in_place`.
 - Spacing, `src/spacing/tests.rs`: outer padding and its 320×240 floor; one tile, two columns and a
   nested three-tile split with inner gaps and asymmetric padding (no overlaps, exact point totals);
   equal weights give equal windows; Fullscreen Layout's capped frame; directional focus across gaps;
@@ -102,6 +110,9 @@ pause, quit, or hotkey loss.
 
 ## Gotchas
 
+- Settings › Rules shows no `tile` rules: tiling is the default, so the map has nowhere to draw one.
+  Edit them with `spaceman rules` or `config.toml`; the Workspace HUD's Float and Pin replace an
+  app's tile rule.
 - Tests check requested frames; apps with minimum sizes may refuse them. Spaceman grows such a
   window's tile to the size it kept, taking the space from its siblings in proportion to what each
   can spare, and logs a `minimum size:` line in `agent.log`. Minimums are learned per window, only
@@ -134,8 +145,9 @@ pause, quit, or hotkey loss.
 - A window that enters macOS native fullscreen (for example browser video) loses its slot after two
   seconds and returns as a new tile at the end of the layout
   ([known defect](fullscreen-layout.md#gotchas)).
-- Floating windows (rules, manual Toggle Float, modal/dialog windows without an enabled fullscreen
-  button, or non-resizable windows) are owned by a workspace (and can be moved between workspaces)
+- Floating windows (rules, manual Toggle Float, modal windows, dialogs with a close button but
+  neither a fullscreen button nor an enabled zoom button, or non-resizable windows) are owned by a
+  workspace (and can be moved between workspaces)
   but are never tiled or resized. A window that already holds a tile keeps it while it temporarily
   reports non-resizable (such as while showing a window-modal close or save sheet); only a `float`
   rule or Toggle Float releases a tile.

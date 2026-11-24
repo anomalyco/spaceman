@@ -103,6 +103,26 @@ fn a_broken_file_is_never_saved_over() {
 }
 
 #[test]
+fn a_tile_rule_reads_back_and_the_hud_float_replaces_it_in_place() {
+    let mut doc = Doc::parse(
+        "version = 1\n\n[[rules]]\nbundle_id = \"com.apple.systempreferences\"\naction = \"tile\"\n",
+    );
+    assert!(doc.error.is_none());
+    assert_eq!(
+        doc.app_place("com.apple.systempreferences"),
+        Some(Place::Tile)
+    );
+    // Floating it from the HUD rewrites the tile rule rather than adding a second
+    // rule the first-match tile rule would shadow.
+    doc.set_app_place("com.apple.systempreferences", Some(Place::Float));
+    assert_eq!(doc.rules().len(), 1);
+    assert_eq!(doc.rules()[0].place, Place::Float);
+    doc.place(0, Place::Tile);
+    assert!(doc.source().contains("action = \"tile\""));
+    assert!(spaceman::config::Config::parse(&doc.source()).is_ok());
+}
+
+#[test]
 fn set_app_place_updates_bundle_rule_without_touching_title_rules() {
     let mut doc = Doc::parse(SOURCE);
     assert_eq!(doc.app_place("com.brave.Browser"), None);

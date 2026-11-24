@@ -6,9 +6,55 @@ use super::{
     DisplayOutput, DisplayOutputs,
     apply::{group_placements_by_app, position_matches},
     ax::{WindowServerWindow, should_ignore_missing_window_id, windows_reaching_point},
+    classify::{TitleBar, TitleButton, is_dialog, is_ignored},
     events::running_application_instances,
     frontmost_application, is_process_incarnation_running, process_start_time,
 };
+
+/// Title bars measured on macOS 27.2 with `AXFullScreenButton`, `AXZoomButton`
+/// and `AXCloseButton`.
+fn bar(fullscreen: TitleButton, zoom: TitleButton, close: bool) -> TitleBar {
+    TitleBar {
+        fullscreen,
+        zoom,
+        close,
+    }
+}
+
+#[test]
+fn primary_windows_without_a_working_fullscreen_button_still_tile() {
+    use TitleButton::{Absent, Disabled, Enabled};
+    // FaceTime (16:10 landscape), Phone, News, Podcasts, Games, Shortcuts and
+    // System Settings: no fullscreen button, an enabled zoom button.
+    assert!(!is_dialog(false, false, bar(Absent, Enabled, true)));
+    // FaceTime (2:3 portrait), or any window while it shows a sheet: both
+    // buttons disabled, but the fullscreen button is there.
+    assert!(!is_dialog(false, false, bar(Disabled, Disabled, true)));
+    // An ordinary document window.
+    assert!(!is_dialog(false, false, bar(Enabled, Enabled, true)));
+    // Borderless regular-app windows (Ghostty without decorations).
+    assert!(!is_dialog(false, false, bar(Absent, Absent, false)));
+}
+
+#[test]
+fn settings_windows_modals_and_accessory_panels_still_float() {
+    use TitleButton::{Absent, Disabled, Enabled};
+    // TextEdit Settings and Calculator: no fullscreen button, zoom disabled.
+    assert!(is_dialog(false, false, bar(Absent, Disabled, true)));
+    // A closable window with neither button.
+    assert!(is_dialog(false, false, bar(Absent, Absent, true)));
+    // Modal windows always float.
+    assert!(is_dialog(false, true, bar(Enabled, Enabled, true)));
+    // Accessory apps' windows tile only with an enabled fullscreen button; an
+    // enabled zoom button is not enough.
+    assert!(is_dialog(true, false, bar(Absent, Enabled, true)));
+    assert!(is_dialog(true, false, bar(Disabled, Disabled, true)));
+    assert!(!is_dialog(true, false, bar(Enabled, Enabled, true)));
+    // Their buttonless windows are ignored outright.
+    assert!(is_ignored(true, bar(Absent, Absent, false)));
+    assert!(!is_ignored(true, bar(Absent, Absent, true)));
+    assert!(!is_ignored(false, bar(Absent, Absent, false)));
+}
 
 #[test]
 fn processes_without_a_launch_date_are_identified_by_their_kernel_start_time() {

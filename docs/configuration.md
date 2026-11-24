@@ -49,12 +49,12 @@ right = 0
 [[rules]]
 bundle_id = "com.example.Application" # optional exact match
 title = "Preferences"                 # optional exact match
-action = "float"                      # required: "float", "route", or "ignore"
+action = "float"                      # required: "float", "tile", "route", or "ignore"
 
 [[rules]]
 bundle_id = "com.tinyspeck.slackmacgap"
 action = "route"
-workspace = 2                         # required for route; forbidden for float and ignore
+workspace = 2                         # required for route; forbidden for float, tile, and ignore
 
 [[rules]]
 bundle_id = "ai.opencode.desktop"
@@ -72,6 +72,10 @@ Rules run in file order and the first matching rule wins. An unmatched window is
 - `float` excludes the window from tiling and resizing, preserves its native frame, and keeps it with
   its logical workspace (a remembered workspace during recall, or the active workspace where it was
   first observed).
+- `tile` tiles the window even when Spaceman would float it as a dialog, settings window, or
+  non-resizable window (see [Compatibility](compatibility.md)), like an unmatched resizable window.
+  A window that refuses its tile size keeps its own size inside the tile. Toggle Float still floats
+  it until toggled back.
 - `route` assigns a newly inserted resizable logical window to workspace 1 through 10 or a configured
   named workspace A through Z. A bundle-level `route` rule (without `title`) applies to the
   application's initial window while secondary windows opened later stay on the active workspace; a
