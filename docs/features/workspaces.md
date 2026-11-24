@@ -95,6 +95,7 @@ Workspace order ([settings] workspace_order)                // ws.order
 ├── The order the HUD row, the menu bar menu and three-finger swipes list a display's workspaces
 ├── Listed workspaces first, in the order given; the rest follow as 1-10, then A-Z
 ├── Unset or empty -> 1-10, then A-Z, as before
+├── Empty workspaces flicked through while the HUD is up stay in the row where the order puts them
 ├── Only where workspaces are listed: never enables a letter; shortcuts, routes, and saved state
 │   are unchanged
 ├── Unknown or repeated entry -> config rejected
@@ -178,7 +179,9 @@ on the same letter.
   `workspace_order_accepts_numbers_and_letters_in_the_given_order`,
   `workspace_order_rejects_duplicate_and_unknown_workspaces`, and
   `saving_a_workspace_monitor_keeps_the_workspace_order` (Settings › Workspaces); CLI,
-  `src/cli/tests/regressions.rs`: `config_commands_keep_and_show_the_workspace_order`.
+  `src/cli/tests/regressions.rs`: `config_commands_keep_and_show_the_workspace_order`; agent,
+  `agent/src/hud/tests.rs`: `visited_empty_workspaces_keep_the_configured_workspace_order` (empty
+  workspaces flicked through during one HUD show stay where the order puts them).
 - Unit (FakeBackend), `src/app/tests/switch_repeat.rs`: a repeat `SwitchWorkspace` walks a
   3-tile workspace A -> B -> C -> A in split and Fullscreen Layout (remembered focus and HUD
   included), warps the pointer onto each next tile under `mouse_follows_focus`, steps on inside

@@ -76,6 +76,7 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
                         .into_iter()
                         .map(|workspace| self.hud_workspace(workspace))
                         .collect(),
+                    order: self.config.ordered_workspaces().collect(),
                 }
             })
             .collect();

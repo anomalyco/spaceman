@@ -80,10 +80,19 @@ impl HudView<'_> {
     /// fresh marker starts on, so the marker glides smoothly without the capsule wobbling.
     #[must_use]
     pub fn entries(&self) -> Vec<UiHudWorkspace> {
+        // Where `workspace` sits in the row's listing order; an empty `order` is 1-10, then A-Z.
+        let rank = |workspace: WorkspaceId| {
+            let position = self
+                .row
+                .order
+                .iter()
+                .position(|&listed| listed == workspace);
+            (position.unwrap_or(usize::MAX), workspace)
+        };
         let mut entries = self.row.workspaces.clone();
         for &workspace in self.visited_empty.iter().chain(self.focus.iter()) {
             if !entries.iter().any(|entry| entry.workspace == workspace) {
-                let at = entries.partition_point(|entry| entry.workspace < workspace);
+                let at = entries.partition_point(|entry| rank(entry.workspace) < rank(workspace));
                 entries.insert(
                     at,
                     UiHudWorkspace {

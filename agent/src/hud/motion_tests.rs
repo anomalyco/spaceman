@@ -212,6 +212,7 @@ fn display(
         visible: Some(id(visible)),
         from: from.map(id),
         workspaces,
+        order: Vec::new(),
     }
 }
 

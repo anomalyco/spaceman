@@ -94,6 +94,11 @@ fn the_hud_row_follows_the_configured_order() {
         .unwrap();
 
     assert_eq!(main.visible, Some(named('W')));
+    assert_eq!(main.order.len(), WorkspaceId::COUNT);
+    assert_eq!(
+        main.order[..4],
+        [WorkspaceId::ONE, named('Q'), named('W'), named('E')]
+    );
     assert_eq!(
         main.workspaces
             .iter()

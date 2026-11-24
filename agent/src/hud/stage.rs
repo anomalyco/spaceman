@@ -84,6 +84,7 @@ impl HudPreview {
                 .filter(|(workspace, number)| !workspace.apps.is_empty() || *number == self.visible)
                 .filter_map(|(workspace, number)| hud_workspace(number, workspace))
                 .collect(),
+            order: Vec::new(),
         }
     }
 

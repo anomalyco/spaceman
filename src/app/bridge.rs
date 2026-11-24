@@ -96,6 +96,9 @@ pub struct UiHudDisplay {
     /// The workspace a switch on this display just left, so the HUD can start from it.
     pub from: Option<WorkspaceId>,
     pub workspaces: Vec<UiHudWorkspace>,
+    /// Every workspace in listing order (`settings.workspace_order`, then 1-10 and A-Z), so the
+    /// HUD can place a workspace this row leaves out; empty means that default order.
+    pub order: Vec<WorkspaceId>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
