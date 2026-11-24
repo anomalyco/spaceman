@@ -65,7 +65,7 @@ impl MainThreadAgent {
                     log_event!("hotkeys: {skipped}");
                 }
                 self.hotkeys = Some(hotkeys);
-                self.last_error = None;
+                clear_hotkey_reinstall_error(&mut self.last_error);
                 self.ui_dirty = true;
             }
             Err(error) => {
@@ -81,5 +81,40 @@ impl MainThreadAgent {
     fn hotkey_binding(&self, id: u32) -> Option<(WorkerAction, String)> {
         let (action, description) = self.hotkeys.as_ref()?.binding(id)?;
         Some((action.clone(), description.to_owned()))
+    }
+}
+
+/// Clears `last_error` after re-registering the active shortcut table,
+/// preserving retained diagnostics that re-registration does not resolve
+/// (`Update failed:` and `Shortcuts not applied:`).
+pub(super) fn clear_hotkey_reinstall_error(last_error: &mut Option<String>) {
+    let keep = is_update_failed_error(last_error.as_deref())
+        || last_error
+            .as_deref()
+            .is_some_and(|error| error.starts_with(live_shortcuts::NOT_APPLIED));
+    if !keep {
+        *last_error = None;
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn hotkey_reinstall_preserves_update_and_unapplied_shortcut_errors() {
+        let update_reason = format!("{UPDATE_FAILED_PREFIX}could not write update receipt");
+        let mut last_error = Some(update_reason.clone());
+        clear_hotkey_reinstall_error(&mut last_error);
+        assert_eq!(last_error.as_deref(), Some(update_reason.as_str()));
+
+        let shortcut_reason = format!("{}: conflict", live_shortcuts::NOT_APPLIED);
+        let mut last_error = Some(shortcut_reason.clone());
+        clear_hotkey_reinstall_error(&mut last_error);
+        assert_eq!(last_error.as_deref(), Some(shortcut_reason.as_str()));
+
+        let mut hotkey_error = Some("Hotkeys unavailable: could not register".to_owned());
+        clear_hotkey_reinstall_error(&mut hotkey_error);
+        assert_eq!(hotkey_error, None);
     }
 }

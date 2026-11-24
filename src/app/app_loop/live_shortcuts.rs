@@ -252,18 +252,7 @@ impl MainThreadAgent {
             return;
         }
         match HotkeyPlan::current(&self.hotkey_workspaces, &self.shortcuts) {
-            Ok(plan) => {
-                let preserved = self
-                    .is_shortcuts_not_applied_error()
-                    .then(|| self.last_error.clone())
-                    .flatten();
-                self.reinstall_hotkeys(plan);
-                if self.hotkeys.is_some()
-                    && let Some(message) = preserved
-                {
-                    self.last_error = Some(message);
-                }
-            }
+            Ok(plan) => self.reinstall_hotkeys(plan),
             Err(error) => {
                 let error = format!("Hotkeys unavailable: {error}");
                 log_event!("{error}");
@@ -275,7 +264,7 @@ impl MainThreadAgent {
     }
 }
 
-const NOT_APPLIED: &str = "Shortcuts not applied";
+pub(super) const NOT_APPLIED: &str = "Shortcuts not applied";
 
 #[cfg(test)]
 mod tests {
