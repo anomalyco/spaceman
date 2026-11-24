@@ -237,6 +237,30 @@ pub(super) fn physical_window_id(
     })
 }
 
+pub(super) fn should_ignore_missing_window_id(role: Option<&str>, subrole: Option<&str>) -> bool {
+    match role {
+        Some("AXWindow") => subrole.is_some_and(|subrole| subrole != "AXStandardWindow"),
+        Some(_) => true,
+        None => false,
+    }
+}
+
+/// Returns true when an Accessibility entry in `AXWindows` / `AXFocusedWindow` that has no
+/// `CGWindowID` is demonstrably not a standard window (for example Finder's `AXScrollArea` /
+/// `AXDesktop` entry), so callers can skip it instead of marking the entire app unavailable.
+pub(super) fn is_non_standard_window_element(element: &AXUIElement) -> bool {
+    let role = attribute::<CFString>(element, "AXRole")
+        .ok()
+        .map(|value| value.to_string());
+    if role.as_deref().is_some_and(|value| value != "AXWindow") {
+        return true;
+    }
+    let subrole = attribute::<CFString>(element, "AXSubrole")
+        .ok()
+        .map(|value| value.to_string());
+    should_ignore_missing_window_id(role.as_deref(), subrole.as_deref())
+}
+
 pub(super) fn is_settable(element: &AXUIElement, name: &'static str) -> Result<bool, AXError> {
     let attribute = CFString::from_static_str(name);
     let mut settable = 0;

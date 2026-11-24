@@ -15,8 +15,9 @@ use crate::{AppInstanceId, PhysicalWindowId, Placement, Rect, Settings};
 use super::{
     WindowObservation,
     ax::{
-        application_element, attribute, cf_array_items, onscreen_windows, optional_bool_attribute,
-        physical_window_id, set_attribute, set_ax_timeout, set_position, set_size, window_frame,
+        application_element, attribute, cf_array_items, is_non_standard_window_element,
+        onscreen_windows, optional_bool_attribute, physical_window_id, set_attribute,
+        set_ax_timeout, set_position, set_size, window_frame,
     },
     mouse_down, observe_window, process_incarnation_matches, running_application,
 };
@@ -145,14 +146,16 @@ pub fn apply_managed(
             }
             let mut lookup_failed = false;
             for window in cf_array_items::<AXUIElement>(&windows) {
+                set_ax_timeout(window);
                 let Some(window_id) = physical_window_id(&app_id, window) else {
-                    lookup_failed = true;
+                    if !is_non_standard_window_element(window) {
+                        lookup_failed = true;
+                    }
                     continue;
                 };
                 let Some(placement_indices) = pending.remove(&window_id.window_id) else {
                     continue;
                 };
-                set_ax_timeout(window);
                 for placement_index in placement_indices {
                     if !should_continue() {
                         break 'applications;

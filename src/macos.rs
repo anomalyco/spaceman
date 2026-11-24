@@ -47,8 +47,9 @@ pub use swipes::SwipeMonitor;
 
 use apply::{cache_managed_window, evict_managed_app, prune_managed_app};
 use ax::{
-    application_element, attribute, cf_array_items, is_settable, onscreen_windows,
-    optional_bool_attribute, physical_window_id, set_ax_timeout, window_server_windows,
+    application_element, attribute, cf_array_items, is_non_standard_window_element, is_settable,
+    onscreen_windows, optional_bool_attribute, physical_window_id, set_ax_timeout,
+    window_server_windows,
 };
 use displays::main_output;
 use window_attributes::{WindowAttribute, WindowAttributes};
@@ -491,7 +492,11 @@ fn observe_application(
         .map(|window| (window, focused_id.clone()))
         .chain(cf_array_items::<AXUIElement>(&windows).map(|window| (window, None)));
     for (window, known_id) in elements {
+        set_ax_timeout(window);
         let Some(window_id) = known_id.or_else(|| physical_window_id(&id, window)) else {
+            if is_non_standard_window_element(window) {
+                continue;
+            }
             return Some(AppObservation::Unavailable {
                 app: id,
                 error: "physical window ID unavailable".into(),
@@ -500,7 +505,6 @@ fn observe_application(
         if !current_windows.insert(window_id.clone()) {
             continue;
         }
-        set_ax_timeout(window);
         match observe_window(window_id, accessory, window, onscreen, output) {
             Ok(WindowObservation::Observed(observation)) => {
                 cache_managed_window(&observation.id, window);
