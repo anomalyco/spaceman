@@ -4,15 +4,13 @@
 
 use super::*;
 
-/// How far above its parking corner macOS may hold a window to keep its title
-/// bar on screen, with room to spare over the 66 points a unified toolbar needs.
-const TITLE_BAR_HOLD_LIMIT: i32 = 80;
-
 /// The displays the runtime last saw, and the hidden windows still to re-park
 /// since they changed.
 #[derive(Default)]
 pub(super) struct DisplayWatch {
     known: Option<macos::DisplayOutputs>,
+    /// The displays before the last change, which pending windows were parked against.
+    previous: Option<macos::DisplayOutputs>,
     repark_pending: HashSet<crate::PhysicalWindowId>,
 }
 
@@ -32,6 +30,7 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
             .is_some_and(|known| !known.frames().eq(outputs.frames()))
         {
             log_event!("displays changed: re-parking hidden windows");
+            self.displays.previous = self.displays.known.clone();
             self.displays.repark_pending = self.parked.keys().cloned().collect();
             self.repark_attempts.clear();
             // macOS moves windows off a removed display, and Spaceman parks and
@@ -59,6 +58,11 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
             .collect();
         let displays: Vec<_> = outputs.frames().collect();
         let screens = outputs.screens();
+        let previous = self
+            .displays
+            .previous
+            .as_ref()
+            .map(|previous| (previous.frames().collect::<Vec<_>>(), previous.screens()));
         for window in std::mem::take(&mut self.displays.repark_pending) {
             if !self.parked.contains_key(&window) || self.parking_exempt.contains(&window) {
                 continue;
@@ -79,7 +83,7 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
             } else {
                 continue;
             };
-            if !self.repark_for_displays(&window, output, &displays, &screens) {
+            if !self.repark_for_displays(&window, output, &displays, &screens, previous.as_ref()) {
                 self.displays.repark_pending.insert(window);
             }
         }
@@ -92,15 +96,22 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
         output: crate::Rect,
         displays: &[crate::Rect],
         screens: &[crate::Rect],
+        previous: Option<&(Vec<crate::Rect>, Vec<crate::Rect>)>,
     ) -> bool {
         let Some(current) = self.backend.window_server_frame(window) else {
             return false;
         };
         let target = crate::geometry::parked_frame_clear_of(output, displays, screens, current);
-        // Already at its corner, held up only by its title bar. A window held up
-        // further sits where a display that grew at the bottom shows more of it.
-        if crate::geometry::parked_at(current, target, 0)
-            && target.y - current.y <= TITLE_BAR_HOLD_LIMIT
+        // macOS may hold a parked window above its corner, so its position alone
+        // cannot tell whether the corner moved (a display that grew at the bottom
+        // would show more of it). Leave it only where the corner did not move.
+        let corner_unchanged = previous.is_some_and(|(frames, screens)| {
+            frames.contains(&output)
+                && crate::geometry::parked_frame_clear_of(output, frames, screens, current)
+                    == target
+        });
+        if corner_unchanged
+            && crate::geometry::parked_at(current, target, 0)
             && !crate::geometry::shows_on(current, displays)
         {
             return true;
