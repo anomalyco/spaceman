@@ -41,10 +41,13 @@ overlaps a built-in shortcut, the workspace shortcut takes precedence. A `[short
 its chord before both, so binding `alt+h` replaces the built-in Focus Left and a named workspace H's
 switch shortcut too, and whichever was skipped is logged in `agent.log`.
 
-Spaceman remembers the last-focused logical tile in each workspace and restores that focus when the
-workspace becomes active again. Pressing an already-active workspace shortcut preserves the current
-focus when one of that workspace's windows is already focused; otherwise it focuses the remembered
-tile.
+Spaceman remembers the last-focused window (tile or floating) in each workspace and restores that
+focus when the workspace becomes active again, keeping the remembered tile as a fallback if a float
+closes, moves, or tiles. Pressing an already-active workspace shortcut again while one of that
+workspace's windows already has focus cycles through its tiles in stable order (wrapping around, in
+both split and Fullscreen Layout); if focus is on another display, the first press brings focus back
+to the workspace and a second press cycles. Clicking an already-active workspace in the menu bar or
+HUD preserves current focus.
 
 Fullscreen Layout is a workspace mode: every tiled window receives the full display frame (less any
 `settings.gaps` edge padding, and centered at `settings.single_window_max_width` when set), and the

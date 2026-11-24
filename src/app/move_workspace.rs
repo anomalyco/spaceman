@@ -25,6 +25,8 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
         let visible = self.visible_workspaces(&outputs);
         let (source_resolved, focused_window) =
             self.focused_visible_workspace(&visible, &outputs)?;
+        let focused_window = self.resolve_focus(focused_window);
+        self.pending_focus = None;
         let moved_ws = source_resolved.workspace;
         let source_display_id = source_resolved.display_id;
         let source_output = source_resolved.output;

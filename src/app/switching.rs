@@ -93,8 +93,10 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
             status.hud = Some(self.hud_for(workspace, UiHudKind::Workspace, None, &outputs));
             return Ok(status);
         }
-        // A genuine switch: a focus command from before it is no longer in
-        // flight on anything this display will show.
+        // The focus before the switch, trusting an in-flight focus command over
+        // a stale Accessibility report before clearing pending_focus for the
+        // incoming workspace.
+        let focused_before = self.current_focus();
         self.pending_focus = None;
         let switch_started = Instant::now();
         let mut outgoing = self.workspaces.windows(previous);
@@ -107,9 +109,6 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
             outgoing.len(),
             incoming.len()
         );
-        // The focus before the switch, wherever it lives: after an empty
-        // workspace it is still a window of an earlier, hidden workspace.
-        let focused_before = self.backend.focused_window();
         let frontmost_before = self.backend.frontmost_application();
         if let Some(focused) = focused_before
             .as_ref()

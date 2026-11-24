@@ -233,7 +233,6 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
             action,
             WorkerAction::SelectWorkspace(_)
                 | WorkerAction::WorkspaceBackAndForth
-                | WorkerAction::MoveWorkspaceToDisplay(_)
                 | WorkerAction::Swipe(..)
                 | WorkerAction::MoveFocused(_)
                 | WorkerAction::MoveApp(..)

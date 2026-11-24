@@ -250,8 +250,9 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
                 .engine_mut(workspace)
                 .remember_insertion_focus(focused);
         }
+        let remembered_focus = self.resolve_focus(focused.clone());
         if focused_is_frontmost
-            && let Some(focused) = focused.as_ref()
+            && let Some(focused) = remembered_focus.as_ref()
             && let Some(workspace) = self.workspaces.workspace_of(focused)
             && self.workspaces.uses_fullscreen_layout(workspace)
             && !attempted_focus_restore.contains(&workspace)

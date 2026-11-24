@@ -307,3 +307,75 @@ fn quick_repeat_after_returning_from_another_display_advances_during_activation_
         assert_eq!(runtime.workspaces.preferred_focus(two), Some(second));
     }
 }
+
+#[test]
+fn stale_focus_report_does_not_lose_selected_tile_on_switch_move_or_cycle() {
+    let setup = |fullscreen: bool| {
+        let first = window(10);
+        let second = window(20);
+        let other = window(30);
+        let backend = FakeBackend {
+            focused: Some(first.clone()),
+            frontmost: Some(first.app.clone()),
+            frames: HashMap::from([
+                (first.clone(), frame(50)),
+                (second.clone(), frame(500)),
+                (other.clone(), main_parked_frame(frame(200))),
+            ]),
+            ..FakeBackend::default()
+        };
+        let mut rt = runtime_with_parked(backend, [(other.clone(), frame(200))]);
+        bind(&mut rt, WorkspaceId::ONE, &first);
+        bind(&mut rt, WorkspaceId::ONE, &second);
+        bind(&mut rt, WorkspaceId::TWO, &other);
+        if fullscreen {
+            press(&mut rt, WorkerAction::ToggleFullscreenLayout);
+        }
+        press(&mut rt, WorkerAction::Focus(Direction::Right));
+        assert_eq!(rt.backend.focused, Some(second));
+        assert!(rt.pending_focus.is_some());
+        rt
+    };
+
+    // 1. Switch away and back during stale focus report (both split and Fullscreen Layout).
+    for fullscreen in [false, true] {
+        let mut rt = setup(fullscreen);
+        rt.backend.focused = Some(window(10));
+        press(&mut rt, WorkerAction::SwitchWorkspace(WorkspaceId::TWO));
+        assert_eq!(rt.backend.focused, Some(window(30)));
+        press(&mut rt, WorkerAction::SwitchWorkspace(WorkspaceId::ONE));
+        assert_eq!(
+            rt.workspaces.preferred_focus(WorkspaceId::ONE),
+            Some(window(20))
+        );
+        assert_eq!(rt.backend.focused, Some(window(20)));
+    }
+
+    // 2. Move workspace to next display during stale focus report.
+    let mut rt = setup(false);
+    rt.backend.focused = Some(window(10));
+    press(
+        &mut rt,
+        WorkerAction::MoveWorkspaceToDisplay(DisplayTarget::Next),
+    );
+    assert_eq!(
+        rt.workspaces.preferred_focus(WorkspaceId::ONE),
+        Some(window(20))
+    );
+
+    // 3. Observation cycle in Fullscreen Layout during stale focus report.
+    let mut rt = setup(true);
+    let reported = window(10);
+    rt.backend.focused = Some(reported.clone());
+    rt.backend.frontmost = Some(reported.app.clone());
+    rt.backend.observation = Some(observation_for_windows(
+        "com.example.Test",
+        &reported,
+        &[(window(10), frame(50)), (window(20), frame(500))],
+    ));
+    press(&mut rt, WorkerAction::Retile);
+    assert_eq!(
+        rt.workspaces.preferred_focus(WorkspaceId::ONE),
+        Some(window(20))
+    );
+}
