@@ -51,7 +51,7 @@ Spacing                                                 // tile.spacing
 Keyboard: Option+H/J/K/L, Option+Shift+H/J/K/L, Option+`, Option+-, Option+=, Option+/
 Pointer:  drag a managed window (reorder/nest/move display), drag its edge (resize)
 CLI:      spaceman ctl focus | move-direction | resize | balance | layout | retile
-Settings: Settings › Layout -> Between windows, Screen edges (Set each edge), Single-window width
+Settings: Settings › Layout -> Window gaps (Customize separately: Between windows, Screen edges, Top/Bottom/Left/Right), Single-window width
 Config:   spaceman config set gaps.inner|gaps.top|gaps.bottom|gaps.left|gaps.right|single_window_max_width <points>
 ```
 

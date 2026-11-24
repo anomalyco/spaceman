@@ -101,8 +101,10 @@ ultrawide displays, where one full-width window is hard to read.
 Out-of-range values are rejected with a message naming the key and its range, like any other invalid
 configuration. Every key defaults to `0`, so a file without them tiles exactly as before.
 
-Settings › Layout edits the same keys over a live miniature of the result, and `spaceman config`
-reads and writes them by dotted key:
+Settings › Layout edits the same keys over a live miniature of the result. One **Window gaps**
+slider sets `inner` and all four edges together; **Customize separately** (open on its own when the
+file's gaps differ) sets between windows, all screen edges, and each edge on its own.
+`spaceman config` reads and writes them by dotted key:
 
 ```sh
 spaceman config set gaps.inner 8
