@@ -63,7 +63,7 @@ impl Default for ConfigDoc {
     }
 }
 
-#[derive(Clone, Copy, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
+#[derive(Clone, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
 pub(crate) struct SettingsDoc {
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -88,6 +88,8 @@ pub(crate) struct SettingsDoc {
     pub mouse_follows_focus: Option<MouseFollowsFocus>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub single_window_max_width: Option<i64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub workspace_order: Option<Vec<WorkspaceId>>,
     #[serde(default, skip_serializing_if = "GapsDoc::is_empty")]
     pub gaps: GapsDoc,
 }
@@ -125,6 +127,7 @@ impl SettingsDoc {
             && self.update_channel.is_none()
             && self.mouse_follows_focus.is_none()
             && self.single_window_max_width.is_none()
+            && self.workspace_order.is_none()
             && self.gaps.is_empty()
     }
 
@@ -141,7 +144,7 @@ impl SettingsDoc {
 
     /// The spacing the file asks for, every unset key at its default `0`.
     pub(crate) fn effective_spacing(&self) -> Spacing {
-        let mut doc = *self;
+        let mut doc = self.clone();
         let mut spacing = Spacing::NONE;
         for key in SpacingKey::ALL {
             let value = doc.spacing_slot(key).unwrap_or(0);
@@ -230,6 +233,7 @@ pub(crate) struct EffectiveSettings {
     pub update_channel: &'static str,
     pub mouse_follows_focus: &'static str,
     pub single_window_max_width: i32,
+    pub workspace_order: Vec<WorkspaceId>,
     pub gaps: EffectiveGaps,
 }
 
@@ -305,6 +309,7 @@ impl ConfigDoc {
             update_channel: self.settings.effective_update_channel().as_str(),
             mouse_follows_focus: self.settings.effective_mouse_follows_focus().as_str(),
             single_window_max_width: spacing.single_window_max_width,
+            workspace_order: self.settings.workspace_order.clone().unwrap_or_default(),
             gaps: EffectiveGaps {
                 inner: spacing.inner,
                 top: spacing.top,

@@ -140,6 +140,7 @@ pub struct Config {
     labs: LabsConfig,
     rules: Vec<WindowRule>,
     workspace_monitors: Vec<(WorkspaceId, DisplaySelector)>,
+    workspace_order: Vec<WorkspaceId>,
     shortcuts: Shortcuts,
 }
 
@@ -195,6 +196,8 @@ struct RawSettings {
     #[serde(default)]
     single_window_max_width: i64,
     #[serde(default)]
+    workspace_order: Vec<WorkspaceId>,
+    #[serde(default)]
     gaps: RawGaps,
 }
 
@@ -206,6 +209,7 @@ impl Default for RawSettings {
             update_channel: UpdateChannel::default(),
             mouse_follows_focus: MouseFollowsFocus::default(),
             single_window_max_width: 0,
+            workspace_order: Vec::new(),
             gaps: RawGaps::default(),
         }
     }
@@ -319,6 +323,13 @@ impl Config {
             }
             workspace_monitors.push((id, DisplaySelector::parse(&workspace.monitor)));
         }
+        for (index, workspace) in raw.settings.workspace_order.iter().enumerate() {
+            if raw.settings.workspace_order[..index].contains(workspace) {
+                return Err(format!(
+                    "workspace {workspace} appears more than once in settings.workspace_order"
+                ));
+            }
+        }
         let mut shortcuts = raw.shortcuts.parse()?;
         shortcuts.scratchpad = raw.labs.scratchpad;
         Ok(Self {
@@ -332,6 +343,7 @@ impl Config {
             labs: raw.labs,
             rules,
             workspace_monitors,
+            workspace_order: raw.settings.workspace_order,
             shortcuts,
         })
     }
@@ -366,6 +378,21 @@ impl Config {
     #[must_use]
     pub const fn mouse_follows_focus(&self) -> MouseFollowsFocus {
         self.settings.mouse_follows_focus
+    }
+
+    /// `settings.workspace_order`: workspaces the HUD, menu bar and swipes list first, in order.
+    #[must_use]
+    pub fn workspace_order(&self) -> &[WorkspaceId] {
+        &self.workspace_order
+    }
+
+    /// Every workspace in listing order: `settings.workspace_order`, then the rest by number,
+    /// then A-Z. Only the order workspaces are listed in; identities and hotkeys don't change.
+    pub fn ordered_workspaces(&self) -> impl Iterator<Item = WorkspaceId> + '_ {
+        self.workspace_order
+            .iter()
+            .copied()
+            .chain(WorkspaceId::all().filter(|workspace| !self.workspace_order.contains(workspace)))
     }
 
     /// Gaps between tiles, outer screen padding and the lone-window width cap.
@@ -588,6 +615,8 @@ struct EditableSettings {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     single_window_max_width: Option<i64>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    workspace_order: Option<Vec<WorkspaceId>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     gaps: Option<toml::Table>,
 }
 
@@ -598,6 +627,7 @@ impl EditableSettings {
             && self.update_channel.is_none()
             && self.mouse_follows_focus.is_none()
             && self.single_window_max_width.is_none()
+            && self.workspace_order.is_none()
             && self.gaps.is_none()
     }
 }
@@ -820,6 +850,57 @@ workspace = 7
     }
 
     #[test]
+    fn workspace_order_accepts_numbers_and_letters_in_the_given_order() {
+        let config = Config::parse(
+            "version = 1\n[settings]\nworkspace_order = [1, \"Q\", \"w\", \"10\", \"E\"]",
+        )
+        .unwrap();
+        assert_eq!(
+            config.workspace_order(),
+            [
+                WorkspaceId::ONE,
+                WorkspaceId::named('Q').unwrap(),
+                WorkspaceId::named('W').unwrap(),
+                WorkspaceId::new(10).unwrap(),
+                WorkspaceId::named('E').unwrap(),
+            ]
+        );
+        assert!(
+            Config::parse("version = 1")
+                .unwrap()
+                .workspace_order()
+                .is_empty()
+        );
+    }
+
+    #[test]
+    fn workspace_order_rejects_duplicate_and_unknown_workspaces() {
+        let duplicate =
+            Config::parse("version = 1\n[settings]\nworkspace_order = [\"Q\", \"W\", \"q\"]")
+                .unwrap_err();
+        assert!(
+            duplicate.contains("workspace Q appears more than once in settings.workspace_order"),
+            "{duplicate}"
+        );
+        let numbered =
+            Config::parse("version = 1\n[settings]\nworkspace_order = [3, \"3\"]").unwrap_err();
+        assert!(
+            numbered.contains("workspace 3 appears more than once"),
+            "{numbered}"
+        );
+        for unknown in ["\"AA\"", "11", "0", "\"\"", "\"Ø\""] {
+            let error = Config::parse(&format!(
+                "version = 1\n[settings]\nworkspace_order = [{unknown}]"
+            ))
+            .unwrap_err();
+            assert!(
+                error.contains("workspace must be 1 through 10 or A through Z"),
+                "{unknown}: {error}"
+            );
+        }
+    }
+
+    #[test]
     fn accepts_named_workspace_routes_and_assignments() {
         let config = Config::parse(
             r#"
@@ -992,6 +1073,33 @@ monitor = "main"
         let saved = save_workspace_monitor_at(&path, WorkspaceId::TWO, &DisplaySelector::Secondary)
             .unwrap();
         assert_eq!(saved.mouse_follows_focus(), MouseFollowsFocus::Display);
+        drop(std::fs::remove_dir_all(dir));
+    }
+
+    #[test]
+    fn saving_a_workspace_monitor_keeps_the_workspace_order() {
+        let dir = std::env::temp_dir().join(format!(
+            "spaceman-config-order-{}-{}",
+            std::process::id(),
+            now().as_nanos()
+        ));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("config.toml");
+        std::fs::write(
+            &path,
+            "version = 1\n[settings]\nworkspace_order = [1, \"Q\", \"W\"]\n",
+        )
+        .unwrap();
+        let saved = save_workspace_monitor_at(&path, WorkspaceId::TWO, &DisplaySelector::Secondary)
+            .unwrap();
+        let order = [
+            WorkspaceId::ONE,
+            WorkspaceId::named('Q').unwrap(),
+            WorkspaceId::named('W').unwrap(),
+        ];
+        assert_eq!(saved.workspace_order(), order);
+        let reread = Config::parse(&std::fs::read_to_string(&path).unwrap()).unwrap();
+        assert_eq!(reread.workspace_order(), order);
         drop(std::fs::remove_dir_all(dir));
     }
 

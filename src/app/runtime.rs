@@ -786,7 +786,8 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
         current: Option<WorkspaceId>,
         outputs: &macos::DisplayOutputs,
     ) -> Vec<WorkspaceId> {
-        WorkspaceId::all()
+        self.config
+            .ordered_workspaces()
             .filter(|workspace| {
                 let selector = self.workspaces.assignment(*workspace);
                 self.workspaces.is_enabled(*workspace)

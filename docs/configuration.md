@@ -37,6 +37,7 @@ hud_style = "icons"                   # optional (default: "icons"); or "layouts
 update_channel = "stable"             # optional (default: "stable"); or "dev", a build of every merge
 mouse_follows_focus = "off"           # optional (default: "off"); or "display", "window"
 single_window_max_width = 0           # optional (default: 0, off); or 320 through 16384 points
+workspace_order = []                  # optional (default: []); workspaces listed first, in this order
 
 [settings.gaps]                       # optional; every key defaults to 0
 inner = 0                             # points between tiled windows, 0 through 48
@@ -279,6 +280,19 @@ precedence over a built-in letter shortcut when they overlap. A named workspace 
 persisted active/previous history, tiled or floating windows, or Fullscreen Layout remains enabled
 across config edits until that state no longer refers to it.
 
+`settings.workspace_order` sets the order a display's workspaces appear in the Workspace HUD, the
+menu bar menu, and three-finger swipes. Listed workspaces come first, in the order given; every other
+workspace follows in the default order (1 through 10, then A through Z), so a partial list is fine
+and an empty or missing list changes nothing. Entries are workspaces `1` through `10` or `"A"`
+through `"Z"`, as numbers or strings; an unknown or repeated entry is rejected. The order only
+changes where workspaces are listed: listing a letter does not enable it, and shortcuts, routes and
+saved state are unaffected. For the top keyboard row:
+
+```toml
+[settings]
+workspace_order = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, "Q", "W", "E", "R", "T", "Y", "U", "I", "O", "P"]
+```
+
 ## Process Scope
 
 `SPACEMAN_MANAGED_DISPLAY` is an internal process-scope override used by isolated tests. It accepts
@@ -294,7 +308,7 @@ normal recovery data.
 
 Edits saved in Spaceman Settings or in an external editor take effect automatically: rule changes,
 workspace display assignments, `settings.hud`, `settings.hud_style`,
-`settings.mouse_follows_focus`, `settings.gaps`, and
+`settings.mouse_follows_focus`, `settings.workspace_order`, `settings.gaps`, and
 `settings.single_window_max_width` reload without restarting (Settings › Layout retiles at once; an
 external edit applies on the next retile);
 `settings.update_channel` applies at the next update check. Global shortcuts for a
