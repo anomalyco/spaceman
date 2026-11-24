@@ -27,6 +27,14 @@ impl Omission {
         now.duration_since(self.since) < OMISSION_SETTLE
     }
 
+    /// Next prompt recheck while an omitted window is still settling, bounded
+    /// by the end of `OMISSION_SETTLE` so reflow happens as soon as macOS drops
+    /// a closing window from the window server instead of waiting for the 1s
+    /// fallback refresh.
+    pub(super) fn next_recheck(&self, now: Instant) -> Instant {
+        (now + CLOSE_RECHECK).min(self.since + OMISSION_SETTLE)
+    }
+
     fn should_probe(&mut self, now: Instant) -> bool {
         match self.probe {
             Probe::First => self.probe = Probe::RetryAt(now + CLOSE_RECHECK),

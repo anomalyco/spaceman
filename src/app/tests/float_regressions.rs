@@ -235,3 +235,65 @@ fn an_omitted_float_off_screen_or_past_the_settle_is_forgotten() {
     act(&mut runtime, WorkerAction::Retile).unwrap();
     assert_eq!(runtime.workspaces.floating_workspace_of(&window(20)), None);
 }
+
+#[test]
+fn guarded_omitted_tile_schedules_prompt_close_recheck_until_window_leaves_screen() {
+    let kept = window(10);
+    let closing = window(20);
+    let mut runtime = runtime(two_windows(10));
+    runtime.cycle(outputs(), &AtomicBool::new(false)).unwrap();
+    assert_eq!(
+        runtime
+            .workspaces
+            .engine(WorkspaceId::ONE)
+            .model()
+            .workspace
+            .slots
+            .len(),
+        2
+    );
+
+    // Closing window disappears from AX immediately while WindowServer still
+    // animates it on screen.
+    runtime.backend.observation = Some(observation_for_windows(
+        "com.example.Test",
+        &kept,
+        &[(kept.clone(), frame(50))],
+    ));
+    let before = Instant::now();
+    let status = runtime.cycle(outputs(), &AtomicBool::new(false)).unwrap();
+    assert_eq!(
+        runtime
+            .workspaces
+            .engine(WorkspaceId::ONE)
+            .model()
+            .workspace
+            .slots
+            .len(),
+        2,
+        "slot stays guarded while closing window is still on screen"
+    );
+    let recheck = status
+        .close_recheck
+        .expect("guard_omitted_windows must schedule a prompt close_recheck");
+    assert!(
+        recheck <= before + Duration::from_millis(200),
+        "close_recheck should fire promptly (~75ms), not wait for the 1s fallback"
+    );
+
+    // Once the close animation finishes and WindowServer drops the window, the
+    // next cycle retires the slot and clears close_recheck.
+    runtime.backend.frames.remove(&closing);
+    let settled = runtime.cycle(outputs(), &AtomicBool::new(false)).unwrap();
+    assert_eq!(
+        runtime
+            .workspaces
+            .engine(WorkspaceId::ONE)
+            .model()
+            .workspace
+            .slots
+            .len(),
+        1
+    );
+    assert_eq!(settled.close_recheck, None);
+}
