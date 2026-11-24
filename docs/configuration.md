@@ -204,6 +204,7 @@ command changes behavior. Unknown keys are config errors.
 ```toml
 [labs]
 scratchpad = false                    # optional (default: false); the i3/sway-style Scratchpad
+overflow = 0                          # optional (default: 0, off); tiles per workspace before new windows overflow
 ```
 
 `scratchpad = true` enables the Scratchpad (see [Controls › Scratchpad](controls.md#scratchpad-lab)) and
@@ -211,6 +212,17 @@ registers its two shortcuts, `Option+\` and `Option+Shift+\`, live without a res
 hotkey registration if tiling is paused); a `[shortcuts]` binding on either chord takes it instead. The
 `spaceman ctl scratchpad` commands follow the switch live. Turning the switch off while windows are
 hidden in the scratchpad brings them back on screen, where they tile again.
+
+`overflow = N` (1-255) turns on Workspace Overflow. A newly seen window that would tile on a display's
+active workspace that already holds `N` tiles opens instead on the next enabled workspace assigned to
+the same display that has fewer than `N`, in workspace order after the active one and wrapping
+around; it is parked there like any window on a hidden workspace. On a one-display Mac this includes
+workspaces 6-10, which fall back to the main display. This is what spreads a Mac with dozens of open
+windows across workspaces when Spaceman starts, instead of slicing one workspace into unusable tiles.
+Windows a `route` rule places, windows recalled from memory, and floating windows are left alone,
+and when every workspace of the display is full the window joins the active workspace as before.
+When the overflowed window has focus, Spaceman follows it to that workspace like any other focus change. Windows already
+on a workspace never move when you change `N`.
 
 ## Remembered Placements
 

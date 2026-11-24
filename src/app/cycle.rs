@@ -1,5 +1,6 @@
 mod affinity;
 mod omission;
+mod overflow;
 mod readback;
 pub(super) use omission::Omission;
 #[cfg(test)]
@@ -193,8 +194,9 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
             .backend
             .snapshot(0, &outputs)
             .map_err(|error| format!("Observation error: {error}"))?;
-        let affinity_policy =
+        let mut affinity_policy =
             self.freeze_window_affinities(&observation, &visible, server_frames)?;
+        self.overflow_full_workspaces(&mut affinity_policy, &observation, &visible, &outputs);
         // Taken after the Accessibility snapshot so a window listed here was
         // on screen no earlier than the snapshot that may have omitted it.
         let onscreen_snapshot = self.backend.onscreen_window_frames();
@@ -503,6 +505,7 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
                         }
                         FrozenWindowAffinity::ExplicitRoute(_)
                         | FrozenWindowAffinity::Inferred(_)
+                        | FrozenWindowAffinity::Overflow(_)
                         | FrozenWindowAffinity::CurrentDisplay => {
                             output.contains_center(window.frame)
                                 && self
@@ -556,6 +559,7 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
                     .and_then(|affinity| match affinity {
                         FrozenWindowAffinity::ExplicitRoute(target)
                         | FrozenWindowAffinity::Inferred(target)
+                        | FrozenWindowAffinity::Overflow(target)
                             if target != workspace =>
                         {
                             Some((window.clone(), target))
@@ -593,6 +597,7 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
             let source = match affinity_policy.windows.get(window) {
                 Some(FrozenWindowAffinity::ExplicitRoute(_)) => PlacementSource::Rule,
                 Some(FrozenWindowAffinity::Inferred(_)) => PlacementSource::Recall,
+                Some(FrozenWindowAffinity::Overflow(_)) => PlacementSource::Overflow,
                 Some(FrozenWindowAffinity::CurrentDisplay) | None => PlacementSource::Active,
                 Some(_) => continue,
             };

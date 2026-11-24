@@ -261,8 +261,10 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
             moved_to: to,
             after_ms: u64::try_from(elapsed.as_millis()).unwrap_or(u64::MAX),
         });
-        if placement.source == PlacementSource::Active
-            && is_rememberable_bundle_id(&bundle_id)
+        if matches!(
+            placement.source,
+            PlacementSource::Active | PlacementSource::Overflow
+        ) && is_rememberable_bundle_id(&bundle_id)
             && self.memory.memory.mark_returning(&bundle_id)
         {
             log_event!("{bundle_id} now returns to its remembered workspace on every launch");

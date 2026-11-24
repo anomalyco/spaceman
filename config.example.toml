@@ -82,6 +82,9 @@ monitor = "main"
 # Labs are experimental features, each off by default. scratchpad = true adds an
 # i3/sway-style Scratchpad: Option+Shift+\ hides the focused window in it and
 # Option+\ summons it centred on the focused display (or hides it again).
+# overflow = 4 caps each workspace at 4 tiles for newly opened windows: the next one
+# opens on the display's next workspace with room instead of shrinking every tile.
 #
 # [labs]
 # scratchpad = false
+# overflow = 0
