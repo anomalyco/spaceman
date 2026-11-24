@@ -8,7 +8,12 @@ fn temporary(name: &str) -> PathBuf {
 }
 
 fn staged(version: &str, sha: char) -> StagedUpdate {
+    staged_for(UpdateChannel::Stable, version, sha)
+}
+
+fn staged_for(channel: UpdateChannel, version: &str, sha: char) -> StagedUpdate {
     StagedUpdate {
+        channel,
         staged: bundle::Staged {
             update: PathBuf::from(format!(
                 "/nonexistent/.Spaceman-update-{version}/Spaceman.app"
@@ -265,7 +270,7 @@ fn another_channel_waits_for_the_user_to_switch() {
     ));
 
     let updater = Updater::with_phase(Phase::Available(Available::Switch {
-        channel: "stable".into(),
+        channel: UpdateChannel::Stable,
         version: "0.3.3".into(),
         sha256: sha.clone(),
     }));
@@ -278,7 +283,10 @@ fn another_channel_waits_for_the_user_to_switch() {
     );
     updater.confirm_switch();
     let core = updater.shared.lock();
-    assert_eq!(core.confirmed_switch.as_deref(), Some(sha.as_str()));
+    assert_eq!(
+        core.confirmed_switch,
+        Some((UpdateChannel::Stable, sha.clone()))
+    );
     assert!(core.check_requested);
     assert_eq!(core.phase, Phase::Checking);
 }
@@ -333,7 +341,7 @@ fn quitting_installs_a_ready_update_for_the_next_launch() {
     assert_eq!(updater.shared.lock().adopt(staged("0.3.3", 'a')), None);
     let mut installed = Vec::new();
     let version = updater
-        .apply(Ok(updates.clone()), |staged| {
+        .apply_for(Some(UpdateChannel::Stable), Ok(updates.clone()), |staged| {
             installed.push(staged.update.clone());
             Ok(())
         })
@@ -351,9 +359,110 @@ fn quitting_installs_a_ready_update_for_the_next_launch() {
     let updater = Updater::with_phase(Phase::Idle);
     assert_eq!(updater.shared.lock().adopt(staged("0.3.3", 'a')), None);
     let error = updater
-        .apply(Ok(updates.clone()), |_| Err("read-only".into()))
+        .apply_for(Some(UpdateChannel::Stable), Ok(updates.clone()), |_| {
+            Err("read-only".into())
+        })
         .unwrap_err();
     assert_eq!(error, "read-only");
     assert_eq!(updater.status(), UiUpdateStatus::Failed);
+    drop(std::fs::remove_dir_all(updates));
+}
+
+#[test]
+fn switching_channels_offline_discards_a_staged_update_for_the_old_channel() {
+    let updates = temporary("offline-channel-switch");
+    let staged_root = updates.join(".Spaceman-update-0.0.0-dev-62");
+    let staged_app = staged_root.join("Spaceman.app");
+    std::fs::create_dir_all(&staged_app).unwrap();
+
+    let updater = Updater::with_phase(Phase::Idle);
+    let dev_update = StagedUpdate {
+        channel: UpdateChannel::Dev,
+        staged: bundle::Staged {
+            update: staged_app,
+            installed: updates.join("Spaceman.app"),
+        },
+        sha256: "d".repeat(64),
+        version: "0.0.0-dev-62".into(),
+        executable: "e".repeat(64),
+    };
+    assert_eq!(updater.shared.lock().adopt(dev_update), None);
+    assert!(updater.ready());
+
+    // User switches back to Stable while offline: prepare_check discards the
+    // staged Dev bundle before the offline manifest fetch fails.
+    prepare_check(&updater.shared, UpdateChannel::Stable);
+    updater.shared.set_phase(Phase::Failed);
+
+    assert!(!staged_root.exists());
+    assert!(!updater.ready());
+    assert_eq!(updater.status(), UiUpdateStatus::Failed);
+    let mut installed = false;
+    assert!(
+        updater
+            .install_on_quit_for(UpdateChannel::Stable, Ok(updates.clone()), |_| {
+                installed = true;
+                Ok(())
+            })
+            .is_none()
+    );
+    assert!(!installed);
+    drop(std::fs::remove_dir_all(updates));
+}
+
+#[test]
+fn quitting_respects_the_selected_channel_even_before_a_new_check_runs() {
+    let updates = temporary("quit-channel-check");
+    let staged_root = updates.join(".Spaceman-update-0.0.0-dev-62");
+    let staged_app = staged_root.join("Spaceman.app");
+    std::fs::create_dir_all(&staged_app).unwrap();
+
+    // Dev is staged, user switches config back to Stable and quits before a check runs.
+    let updater = Updater::with_phase(Phase::Idle);
+    let dev_update = StagedUpdate {
+        channel: UpdateChannel::Dev,
+        staged: bundle::Staged {
+            update: staged_app,
+            installed: updates.join("Spaceman.app"),
+        },
+        sha256: "d".repeat(64),
+        version: "0.0.0-dev-62".into(),
+        executable: "e".repeat(64),
+    };
+    assert_eq!(updater.shared.lock().adopt(dev_update), None);
+    let mut installed = false;
+    assert!(
+        updater
+            .install_on_quit_for(UpdateChannel::Stable, Ok(updates.clone()), |_| {
+                installed = true;
+                Ok(())
+            })
+            .is_none()
+    );
+    assert!(!installed);
+    assert!(!staged_root.exists());
+    assert!(!updater.ready());
+
+    // Control: keeping Dev selected (even after an offline check failure) still installs Dev on quit.
+    let updater = Updater::with_phase(Phase::Idle);
+    assert_eq!(
+        updater
+            .shared
+            .lock()
+            .adopt(staged_for(UpdateChannel::Dev, "0.0.0-dev-62", 'd')),
+        None
+    );
+    prepare_check(&updater.shared, UpdateChannel::Dev);
+    updater.shared.set_phase(Phase::Failed);
+    assert!(updater.ready());
+    let mut installed_dev = false;
+    let outcome = updater
+        .install_on_quit_for(UpdateChannel::Dev, Ok(updates.clone()), |_| {
+            installed_dev = true;
+            Ok(())
+        })
+        .unwrap();
+    assert_eq!(outcome.unwrap(), "0.0.0-dev-62");
+    assert!(installed_dev);
     drop(std::fs::remove_dir_all(updates));
 }

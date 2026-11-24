@@ -124,6 +124,7 @@ pub(super) struct WorkspaceRuntime<B = MacWorkspaceBackend> {
     pub(super) pending_focus: Option<super::commands::PendingFocus>,
     pub(super) warp_context: super::commands::WarpContext,
     pub(super) pending_fullscreen_focus_restore: HashSet<WorkspaceId>,
+    pub(super) exact_spacing_workspaces: HashSet<WorkspaceId>,
     pub(super) persisted_workspace_state: crate::workspace::WorkspaceState,
     /// Title-free placements that survive application relaunches and reboots.
     pub(super) memory: MemoryState,
@@ -138,13 +139,8 @@ impl WorkspaceRuntime<MacWorkspaceBackend> {
         config: Config,
         workspace_state: Option<crate::workspace::WorkspaceState>,
     ) -> Self {
-        Self::with_backend_config_state(
-            scope,
-            MacWorkspaceBackend::new(),
-            parked,
-            config,
-            workspace_state,
-        )
+        let backend = MacWorkspaceBackend::new();
+        Self::with_backend_config_state(scope, backend, parked, config, workspace_state)
     }
 }
 
@@ -152,6 +148,9 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
     /// Rules apply to windows from now on; named workspaces and display assignments update.
     /// New named workspaces get their hotkeys at the next restart.
     pub(super) fn replace_config(&mut self, config: Config) {
+        if config.spacing() != self.config.spacing() {
+            self.exact_spacing_workspaces.extend(WorkspaceId::all());
+        }
         config.configure_workspaces(&mut self.workspaces);
         self.config = config;
     }
@@ -167,10 +166,10 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
             self.follow_displays(outputs);
         }
         let (result, outputs) = match command {
-            WorkerCommand::Action(action, outputs) => {
-                let result = self.execute_action(action, outputs.clone(), cancelled);
-                (result, outputs)
-            }
+            WorkerCommand::Action(action, outputs) => (
+                self.execute_action(action, outputs.clone(), cancelled),
+                outputs,
+            ),
             WorkerCommand::Gesture(gesture, preview, outputs) => {
                 let window = match &gesture {
                     FinalGesture::Drop(window, _) | FinalGesture::Resize(window, _) => window,
@@ -202,12 +201,12 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
                 self.journal_restore("restore all", requested, failed);
                 // Pause, quit and restart all restore first; the layout they
                 // resume from must be on disk before the process can exit.
-                self.backend.flush_state();
+                self.flush_workspace_state();
                 return Some(WorkerResult::Restored { failed });
             }
             WorkerCommand::Stop => {
                 self.journal_event(crate::journal::JournalEvent::Stop);
-                self.backend.flush_state();
+                self.flush_workspace_state();
                 return None;
             }
         };
@@ -251,7 +250,21 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
             super::commands::WarpContext::Suppressed
         };
         self.with_warp_context(warp_context, |rt| match action {
-            WorkerAction::Retile => rt.cycle(outputs, cancelled),
+            WorkerAction::Retile => {
+                let mut status = rt.cycle(outputs.clone(), cancelled)?;
+                if !rt.exact_spacing_workspaces.is_empty() && !rt.backend.mouse_down() {
+                    for r in rt.visible_workspaces(&outputs) {
+                        if rt.scope.manages_selector(&r.selector)
+                            && rt.exact_spacing_workspaces.contains(&r.workspace)
+                            && !rt.workspaces.windows(r.workspace).is_empty()
+                        {
+                            status.failed +=
+                                rt.layout_workspace(r.workspace, r.output, cancelled).failed;
+                        }
+                    }
+                }
+                Ok(status)
+            }
             WorkerAction::SwitchWorkspace(workspace) | WorkerAction::SelectWorkspace(workspace) => {
                 rt.switch(workspace, outputs, cancelled)
             }
@@ -330,6 +343,7 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
         });
         let persisted_workspace_state = workspaces.state();
         let manual_floating = super::commands::restored_floating(&workspaces);
+        let has_spacing = !config.spacing().is_none();
         Self {
             backend,
             scope,
@@ -357,6 +371,7 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
             pending_focus: None,
             warp_context: super::commands::WarpContext::Direct,
             pending_fullscreen_focus_restore,
+            exact_spacing_workspaces: WorkspaceId::all().filter(|_| has_spacing).collect(),
             persisted_workspace_state,
             memory: MemoryState::default(),
             journal: JournalState::default(),
@@ -420,17 +435,9 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
     pub(super) fn synchronize_foreground(&mut self, outputs: &macos::DisplayOutputs) {
         let disconnected: Vec<_> = self
             .foreground_lanes
-            .iter()
-            .filter(|(display_id, _)| {
-                !outputs
-                    .displays()
-                    .iter()
-                    .any(|display| &display.id == *display_id)
-            })
-            .map(|(display_id, selector)| (display_id.clone(), selector.clone()))
+            .extract_if(|id, _| !outputs.displays().iter().any(|display| &display.id == id))
             .collect();
-        for (display_id, selector) in disconnected {
-            self.foreground_lanes.remove(&display_id);
+        for (_, selector) in disconnected {
             self.foreground_lanes
                 .insert(outputs.resolve(&selector).id.clone(), selector);
         }
@@ -459,8 +466,7 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
         let selector = self.workspaces.assignment(workspace).clone();
         if !self.scope.manages_selector(&selector) {
             return Err(format!(
-                "Workspace {} is outside the managed display scope",
-                workspace
+                "Workspace {workspace} is outside the managed display scope"
             ));
         }
         Ok(selector)
@@ -619,7 +625,10 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
         dragged: Option<&crate::PhysicalWindowId>,
         cancelled: &AtomicBool,
     ) -> (LayoutStatus, Vec<macos::ApplyResult>) {
-        let settings = self.layout_settings(output);
+        let mut settings = self.layout_settings(output);
+        if dragged.is_none() && self.exact_spacing_workspaces.contains(&workspace) {
+            settings.frame_tolerance = 0;
+        }
         let engine = self.workspaces.engine_mut(workspace);
         engine.fit_minimums(&settings, &self.minimum_sizes);
         let mut placements = engine.placements(&settings);
@@ -631,22 +640,21 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
             }
         }
         let results = match dragged {
-            Some(dragged) => {
-                self.backend
-                    .apply_managed_during_drag(&placements, &settings, dragged, cancelled)
-            }
+            Some(d) => self
+                .backend
+                .apply_managed_during_drag(&placements, &settings, d, cancelled),
             None => self
                 .backend
                 .apply_managed(&placements, &settings, cancelled),
         };
+        if settings.frame_tolerance == 0 && !cancelled.load(Ordering::Acquire) {
+            self.exact_spacing_workspaces.remove(&workspace);
+        }
         // Managed layout runs without a fresh observation; the next cycle validates readback.
         self.record_results(workspace, &results);
         self.retire_laid_out(&results);
         let failed = failed_results(&results);
-        let expected = placements
-            .iter()
-            .filter(|placement| placement.window.is_some())
-            .count();
+        let expected = placements.iter().filter(|p| p.window.is_some()).count();
         // Deferred means a drag is in progress and layout retries next cycle;
         // it must not be treated as a failure that rolls back a switch.
         let blocked = results.len() != expected
@@ -705,6 +713,13 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
 
     pub(super) fn status(&self, failed: usize, outputs: &macos::DisplayOutputs) -> CycleStatus {
         self.status_for_visible(failed, &self.visible_workspaces(outputs), outputs)
+    }
+
+    fn flush_workspace_state(&mut self) {
+        if let Err(error) = self.persist_workspace_state_if_changed() {
+            log_event!("failed to persist workspace state: {error}");
+        }
+        self.backend.flush_state();
     }
 
     pub(super) fn persist_workspace_state_if_changed(&mut self) -> Result<(), String> {
@@ -797,6 +812,6 @@ fn selector_available(selector: &DisplaySelector, outputs: &macos::DisplayOutput
 pub(super) fn failed_results(results: &[macos::ApplyResult]) -> usize {
     results
         .iter()
-        .filter(|result| result.outcome != macos::ApplyOutcome::Applied)
+        .filter(|r| r.outcome != macos::ApplyOutcome::Applied)
         .count()
 }

@@ -103,10 +103,19 @@ codesign --verify --deep --strict "$installed_bundle"
 mkdir -p "$cli_root"
 rm -f "$cli_root/pane"
 ln -sf "$installed_bundle/Contents/MacOS/spaceman" "$cli_root/spaceman"
+opened=false
+open_error=
 for _ in $(seq 1 10); do
-  open "$installed_bundle" 2>/dev/null && break
+  if open_error=$(open "$installed_bundle" 2>&1 >/dev/null); then
+    opened=true
+    break
+  fi
   sleep 0.2
 done
+if ! $opened; then
+  echo "installed $installed_bundle, but failed to open it${open_error:+: $open_error}" >&2
+  exit 1
+fi
 if $was_automatic; then
   for _ in $(seq 1 75); do
     if "$installed_bundle/Contents/MacOS/spaceman" ctl resume >/dev/null 2>&1; then
