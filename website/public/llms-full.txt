@@ -30,7 +30,8 @@ Spaceman treats a logical tile slot as product identity rather than tying layout
 - `Option+A` … `Option+Z`: switch to an opt-in named workspace (`A`–`Z`)
 - `Option+Shift+A` … `Option+Shift+Z`: move the focused window to a named workspace
 - `Option+Tab`: toggle back and forth to the previous workspace on the focused display
-- `Option+\``: focus the next tiled window in the workspace
+- `Option+\``: focus the next window in the workspace (tiles in stable order, then floating windows, wrapping)
+- `Option+Shift+\``: focus the previous window in that same order
 - `Option+H/J/K/L`: focus left / down / up / right across tiles and displays
 - `Option+Shift+H/J/K/L`: move or nest the focused tile left / down / up / right
 - `Option+/`: toggle the workspace's root split axis (horizontal / vertical)
