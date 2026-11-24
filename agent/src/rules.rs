@@ -131,27 +131,6 @@ impl Doc {
         }
     }
 
-    pub fn remove(&mut self, index: usize) {
-        let emptied = match self.doc.get_mut("rules") {
-            Some(Item::ArrayOfTables(rules)) => {
-                if index < rules.len() {
-                    rules.remove(index);
-                }
-                rules.is_empty()
-            }
-            Some(Item::Value(Value::Array(rules))) => {
-                if index < rules.len() {
-                    rules.remove(index);
-                }
-                rules.is_empty()
-            }
-            _ => false,
-        };
-        if emptied {
-            self.doc.remove("rules");
-        }
-    }
-
     /// Moves the rule matching `expected` to `place`, or reports a conflict if an
     /// external edit modified, removed, or ambiguously shifted it.
     pub fn place_matching(&mut self, expected: &Rule, place: Place) -> Result<(), String> {
@@ -642,6 +621,7 @@ fn set_place(table: &mut dyn TableLike, place: Place) {
     }
 }
 
+mod comments;
 mod shortcuts;
 mod spacing;
 #[cfg(test)]

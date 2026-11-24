@@ -6,7 +6,7 @@ pub(crate) use displays::{
     ConnectedDisplay, THIRD_FIXTURE_ID, fixture_pair, fixture_quad, fixture_three,
 };
 
-use rune::{El, Tx, col};
+use rune::{El, Tx, col, row, text};
 use rune_kit::SegmentedControl;
 use spaceman::WorkspaceId;
 
@@ -97,7 +97,7 @@ fn sections(doc: &Doc, choices: &[Choice], workspaces: Vec<WorkspaceId>) -> Vec<
     let mut sections = Vec::new();
     for (index, choice) in choices.iter().enumerate() {
         let workspaces = std::mem::take(&mut buckets[index]);
-        if workspaces.is_empty() {
+        if workspaces.is_empty() && !choice.connected {
             continue;
         }
         sections.push(Section {
@@ -128,14 +128,18 @@ pub fn pane(ui: &Ui, p: Paint) -> El {
     let cards: Vec<El> = sections
         .iter()
         .map(|section| {
-            let rows: Vec<El> = section
-                .workspaces
-                .iter()
-                .map(|workspace| {
-                    let target = effective_monitor(&ui.doc, *workspace);
-                    monitor_row(p, &choices, *workspace, &target)
-                })
-                .collect();
+            let rows: Vec<El> = if section.workspaces.is_empty() {
+                vec![empty_display_row(p)]
+            } else {
+                section
+                    .workspaces
+                    .iter()
+                    .map(|workspace| {
+                        let target = effective_monitor(&ui.doc, *workspace);
+                        monitor_row(p, &choices, *workspace, &target)
+                    })
+                    .collect()
+            };
             col()
                 .key(section.key.clone())
                 .gap(8.0)
@@ -152,6 +156,21 @@ pub fn pane(ui: &Ui, p: Paint) -> El {
         "workspaces-body",
         col().key("sections").gap(24.0).children(cards),
     )
+}
+
+fn empty_display_row(p: Paint) -> El {
+    row()
+        .key("empty")
+        .min_h(44.0)
+        .px(12.0)
+        .py(8.0)
+        .center_y()
+        .child(
+            text("No workspaces assigned")
+                .key("label")
+                .font(p.k.ty.ui)
+                .color(p.faint()),
+        )
 }
 
 /// The `config.toml` override picking `chosen` writes; `None` clears it, so picking a
@@ -509,5 +528,64 @@ mod tests {
             ),
             None
         );
+    }
+
+    #[test]
+    fn every_connected_display_has_a_card_by_default() {
+        let doc = Doc::parse("version = 1\n");
+        let titles = |displays| -> Vec<String> {
+            cards(&doc, displays).into_iter().map(|s| s.title).collect()
+        };
+        let labels: Vec<String> = choices(&fixture_quad())
+            .into_iter()
+            .map(|c| c.label)
+            .collect();
+        assert_eq!(
+            titles(fixture_three()),
+            ["Main display", "Secondary display", "Studio Display 2"]
+        );
+        assert_eq!(
+            titles(fixture_quad()),
+            [
+                "Main display",
+                "Secondary display",
+                "Studio Display 2",
+                "LG UltraFine 5K"
+            ]
+        );
+        assert_eq!(labels, ["Main", "Secondary", "Display 3", "Display 4"]);
+
+        let three_sections = cards(&doc, fixture_three());
+        assert!(three_sections[2].workspaces.is_empty());
+        assert_eq!(three_sections[2].caption, "Display 3");
+
+        // Assigning workspace 9 to the third display and moving it back leaves the card in place.
+        let nine = WorkspaceId::new(9).unwrap();
+        let mut moved = Doc::parse("version = 1\n");
+        moved.set_monitor(nine, Some(THIRD_FIXTURE_ID));
+        assert_eq!(cards(&moved, fixture_three())[2].workspaces, [nine]);
+        moved.set_monitor(nine, None);
+        let after_move = cards(&moved, fixture_three());
+        assert_eq!(
+            after_move
+                .iter()
+                .map(|s| s.title.as_str())
+                .collect::<Vec<_>>(),
+            ["Main display", "Secondary display", "Studio Display 2"]
+        );
+        assert!(after_move[2].workspaces.is_empty());
+
+        // Control: a disconnected third display with no saved workspaces gets no card.
+        assert_eq!(
+            titles(fixture_pair()),
+            ["Main display", "Secondary display"]
+        );
+
+        // Rendering the pane with an empty connected display card succeeds cleanly.
+        let mut ui = crate::playground::blank_fixture();
+        ui.doc = doc;
+        ui.displays = fixture_three();
+        let p = crate::controls::Paint::new(true, 2.0);
+        let _ = pane(&ui, p);
     }
 }

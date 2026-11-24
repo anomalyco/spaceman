@@ -646,3 +646,144 @@ fn empty_inline_workspaces_array_supports_assigning_a_display() {
         Some("secondary")
     );
 }
+
+const COMMENTED: &str = "version = 1\n\n# My window rules.\n\n[[rules]]\nbundle_id = \"com.example.A\"\naction = \"float\"\n\n# Disabled for now:\n# [[rules]]\n# bundle_id = \"com.example.B\"\n# action = \"ignore\"\n\n[[rules]]\nbundle_id = \"com.example.C\"\naction = \"float\"\n";
+
+#[test]
+fn removing_a_rule_keeps_a_commented_out_rule() {
+    let mut doc = Doc::parse(COMMENTED);
+    doc.remove(1);
+    let source = doc.source();
+    assert!(source.contains("Disabled for now"), "{source}");
+    assert!(source.contains("My window rules"), "{source}");
+    assert!(
+        spaceman::config::Config::parse(&source).is_ok(),
+        "invalid TOML:\n{source}"
+    );
+    assert_eq!(Doc::parse(&source).rules().len(), 1);
+}
+
+#[test]
+fn removing_the_first_rule_keeps_the_heading_comment() {
+    let mut doc = Doc::parse(COMMENTED);
+    doc.remove(0);
+    let source = doc.source();
+    assert!(source.contains("My window rules"), "{source}");
+    assert!(source.contains("Disabled for now"), "{source}");
+    assert!(
+        spaceman::config::Config::parse(&source).is_ok(),
+        "invalid TOML:\n{source}"
+    );
+    let rules = Doc::parse(&source).rules();
+    assert_eq!(rules.len(), 1);
+    assert_eq!(rules[0].bundle_id.as_deref(), Some("com.example.C"));
+}
+
+#[test]
+fn control_changing_a_rule_keeps_both_comments() {
+    let mut doc = Doc::parse(COMMENTED);
+    doc.place(1, Place::Ignore);
+    assert!(doc.source().contains("Disabled for now") && doc.source().contains("My window rules"));
+}
+
+#[test]
+fn removing_all_rules_or_rules_before_another_section_keeps_detached_comments_in_place() {
+    // Removing both rules in either order preserves both comments.
+    for order in [[0, 0], [1, 0]] {
+        let mut doc = Doc::parse(COMMENTED);
+        for index in order {
+            doc.remove(index);
+        }
+        let source = doc.source();
+        assert!(doc.rules().is_empty(), "{source}");
+        assert!(source.contains("My window rules"), "{source}");
+        assert!(source.contains("Disabled for now"), "{source}");
+        assert!(
+            spaceman::config::Config::parse(&source).is_ok(),
+            "invalid TOML:\n{source}"
+        );
+    }
+
+    // With another section following [[rules]], preserved comments stay before that section.
+    let with_following = format!("{COMMENTED}\n[shortcuts.bindings]\n\"alt+h\" = \"none\"\n");
+    let mut doc = Doc::parse(&with_following);
+    doc.remove(1);
+    let source = doc.source();
+    assert!(
+        source.find("Disabled for now").unwrap() < source.find("[shortcuts.bindings]").unwrap(),
+        "comment should stay before following section:\n{source}"
+    );
+    assert!(spaceman::config::Config::parse(&source).is_ok());
+
+    // A comment directly above a removed rule (no blank line) goes with it, while a heading
+    // separated by a blank line above it survives.
+    let attached = concat!(
+        "version = 1\n\n",
+        "# Section heading.\n\n",
+        "# Float app A.\n",
+        "[[rules]]\n",
+        "bundle_id = \"com.example.A\"\n",
+        "action = \"float\"\n\n",
+        "[[rules]]\n",
+        "bundle_id = \"com.example.C\"\n",
+        "action = \"float\"\n",
+    );
+    let mut doc = Doc::parse(attached);
+    doc.remove(0);
+    let source = doc.source();
+    assert!(source.contains("Section heading"), "{source}");
+    assert!(!source.contains("Float app A"), "{source}");
+    assert!(spaceman::config::Config::parse(&source).is_ok());
+
+    // A trailing comment at EOF after the only rule survives removing that rule.
+    let eof_comment = concat!(
+        "version = 1\n\n",
+        "# Heading.\n\n",
+        "[[rules]]\n",
+        "bundle_id = \"com.example.A\"\n",
+        "action = \"float\"\n\n",
+        "# Footer at EOF.\n",
+    );
+    let mut doc = Doc::parse(eof_comment);
+    doc.remove(0);
+    let source = doc.source();
+    assert!(source.contains("Heading."), "{source}");
+    assert!(source.contains("Footer at EOF."), "{source}");
+    assert!(
+        source.find("Heading.").unwrap() < source.find("Footer at EOF.").unwrap(),
+        "{source}"
+    );
+    assert!(spaceman::config::Config::parse(&source).is_ok());
+
+    // Detached comments around and inside an inline rules array also survive rule removal.
+    let inline = concat!(
+        "version = 1\n\n",
+        "# Inline rules heading.\n\n",
+        "rules = [\n",
+        "  # First block.\n\n",
+        "  { bundle_id = \"com.example.A\", action = \"float\" },\n\n",
+        "  # Disabled inline rule:\n",
+        "  # { bundle_id = \"com.example.B\", action = \"ignore\" },\n\n",
+        "  { bundle_id = \"com.example.C\", action = \"float\" },\n",
+        "]\n",
+    );
+    let mut doc = Doc::parse(inline);
+    doc.remove(1);
+    let source = doc.source();
+    assert!(source.contains("Inline rules heading."), "{source}");
+    assert!(source.contains("First block."), "{source}");
+    assert!(source.contains("Disabled inline rule:"), "{source}");
+    assert!(spaceman::config::Config::parse(&source).is_ok());
+    doc.remove(0);
+    let empty_inline = doc.source();
+    assert!(
+        empty_inline.contains("Inline rules heading."),
+        "{empty_inline}"
+    );
+    assert!(empty_inline.contains("First block."), "{empty_inline}");
+    assert!(
+        empty_inline.contains("Disabled inline rule:"),
+        "{empty_inline}"
+    );
+    assert!(spaceman::config::Config::parse(&empty_inline).is_ok());
+}

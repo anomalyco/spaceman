@@ -180,3 +180,33 @@ fn reset_removes_the_table_and_keeps_everything_else() {
     assert!(source.contains("# Spaceman configuration."), "{source}");
     assert_eq!(doc.shortcuts(), Shortcuts::default());
 }
+
+#[test]
+fn vacating_a_borrowed_built_in_or_scratchpad_chord_leaves_none() {
+    let mut doc = Doc::parse(
+        "version = 1\n[labs]\nscratchpad = true\n[[workspaces]]\nworkspace = \"A\"\nmonitor = \"main\"\n",
+    );
+    // Unbind Focus left (alt+h), Workspace A (alt+a), and Scratchpad (alt+\), borrow each with
+    // Balance, then move Balance away: each vacated implicit chord stays `none`.
+    doc.set_shortcut("focus left", Some(chord("alt+h")), None);
+    doc.set_shortcut("balance", None, Some(chord("alt+h")));
+    doc.set_shortcut("balance", None, Some(chord("ctrl+cmd+b")));
+    let doc = saved(&doc);
+    assert_eq!(bound(&doc, "alt+h"), Some(None));
+    assert_eq!(
+        bound(&doc, "ctrl+cmd+b"),
+        Some(Some("balance layout".into()))
+    );
+
+    let mut doc = doc;
+    doc.set_shortcut("balance", None, Some(chord("alt+a")));
+    doc.set_shortcut("balance", None, None);
+    let doc = saved(&doc);
+    assert_eq!(bound(&doc, "alt+a"), Some(None));
+
+    let mut doc = doc;
+    doc.set_shortcut("balance", None, Some(chord("alt+\\")));
+    doc.set_shortcut("balance", None, None);
+    let doc = saved(&doc);
+    assert_eq!(bound(&doc, "alt+\\"), Some(None));
+}

@@ -110,7 +110,7 @@ struct Layout {
 impl Layout {
     fn new(doc: &Doc) -> Layout {
         let rules = doc.rules();
-        let tiles = doc.workspaces_with_referenced(WorkspaceId::numbered().take(9));
+        let tiles = doc.workspaces_with_referenced(WorkspaceId::numbered());
         let mut routed = vec![Vec::new(); tiles.len()];
         let mut floating = Vec::new();
         for rule in rules {
@@ -689,18 +689,84 @@ mod tests {
         let doc = Doc::parse(include_str!("../fixtures/config.toml"));
         let layout = Layout::new(&doc);
         let grid = &layout.grid;
-        assert_eq!(grid.tiles.len(), 10, "1–9 and M");
+        assert_eq!(grid.tiles.len(), 11, "1–10 and M");
         let ws = |name| Some(Place::Workspace(WorkspaceId::parse(name).unwrap()));
         assert_eq!(grid.target_at(5.0, GRID_TOP + 5.0), ws("1"));
         let (x, y) = grid.tile_origin(3);
         assert_eq!(grid.target_at(x + 50.0, y + 50.0), ws("4"));
         let (x, y) = grid.tile_origin(9);
+        assert_eq!(grid.target_at(x + 50.0, y + 50.0), ws("10"));
+        let (x, y) = grid.tile_origin(10);
         assert_eq!(grid.target_at(x + 50.0, y + 50.0), ws("M"));
         assert_eq!(
             grid.target_at(20.0, grid.box_top() + 10.0),
             Some(Place::Float)
         );
         assert_eq!(grid.target_at(20.0, grid.height() + 100.0), None);
+    }
+
+    #[test]
+    fn rules_map_includes_workspace_10_by_default_and_once_when_referenced() {
+        let ws10 = WorkspaceId::new(10).unwrap();
+        let ws_m = WorkspaceId::named('M').unwrap();
+
+        // Default config shows all ten numbered workspaces and no unmentioned named ones.
+        let mut doc = Doc::parse("version = 1\n");
+        let layout = Layout::new(&doc);
+        let expected_numbered: Vec<WorkspaceId> = WorkspaceId::numbered().collect();
+        assert_eq!(layout.grid.tiles, expected_numbered);
+        assert_eq!(layout.grid.tiles.len(), 10);
+        let (x, y) = layout.grid.tile_origin(9);
+        assert_eq!(
+            layout.grid.target_at(x + 50.0, y + 50.0),
+            Some(Place::Workspace(ws10))
+        );
+
+        // Adding an app to tile 10 writes a valid route to workspace 10 and keeps 10 once.
+        doc.add("com.example.Editor", Place::Workspace(ws10));
+        let source = doc.source();
+        let config = spaceman::config::Config::parse(&source).unwrap();
+        let sample_window = spaceman::ObservedWindow {
+            id: spaceman::PhysicalWindowId {
+                app: spaceman::AppInstanceId {
+                    pid: 1,
+                    launched_at: 1,
+                },
+                window_id: 1,
+            },
+            frame: spaceman::Rect {
+                x: 0,
+                y: 0,
+                width: 800,
+                height: 600,
+            },
+            resizable: true,
+            title: None,
+        };
+        assert_eq!(
+            config.disposition("com.example.Editor", &sample_window),
+            spaceman::config::WindowDisposition::Route(ws10)
+        );
+        let after_add = Layout::new(&doc);
+        assert_eq!(after_add.grid.tiles, expected_numbered);
+        assert_eq!(after_add.routed[9].len(), 1);
+        assert!(after_add.spot(&doc.rules()[0]).is_some());
+
+        // Mentioning workspace 10 in [[workspaces]] also keeps workspace 10 once.
+        doc.set_monitor(ws10, Some("main"));
+        assert_eq!(Layout::new(&doc).grid.tiles, expected_numbered);
+
+        // Mentioning a named workspace appends it after workspace 10 and hit-tests it.
+        doc.set_monitor(ws_m, Some("main"));
+        let with_named = Layout::new(&doc);
+        assert_eq!(with_named.grid.tiles.len(), 11);
+        assert_eq!(with_named.grid.tiles[9], ws10);
+        assert_eq!(with_named.grid.tiles[10], ws_m);
+        let (mx, my) = with_named.grid.tile_origin(10);
+        assert_eq!(
+            with_named.grid.target_at(mx + 50.0, my + 50.0),
+            Some(Place::Workspace(ws_m))
+        );
     }
 
     #[test]
