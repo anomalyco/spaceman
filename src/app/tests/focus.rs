@@ -115,3 +115,46 @@ fn reordering_still_requires_a_tiled_window() {
 
     assert!(result.is_err());
 }
+
+/// Two workspaces on the main display, the first one showing, and the second
+/// waiting on a focus restore.
+fn switch_to_second_workspace(focus_outcome: bool) -> WorkspaceRuntime<FakeBackend> {
+    let shown = window(10);
+    let incoming = window(20);
+    let mut backend = FakeBackend {
+        focused: Some(shown.clone()),
+        focus_outcome: Some(focus_outcome),
+        ..FakeBackend::default()
+    };
+    backend.frames.insert(shown.clone(), frame(50));
+    backend.frames.insert(incoming.clone(), frame(500));
+    let mut runtime = runtime(backend);
+    let target = WorkspaceId::new(2).unwrap();
+    bind(&mut runtime, WorkspaceId::ONE, &shown);
+    bind(&mut runtime, target, &incoming);
+    runtime.pending_fullscreen_focus_restore.insert(target);
+
+    runtime
+        .switch(target, outputs(), &AtomicBool::new(false))
+        .unwrap();
+    assert_eq!(focus_calls(&runtime), vec![20]);
+    runtime
+}
+
+#[test]
+fn a_workspace_switch_that_cannot_focus_keeps_the_focus_restore_pending() {
+    let runtime = switch_to_second_workspace(false);
+
+    assert!(
+        runtime
+            .pending_fullscreen_focus_restore
+            .contains(&WorkspaceId::new(2).unwrap())
+    );
+}
+
+#[test]
+fn a_workspace_switch_that_focuses_settles_the_focus_restore() {
+    let runtime = switch_to_second_workspace(true);
+
+    assert!(runtime.pending_fullscreen_focus_restore.is_empty());
+}

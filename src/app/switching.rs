@@ -221,10 +221,18 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
             .preferred_focus(workspace)
             .filter(|window| windows.contains(window))
             .or_else(|| windows.first().cloned());
-        if let Some(window) = workspace_focus
-            && self.backend.focus_window(&window)
-        {
-            self.pending_fullscreen_focus_restore.remove(&workspace);
+        if let Some(window) = workspace_focus {
+            if self.backend.focus_window(&window) {
+                self.pending_fullscreen_focus_restore.remove(&workspace);
+            } else {
+                // Keys may still be in the app focus left; the pending restore
+                // stays so the next cycle tries again.
+                log_event!(
+                    "switch focus failed: workspace {} window {:?}",
+                    workspace,
+                    window
+                );
+            }
         }
         // Focus already inside the workspace (focus follow switched to it) is
         // where the display is going, not focus left behind. Only the focus

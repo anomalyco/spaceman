@@ -253,14 +253,50 @@ pub(super) fn position_matches(actual: Rect, target: Rect) -> bool {
 
 const POSITION_CONFIRM_TOLERANCE: i32 = 64;
 
+/// Focus a window in another app from the background.
+///
+/// Since macOS 14, `activateWithOptions` from an inactive app is cooperative:
+/// Spaceman is a background accessory when a global hotkey fires, so macOS
+/// ignores it and the window comes forward while keys stay in the app focus
+/// left (#92). Setting `AXFrontmost` on the app is the public Accessibility
+/// route an assistive app is granted, so it brings the app forward; the AppKit
+/// call stays as reinforcement for releases before macOS 14.
 pub fn focus_window(id: &PhysicalWindowId) -> bool {
     autoreleasepool(|_| {
-        let raised = raise_window_with_focus(id, true);
-        let activated = running_application(&id.app).is_some_and(|application| {
-            application.activateWithOptions(NSApplicationActivationOptions::empty())
-        });
-        raised && activated
+        focus_sequence(
+            || raise_window_with_focus(id, true),
+            || {
+                set_attribute(
+                    &application_element(id.app.pid),
+                    "AXFrontmost",
+                    CFBoolean::new(true),
+                )
+            },
+            || {
+                running_application(&id.app).is_some_and(|application| {
+                    #[allow(deprecated)]
+                    let options = NSApplicationActivationOptions::ActivateIgnoringOtherApps;
+                    application.activateWithOptions(options)
+                })
+            },
+        )
     })
+}
+
+/// Raise the target window and make it main first, so the app brings that
+/// window (not whichever of its windows was main before) forward when it
+/// activates; then bring the app forward both ways. Either app step is
+/// enough: `AXFrontmost` is the one macOS 14 and later honour, the AppKit
+/// call the one older releases do.
+fn focus_sequence(
+    raise: impl FnOnce() -> bool,
+    bring_frontmost: impl FnOnce() -> AXError,
+    activate: impl FnOnce() -> bool,
+) -> bool {
+    let raised = raise();
+    let frontmost = bring_frontmost() == AXError::Success;
+    let activated = activate();
+    raised && (frontmost || activated)
 }
 
 pub fn raise_window(id: &PhysicalWindowId) -> bool {
@@ -270,7 +306,10 @@ pub fn raise_window(id: &PhysicalWindowId) -> bool {
 fn raise_window_with_focus(id: &PhysicalWindowId, focus: bool) -> bool {
     with_managed_window_result(id, |window| {
         if focus {
-            // Best-effort attribute before `AXRaise`; some apps ignore `AXFocused` writes.
+            // Best-effort attributes before `AXRaise`; some apps ignore them.
+            // `AXMain` picks which of the app's windows becomes key when the
+            // app activates.
+            let _: AXError = set_attribute(window, "AXMain", CFBoolean::new(true));
             let _: AXError = set_attribute(window, "AXFocused", CFBoolean::new(true));
         }
         // SAFETY: `window` is a live `AXUIElement` and `"AXRaise"` is a standard AX action.
@@ -508,7 +547,48 @@ mod tests {
 
     use objc2_application_services::AXError;
 
-    use super::write_frame;
+    use super::{focus_sequence, write_frame};
+
+    #[test]
+    fn focus_raises_the_window_before_bringing_its_app_forward() {
+        let calls = RefCell::new(Vec::new());
+
+        let focused = focus_sequence(
+            || {
+                calls.borrow_mut().push("raise");
+                true
+            },
+            || {
+                calls.borrow_mut().push("frontmost");
+                AXError::Success
+            },
+            || {
+                calls.borrow_mut().push("activate");
+                false
+            },
+        );
+
+        assert!(focused);
+        assert_eq!(*calls.borrow(), ["raise", "frontmost", "activate"]);
+    }
+
+    #[test]
+    fn either_app_step_brings_the_app_forward() {
+        // macOS 14+ ignores the AppKit call from a background app.
+        assert!(focus_sequence(|| true, || AXError::Success, || false));
+        // An app that refuses `AXFrontmost` but honours AppKit.
+        assert!(focus_sequence(|| true, || AXError::CannotComplete, || true));
+    }
+
+    #[test]
+    fn focus_fails_when_the_app_stays_behind_or_the_window_cannot_raise() {
+        assert!(!focus_sequence(
+            || true,
+            || AXError::CannotComplete,
+            || false
+        ));
+        assert!(!focus_sequence(|| false, || AXError::Success, || true));
+    }
 
     #[test]
     fn a_refused_size_before_the_move_still_moves_the_window() {
