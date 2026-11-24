@@ -116,8 +116,9 @@ tiling, the menu lists each display's workspaces (the visible one checked, plus 
 with their apps' icons); choosing one switches to it. The menu actions are `Setup Tour…` (while
 Accessibility is missing), `Pause Tiling` (or `Resume Tiling` while paused), `Workspace HUD`,
 `Launch at Login`, `Settings...` (`⌘,`), `Check for Updates...`, and `Quit Spaceman` (`⌘Q`). Settings
-includes `General`, `Layout` (window gaps, screen-edge padding, and a single-window width for wide
-displays, over a live preview), `Rules`, `Workspaces`, `Shortcuts`, and `Activity` (title-free arrangement
+includes `General`, `Layout` (Dwindle or Columns new-window tiling, window gaps, screen-edge padding,
+and a single-window width for wide displays, over a live preview), `Rules`, `Workspaces`,
+`Shortcuts`, and `Activity` (title-free arrangement
 diagnostics and process vitals). If macOS requires approval, the login item action opens **System
 Settings > General > Login Items & Extensions**.
 
@@ -154,7 +155,10 @@ Character shortcuts follow the active macOS keyboard layout. Workspace digits re
 ANSI number row, and Tab remains physical Tab. See [Controls](docs/controls.md) for drag, resize,
 balance, CLI, and socket behavior.
 
-New windows join the most recently focused tile’s split. When an app closes its last window,
+By default (`settings.layout = "dwindle"`), each new window splits the focused (or most recently
+added) tile along its longer side—side by side then alternating vertically on landscape displays,
+and top-to-bottom first on portrait monitors. Set `settings.layout = "columns"` (or pick
+`Columns` in **Settings › Layout**) to add new windows as equal siblings instead. When an app closes its last window,
 neighboring tiles can expand as soon as the app confirms the close. When apps refuse to fit side by side,
 Spaceman can temporarily stack adjacent tiles and restore the requested split when space allows.
 

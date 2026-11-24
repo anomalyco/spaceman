@@ -35,6 +35,7 @@ version = 1
 hud = true                            # optional (default: true); non-activating Workspace HUD
 hud_style = "icons"                   # optional (default: "icons"); or "layouts"
 hud_position = "bottom"               # optional (default: "bottom"); or "top"
+layout = "dwindle"                    # optional (default: "dwindle"); or "columns"
 update_channel = "stable"             # optional (default: "stable"); or "dev", a build of every merge
 mouse_follows_focus = "off"           # optional (default: "off"); or "display", "window"
 single_window_max_width = 0           # optional (default: 0, off); or 320 through 16384 points
@@ -147,6 +148,26 @@ spaceman config reset settings.hud_position
 
 Settings › General shows **Position** under **Workspace HUD** while the HUD is not **Off**, and
 `spaceman config reset` removes any settings key, back to its default.
+
+## New-Window Layout
+
+`settings.layout` chooses how newly opened tiled windows split the workspace:
+
+- `"dwindle"` (the default): binary space partition. The first window fills the display, the second
+  splits along the display's longer side (side by side on landscape, top and bottom on portrait),
+  and each further window splits the focused (or most recently added) tile along that tile's longer
+  side. Closing any window collapses its split so the surviving sibling re-expands.
+- `"columns"`: each new window joins the focused tile's split as an equal sibling.
+
+```sh
+spaceman config set layout columns
+spaceman config get layout
+spaceman config reset layout
+```
+
+Settings › Layout edits `settings.layout` under **New windows** over a live miniature preview that
+switches between Dwindle and Columns. Changing it reloads immediately for newly opened windows
+without rearranging existing workspaces.
 
 ## Gaps, Screen Edges, and Single-Window Width
 

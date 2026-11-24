@@ -10,6 +10,9 @@ version = 1
 hud = true
 hud_style = "icons"
 hud_position = "bottom"
+# How new windows split the workspace: "dwindle" (default, binary space partition along each
+# tile's longer side) or "columns" (side-by-side siblings).
+layout = "dwindle"
 update_channel = "stable"
 # Move the mouse pointer on explicit keyboard/ctl focus changes: "off" (default),
 # "display" (only when focus lands on another display), or "window" (every focus change).

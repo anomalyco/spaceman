@@ -401,3 +401,73 @@ fn config_commands_keep_and_show_the_workspace_order() {
         serde_json::json!([1, "Q", "W"])
     );
 }
+
+#[test]
+fn config_gets_sets_and_resets_layout() {
+    let temp = TempConfig::new("layout");
+    temp.write("# Mine.\nversion = 1\n[settings]\nhud_style = \"layouts\"\n");
+    assert_eq!(
+        temp.run(&["config", "get", "layout"]).stdout.as_deref(),
+        Some("dwindle")
+    );
+    assert_eq!(
+        temp.run(&["config", "get", "settings.layout"])
+            .stdout
+            .as_deref(),
+        Some("dwindle")
+    );
+
+    let set_columns = temp.run(&["config", "set", "settings.layout", "columns"]);
+    assert_eq!(set_columns.exit_code, 0, "{:?}", set_columns.stderr);
+    assert_eq!(set_columns.stdout.as_deref(), Some("set layout = columns"));
+    assert_eq!(
+        Config::parse(&temp.read()).unwrap().layout(),
+        spaceman::config::LayoutMode::Columns
+    );
+    assert!(temp.read().contains("hud_style = \"layouts\""));
+
+    assert_eq!(
+        temp.run(&["config", "get", "layout"]).stdout.as_deref(),
+        Some("columns")
+    );
+    let show: Value = serde_json::from_str(
+        temp.run(&["config", "show", "--json"])
+            .stdout
+            .as_deref()
+            .unwrap(),
+    )
+    .unwrap();
+    assert_eq!(show["settings"]["layout"], "columns");
+    assert_eq!(show["settings"]["hud_style"], "layouts");
+
+    let reset = temp.run(&["config", "reset", "layout"]);
+    assert_eq!(reset.exit_code, 0, "{:?}", reset.stderr);
+    assert_eq!(reset.stdout.as_deref(), Some("reset layout = dwindle"));
+    let source = temp.read();
+    assert!(!source.contains("layout ="), "{source}");
+    assert!(source.contains("hud_style = \"layouts\""), "{source}");
+    assert_eq!(
+        Config::parse(&source).unwrap().layout(),
+        spaceman::config::LayoutMode::Dwindle
+    );
+
+    temp.write("version = 1\n[settings]\nlayout = \"columns\"\n");
+    let reset_json: Value = serde_json::from_str(
+        temp.run(&["config", "reset", "settings.layout", "--json"])
+            .stdout
+            .as_deref()
+            .unwrap(),
+    )
+    .unwrap();
+    assert_eq!(reset_json["key"], "layout");
+    assert_eq!(reset_json["value"], "dwindle");
+    assert!(!temp.read().contains("[settings]"));
+
+    let bad = temp.run(&["config", "set", "layout", "bsp"]);
+    assert_ne!(bad.exit_code, 0);
+    assert!(
+        bad.stderr
+            .unwrap()
+            .contains("expected 'dwindle' or 'columns'")
+    );
+}

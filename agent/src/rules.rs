@@ -6,7 +6,7 @@ use std::path::PathBuf;
 
 use spaceman::{
     WorkspaceId,
-    config::{HudPosition, HudStyle, MouseFollowsFocus, UpdateChannel},
+    config::{HudPosition, HudStyle, LayoutMode, MouseFollowsFocus, UpdateChannel},
     labs::{LabFeature, LabShortcut},
 };
 use toml_edit::{
@@ -256,6 +256,25 @@ impl Doc {
         self.set_setting(
             "hud_position",
             (position != HudPosition::default()).then(|| value(position.as_str())),
+        );
+    }
+
+    /// How newly opened tiled windows split the workspace, from `settings.layout` (defaults to
+    /// dwindle).
+    pub fn layout(&self) -> LayoutMode {
+        self.doc
+            .get("settings")
+            .and_then(Item::as_table_like)
+            .and_then(|table| table.get("layout"))
+            .and_then(Item::as_str)
+            .and_then(LayoutMode::parse)
+            .unwrap_or_default()
+    }
+
+    pub fn set_layout(&mut self, mode: LayoutMode) {
+        self.set_setting(
+            "layout",
+            (mode != LayoutMode::default()).then(|| value(mode.as_str())),
         );
     }
 

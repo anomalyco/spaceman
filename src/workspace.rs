@@ -464,12 +464,31 @@ impl Workspaces {
         window: &PhysicalWindowId,
         target: WorkspaceId,
     ) -> Option<WorkspaceId> {
+        self.move_window_with(
+            window,
+            target,
+            crate::config::LayoutMode::Columns,
+            crate::Rect::default(),
+        )
+    }
+
+    pub(crate) fn move_window_with(
+        &mut self,
+        window: &PhysicalWindowId,
+        target: WorkspaceId,
+        mode: crate::config::LayoutMode,
+        output: crate::Rect,
+    ) -> Option<WorkspaceId> {
         let source = self.workspace_of(window)?;
         let source_index = source.index();
         let target_index = target.index();
         if source_index == target_index {
             return None;
         }
+        let anchor = match mode {
+            crate::config::LayoutMode::Dwindle => self.last_focused[target_index],
+            crate::config::LayoutMode::Columns => None,
+        };
         let (source_engine, target_engine) = if source_index < target_index {
             let (before, after) = self.engines.split_at_mut(target_index);
             (&mut before[source_index], &mut after[0])
@@ -478,7 +497,7 @@ impl Workspaces {
             (&mut after[0], &mut before[target_index])
         };
         let slot = source_engine.take_slot(window)?;
-        target_engine.insert_slot(slot);
+        target_engine.insert_slot_with(slot, mode, output, anchor);
         self.prune_intents(source);
         Some(source)
     }

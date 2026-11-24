@@ -61,7 +61,6 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
         let Some(target) = visible
             .iter()
             .find(|resolved| resolved.output.contains_center(frame))
-            .map(|resolved| resolved.workspace)
         else {
             return;
         };
@@ -83,7 +82,7 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
         window: &crate::PhysicalWindowId,
         frame: crate::Rect,
         original: crate::Rect,
-        target: WorkspaceId,
+        target: &ResolvedWorkspace,
     ) {
         self.commit_unparked(window);
         log_event!(
@@ -102,22 +101,28 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
             .recent_heals
             .insert(window.clone(), Instant::now())
             .is_some();
+        let workspace = target.workspace;
         if self.workspaces.floating_workspace_of(window).is_some() {
             log_event!(
                 "heal: re-home floating {:?} -> workspace {}",
                 window,
-                target
+                workspace
             );
-            self.workspaces.own_floating(window.clone(), target);
-        } else if let Some(source) = self.workspaces.move_window(window, target) {
-            self.exit_fullscreen_if_split(target);
+            self.workspaces.own_floating(window.clone(), workspace);
+        } else if let Some(source) = self.workspaces.move_window_with(
+            window,
+            workspace,
+            self.config.layout(),
+            self.layout_settings(target.output).canvas(),
+        ) {
+            self.exit_fullscreen_if_split(workspace);
             self.clear_fullscreen_restore_if_inactive(source);
-            self.clear_relocation_evidence(source, target, window);
+            self.clear_relocation_evidence(source, workspace, window);
             log_event!(
                 "heal: re-home tiled {:?} workspace {} -> {}",
                 window,
                 source,
-                target
+                workspace
             );
         }
         // A strip column is the strip's to place; exempting it would leave it on screen over
@@ -392,7 +397,6 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
                 .visible
                 .iter()
                 .find(|resolved| resolved.output.contains_center(server))
-                .map(|resolved| resolved.workspace)
             {
                 self.honor_reappearance(window, server, original, target);
             }

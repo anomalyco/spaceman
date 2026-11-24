@@ -7,7 +7,9 @@ navigate, reorder, nest, resize, and balance them from the keyboard or the point
 
 ```ts
 Automatic tiling                                        // tile.auto
-├── New managed window -> joins the last focused tile’s split, or the root without a surviving focus
+├── New managed window -> follows settings.layout ("dwindle" default, or "columns")
+│   ├── dwindle -> splits the focused (or last) tile along its longer side (landscape: 1 | (2 / (3 | 4)); portrait: 1 / (2 | (3 / 4)))
+│   ├── columns -> joins the last focused tile’s split as a sibling, or the root without a surviving focus
 │   └── Creation or activation before the first visible frame -> briefly recheck for the foreground window
 ├── Window closes -> its slot retires, siblings reflow
 │   ├── Last app window closes but its surface lingers -> siblings reflow when the app confirms closure
@@ -57,8 +59,8 @@ Keyboard: Option+H/J/K/L, Option+Shift+H/J/K/L, Option+`, Option+-, Option+=, Op
 Pointer:  drag a managed window (reorder/nest/move display), drag its edge (resize)
 CLI:      spaceman ctl focus | move-direction | resize shrink|grow|width|height | balance | layout | retile
 Shortcut: [shortcuts.bindings] can bind any of those, e.g. "ctrl+alt+w" = "resize width 1200"
-Settings: Settings › Layout -> Window gaps (Customize separately: Between windows, Screen edges, Top/Bottom/Left/Right), Single-window width
-Config:   spaceman config set gaps.inner|gaps.outer|gaps.top|gaps.bottom|gaps.left|gaps.right|single_window_max_width <points>
+Settings: Settings › Layout -> New windows (Dwindle | Columns), Window gaps (Customize separately: Between windows, Screen edges, Top/Bottom/Left/Right), Single-window width
+Config:   spaceman config set layout dwindle|columns; spaceman config set gaps.inner|gaps.outer|gaps.top|gaps.bottom|gaps.left|gaps.right|single_window_max_width <points>
 ```
 
 Input arriving while the worker is busy queues in order (up to 64); queued input is dropped on
@@ -77,8 +79,14 @@ pause, quit, or hotkey loss.
   `reorder_moves_to_an_empty_workspace_on_the_adjacent_display` (issue 119),
   `perpendicular_reorder_creates_a_mixed_split_for_three_windows`,
   `layout_toggle_repartitions_and_persists_the_focused_workspace`.
-- Engine and layout tree: `new_window_joins_the_focused_nested_split` and
-  `corner_drag_moves_both_nested_boundaries` cover insertion and diagonal resizing;
+- Engine and layout tree: `dwindle_landscape_splits_one_through_four_windows`,
+  `dwindle_portrait_splits_vertically_first_then_alternates`,
+  `dwindle_splits_focused_anchor_and_collapses_on_close`,
+  `columns_mode_preserves_flat_sibling_insertion`, `new_window_joins_the_focused_nested_split`,
+  `dwindle_splits_the_focused_tile_along_its_longer_side`, and
+  `corner_drag_moves_both_nested_boundaries` cover Dwindle/Columns insertion and diagonal resizing;
+  `src/app/tests/dwindle.rs` covers live landscape/portrait Dwindle tiling, close re-expansion,
+  live config reload between Dwindle and Columns, cross-workspace moves, axis toggle, and Fullscreen Layout;
   `resize_to_*` in `src/layout_tree/tests.rs` cover the nearest split on each axis, proportional
   sharing, recursive minimums, and lone tiles.
 - Unit (FakeBackend), `src/app/tests/gestures.rs`: drag swap preview, edge-nesting preview,
@@ -123,10 +131,10 @@ pause, quit, or hotkey loss.
   match `ctl debug`; directional focus, repeat switch and `focus next` move real macOS focus; the
   rest re-fill after a minimize or hide (500 ms budget from when the window leaves the screen);
   float and un-float re-tile.
-- Observed (2026-11-24, gauntlet in a macOS 27 VM): after a minimize the rest re-fill about 30 ms
-  after the window leaves the screen, but after a hide (Cmd+H) it takes about 700 ms. Spaceman
-  observes `AXWindowMiniaturized` but no hide notification, so a hide is only seen through the
-  activation change and its settle delay.
+- Observed (2026-11-24, gauntlet in a macOS 27 VM): the rest re-fill about 40 ms after the window
+  leaves the screen, after a minimize (`AXWindowMiniaturized`) and after a hide (Cmd+H, through
+  `NSWorkspaceDidHideApplicationNotification`; before that a hide waited for the 1 s fallback
+  refresh, about 730 ms). `src/macos/events.rs`: `hiding_an_app_refreshes_on_the_next_tick`.
 
 ## Gotchas
 

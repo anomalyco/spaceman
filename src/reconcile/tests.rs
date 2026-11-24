@@ -144,6 +144,7 @@ fn run(model: &Model, cycle: u64, applications: Vec<AppObservation>) -> Reconcil
             output: OUTPUT,
             frame_tolerance: 2,
             spacing: crate::spacing::Spacing::NONE,
+            layout: crate::config::LayoutMode::default(),
         },
     )
 }
@@ -323,6 +324,7 @@ fn valid_ghostty_replacement_preserves_slot() {
             output: OUTPUT,
             frame_tolerance: 2,
             spacing: crate::spacing::Spacing::NONE,
+            layout: crate::config::LayoutMode::default(),
         },
     );
 
@@ -506,6 +508,7 @@ fn incomplete_observations_do_not_advance_ghostty_settling() {
             output: OUTPUT,
             frame_tolerance: 2,
             spacing: crate::spacing::Spacing::NONE,
+            layout: crate::config::LayoutMode::default(),
         },
     );
     let unavailable = run(
@@ -557,6 +560,7 @@ fn mouse_down_defers_all_model_changes() {
             output: OUTPUT,
             frame_tolerance: 2,
             spacing: crate::spacing::Spacing::NONE,
+            layout: crate::config::LayoutMode::default(),
         },
     );
 

@@ -15,9 +15,11 @@ pub(super) struct DisplayWatch {
 }
 
 impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
-    /// How tiles fill `output`: its frame with the configured gaps, padding and width cap.
+    /// How tiles fill `output`: its frame with the configured gaps, padding, width cap and layout.
     pub(super) fn layout_settings(&self, output: crate::Rect) -> Settings {
-        Settings::for_output(output).spaced(self.config.spacing())
+        Settings::for_output(output)
+            .spaced(self.config.spacing())
+            .with_layout(self.config.layout())
     }
 
     /// Record the current displays. When they differ from the last ones, every
