@@ -295,6 +295,8 @@ pub enum Command {
     Layout,
     Fullscreen,
     Float,
+    /// Pin the focused window on every workspace of its display, or unpin it.
+    Pin,
     Resize(ResizeDirection),
     /// Resize the focused window to this width (`Horizontal`) or height (`Vertical`) in points.
     ResizeTo(Axis, i32),
@@ -302,7 +304,7 @@ pub enum Command {
     Retile,
 }
 
-pub const COMMAND_USAGE: &str = "switch WORKSPACE|switch next|prev|move WORKSPACE [--follow]|move next|prev [--follow]|move-tab WORKSPACE [--follow]|back-and-forth|move-workspace [next|prev|DISPLAY]|focus DIR|focus next|focus prev|move-direction DIR|layout|fullscreen|float|resize shrink|resize grow|resize width|height POINTS|balance|retile|none";
+pub const COMMAND_USAGE: &str = "switch WORKSPACE|switch next|prev|move WORKSPACE [--follow]|move next|prev [--follow]|move-tab WORKSPACE [--follow]|back-and-forth|move-workspace [next|prev|DISPLAY]|focus DIR|focus next|focus prev|move-direction DIR|layout|fullscreen|float|pin|resize shrink|resize grow|resize width|height POINTS|balance|retile|none";
 
 /// `[shortcuts]` as written.
 #[derive(Deserialize)]
@@ -503,6 +505,7 @@ pub fn parse_command(source: &str) -> Result<Option<Command>, String> {
         ["layout"] => Command::Layout,
         ["fullscreen"] => Command::Fullscreen,
         ["float"] => Command::Float,
+        ["pin"] => Command::Pin,
         ["resize", "shrink"] => Command::Resize(ResizeDirection::Shrink),
         ["resize", "grow"] => Command::Resize(ResizeDirection::Grow),
         ["resize", dimension, points] => {
@@ -585,6 +588,7 @@ impl Command {
             Self::Layout => "toggle layout".into(),
             Self::Fullscreen => "toggle fullscreen layout".into(),
             Self::Float => "toggle floating window".into(),
+            Self::Pin => "toggle pinned window".into(),
             Self::Resize(ResizeDirection::Shrink) => "shrink layout".into(),
             Self::Resize(ResizeDirection::Grow) => "grow layout".into(),
             Self::ResizeTo(Axis::Horizontal, points) => {
@@ -705,6 +709,7 @@ mod tests {
             ),
             ("layout", Some(Command::Layout)),
             ("float", Some(Command::Float)),
+            ("pin", Some(Command::Pin)),
             ("balance", Some(Command::Balance)),
             (
                 "resize width 1200",

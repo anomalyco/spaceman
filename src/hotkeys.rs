@@ -327,6 +327,7 @@ fn worker_action(command: &Command) -> WorkerAction {
         Command::Layout => WorkerAction::ToggleLayout,
         Command::Fullscreen => WorkerAction::ToggleFullscreenLayout,
         Command::Float => WorkerAction::ToggleFloat,
+        Command::Pin => WorkerAction::TogglePin,
         Command::Resize(direction) => WorkerAction::Resize(*direction),
         Command::ResizeTo(axis, points) => WorkerAction::ResizeTo(*axis, *points),
         Command::Balance => WorkerAction::Balance,
@@ -683,6 +684,11 @@ mod tests {
             .iter()
             .find(|registration| registration.description == description)
             .map(|registration| &registration.action)
+    }
+
+    #[test]
+    fn pin_shortcut_runs_the_same_action_as_ctl_pin() {
+        assert_eq!(worker_action(&Command::Pin), WorkerAction::TogglePin);
     }
 
     #[test]
