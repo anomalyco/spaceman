@@ -155,3 +155,41 @@ fn config_research_alias() {
         }
     }
 }
+
+/// #544: after a same-display selector edit, moving the workspace away reveals
+/// the one its display showed just before it, not an older one the new
+/// selector had covered. Reported by @coygeek.
+#[test]
+fn move_after_alias_edit_reveals_the_workspace_shown_before() {
+    let displays = portrait_displays();
+    for target in [
+        DisplayTarget::Next,
+        DisplayTarget::Selector(DisplaySelector::parse("third-id")),
+        DisplayTarget::Selector(DisplaySelector::parse("Projector")),
+    ] {
+        let mut rt = configured_rig(
+            alias_config("secondary", "dwindle", 0),
+            &displays,
+            &[(2, 20, 0), (4, 40, 1), (5, 50, 1), (6, 60, 1), (7, 70, 2)],
+        );
+        for n in [6, 4, 5] {
+            execute(&mut rt, WorkerAction::SwitchWorkspace(ws(n)), &displays).unwrap();
+        }
+        rt.replace_config(alias_config("secondary-id", "dwindle", 0));
+        execute(&mut rt, WorkerAction::Retile, &displays).unwrap();
+        assert!(rt.is_visible(ws(5), &displays), "{target:?}");
+        rt.backend.focused = Some(window(50));
+
+        execute(
+            &mut rt,
+            WorkerAction::MoveWorkspaceToDisplay(target.clone()),
+            &displays,
+        )
+        .unwrap();
+        assert!(rt.is_visible(ws(5), &displays), "{target:?}");
+        assert!(rt.is_visible(ws(4), &displays), "{target:?}");
+        assert!(!rt.is_visible(ws(6), &displays), "{target:?}");
+        assert!(!rt.parked.contains_key(&window(40)), "{target:?}");
+        assert!(rt.parked.contains_key(&window(60)), "{target:?}");
+    }
+}

@@ -57,12 +57,18 @@ impl Workspaces {
         self.assignments[workspace.index()] = display.clone();
         let was_active = self.displays.lane(&previous) == Some(workspace);
         if was_active && same_display(&previous, &display) {
-            if let Some(covered) = self
+            // The display's history moves with the lane: what it showed before
+            // workspace, not the hidden workspace the new selector covered (#544).
+            let shown_before = self
+                .displays
+                .previous(&previous)
+                .filter(|shown| *shown != workspace);
+            let covered = self
                 .displays
                 .set_lane(display.clone(), workspace)
-                .filter(|covered| *covered != workspace)
-            {
-                self.displays.set_previous(display.clone(), covered);
+                .filter(|covered| *covered != workspace);
+            if let Some(prior) = shown_before.or(covered) {
+                self.displays.set_previous(display.clone(), prior);
             }
             self.displays.rename_front_lanes(&previous, &display);
         } else if self.displays.lane(&display).is_none() {
