@@ -574,7 +574,7 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
         let reported = focused
             .as_ref()
             .filter(|window| self.focus.guarded_window() != Some(*window))
-            .and_then(|window| self.workspaces.workspace_of_any(window));
+            .and_then(|window| self.shown_workspace(window, &outputs));
         if let Some(reported) = reported {
             // A click on another display is a genuine focus change even before
             // the next observation cycle records it.
@@ -596,6 +596,25 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
             RepeatSwitch::KeepFocus,
             CommandOrigin::Explicit,
         )
+    }
+
+    /// The workspace the focused window is seen on. A pinned window shows on
+    /// every workspace of its display, so its focus belongs to whichever one
+    /// that display shows, never to its hidden home (#526).
+    fn shown_workspace(
+        &self,
+        window: &crate::PhysicalWindowId,
+        outputs: &macos::DisplayOutputs,
+    ) -> Option<WorkspaceId> {
+        let home = self.workspaces.workspace_of_any(window)?;
+        if !self.workspaces.is_pinned(window) {
+            return Some(home);
+        }
+        let display_id = outputs.resolve(self.workspaces.assignment(home)).id.clone();
+        self.visible_workspaces(outputs)
+            .into_iter()
+            .find(|resolved| resolved.display_id == display_id)
+            .map(|resolved| resolved.workspace)
     }
 
     /// Focus a workspace that is already on screen instead of switching any
