@@ -110,9 +110,11 @@ behind. Releasing where the last preview was shown commits that preview, unless 
 somewhere new after it (out of an edge band and back, say, before the next preview could show):
 then the release is classified afresh. The same holds when a keyboard command (such as `Option+/`)
 changed the workspace's layout while the button was held: the drop applies to that changed layout,
-so the command is never undone by the release. A drag or resize that ends
-without a mouse-up commit (pausing while the button is held, or a mouse-up whose window frame could
-not be read) puts the siblings back where the saved layout has them.
+so the command is never undone by the release. If a keyboard move sends the held window to another
+workspace and the pointer stays where the last preview was shown, releasing keeps that move: the
+window settles into its new workspace and the old workspace's layout comes back. A drag or resize
+that ends without a mouse-up commit (pausing while the button is held, or a mouse-up whose window
+frame could not be read) puts the siblings back where the saved layout has them.
 
 While the worker is busy, keyboard commands and completed pointer gestures are queued in arrival
 order. Repeated relative commands (resize, focus, move, and toggles) are not discarded. The queue holds
