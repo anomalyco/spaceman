@@ -61,6 +61,8 @@ pub(crate) struct LabsDoc {
     pub route_all_windows: Option<bool>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub menu_bar_icon_style: Option<bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub focus_follows_mouse: Option<bool>,
 }
 
 impl LabsDoc {
@@ -78,6 +80,7 @@ impl LabsDoc {
             && self.single_window_height.is_none()
             && self.route_all_windows.is_none()
             && self.menu_bar_icon_style.is_none()
+            && self.focus_follows_mouse.is_none()
     }
 
     /// The switch as the file asks for it: off while unset.
@@ -110,6 +113,7 @@ impl LabsDoc {
             LabFeature::SingleWindowHeight => self.single_window_height,
             LabFeature::RouteAllWindows => self.route_all_windows,
             LabFeature::MenuBarIconStyle => self.menu_bar_icon_style,
+            LabFeature::FocusFollowsMouse => self.focus_follows_mouse,
         }
     }
 
@@ -128,6 +132,7 @@ impl LabsDoc {
             LabFeature::SingleWindowHeight => &mut self.single_window_height,
             LabFeature::RouteAllWindows => &mut self.route_all_windows,
             LabFeature::MenuBarIconStyle => &mut self.menu_bar_icon_style,
+            LabFeature::FocusFollowsMouse => &mut self.focus_follows_mouse,
         }
     }
 }
@@ -663,7 +668,11 @@ pub(crate) fn format_rule_summary(rule: &RuleDoc) -> String {
         (action, _) => action.to_owned(),
     };
     if let Some(windows) = rule.windows {
-        return format!("{} -> {target} [windows={}]", matchers.join(" "), windows.as_str());
+        return format!(
+            "{} -> {target} [windows={}]",
+            matchers.join(" "),
+            windows.as_str()
+        );
     }
     format!("{} -> {target}", matchers.join(" "))
 }

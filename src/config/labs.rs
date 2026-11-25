@@ -55,6 +55,9 @@ pub struct LabsConfig {
     /// (`off`), and Settings › General shows its picker.
     #[serde(default)]
     pub menu_bar_icon_style: bool,
+    /// A tile the pointer rests on takes focus, without a click.
+    #[serde(default)]
+    pub focus_follows_mouse: bool,
 }
 
 impl LabsConfig {
@@ -75,6 +78,7 @@ impl LabsConfig {
             LabFeature::SingleWindowHeight => self.single_window_height,
             LabFeature::RouteAllWindows => self.route_all_windows,
             LabFeature::MenuBarIconStyle => self.menu_bar_icon_style,
+            LabFeature::FocusFollowsMouse => self.focus_follows_mouse,
         }
     }
 }
@@ -109,11 +113,13 @@ pub enum LabFeature {
     RouteAllWindows,
     /// `settings.menu_bar_icon`: a compact or hidden menu bar icon.
     MenuBarIconStyle,
+    /// A tile the pointer rests on takes focus, without a click.
+    FocusFollowsMouse,
 }
 
 impl LabFeature {
     /// Every switch, in the order `[labs]` lists them.
-    pub const ALL: [Self; 13] = [
+    pub const ALL: [Self; 14] = [
         Self::Scratchpad,
         Self::Activity,
         Self::PortraitEdgeRows,
@@ -127,6 +133,7 @@ impl LabFeature {
         Self::SingleWindowHeight,
         Self::RouteAllWindows,
         Self::MenuBarIconStyle,
+        Self::FocusFollowsMouse,
     ];
 
     /// The `[labs]` key that turns this feature on.
@@ -146,6 +153,7 @@ impl LabFeature {
             Self::SingleWindowHeight => "single_window_height",
             Self::RouteAllWindows => "route_all_windows",
             Self::MenuBarIconStyle => "menu_bar_icon_style",
+            Self::FocusFollowsMouse => "focus_follows_mouse",
         }
     }
 

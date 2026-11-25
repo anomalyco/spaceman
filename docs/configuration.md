@@ -354,7 +354,7 @@ in the file are kept.
 them off Spaceman behaves exactly as if Labs did not exist: no extra shortcuts register and no
 command changes behavior. Unknown keys are config errors. Settings › Labs lists every switch,
 grouped by what it changes (`Windows`: Scratchpad, Portrait edge rows, Recent focus, Dragged
-floats follow their display, Single-window height and Route every window; `Workspaces`: Swipe switch, Focus empty workspaces on other
+floats follow their display, Single-window height, Route every window and Focus follows mouse; `Workspaces`: Swipe switch, Focus empty workspaces on other
 displays, Workspace steps and Four-finger swipe; `Menu bar & HUD`: Physical display order and Menu bar icon style; `Settings`: Activity), and flipping one there
 writes the same key.
 
@@ -373,6 +373,7 @@ four_finger_swipe = false             # optional (default: false); the workspace
 single_window_height = false          # optional (default: false); reads settings.single_window_max_height
 route_all_windows = false             # optional (default: false); reads a route rule's windows = "all"
 menu_bar_icon_style = false           # optional (default: false); reads settings.menu_bar_icon
+focus_follows_mouse = false           # optional (default: false); the tile the pointer rests on takes focus
 ```
 
 `scratchpad = true` enables the Scratchpad (see [Controls › Scratchpad](controls.md#scratchpad-lab)) and
@@ -414,6 +415,18 @@ action = "route"
 workspace = 4
 windows = "all"
 ```
+
+`focus_follows_mouse = true` focuses a tile when the pointer comes to rest over it, without a
+click, so its keyboard shortcuts work right away. The pointer has to move and then stay still for
+about 150 ms: passing over a tile on the way to the menu bar does not switch the app the menu bar
+belongs to, and a pointer left resting never takes focus back after a keyboard focus change or a
+workspace switch. Only tiles on a visible workspace take focus this way: a floating window, the
+Scratchpad, or an unmanaged window in front of the pointer keeps focus where it is, and hovering
+one does not focus it. Nothing changes while a mouse button is held, a menu is open, a drag or a
+macOS Space slide is under way, or the pointer is over the menu bar, the Dock, the Workspace HUD or
+Settings. The pointer resting where `settings.mouse_follows_focus` put it is not a hover, so the
+two work together without feeding each other. In Settings it is
+`Labs › Windows › Focus follows mouse`.
 
 `swipe_switch = true` makes Spaceman read `settings.trackpad_swipe` and turns the fixed three-finger
 swipe row in Settings › Shortcuts into the **Swipe to switch workspace** switch (see

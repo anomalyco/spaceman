@@ -195,6 +195,7 @@ pub(crate) fn config_help(executable: &str) -> String {
         "  labs.single_window_height   true | false  single_window_max_height caps a lone window's height",
         "  labs.route_all_windows      true | false  windows = \"all\" on a route rule routes every new window",
         "  labs.menu_bar_icon_style    true | false  menu_bar_icon makes the menu bar icon compact or hidden",
+        "  labs.focus_follows_mouse    true | false  The tile the pointer rests on takes focus",
         "",
         "Notes:",
         "  - Respects SPACEMAN_CONFIG and SPACEMAN_APPLICATION_SUPPORT.",

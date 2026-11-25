@@ -906,7 +906,9 @@ workspace = 7
                 .routes_every_window("com.google.Chrome", &window(Some("tab")))
         };
         assert!(!routes_all(&format!("version = 1\n{rule}\n")));
-        assert!(!routes_all(&format!("version = 1\n{rule}\nwindows = 'all'\n")));
+        assert!(!routes_all(&format!(
+            "version = 1\n{rule}\nwindows = 'all'\n"
+        )));
         let lab = "version = 1\n[labs]\nroute_all_windows = true\n";
         assert!(routes_all(&format!("{lab}{rule}\nwindows = 'all'\n")));
         assert!(!routes_all(&format!("{lab}{rule}\nwindows = 'first'\n")));
@@ -1554,13 +1556,19 @@ right = 128
         );
         let height = "version = 1\n[settings]\nsingle_window_max_height = 1050\n";
         assert_eq!(
-            Config::parse(height).unwrap().spacing().single_window_max_height,
+            Config::parse(height)
+                .unwrap()
+                .spacing()
+                .single_window_max_height,
             0,
             "the height cap waits for its Lab"
         );
         let lab = format!("{height}[labs]\nsingle_window_height = true\n");
         assert_eq!(
-            Config::parse(&lab).unwrap().spacing().single_window_max_height,
+            Config::parse(&lab)
+                .unwrap()
+                .spacing()
+                .single_window_max_height,
             1050
         );
         let partial = Config::parse("version = 1\n[settings.gaps]\ninner = 12\n").unwrap();

@@ -7,6 +7,7 @@ mod automatic;
 mod controls;
 mod dispatch;
 mod hotkey_health;
+mod hover;
 mod live_shortcuts;
 mod probe;
 mod setup;
@@ -85,6 +86,8 @@ pub(super) struct AppLoopInit {
     pub(super) hud: bool,
     /// `Config::swipe_fingers` as loaded at startup; the config probe keeps it current.
     pub(super) swipe_fingers: Fingers,
+    /// `[labs] focus_follows_mouse` as loaded at startup; the config probe keeps it current.
+    pub(super) focus_follows_mouse: bool,
     pub(super) trusted: bool,
     /// A first-run setup tour is open and holds automatic tiling until it ends.
     pub(super) setup_tour_open: bool,
@@ -120,6 +123,9 @@ pub struct MainThreadAgent {
     hud: bool,
     /// The only finger count whose swipes are queued for the worker.
     swipe_fingers: Fingers,
+    /// The Focus follows mouse Lab: hover focuses tiles, timed by `hover`.
+    focus_follows_mouse: bool,
+    hover: hover::HoverTracker,
     awaiting_accessibility: bool,
     startup_tiling: TilingStartup,
     accessibility_requested: bool,
@@ -225,6 +231,8 @@ impl MainThreadAgent {
             automatic,
             hud: init.hud,
             swipe_fingers: init.swipe_fingers,
+            focus_follows_mouse: init.focus_follows_mouse,
+            hover: hover::HoverTracker::default(),
             awaiting_accessibility: !trusted,
             startup_tiling: TilingStartup::new(init.setup_tour_open),
             accessibility_requested: false,
@@ -586,6 +594,10 @@ impl MainThreadAgent {
                     }
                     if let Some(icon) = probe.menu_bar_icon {
                         status_item::set_visible(icon != crate::config::MenuBarIcon::Off);
+                    }
+                    if let Some(on) = probe.focus_follows_mouse {
+                        self.focus_follows_mouse = on;
+                        self.hover.interrupt();
                     }
                 }
             }

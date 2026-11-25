@@ -127,7 +127,10 @@ fn rules_add_windows_flag_writes_the_route_key_and_keeps_it() {
     ]);
     assert_eq!(route.exit_code, 0, "{:?}", route.stderr);
     assert!(
-        route.stdout.as_deref().is_some_and(|out| out.ends_with("[windows=all]")),
+        route
+            .stdout
+            .as_deref()
+            .is_some_and(|out| out.ends_with("[windows=all]")),
         "{:?}",
         route.stdout
     );
@@ -187,7 +190,11 @@ fn config_gets_sets_and_resets_menu_bar_icon() {
 
     let bad = temp.run(&["config", "set", "menu_bar_icon", "tiny"]);
     assert_eq!(bad.exit_code, 1);
-    assert!(bad.stderr.unwrap().contains("expected 'full', 'compact', or 'off'"));
+    assert!(
+        bad.stderr
+            .unwrap()
+            .contains("expected 'full', 'compact', or 'off'")
+    );
     let reset = temp.run(&["config", "reset", "menu_bar_icon"]);
     assert_eq!(reset.exit_code, 0, "{:?}", reset.stderr);
     assert!(!temp.read().contains("menu_bar_icon ="), "{}", temp.read());
