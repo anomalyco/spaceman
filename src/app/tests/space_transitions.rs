@@ -1,7 +1,9 @@
 //! macOS Space slides: a parked window on another desktop keeps its recovery
 //! frame (#328), Cmd+Tab out of a native fullscreen app lands on the target
-//! workspace (#329), and the outgoing desktop's tile keeps its size while the
-//! slide runs (#334).
+//! workspace (#329), the outgoing desktop's tile keeps its size while the
+//! slide runs (#334), and once a desktop swipe settles, the arriving window is
+//! not tiled beside the outgoing desktop's off-screen one (#431, after-slide
+//! case only).
 
 use super::*;
 
@@ -251,4 +253,52 @@ fn a_failed_focus_follow_without_a_space_change_stays_suppressed() {
     runtime.backend.frontmost = Some(text_edit.app.clone());
     assert!(runtime.cycle(outputs(), &cancelled).is_err());
     assert_eq!(runtime.focus.guarded_window().cloned(), Some(text_edit));
+}
+
+/// #431: swiping between two macOS desktops with one tile each. The arriving
+/// window was retired when its desktop was left, so after the slide it is not
+/// a tile yet; the outgoing window's app has no window on this desktop and the
+/// window server lists that window off screen. It still kept its slot until
+/// the arriving window had been adopted beside it, so both were tiled at half
+/// width for about a second.
+#[test]
+fn a_desktop_swipe_does_not_tile_both_desktops_windows_together() {
+    let outgoing = app_window(1, 10);
+    let arriving = app_window(2, 20);
+    let mut backend = FakeBackend {
+        focused: Some(outgoing.clone()),
+        frontmost: Some(outgoing.app.clone()),
+        observation: Some(observe_apps(
+            Some(&outgoing),
+            &[(outgoing.clone(), frame(50))],
+        )),
+        ..FakeBackend::default()
+    };
+    backend.frames.insert(outgoing.clone(), frame(50));
+    let mut runtime = runtime(backend);
+    let cancelled = AtomicBool::new(false);
+    runtime.cycle(outputs(), &cancelled).unwrap();
+    let full = runtime.backend.frames[&outgoing];
+
+    // The slide has settled on the other desktop: only its window is
+    // reported, and the outgoing one is ordered out but still listed.
+    runtime.backend.space_changed_at = settled_space_change();
+    runtime.backend.focused = Some(arriving.clone());
+    runtime.backend.frontmost = Some(arriving.app.clone());
+    runtime.backend.observation = Some(observe_apps(Some(&arriving), &[(arriving.clone(), full)]));
+    runtime.backend.frames.insert(arriving.clone(), full);
+    runtime.backend.ordered_out.insert(outgoing.window_id);
+    runtime
+        .backend
+        .apps_confirming_no_windows
+        .insert(outgoing.app.clone());
+    runtime.cycle(outputs(), &cancelled).unwrap();
+
+    assert_eq!(runtime.workspaces.workspace_of(&outgoing), None);
+    assert_eq!(
+        runtime.workspaces.workspace_of(&arriving),
+        Some(WorkspaceId::ONE)
+    );
+    assert_eq!(runtime.backend.frames[&arriving].width, full.width);
+    assert_eq!(runtime.backend.frames[&outgoing], full);
 }

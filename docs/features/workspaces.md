@@ -421,8 +421,12 @@ on the same letter.
   `cmd_tab_out_of_native_fullscreen_lands_on_the_target_workspace`,
   `a_focus_follow_a_space_slide_interrupts_is_retried` and
   `a_failed_focus_follow_without_a_space_change_stays_suppressed` (focus follow across a Space
-  slide), and `a_space_slide_holds_layout_until_it_settles`. When macOS posts the Space change
-  relative to the slide is not covered.
+  slide), `a_space_slide_holds_layout_until_it_settles`, and
+  `a_desktop_swipe_does_not_tile_both_desktops_windows_together` (after a slide settles, a window
+  about to be adopted on screen releases the outgoing desktop's off-screen tile in the same cycle,
+  #431). When macOS posts the Space change relative to the slide is not covered, nor is macOS
+  reporting the arriving desktop's windows before the Space change mid-swipe, which can still tile
+  both desktops' windows together (#431).
 - Unit: `src/hotkeys/delivery.rs` pairs Option presses seen by the key tap with Carbon deliveries
   in either order and reports a press still undelivered after 750 ms. The tap
   (`src/macos/keys.rs`) and the re-registration in `src/app/app_loop/hotkey_health.rs` are not

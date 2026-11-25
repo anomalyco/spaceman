@@ -198,10 +198,11 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
     /// server still lists one of their bound windows. The window server also
     /// lists windows that are ordered out (a closed window its app keeps
     /// alive, a minimized window), and keeping those slots leaves an empty
-    /// tile. So while another window of this workspace is observed, meaning
-    /// the display is not showing another Space, an ordered-out window keeps
-    /// its app's slots only until the omission outlasts [`OMISSION_SETTLE`].
-    /// A fresh empty AXWindows list can confirm a last-window close earlier.
+    /// tile. So while another window of this workspace, or one it is about to
+    /// adopt, is observed on screen, meaning the display is not showing
+    /// another Space, an ordered-out window keeps its app's slots only until
+    /// the omission outlasts [`OMISSION_SETTLE`]. A fresh empty AXWindows list
+    /// can confirm a last-window close earlier.
     /// Unresolved replacement candidates keep the plain window-server rule.
     pub(super) fn apps_with_window_server_evidence(
         &mut self,
@@ -221,9 +222,17 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
             .map(|app| app.app_id().clone())
             .collect();
         let observed = live::observed_frames(observation);
+        // A window this cycle is about to adopt counts too: after a desktop
+        // swipe the arriving desktop's window is often not a tile yet, and
+        // keeping the outgoing desktop's slot would tile the two together
+        // until the next cycle (#431).
         let mut observed_tiles = observed
             .keys()
-            .filter(|window| self.workspaces.workspace_of(window) == Some(workspace))
+            .filter(|window| {
+                self.workspaces
+                    .workspace_of(window)
+                    .is_none_or(|owner| owner == workspace)
+            })
             .peekable();
         let onscreen_frames = onscreen_frames.filter(|_| observed_tiles.peek().is_some());
         // The newer CG snapshot must still show a sibling. A Space switch
