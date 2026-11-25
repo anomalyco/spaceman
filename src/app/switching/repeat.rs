@@ -22,6 +22,7 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
         workspace: WorkspaceId,
         focused: &crate::PhysicalWindowId,
         outputs: &macos::DisplayOutputs,
+        origin: CommandOrigin,
     ) -> Result<bool, String> {
         let windows = self.workspaces.engine(workspace).bound_windows();
         let target = match windows.iter().position(|window| window == focused) {
@@ -39,7 +40,7 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
                 _ => return Ok(false),
             },
         };
-        if let Err(error) = self.focus_tile(Some(focused.clone()), &target, outputs) {
+        if let Err(error) = self.focus_tile(Some(focused.clone()), &target, outputs, origin) {
             log_event!("repeat switch focus failed: workspace {workspace}: {error}");
             return Ok(false);
         }

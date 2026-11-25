@@ -102,6 +102,12 @@ pause, quit, or hotkey loss.
   directional focus from an empty workspace (parked window reported at corner/held-up or no focus,
   #355) and from top/bottom tiles of tall portrait side displays that do not overlap the middle
   display (#356), plus dropping a dragged tile over another display's menu bar (#358).
+  `tall_portrait_move_reaches_full_requested_height` (#428): a window moved onto a taller portrait
+  display whose size macOS fit to the display it left is written again on the next cycle instead
+  of being frozen as refused; `a_window_short_of_its_tile_on_its_own_display_still_freezes` keeps
+  the freeze for a window that refuses its frame where it is. `src/macos/apply.rs`
+  `a_window_from_another_display_that_lands_short_is_sized_again` covers the native follow-up size
+  write; the live clamp itself is not covered.
 - Unit (FakeBackend), `src/app/tests/gestures.rs` and `src/app/tests/drag_path.rs`:
   non-destructive drag previews (path-independent side drops, fast cross-display drops, cancel
   restoration), display outer left/right edge column drop bands (full edge sweep, outer gaps,

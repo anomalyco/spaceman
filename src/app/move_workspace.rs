@@ -78,7 +78,7 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
             self.workspaces.remember_focus(moved_ws, focused);
         }
 
-        let move_started = Instant::now();
+        let move_started = self.backend.now();
         let source_incoming = source_replacement
             .map(|workspace| self.workspaces.windows(workspace))
             .unwrap_or_default();
@@ -426,13 +426,22 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
             frontmost_before,
             false,
         );
-        self.follow_pointer_for_workspace(moved_ws, target_output, outcome, &outputs);
+        self.follow_pointer_for_workspace(
+            super::commands::CommandOrigin::Explicit,
+            moved_ws,
+            target_output,
+            outcome,
+            &outputs,
+        );
         self.persist_workspace_state_if_changed()?;
         log_event!(
             "move-workspace complete: workspace {} -> {} in {}ms",
             moved_ws,
             target_display_name,
-            move_started.elapsed().as_millis()
+            self.backend
+                .now()
+                .saturating_duration_since(move_started)
+                .as_millis()
         );
         let mut status = self.status(failed, &outputs);
         status.hud = Some(self.hud_for(moved_ws, UiHudKind::Workspace, displaced, &outputs));

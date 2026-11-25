@@ -62,7 +62,7 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
         {
             return false;
         }
-        let now = Instant::now();
+        let now = self.backend.now();
         self.omitted_windows
             .entry(window.clone())
             .or_insert_with(|| {
@@ -152,7 +152,7 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
                 // An omitted float's settle is tracked by affinity freezing.
                 None => self.workspaces.floating_workspace_of(window).is_some(),
             });
-        let now = Instant::now();
+        let now = self.backend.now();
         for app_observation in &mut observation.applications {
             let crate::AppObservation::Complete { app, .. } = app_observation else {
                 continue;
@@ -204,6 +204,12 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
     /// the omission outlasts [`OMISSION_SETTLE`]. A fresh empty AXWindows list
     /// can confirm a last-window close earlier.
     /// Unresolved replacement candidates keep the plain window-server rule.
+    ///
+    /// Right after a macOS Space slide, though, an ordered-out window is on the
+    /// desktop the slide left. When the snapshot is clean and windows of this
+    /// display arrived on screen with the slide, keeping its slot would tile
+    /// both desktops' windows together, each at half width, until the
+    /// omission settled (#431); it is released at once instead.
     pub(super) fn apps_with_window_server_evidence(
         &mut self,
         workspace: WorkspaceId,
@@ -222,6 +228,17 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
             .map(|app| app.app_id().clone())
             .collect();
         let observed = live::observed_frames(observation);
+        let left_by_slide = onscreen_frames
+            .filter(|onscreen| {
+                observation
+                    .applications
+                    .iter()
+                    .all(|app| matches!(app, crate::AppObservation::Complete { .. }))
+                    && observed
+                        .keys()
+                        .any(|window| onscreen.contains_key(&window.window_id))
+            })
+            .filter(|_| self.space_slide_just_settled());
         // A window this cycle is about to adopt counts too: after a desktop
         // swipe the arriving desktop's window is often not a tile yet, and
         // keeping the outgoing desktop's slot would tile the two together
@@ -260,8 +277,19 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
                 !present.contains(&window.app) && server_frames.contains_key(&window.window_id)
             })
             .collect();
-        let now = Instant::now();
+        let now = self.backend.now();
         for (window, settles) in windows {
+            if settles
+                && !self.parked.contains_key(&window)
+                && left_by_slide.is_some_and(|onscreen| !onscreen.contains_key(&window.window_id))
+            {
+                log_event!(
+                    "space slide: releasing {:?}, left on the desktop the slide left",
+                    window
+                );
+                self.omitted_windows.remove(&window);
+                continue;
+            }
             let Some(onscreen_frames) = onscreen_frames.filter(|_| settles) else {
                 // Off-screen time spent on another Space must not count
                 // toward the settle once the display shows this workspace.

@@ -256,3 +256,58 @@ fn drop_over_another_displays_menu_bar_moves_the_tile_there() {
         );
     }
 }
+
+/// #428: macOS fits the size write of a window moved from the center display
+/// onto a taller portrait display to the bottom of the display it left. That
+/// clamp is no refusal by the app, so the next cycle (the periodic retile, or
+/// `ctl retile`) writes the full portrait frame again instead of freezing the
+/// short one, for every way of moving the window there.
+#[test]
+fn tall_portrait_move_reaches_full_requested_height() {
+    for (workspace, direction, portrait) in
+        [(6, Direction::Left, LEFT), (9, Direction::Right, RIGHT)]
+    {
+        for action in [
+            WorkerAction::MoveFocused(ws(workspace)),
+            WorkerAction::MoveFocusedFollow(ws(workspace)),
+            WorkerAction::Reorder(direction),
+        ] {
+            let mut rt = rig(&[(10, 1, CENTER)]);
+            rt.backend.departed_display_clamp = vec![CENTER, LEFT, RIGHT];
+            act(&mut rt, action.clone());
+            assert_eq!(rt.workspaces.workspace_of(&win(10)), Some(ws(workspace)));
+            let landed = rt.backend.frames[&win(10)];
+            assert_eq!(
+                (landed.x, landed.y, landed.y + landed.height),
+                (portrait.x, portrait.y, CENTER.y + CENTER.height),
+                "{action:?}: macOS clamps the move to the center display's bottom"
+            );
+
+            act(&mut rt, WorkerAction::Retile);
+            assert_eq!(
+                rt.backend.frames.get(&win(10)),
+                Some(&portrait),
+                "{action:?}"
+            );
+        }
+    }
+}
+
+/// #428 control: a window that keeps a shorter frame on the display it is
+/// already on (a maximum height) is still frozen after the bounded retries.
+#[test]
+fn a_window_short_of_its_tile_on_its_own_display_still_freezes() {
+    let mut rt = rig(&[(10, 1, CENTER)]);
+    let capped = crate::Rect {
+        height: 900,
+        ..CENTER
+    };
+    rt.backend.frames.insert(win(10), capped);
+    rt.backend.departed_display_clamp = vec![CENTER, LEFT, RIGHT];
+    rt.backend.managed_outcome = Some(macos::ApplyOutcome::Constrained);
+    act(&mut rt, WorkerAction::Retile);
+    assert_eq!(
+        rt.constrained[ws(1).index()].get(&win(10)),
+        Some(&(CENTER, capped))
+    );
+}

@@ -164,7 +164,14 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
                         input
                     );
                     let follow_started = self.backend.now();
-                    let followed = self.switch(workspace, outputs.clone(), cancelled);
+                    // A follow answers focus the user already moved: the pointer stays.
+                    let followed = self.switch_with(
+                        workspace,
+                        outputs.clone(),
+                        cancelled,
+                        super::switching::RepeatSwitch::KeepFocus,
+                        super::commands::CommandOrigin::Passive,
+                    );
                     // An activation (or a finished drag) cancels background
                     // cycles, often the very one this follow answers (a
                     // notification click). A cancelled follow lets the next cycle
@@ -178,7 +185,7 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
                         if self.retry_follow_after_space_change() {
                             let until = self
                                 .space_transition_until()
-                                .unwrap_or_else(|| Instant::now() + SPACE_TRANSITION_SETTLE);
+                                .unwrap_or_else(|| self.backend.now() + SPACE_TRANSITION_SETTLE);
                             return Ok(self.defer_for_space_transition(until, &outputs));
                         }
                     }
@@ -454,6 +461,7 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
             engine.record_placement_target(placement.slot, placement.frame);
         }
         self.project_deck(workspace, &mut placements, &settings);
+        let now = self.backend.now();
         if !scoped_observation.mouse_down {
             for placement in &placements {
                 let Some(window) = placement.window.as_ref() else {
@@ -466,7 +474,7 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
                 if observed.approximately_equals(target, settings.frame_tolerance) {
                     let settling = self.applied[workspace.index()]
                         .get(window)
-                        .is_some_and(|applied| applied.is_settling(target));
+                        .is_some_and(|applied| applied.is_settling(target, now));
                     if !settling {
                         self.applied[workspace.index()].remove(window);
                         self.constrained[workspace.index()].remove(window);

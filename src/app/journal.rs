@@ -84,17 +84,15 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
 
     /// Compare the model with the window server and journal what changed.
     pub(super) fn check_arrangement(&mut self, outputs: &macos::DisplayOutputs) {
-        if self
-            .journal
-            .last_check
-            .is_some_and(|checked| checked.elapsed() < JOURNAL_CHECK_INTERVAL)
-        {
+        if self.journal.last_check.is_some_and(|checked| {
+            self.backend.now().saturating_duration_since(checked) < JOURNAL_CHECK_INTERVAL
+        }) {
             return;
         }
         let Some(server_frames) = self.backend.window_server_frames() else {
             return;
         };
-        let now = Instant::now();
+        let now = self.backend.now();
         self.journal.last_check = Some(now);
         let visible = self.visible_workspaces(outputs);
         let windows = self.arranged_windows(&server_frames);
@@ -104,10 +102,9 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
             active: visible.iter().map(|resolved| resolved.workspace).collect(),
             windows: windows.into_iter().map(|(_, window)| window).collect(),
         };
-        let snapshot_due = self
-            .journal
-            .last_snapshot
-            .is_none_or(|written| written.elapsed() >= JOURNAL_SNAPSHOT_INTERVAL);
+        let snapshot_due = self.journal.last_snapshot.is_none_or(|written| {
+            now.saturating_duration_since(written) >= JOURNAL_SNAPSHOT_INTERVAL
+        });
         let event = match &self.journal.last_written {
             Some(previous) if !snapshot_due => crate::journal::diff(previous, &arrangement),
             _ => {

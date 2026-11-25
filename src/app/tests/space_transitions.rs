@@ -1,9 +1,8 @@
 //! macOS Space slides: a parked window on another desktop keeps its recovery
 //! frame (#328), Cmd+Tab out of a native fullscreen app lands on the target
 //! workspace (#329), the outgoing desktop's tile keeps its size while the
-//! slide runs (#334), and once a desktop swipe settles, the arriving window is
-//! not tiled beside the outgoing desktop's off-screen one (#431, after-slide
-//! case only).
+//! slide runs (#334), and a swipe never tiles both desktops' windows
+//! together once its slide settles (#431).
 
 use super::*;
 
@@ -46,7 +45,7 @@ fn observe_apps(
 
 /// A Space change long enough ago that its slide has settled.
 fn settled_space_change() -> Option<Instant> {
-    Instant::now().checked_sub(Duration::from_secs(5))
+    Instant::now().checked_sub(Duration::from_secs(30))
 }
 
 fn main_workspace(runtime: &WorkspaceRuntime<FakeBackend>) -> Option<WorkspaceId> {
@@ -301,4 +300,178 @@ fn a_desktop_swipe_does_not_tile_both_desktops_windows_together() {
     );
     assert_eq!(runtime.backend.frames[&arriving].width, full.width);
     assert_eq!(runtime.backend.frames[&outgoing], full);
+}
+
+/// Two macOS desktops with one full-width window each (#431): `left` is tiled
+/// on workspace 1 and `other` waits on the second desktop, at the frame it
+/// had there.
+fn two_desktops() -> (
+    WorkspaceRuntime<FakeBackend>,
+    crate::PhysicalWindowId,
+    crate::PhysicalWindowId,
+) {
+    let left = app_window(1, 10);
+    let other = app_window(2, 20);
+    let mut backend = FakeBackend {
+        focused: Some(left.clone()),
+        frontmost: Some(left.app.clone()),
+        observation: Some(observe_apps(Some(&left), &[(left.clone(), frame(50))])),
+        ..FakeBackend::default()
+    };
+    backend.frames.insert(left.clone(), frame(50));
+    let mut runtime = runtime(backend);
+    runtime.cycle(outputs(), &AtomicBool::new(false)).unwrap();
+    let full = runtime.backend.frames[&left];
+    // The other desktop's window was laid out full width when it was last shown.
+    runtime.backend.frames.insert(other.clone(), full);
+    runtime.backend.ordered_out.insert(other.window_id);
+    (runtime, left, other)
+}
+
+/// A trackpad swipe from the desktop showing `leaving` to the one showing
+/// `arriving`, past the slide's hold: macOS orders `leaving` out (the window
+/// server still lists it) and Accessibility lists only the arriving desktop.
+fn swipe(
+    runtime: &mut WorkspaceRuntime<FakeBackend>,
+    leaving: &crate::PhysicalWindowId,
+    arriving: &crate::PhysicalWindowId,
+) {
+    let backend = &mut runtime.backend;
+    backend.space_changed_at = Some(backend.now());
+    backend.ordered_out.insert(leaving.window_id);
+    backend.ordered_out.remove(&arriving.window_id);
+    let at = backend.frames[arriving];
+    backend.observation = Some(observe_apps(Some(arriving), &[(arriving.clone(), at)]));
+    backend.focused = Some(arriving.clone());
+    backend.frontmost = Some(arriving.app.clone());
+    backend.advance(SPACE_TRANSITION_SETTLE + Duration::from_millis(5));
+    backend.calls.clear();
+}
+
+/// Every frame Spaceman wrote to `window`.
+fn writes_to(
+    runtime: &WorkspaceRuntime<FakeBackend>,
+    window: &crate::PhysicalWindowId,
+) -> Vec<crate::Rect> {
+    runtime
+        .backend
+        .calls
+        .iter()
+        .filter_map(|call| match call {
+            BackendCall::Apply(target, frame) if target == window => Some(*frame),
+            _ => None,
+        })
+        .collect()
+}
+
+/// #431: right after a swipe settles, the desktop the slide left keeps no
+/// slot beside the windows that arrived, so neither window is laid out at
+/// half width, in either direction.
+#[test]
+fn swiping_between_desktops_never_tiles_both_desktops_together() {
+    let (mut runtime, left, other) = two_desktops();
+    let full = runtime.backend.frames[&left];
+    let cancelled = AtomicBool::new(false);
+
+    for (leaving, arriving) in [(&left, &other), (&other, &left), (&left, &other)] {
+        swipe(&mut runtime, leaving, arriving);
+        runtime.cycle(outputs(), &cancelled).unwrap();
+
+        assert_eq!(
+            runtime.workspaces.workspace_of(leaving),
+            None,
+            "{leaving:?} kept its slot"
+        );
+        assert_eq!(
+            runtime.workspaces.workspace_of(arriving),
+            Some(WorkspaceId::ONE)
+        );
+        assert_eq!(runtime.backend.frames[arriving], full);
+        assert!(
+            writes_to(&runtime, arriving)
+                .iter()
+                .all(|frame| *frame == full),
+            "{arriving:?} laid out beside the other desktop's window: {:?}",
+            writes_to(&runtime, arriving)
+        );
+        assert!(writes_to(&runtime, leaving).is_empty());
+    }
+}
+
+/// #431 control: an app whose Accessibility snapshot timed out during the
+/// swipe keeps its slot, as any unavailable app does.
+#[test]
+fn a_swipe_keeps_the_slot_of_an_app_whose_snapshot_timed_out() {
+    let (mut runtime, left, other) = two_desktops();
+    swipe(&mut runtime, &left, &other);
+    runtime
+        .backend
+        .observation
+        .as_mut()
+        .unwrap()
+        .applications
+        .push(crate::AppObservation::Unavailable {
+            app: left.app.clone(),
+            error: "AXWindows timed out".into(),
+        });
+    runtime.cycle(outputs(), &AtomicBool::new(false)).unwrap();
+    assert_eq!(
+        runtime.workspaces.workspace_of(&left),
+        Some(WorkspaceId::ONE)
+    );
+}
+
+/// #431 control: with no Space change, a bound window the window server lists
+/// but orders out (a window its app closed and keeps alive) still settles
+/// before its slot is given up.
+#[test]
+fn an_ordered_out_window_without_a_swipe_still_settles() {
+    let (mut runtime, left, other) = two_desktops();
+    swipe(&mut runtime, &left, &other);
+    runtime.backend.space_changed_at = None;
+    runtime.cycle(outputs(), &AtomicBool::new(false)).unwrap();
+    assert_eq!(
+        runtime.workspaces.workspace_of(&left),
+        Some(WorkspaceId::ONE)
+    );
+}
+
+/// #431 control: once the slide is long past, the old settle applies again.
+#[test]
+fn a_long_settled_swipe_no_longer_releases_ordered_out_windows() {
+    let (mut runtime, left, other) = two_desktops();
+    swipe(&mut runtime, &left, &other);
+    runtime.backend.space_changed_at = settled_space_change();
+    runtime.cycle(outputs(), &AtomicBool::new(false)).unwrap();
+    assert_eq!(
+        runtime.workspaces.workspace_of(&left),
+        Some(WorkspaceId::ONE)
+    );
+}
+
+/// #431, the order recorded on dev-132: both desktops' windows were reported
+/// mid-swipe, before macOS posted the Space change, and tiled together. The
+/// first cycle after the slide's hold releases the desktop it left at once
+/// instead of after the omission settles.
+#[test]
+fn the_first_cycle_after_a_swipe_releases_a_window_adopted_mid_swipe() {
+    let (mut runtime, left, other) = two_desktops();
+    let full = runtime.backend.frames[&left];
+    let cancelled = AtomicBool::new(false);
+    runtime.backend.ordered_out.remove(&other.window_id);
+    runtime.backend.observation = Some(observe_apps(
+        Some(&left),
+        &[(left.clone(), full), (other.clone(), full)],
+    ));
+    runtime.cycle(outputs(), &cancelled).unwrap();
+    assert_eq!(
+        runtime.workspaces.workspace_of(&other),
+        Some(WorkspaceId::ONE)
+    );
+    assert!(runtime.backend.frames[&other].width < full.width);
+
+    swipe(&mut runtime, &left, &other);
+    runtime.cycle(outputs(), &cancelled).unwrap();
+    assert_eq!(runtime.workspaces.workspace_of(&left), None);
+    assert_eq!(runtime.backend.frames[&other], full);
 }

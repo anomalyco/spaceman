@@ -102,9 +102,7 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
                         self.preview_saved_layout(source, &source_settings, &window, cancelled);
                     return Ok(self.status(failed, &outputs));
                 }
-                self.with_warp_context(super::WarpContext::Suppressed, |rt| {
-                    rt.move_window(window, target, outputs, cancelled)
-                })
+                self.move_window(window, target, outputs, cancelled)
             }
             DropTarget::DisplayEdge(direction) => {
                 let mut candidate = pre_drag_layout.clone();

@@ -424,9 +424,21 @@ on the same letter.
   slide), `a_space_slide_holds_layout_until_it_settles`, and
   `a_desktop_swipe_does_not_tile_both_desktops_windows_together` (after a slide settles, a window
   about to be adopted on screen releases the outgoing desktop's off-screen tile in the same cycle,
-  #431). When macOS posts the Space change relative to the slide is not covered, nor is macOS
-  reporting the arriving desktop's windows before the Space change mid-swipe, which can still tile
-  both desktops' windows together (#431).
+  #431). `swiping_between_desktops_never_tiles_both_desktops_together` and
+  `the_first_cycle_after_a_swipe_releases_a_window_adopted_mid_swipe` (#431): in the first
+  cycles after a slide settles, a bound window the slide ordered out is released at once when the
+  snapshot is clean and windows arrived on screen, without waiting for the app to confirm it has no
+  windows; `a_swipe_keeps_the_slot_of_an_app_whose_snapshot_timed_out`,
+  `an_ordered_out_window_without_a_swipe_still_settles` and
+  `a_long_settled_swipe_no_longer_releases_ordered_out_windows` keep the timeout and settle
+  protections. When macOS posts the Space change relative to the slide is not covered, nor is
+  macOS reporting the arriving desktop's windows before the Space change mid-swipe, which can
+  still tile both desktops' windows together until the first cycle after the hold (#431).
+- Unit (FakeBackend), `src/app/tests/state_machine.rs`: a seeded, virtual-time run of 3,000 random
+  switches, moves, floats, pins, scratchpad commands, drags, resizes, display changes, Space
+  slides, restorations, window opens and closes and outside focus changes, checking after every
+  step that each window has one residency, every layout tree matches its slots, every parked
+  window is owned and its recovery frame persisted, and focus history and requests stay coherent.
 - Unit: `src/hotkeys/delivery.rs` pairs Option presses seen by the key tap with Carbon deliveries
   in either order and reports a press still undelivered after 750 ms. The tap
   (`src/macos/keys.rs`) and the re-registration in `src/app/app_loop/hotkey_health.rs` are not

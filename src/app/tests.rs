@@ -34,6 +34,7 @@ mod space_transitions;
 mod spacing;
 mod stacked_resize;
 mod startup;
+mod state_machine;
 mod switch_repeat;
 mod switching;
 mod tear_regressions;
@@ -44,7 +45,9 @@ use crate::{BindingState, Slot, SlotId};
 
 use super::*;
 use super::{
-    app_loop::{TilingStart, TilingStartup, WorkerDispatch},
+    app_loop::{
+        AfterCommand, RestoreKind, TilingStart, TilingStartup, WorkerDispatch, WorkerLifecycle,
+    },
     cycle::OMISSION_SETTLE,
     input::{is_window_drag, is_window_resize},
     parking::REPARK_ATTEMPT_LIMIT,
@@ -106,6 +109,10 @@ struct FakeBackend {
     refuses_position: Option<fn(crate::Rect) -> bool>,
     /// Widths windows refuse to shrink below, clamped synchronously like AppKit.
     minimum_widths: HashMap<crate::PhysicalWindowId, i32>,
+    /// Display frames. A write that moves a window from one of them to
+    /// another has its height fit to the bottom of the display it left, as
+    /// macOS does before the app sees its new screen (#428).
+    departed_display_clamp: Vec<crate::Rect>,
     focus_outcome: Option<bool>,
     /// Raised by the next position write: an activation cancelling the worker
     /// in the middle of a switch.
@@ -151,6 +158,23 @@ impl FakeBackend {
         self.clock.0 += by;
     }
 
+    /// The frame macOS leaves a window written to `target` on another display:
+    /// its height stops at the bottom of the display it left (#428).
+    fn fit_to_departed_display(
+        &self,
+        window: &crate::PhysicalWindowId,
+        target: crate::Rect,
+    ) -> Option<crate::Rect> {
+        let before = *self.frames.get(window)?;
+        let from = self
+            .departed_display_clamp
+            .iter()
+            .find(|display| display.contains_center(before))?;
+        let height = from.y + from.height - target.y;
+        (!from.contains_center(target) && height > 0 && height < target.height)
+            .then_some(crate::Rect { height, ..target })
+    }
+
     /// A window the app opens: on screen at `frame` and in its next snapshot.
     fn open_window(&mut self, window: &crate::PhysicalWindowId, frame: crate::Rect) {
         self.frames.insert(window.clone(), frame);
@@ -175,6 +199,10 @@ impl FakeBackend {
 impl WorkspaceBackend for FakeBackend {
     fn now(&self) -> Instant {
         self.clock.0
+    }
+
+    fn pause(&mut self, duration: Duration) {
+        self.advance(duration);
     }
 
     fn confirms_no_windows(&mut self, app: &AppInstanceId) -> bool {
@@ -303,7 +331,7 @@ impl WorkspaceBackend for FakeBackend {
         self.calls
             .push(BackendCall::SetPosition(window.clone(), target));
         if std::mem::take(&mut self.space_change_on_position) {
-            self.space_changed_at = Some(Instant::now());
+            self.space_changed_at = Some(self.clock.0);
         }
         if let Some(cancelled) = self.cancel_on_position.take() {
             cancelled.store(true, Ordering::Release);
@@ -424,6 +452,12 @@ impl WorkspaceBackend for FakeBackend {
                             ..placement.frame
                         },
                     );
+                }
+                if matches!(outcome, macos::ApplyOutcome::Applied)
+                    && let Some(clamped) = self.fit_to_departed_display(&window, placement.frame)
+                {
+                    outcome = macos::ApplyOutcome::Constrained;
+                    self.frames.insert(window.clone(), clamped);
                 }
                 if matches!(outcome, macos::ApplyOutcome::Applied) {
                     self.frames.insert(window.clone(), placement.frame);

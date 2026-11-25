@@ -14,6 +14,11 @@ pub(super) trait WorkspaceBackend {
     /// The worker's clock. Parking's settle, retry and exemption windows read
     /// time only through it, so tests can step it instead of sleeping.
     fn now(&self) -> Instant;
+    /// Waits `duration` on the worker's clock: a real sleep on the Mac, a step
+    /// of virtual time in tests.
+    fn pause(&mut self, duration: Duration) {
+        thread::sleep(duration);
+    }
     fn snapshot(
         &mut self,
         cycle: u64,

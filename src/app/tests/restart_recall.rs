@@ -54,7 +54,7 @@ fn reopened_minutes_later(
         ..FakeBackend::default()
     });
     runtime.restore_window_memory(memory);
-    runtime.memory.started_at = Some(Instant::now() - crate::app::memory::RECALL_WINDOW);
+    runtime.memory.started_at = Some(runtime.backend.now() - crate::app::memory::RECALL_WINDOW);
     runtime
 }
 

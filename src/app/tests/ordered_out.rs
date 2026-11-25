@@ -67,7 +67,7 @@ fn uncertain_close_requests_one_early_retry() {
             .cycle(studio_display(), &AtomicBool::new(false))
             .unwrap();
         let deadline = status.close_recheck.expect("one prompt follow-up");
-        assert!(deadline <= Instant::now() + Duration::from_millis(75));
+        assert!(deadline <= runtime.backend.now() + Duration::from_millis(75));
         assert_eq!(runtime.backend.frames[&kept], column(0, 1280));
 
         if confirmed_on_retry {
@@ -76,7 +76,8 @@ fn uncertain_close_requests_one_early_retry() {
                 .apps_confirming_no_windows
                 .insert(missing.app.clone());
         }
-        std::thread::sleep(deadline.saturating_duration_since(Instant::now()));
+        let wait = deadline.saturating_duration_since(runtime.backend.now());
+        runtime.backend.advance(wait);
         let status = runtime
             .cycle(studio_display(), &AtomicBool::new(false))
             .unwrap();

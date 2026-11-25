@@ -232,7 +232,7 @@ fn on_screen_window_omitted_from_one_snapshot_keeps_its_slot() {
 
     runtime.omitted_windows.insert(
         kept.clone(),
-        cycle::Omission::new(Instant::now() - OMISSION_SETTLE * 2),
+        cycle::Omission::new(runtime.backend.now() - OMISSION_SETTLE * 2),
     );
     runtime.cycle(outputs(), &AtomicBool::new(false)).unwrap();
 
@@ -429,7 +429,7 @@ fn closed_window_its_app_keeps_ordered_out_gives_up_its_tile() {
 
     runtime.omitted_windows.insert(
         voice.clone(),
-        cycle::Omission::new(Instant::now() - OMISSION_SETTLE * 2),
+        cycle::Omission::new(runtime.backend.now() - OMISSION_SETTLE * 2),
     );
     runtime.cycle(outputs.clone(), &cancelled).unwrap();
 
@@ -471,7 +471,7 @@ fn workspace_whose_windows_all_leave_the_screen_keeps_its_tiles() {
     for window in [&editor, &agent] {
         runtime.omitted_windows.insert(
             window.clone(),
-            cycle::Omission::new(Instant::now() - OMISSION_SETTLE * 2),
+            cycle::Omission::new(runtime.backend.now() - OMISSION_SETTLE * 2),
         );
     }
     runtime.cycle(outputs.clone(), &cancelled).unwrap();
@@ -856,7 +856,8 @@ fn delayed_async_bounce_after_matching_ticks_freezes_and_clears_on_target_change
     assert!(!runtime.constrained[ws].contains_key(&mini));
 
     // Once ASYNC_BOUNCE_SETTLE elapses at the matching frame, applied clears cleanly.
-    runtime.applied[ws].get_mut(&mini).unwrap().at = Instant::now() - cycle::ASYNC_BOUNCE_SETTLE;
+    runtime.applied[ws].get_mut(&mini).unwrap().at =
+        runtime.backend.now() - cycle::ASYNC_BOUNCE_SETTLE;
     runtime.cycle(outputs, &cancelled).unwrap();
     assert!(!runtime.applied[ws].contains_key(&mini));
 }

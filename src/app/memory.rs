@@ -72,12 +72,13 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
     /// Close recalls whose window lapsed, whose placements are all claimed,
     /// or whose process exited.
     pub(super) fn close_recalls(&mut self) {
+        let now = self.backend.now();
         let backend = &mut self.backend;
         let closed: Vec<_> = self
             .memory
             .recalls
             .extract_if(|app, recall| {
-                recall.opened.elapsed() >= RECALL_WINDOW
+                now.saturating_duration_since(recall.opened) >= RECALL_WINDOW
                     || recall.remaining.is_empty()
                     || !backend.is_process_running(app)
             })
@@ -178,7 +179,8 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
         if let Some(bundle_id) = self.memory.bundles.remove(app)
             && is_rememberable_bundle_id(&bundle_id)
         {
-            self.memory.departed.insert(bundle_id, Instant::now());
+            let now = self.backend.now();
+            self.memory.departed.insert(bundle_id, now);
         }
     }
 
@@ -212,15 +214,16 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
         source: PlacementSource,
         workspace: WorkspaceId,
     ) {
+        let now = self.backend.now();
         self.memory
             .placements
-            .retain(|_, placement| placement.at.elapsed() < CORRECTION_WINDOW);
+            .retain(|_, placement| now.saturating_duration_since(placement.at) < CORRECTION_WINDOW);
         self.memory.placements.insert(
             window.clone(),
             Placement {
                 source,
                 workspace,
-                at: Instant::now(),
+                at: now,
             },
         );
     }
@@ -238,7 +241,7 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
         let Some(placement) = self.memory.placements.remove(window) else {
             return;
         };
-        let elapsed = placement.at.elapsed();
+        let elapsed = self.backend.now().saturating_duration_since(placement.at);
         if elapsed >= CORRECTION_WINDOW || placement.workspace != from {
             return;
         }
@@ -271,9 +274,10 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
     /// quit within [`RELAUNCH_WINDOW`], or still owns windows (a relaunch that
     /// starts the new process before quitting the old one).
     fn relaunched(&mut self, app: &crate::ObservedApplication) -> bool {
+        let now = self.backend.now();
         self.memory
             .departed
-            .retain(|_, quit| quit.elapsed() < RELAUNCH_WINDOW);
+            .retain(|_, quit| now.saturating_duration_since(*quit) < RELAUNCH_WINDOW);
         if self.workspaces.app_owns_windows(&app.id) {
             return false;
         }
@@ -298,11 +302,12 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
         if !is_rememberable_bundle_id(&app.bundle_id) {
             return;
         }
+        let now = self.backend.now();
         let startup = first_seen
             && self
                 .memory
                 .started_at
-                .is_some_and(|started| started.elapsed() < RECALL_WINDOW);
+                .is_some_and(|started| now.saturating_duration_since(started) < RECALL_WINDOW);
         let returning = self.memory.memory.returns(&app.bundle_id);
         let restoring = self.restores_arrangement(&app.bundle_id, presented);
         if !(startup || returning || restoring || self.relaunched(app))
@@ -340,7 +345,7 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
             app.id.clone(),
             Recall {
                 bundle_id: app.bundle_id.clone(),
-                opened: Instant::now(),
+                opened: now,
                 remaining: remembered,
                 claimed: HashMap::new(),
             },
@@ -412,7 +417,7 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
         for (window, workspace) in self.workspaces.floating_entries() {
             add(window, workspace, true);
         }
-        let now = Instant::now();
+        let now = self.backend.now();
         self.memory
             .pending
             .retain(|bundle_id, _| current.contains_key(bundle_id));

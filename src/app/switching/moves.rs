@@ -17,7 +17,14 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
         let window = self
             .current_focus()
             .ok_or("Focused window is unavailable")?;
-        self.move_window_with_focus(window, target, true, outputs, cancelled)
+        self.move_window_with_focus(
+            window,
+            target,
+            true,
+            outputs,
+            cancelled,
+            CommandOrigin::Explicit,
+        )
     }
 
     pub(in crate::app) fn move_focused_follow(
@@ -32,13 +39,25 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
             .current_focus()
             .ok_or("Focused window is unavailable")?;
         let was_visible = self.is_visible(target, &outputs);
-        let moved =
-            self.move_window_with_focus(window.clone(), target, false, outputs.clone(), cancelled)?;
+        let moved = self.move_window_with_focus(
+            window.clone(),
+            target,
+            false,
+            outputs.clone(),
+            cancelled,
+            CommandOrigin::Explicit,
+        )?;
         if was_visible {
             return Ok(moved);
         }
         self.workspaces.remember_focus(target, &window);
-        let mut switched = self.switch(target, outputs, cancelled)?;
+        let mut switched = self.switch_with(
+            target,
+            outputs,
+            cancelled,
+            RepeatSwitch::KeepFocus,
+            CommandOrigin::Explicit,
+        )?;
         switched.failed += moved.failed;
         Ok(switched)
     }
@@ -52,9 +71,7 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
     ) -> Result<CycleStatus, String> {
         let mut windows = self.windows_for_bundle(bundle_id);
         if windows.is_empty() {
-            self.with_warp_context(WarpContext::Suppressed, |rt| {
-                rt.cycle(outputs.clone(), cancelled)
-            })?;
+            self.cycle(outputs.clone(), cancelled)?;
             windows = self.windows_for_bundle(bundle_id);
         }
         let focused_before = self.backend.focused_window();
@@ -67,9 +84,14 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
         let mut status: Option<CycleStatus> = None;
         let mut retired_failed = 0;
         for window in windows {
-            match self.with_warp_context(WarpContext::Suppressed, |rt| {
-                rt.move_window_outcome(window, target, false, outputs.clone(), cancelled)
-            })? {
+            match self.move_window_outcome(
+                window,
+                target,
+                false,
+                outputs.clone(),
+                cancelled,
+                CommandOrigin::Passive,
+            )? {
                 MoveWindowOutcome::Moved(mut moved) => {
                     moved.failed += status.map_or(retired_failed, |earlier| earlier.failed);
                     retired_failed = 0;
@@ -91,9 +113,13 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
             && let (Some(focused), Some(source)) = (focused_before, focused_source)
             && self.is_visible(source, &outputs)
         {
-            self.with_warp_context(WarpContext::Suppressed, |rt| {
-                rt.handoff_focus_after_park(source, &focused, frontmost_before, &outputs);
-            });
+            self.handoff_focus_after_park(
+                source,
+                &focused,
+                frontmost_before,
+                &outputs,
+                CommandOrigin::Passive,
+            );
             self.persist_workspace_state_if_changed()?;
         }
         status.ok_or_else(|| format!("No managed window found for {bundle_id}"))
@@ -121,7 +147,14 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
         outputs: macos::DisplayOutputs,
         cancelled: &AtomicBool,
     ) -> Result<CycleStatus, String> {
-        self.move_window_with_focus(window, target, true, outputs, cancelled)
+        self.move_window_with_focus(
+            window,
+            target,
+            true,
+            outputs,
+            cancelled,
+            CommandOrigin::Passive,
+        )
     }
 
     fn move_window_with_focus(
@@ -131,8 +164,9 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
         handoff_focus: bool,
         outputs: macos::DisplayOutputs,
         cancelled: &AtomicBool,
+        origin: CommandOrigin,
     ) -> Result<CycleStatus, String> {
-        match self.move_window_outcome(window, target, handoff_focus, outputs, cancelled)? {
+        match self.move_window_outcome(window, target, handoff_focus, outputs, cancelled, origin)? {
             MoveWindowOutcome::Moved(status) | MoveWindowOutcome::Retired(status) => Ok(status),
         }
     }
@@ -144,14 +178,13 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
         handoff_focus: bool,
         outputs: macos::DisplayOutputs,
         cancelled: &AtomicBool,
+        origin: CommandOrigin,
     ) -> Result<MoveWindowOutcome, String> {
         self.ensure_managed_workspace(target)?;
         let source = if let Some(source) = self.workspaces.workspace_of_any(&window) {
             source
         } else {
-            self.with_warp_context(WarpContext::Suppressed, |rt| {
-                rt.cycle(outputs.clone(), cancelled)
-            })?;
+            self.cycle(outputs.clone(), cancelled)?;
             self.workspaces
                 .workspace_of_any(&window)
                 .ok_or("Window is not managed by Spaceman")?
@@ -223,7 +256,7 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
         }
         if !target_is_active {
             if handoff_focus && was_focused && self.is_visible(source, &outputs) {
-                self.handoff_focus_after_park(source, &window, frontmost_before, &outputs);
+                self.handoff_focus_after_park(source, &window, frontmost_before, &outputs, origin);
             } else {
                 self.guard_departure(Some(window.clone()), Some(window.app.clone()));
             }
@@ -269,7 +302,7 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
                     .resolve(self.workspaces.assignment(target))
                     .id
                     .as_str();
-                self.follow_pointer_to(target_display_id, target_output, frame, &outputs);
+                self.follow_pointer_to(origin, target_display_id, target_output, frame, &outputs);
             } else {
                 log_event!("move focus follow failed for {:?}", window);
             }
@@ -290,6 +323,7 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
         moved: &crate::PhysicalWindowId,
         frontmost_before: Option<AppInstanceId>,
         outputs: &macos::DisplayOutputs,
+        origin: CommandOrigin,
     ) {
         let remaining = self.workspaces.windows(source);
         if remaining.is_empty() {
@@ -308,7 +342,7 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
                 self.workspaces.remember_focus(source, next);
             }
             let source_output = output_for(&self.workspaces, source, outputs);
-            self.follow_pointer_for_workspace(source, source_output, outcome, outputs);
+            self.follow_pointer_for_workspace(origin, source, source_output, outcome, outputs);
         }
     }
 

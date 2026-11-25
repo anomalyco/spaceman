@@ -61,7 +61,6 @@ pub(super) struct WorkspaceRuntime<B = MacWorkspaceBackend> {
     pub(super) focus: super::focus::FocusTracker,
     /// The pointer drag or resize being previewed, until mouse-up commits it.
     pub(super) gesture: Option<super::commands::GestureOverlay>,
-    pub(super) warp_context: super::commands::WarpContext,
     pub(super) exact_spacing_workspaces: HashSet<WorkspaceId>,
     pub(super) persisted_workspace_state: crate::workspace::WorkspaceState,
     /// Title-free placements that survive application relaunches and reboots.
@@ -135,26 +134,24 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
                 for attempts in &mut self.apply_attempts {
                     attempts.remove(window);
                 }
-                let result =
-                    self.with_warp_context(super::commands::WarpContext::Suppressed, |rt| {
-                        match gesture {
-                            FinalGesture::Drop {
-                                window,
-                                point,
-                                bounds,
-                            } => rt.drop_window_tracked(
-                                window,
-                                point,
-                                bounds,
-                                preview,
-                                outputs.clone(),
-                                cancelled,
-                            ),
-                            FinalGesture::Resize(window, frame) => {
-                                rt.resize_window(window, frame, preview, outputs.clone(), cancelled)
-                            }
-                        }
-                    });
+                // Gestures never move the pointer: their moves run as passive.
+                let result = match gesture {
+                    FinalGesture::Drop {
+                        window,
+                        point,
+                        bounds,
+                    } => self.drop_window_tracked(
+                        window,
+                        point,
+                        bounds,
+                        preview,
+                        outputs.clone(),
+                        cancelled,
+                    ),
+                    FinalGesture::Resize(window, frame) => {
+                        self.resize_window(window, frame, preview, outputs.clone(), cancelled)
+                    }
+                };
                 (result, outputs)
             }
             WorkerCommand::RestoreAll(outputs) => {
@@ -199,84 +196,86 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
         outputs: macos::DisplayOutputs,
         cancelled: &AtomicBool,
     ) -> Result<CycleStatus, String> {
-        let warp_context = if matches!(
-            action,
-            WorkerAction::SwitchWorkspace(_)
-                | WorkerAction::WorkspaceBackAndForth
-                | WorkerAction::MoveWorkspaceToDisplay(_)
-                | WorkerAction::CycleFocus
-                | WorkerAction::CycleFocusPrevious
-                | WorkerAction::Focus(_)
-                | WorkerAction::MoveFocused(_)
-                | WorkerAction::MoveFocusedFollow(_)
-                | WorkerAction::MoveTab { .. }
-        ) {
-            super::commands::WarpContext::Explicit
-        } else {
-            super::commands::WarpContext::Suppressed
-        };
-        self.with_warp_context(warp_context, |rt| match action {
+        let origin = super::commands::CommandOrigin::of(&action);
+        match action {
             WorkerAction::Retile => {
-                let mut status = rt.cycle(outputs.clone(), cancelled)?;
-                if !rt.exact_spacing_workspaces.is_empty()
-                    && !rt.backend.mouse_down()
-                    && rt.space_transition_until().is_none()
+                let mut status = self.cycle(outputs.clone(), cancelled)?;
+                if !self.exact_spacing_workspaces.is_empty()
+                    && !self.backend.mouse_down()
+                    && self.space_transition_until().is_none()
                 {
-                    for r in rt.visible_workspaces(&outputs) {
-                        if rt.scope.manages_selector(&r.selector)
-                            && rt.exact_spacing_workspaces.contains(&r.workspace)
-                            && !rt.workspaces.windows(r.workspace).is_empty()
+                    for r in self.visible_workspaces(&outputs) {
+                        if self.scope.manages_selector(&r.selector)
+                            && self.exact_spacing_workspaces.contains(&r.workspace)
+                            && !self.workspaces.windows(r.workspace).is_empty()
                         {
-                            status.failed +=
-                                rt.layout_workspace(r.workspace, r.output, cancelled).failed;
+                            status.failed += self
+                                .layout_workspace(r.workspace, r.output, cancelled)
+                                .failed;
                         }
                     }
                 }
                 Ok(status)
             }
-            WorkerAction::SwitchWorkspace(workspace) => {
-                rt.switch_with(workspace, outputs, cancelled, RepeatSwitch::CycleFocus)
-            }
+            WorkerAction::SwitchWorkspace(workspace) => self.switch_with(
+                workspace,
+                outputs,
+                cancelled,
+                RepeatSwitch::CycleFocus,
+                origin,
+            ),
             // A menu-bar or HUD click on the workspace already up re-focuses it;
             // clicking it again must not jump to another window.
-            WorkerAction::SelectWorkspace(workspace) => {
-                rt.switch_with(workspace, outputs, cancelled, RepeatSwitch::KeepFocus)
+            WorkerAction::SelectWorkspace(workspace) => self.switch_with(
+                workspace,
+                outputs,
+                cancelled,
+                RepeatSwitch::KeepFocus,
+                origin,
+            ),
+            WorkerAction::WorkspaceBackAndForth => {
+                self.workspace_back_and_forth(outputs, cancelled)
             }
-            WorkerAction::WorkspaceBackAndForth => rt.workspace_back_and_forth(outputs, cancelled),
             WorkerAction::MoveWorkspaceToDisplay(target) => {
-                rt.move_workspace_to_display(target, outputs, cancelled)
+                self.move_workspace_to_display(target, outputs, cancelled)
             }
-            WorkerAction::Swipe(swipe, point) => rt.swipe(swipe, point, outputs, cancelled),
-            WorkerAction::MoveFocused(workspace) => rt.move_focused(workspace, outputs, cancelled),
+            WorkerAction::Swipe(swipe, point) => self.swipe(swipe, point, outputs, cancelled),
+            WorkerAction::MoveFocused(workspace) => {
+                self.move_focused(workspace, outputs, cancelled)
+            }
             WorkerAction::MoveFocusedFollow(workspace) => {
-                rt.move_focused_follow(workspace, outputs, cancelled)
+                self.move_focused_follow(workspace, outputs, cancelled)
             }
             WorkerAction::MoveApp(bundle_id, workspace) => {
-                rt.move_app(&bundle_id, workspace, outputs, cancelled)
+                self.move_app(&bundle_id, workspace, outputs, cancelled)
             }
             WorkerAction::MoveTab { target, follow } => {
-                rt.move_tab(target, follow, outputs, cancelled)
+                self.move_tab(target, follow, outputs, cancelled)
             }
-            WorkerAction::CycleFocus => rt.cycle_focus(outputs, cancelled),
-            WorkerAction::CycleFocusPrevious => rt.cycle_focus_previous(outputs, cancelled),
-            WorkerAction::Focus(direction) => rt.focus_relative(direction, outputs, cancelled),
-            WorkerAction::Reorder(direction) => rt.reorder_focused(direction, outputs, cancelled),
-            WorkerAction::ToggleLayout => rt.toggle_layout(outputs, cancelled),
-            WorkerAction::Resize(direction) => rt.resize_focused(direction, outputs, cancelled),
+            WorkerAction::CycleFocus => self.cycle_focus(outputs, cancelled),
+            WorkerAction::CycleFocusPrevious => self.cycle_focus_previous(outputs, cancelled),
+            WorkerAction::Focus(direction) => self.focus_relative(direction, outputs, cancelled),
+            WorkerAction::Reorder(direction) => self.reorder_focused(direction, outputs, cancelled),
+            WorkerAction::ToggleLayout => self.toggle_layout(outputs, cancelled),
+            WorkerAction::Resize(direction) => self.resize_focused(direction, outputs, cancelled),
             WorkerAction::ResizeTo(axis, points) => {
-                rt.resize_focused_to(axis, points, outputs, cancelled)
+                self.resize_focused_to(axis, points, outputs, cancelled)
             }
-            WorkerAction::Balance => rt.balance_focused(outputs, cancelled),
-            WorkerAction::ToggleFullscreenLayout => rt.toggle_fullscreen_layout(outputs, cancelled),
-            WorkerAction::ToggleFloat => rt.toggle_float(outputs, cancelled),
-            WorkerAction::TogglePin => rt.toggle_pin(outputs, cancelled),
-            WorkerAction::Scratchpad(command) => rt.scratchpad_command(command, outputs, cancelled),
+            WorkerAction::Balance => self.balance_focused(outputs, cancelled),
+            WorkerAction::ToggleFullscreenLayout => {
+                self.toggle_fullscreen_layout(outputs, cancelled)
+            }
+            WorkerAction::ToggleFloat => self.toggle_float(outputs, cancelled),
+            WorkerAction::TogglePin => self.toggle_pin(outputs, cancelled),
+            WorkerAction::Scratchpad(command) => {
+                self.scratchpad_command(command, outputs, cancelled)
+            }
             WorkerAction::MarkWrong => {
-                rt.mark_wrong();
-                Ok(rt.status(0, &outputs))
+                self.mark_wrong();
+                Ok(self.status(0, &outputs))
             }
-            WorkerAction::Arrange(arrangement) => rt.arrange(&arrangement, outputs, cancelled),
-        })
+            WorkerAction::Arrange(arrangement) => self.arrange(&arrangement, outputs, cancelled),
+        }
     }
 
     #[cfg(test)]
@@ -344,7 +343,6 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
             config,
             focus: super::focus::FocusTracker::with_fullscreen_restore(fullscreen_restore),
             gesture: None,
-            warp_context: super::commands::WarpContext::Direct,
             exact_spacing_workspaces: WorkspaceId::all().filter(|_| has_spacing).collect(),
             persisted_workspace_state,
             memory: MemoryState::default(),
@@ -358,7 +356,7 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
     pub(super) fn restore_window_memory(&mut self, memory: crate::window_memory::WindowMemory) {
         self.memory = MemoryState {
             memory,
-            started_at: Some(Instant::now()),
+            started_at: Some(self.backend.now()),
             ..MemoryState::default()
         };
     }
