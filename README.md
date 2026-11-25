@@ -57,7 +57,7 @@ experimental; read [Known limitations](docs/limitations.md) before installing it
      && ditto -x -k /tmp/Spaceman.zip /Applications && open /Applications/Spaceman.app
    ```
 
-3. Follow the setup tour: grant Accessibility access, then press `Start tiling`.
+3. Follow the setup tour: grant Accessibility access, then press `Arrange & start`.
 4. Optionally link the bundled CLI: `mkdir -p "$HOME/.local/bin" && ln -sf "/Applications/Spaceman.app/Contents/MacOS/spaceman" "$HOME/.local/bin/spaceman"`.
 
 To check the download first, get
@@ -105,14 +105,24 @@ maintainer workflow.
 
 1. Disable every other window manager. For AeroSpace: `aerospace enable off`.
 2. Open Spaceman: `open "/Applications/Spaceman.app"`.
-3. On a fresh install, Spaceman opens its three-step setup tour when Accessibility access is missing.
+3. On a fresh install, Spaceman opens its four-step setup tour when Accessibility access is missing.
    Choose `Allow` and grant Spaceman access in **System Settings > Privacy & Security** (the
-   Accessibility list, named System & App Protection Override on macOS 27.3 and later), optionally
-   enable `Launch at login`, then press `Start tiling`.
-4. Confirm operation with `spaceman ctl status`.
+   Accessibility list, named System & App Protection Override on macOS 27.3 and later). If Stage
+   Manager or macOS edge tiling is on, or another window manager is running, that step lists it
+   with `Turn off` or `Quit`.
+4. `Your workspaces` shows where the windows open now would go: browsers on workspace 1, editors
+   and terminals on 2, chat and mail on 3, documents on 4, media on 5, at most two tiles a workspace
+   on a laptop display, with small utilities left floating. Click or drag an app's icon to move it,
+   then press `Arrange & start`, or `Skip` to leave every window where it is.
+5. `Try it` asks for three real shortcuts (`⌥2`, `⌥1`, `⌥⇧Space`) and holds `Launch at login`.
+   `Undo & restore` pauses tiling and puts every window back where it was.
+6. Confirm operation with `spaceman ctl status`.
 
-Automatic tiling starts when the setup tour finishes. A fresh install holds it while the tour is
-open, so granting Accessibility never rearranges your windows behind the setup window. Without
+Automatic tiling starts with `Arrange & start`. A fresh install holds it until then, so granting
+Accessibility never rearranges your windows behind the setup window; `Skip`, or closing the tour
+once Accessibility is granted, leaves Spaceman paused until you choose `Resume Tiling` or it next
+launches. The arrangement moves the windows that are open and writes no `route` rule: the only
+rules it saves are `float` rules for small utilities such as Calculator and Stickies. Without
 Accessibility permission, the menu reports the permission error and tiling remains paused. While
 tiling, the menu lists each display's workspaces (the visible one checked, plus any holding windows,
 with their apps' icons); choosing one switches to it. The menu actions are `Setup Tour…` (while

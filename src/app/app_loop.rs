@@ -9,6 +9,7 @@ mod dispatch;
 mod hotkey_health;
 mod live_shortcuts;
 mod probe;
+mod setup;
 
 pub(super) use dispatch::WorkerDispatch;
 
@@ -152,6 +153,7 @@ pub struct MainThreadAgent {
     update_revision: u64,
     /// Tiling was on when Install & restart began, so a failed install resumes it.
     resume_after_update: bool,
+    setup: setup::SetupRequests,
 }
 
 impl MainThreadAgent {
@@ -248,6 +250,7 @@ impl MainThreadAgent {
             updater: crate::updater::Updater::start(),
             update_revision: 0,
             resume_after_update: false,
+            setup: setup::SetupRequests::default(),
         };
         status_item::set_update(agent.updater.status().ready_version());
         if automatic {
@@ -404,6 +407,10 @@ impl MainThreadAgent {
                     self.worker.finish_restore();
                     status_item::set_status(self.paused_status());
                 }
+                WorkerResult::Inventory(inventory) => {
+                    self.worker.finish_command();
+                    self.bridge.publish_inventory(*inventory);
+                }
                 WorkerResult::Restored { failed } => {
                     self.worker.defer_restore_retry();
                     self.next_restore_retry = Some(Instant::now() + RESTORE_RETRY_INTERVAL);
@@ -437,6 +444,7 @@ impl MainThreadAgent {
             }
         }
 
+        self.send_wanted_inventory();
         if self.automatic {
             self.tick_automatic();
         }

@@ -36,7 +36,7 @@ This file is the current engineering contract. README and `docs/` describe curre
   `src/app/bridge.rs`: single-process Rune host (`spaceman-agent`), owner-only capped logging, 25 ms
   `NSTimer` foreground pump, action queue, status, restore-before-exit coordination, in-process
   Settings window (`General`, `Layout`, `Rules`, `Workspaces`, `Shortcuts`, `Activity`), first-run onboarding
-  tour (`agent/src/onboarding.rs`), non-activating Workspace HUD overlay (`agent/src/hud.rs`),
+  tour (`agent/src/onboarding.rs`, `agent/src/onboarding/`), non-activating Workspace HUD overlay (`agent/src/hud.rs`),
   Playground (`⇧⌘D` / `--playground`), and the worker boundary.
 - `agent/src/controls.rs`, `agent/src/controls/`, `agent/src/design_tokens.rs`: the Settings design
   system — layout tokens (`METRICS`, `WINDOW`, `MODAL`, `KEYS`), `Paint` type roles, cards and
@@ -47,6 +47,10 @@ This file is the current engineering contract. README and `docs/` describe curre
   `WorkspaceRuntime` — observation cycles and affinity, workspace switches, durable
   parking/restoration, focused-window commands, and the native/persistence backend seam. Tests live
   in `src/app/tests.rs` and `src/app/tests/`.
+- `src/onboarding_plan.rs`, `src/app/arrange.rs`, `src/app/app_loop/setup.rs`: the setup tour's
+  suggested arrangement — a pure, title-free classifier over the open windows (bundle ID, Launch
+  Services category, size, resizability, display width), and the worker's one-shot move of those
+  windows, its inventory, and its undo. It never writes a `route` rule.
 - `src/window_memory.rs`, `src/app/memory.rs`: advisory, title-free per-bundle placement memory and
   relaunch recall. `src/journal.rs`, `src/journal/doctor.rs`, `src/app/journal.rs`: bounded
   arrangement/anomaly journal and the `spaceman doctor` summary.

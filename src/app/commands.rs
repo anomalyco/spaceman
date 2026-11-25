@@ -621,6 +621,10 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
         let window = self
             .current_focus()
             .ok_or("Focused window is unavailable")?;
+        if u32::try_from(window.app.pid).is_ok_and(|pid| pid == std::process::id()) {
+            // Spaceman's own Settings or setup window is never managed: nothing to float.
+            return Ok(self.status(0, &outputs));
+        }
         if self.workspaces.workspace_of_any(&window).is_none() {
             // A window observed for the first time may not be bound yet.
             self.cycle(outputs.clone(), cancelled)?;

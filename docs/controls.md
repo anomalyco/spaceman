@@ -161,6 +161,10 @@ If macOS reports that the login item requires approval, the menu label says
 `Launch at Login (Approval Required...)`; choosing it opens Login Items settings. Registration does
 not bypass macOS consent and does not affect the currently running process.
 
+`Settings > General` ends with a `Quit Spaceman` row for when the menu-bar icon is hidden (behind a
+notch, or by a menu-bar manager): `Pause & restore windows` (shown while tiling) does what
+`Pause Tiling` does, and `Quit` what `Quit Spaceman` does.
+
 Pausing, quitting, and external macOS termination requests restore parked windows before completing.
 Restoration retries are visible in the menu status. Installing an update uses the same restoration
 gate: Spaceman swaps in the new bundle and relaunches only after every parked window is restored and

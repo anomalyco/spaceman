@@ -229,6 +229,31 @@ impl Ui {
         self.send_action(UiAction::FinishSetup);
     }
 
+    /// Ends a first-run tour's hold without starting tiling: windows stay where they are.
+    pub fn skip_setup(&self) {
+        self.send_action(UiAction::SkipSetup);
+    }
+
+    /// Asks the worker which windows are open, for the setup tour's plan.
+    pub fn plan_setup(&self) {
+        self.send_action(UiAction::PlanSetup);
+    }
+
+    /// Starts tiling with the open windows moved onto the plan's workspaces.
+    pub fn arrange(&self, arrangement: spaceman::onboarding_plan::Arrangement) {
+        self.send_action(UiAction::Arrange(arrangement));
+    }
+
+    /// Pauses tiling and puts every window back where it was before the arrangement.
+    pub fn undo_arrangement(&self) {
+        self.send_action(UiAction::UndoArrangement);
+    }
+
+    /// Restores every window, then quits Spaceman.
+    pub fn quit(&self) {
+        self.send_action(UiAction::Quit);
+    }
+
     fn send_action(&self, action: UiAction) {
         if !self.fixture
             && let Some(bridge) = &self.bridge
@@ -473,6 +498,9 @@ fn poll(ui: &mut Ui, clock: f64, tx: &mut Tx) -> bool {
     {
         driver.trigger(hud_event);
     }
+    if let Some(inventory) = news.inventory {
+        changed |= onboarding::inventory(ui, inventory);
+    }
     if news.config_changed {
         changed |= ui.on_config_changed();
     } else if ui.doc.reload_pending() && ui.drag.is_none() {
@@ -492,6 +520,11 @@ fn on_key(ui: &mut Ui, event: &KeyEvent, _tx: &mut Tx) -> bool {
             ui.drag = None;
             ui.menu = None;
             ui.flush_pending_reload();
+            return true;
+        }
+        if let Some(tour) = &mut ui.tour
+            && tour.board.drag.take().is_some()
+        {
             return true;
         }
         if ui.tour.is_some() {
@@ -518,8 +551,8 @@ fn on_close(ui: &mut Ui, _tx: &mut Tx) {
     ui.menu = None;
     ui.sheet = None;
     ui.flush_pending_reload();
-    // Closing the setup window dismisses the tour, so a first-run tour starts
-    // tiling now rather than holding it behind a window nobody can see.
+    // Closing the setup window dismisses the tour. A first-run tour that never reached
+    // Arrange & start leaves the windows where they are, paused (`onboarding::finish`).
     onboarding::dismiss(ui);
     if let Some(window) = &ui.window {
         window.set_dock_icon(false);

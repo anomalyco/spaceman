@@ -98,6 +98,8 @@ pub(super) struct WorkspaceRuntime<B = MacWorkspaceBackend> {
     pub(super) displays: super::displays::DisplayWatch,
     /// A pressed "Move Tab to New Window" awaiting its new window.
     pub(super) tab_detach: Option<super::detach_tab::PendingTabDetach>,
+    /// The setup tour's arrangement: where it sends unowned windows, and how to undo it.
+    pub(super) arranging: super::arrange::ArrangeState,
 }
 
 impl WorkspaceRuntime<MacWorkspaceBackend> {
@@ -192,6 +194,12 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
                 // resume from must be on disk before the process can exit.
                 self.flush_workspace_state();
                 return Some(WorkerResult::Restored { failed });
+            }
+            WorkerCommand::UndoArrangement(outputs) => {
+                return Some(self.undo_arrangement(outputs.as_ref(), cancelled));
+            }
+            WorkerCommand::Inventory(outputs) => {
+                return Some(WorkerResult::Inventory(Box::new(self.inventory(&outputs))));
             }
             WorkerCommand::Stop => {
                 self.journal_event(crate::journal::JournalEvent::Stop);
@@ -312,6 +320,7 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
                 rt.mark_wrong();
                 Ok(rt.status(0, &outputs))
             }
+            WorkerAction::Arrange(arrangement) => rt.arrange(&arrangement, outputs, cancelled),
         });
         if let Some(pending) = &mut self.pending_focus {
             for entry in carried_stale {
@@ -409,6 +418,7 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
             journal: JournalState::default(),
             displays: super::displays::DisplayWatch::default(),
             tab_detach: None,
+            arranging: super::arrange::ArrangeState::default(),
         }
     }
 
@@ -699,7 +709,7 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
         self.status_for_visible(failed, &self.visible_workspaces(outputs), outputs)
     }
 
-    fn flush_workspace_state(&mut self) {
+    pub(super) fn flush_workspace_state(&mut self) {
         if let Err(error) = self.persist_workspace_state_if_changed() {
             log_event!("failed to persist workspace state: {error}");
         }

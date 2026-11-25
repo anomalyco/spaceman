@@ -110,7 +110,7 @@ two styles of the same size side by side. Views name a role, never `p.k.ty.*`.
 | Settings page (the rails and the rhythm between sections) | `page` inside `view::scroll_body` |
 | Titled card; a card whose label line carries an accessory | `section`, `section_with`; a card alone: `card` |
 | A line of copy under a card | `caption` |
-| Settings row (title, optional description, control) | `setting_row`, `toggle_row`; with a leading glyph: `icon_row`, `icon_toggle_row`; anything else: `row_frame` |
+| Settings row (title, optional description, control) | `setting_row`, `toggle_row`; with a leading glyph: `icon_row`; anything else: `row_frame` |
 | A row the pointer is aimed at from a deep link | `highlight` |
 | A few exclusive choices | `rune_kit::SegmentedControl` |
 | Main and other actions | `button(…, ButtonKind::{Primary, Secondary}, …)` |
