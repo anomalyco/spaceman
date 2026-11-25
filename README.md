@@ -242,6 +242,11 @@ through Anomaly's release service, which the app's own updater checks. Broad rel
 clean-machine install/upgrade/recovery/uninstall qualification, wider architecture support, and a
 concise product demo remain outstanding.
 
+## Contributing
+
+We don't take pull requests. [Open an issue](https://github.com/anomalyco/spaceman/issues)
+describing the bug or idea, and our agents usually turn it around fast.
+
 ## License
 
 MIT
