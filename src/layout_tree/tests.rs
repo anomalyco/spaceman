@@ -78,7 +78,6 @@ fn implicit_split_preserves_the_remaining_layout() {
 fn persisted_layout_validation_rejects_duplicate_leaves_and_zero_weights() {
     let slots = [crate::Slot {
         id: SlotId(1),
-        weight: 1,
         binding: crate::BindingState::Bound(crate::PhysicalWindowId {
             app: crate::AppInstanceId {
                 pid: 1,
@@ -427,7 +426,6 @@ fn newly_discovered_slot_uses_existing_weight_scale() {
     let slots = [
         crate::Slot {
             id: SlotId(1),
-            weight: 1480,
             binding: crate::BindingState::Unresolved {
                 previous: test_window(1),
                 candidates: Vec::new(),
@@ -436,7 +434,6 @@ fn newly_discovered_slot_uses_existing_weight_scale() {
         },
         crate::Slot {
             id: SlotId(2),
-            weight: 1,
             binding: crate::BindingState::Unresolved {
                 previous: test_window(2),
                 candidates: Vec::new(),
@@ -523,7 +520,6 @@ fn stacking_is_rejected_when_the_other_dimension_cannot_fit() {
 fn bound_slot(id: u64) -> crate::Slot {
     crate::Slot {
         id: SlotId(id),
-        weight: 1,
         binding: crate::BindingState::Bound(test_window(id as u32)),
     }
 }

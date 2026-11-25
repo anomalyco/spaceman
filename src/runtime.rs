@@ -1,7 +1,13 @@
 use crate::{
     Model, NativeObservation, PhysicalWindowId, Placement, Reconciliation, ReconciliationEvidence,
-    Settings, Slot, config::LayoutMode, layout_tree::LayoutTree, reconcile,
+    Settings, Slot,
+    config::LayoutMode,
+    layout_tree::{LayoutTree, Minimums},
+    reconcile,
 };
+
+/// Each window's known minimum `(width, height)`, learned from size refusals.
+pub(crate) type WindowMinimums = std::collections::HashMap<PhysicalWindowId, (i32, i32)>;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct CycleTicket {
@@ -67,14 +73,15 @@ impl Engine {
         self.pending = None;
 
         let mut result = reconcile(&self.model, observation, &self.evidence, settings);
-        if self.layout.sync_near(
-            result.model.workspace.axis,
+        let shown = self.fit.as_ref().and_then(|fit| fit.tree.as_ref());
+        if self.layout.sync_shown(
+            self.layout.root_axis(),
             &result.model.workspace.slots,
             self.insertion_focus,
             settings.layout,
             settings.canvas(),
+            shown,
         ) {
-            result.model.workspace.axis = self.layout.root_axis();
             self.fit = None;
             self.insertion_focus = self
                 .insertion_focus
@@ -141,14 +148,7 @@ impl Engine {
             .iter()
             .position(|slot| slot.bound_window() == Some(window))?;
         let slot = self.model.workspace.slots.remove(index);
-        self.layout.sync_near(
-            self.model.workspace.axis,
-            &self.model.workspace.slots,
-            None,
-            mode,
-            output,
-        );
-        self.model.workspace.axis = self.layout.root_axis();
+        self.sync_layout(None, mode, output);
         self.evidence.previous_placements.remove(&slot.id);
         self.invalidate_layout();
         Some(slot)
@@ -174,14 +174,7 @@ impl Engine {
         self.evidence
             .previous_placements
             .retain(|id, _| slots.iter().any(|slot| slot.id == *id));
-        self.layout.sync_near(
-            self.model.workspace.axis,
-            &self.model.workspace.slots,
-            None,
-            mode,
-            output,
-        );
-        self.model.workspace.axis = self.layout.root_axis();
+        self.sync_layout(None, mode, output);
         self.invalidate_layout();
         true
     }
@@ -208,14 +201,7 @@ impl Engine {
         }
         self.model.next_slot_id = self.model.next_slot_id.max(slot.id.0.saturating_add(1));
         self.model.workspace.slots.push(slot);
-        self.layout.sync_near(
-            self.model.workspace.axis,
-            &self.model.workspace.slots,
-            anchor,
-            mode,
-            output,
-        );
-        self.model.workspace.axis = self.layout.root_axis();
+        self.sync_layout(anchor, mode, output);
         self.invalidate_layout();
     }
 
@@ -236,10 +222,13 @@ impl Engine {
         window: &PhysicalWindowId,
         current: crate::Rect,
         settings: &Settings,
+        minimums: &WindowMinimums,
     ) -> bool {
         let canvas = settings.canvas();
         let current = settings.spacing.untile(current);
-        self.edit_weights(window, |layout, slot| layout.resize(slot, current, canvas))
+        self.edit_weights(window, settings, minimums, |layout, slot, floors| {
+            layout.resize_within(slot, current, canvas, floors)
+        })
     }
 
     /// The slot a newly adopted window is inserted next to.
@@ -335,10 +324,11 @@ impl Engine {
         direction: crate::ResizeDirection,
         amount: i32,
         settings: &Settings,
+        minimums: &WindowMinimums,
     ) -> bool {
         let canvas = settings.canvas();
-        self.edit_weights(window, |layout, slot| {
-            layout.resize_by(slot, direction, amount, canvas)
+        self.edit_weights(window, settings, minimums, |layout, slot, floors| {
+            layout.resize_by_within(slot, direction, amount, canvas, floors)
         })
     }
 
@@ -346,9 +336,12 @@ impl Engine {
         &mut self,
         window: &PhysicalWindowId,
         settings: &Settings,
+        minimums: &WindowMinimums,
     ) -> bool {
         let canvas = settings.canvas();
-        self.edit_weights(window, |layout, slot| layout.balance(slot, canvas))
+        self.edit_weights(window, settings, minimums, |layout, slot, floors| {
+            layout.balance_within(slot, canvas, floors)
+        })
     }
 
     /// Resize the focused window so its frame is `points` along `axis`: the tile's cell is the
@@ -359,6 +352,7 @@ impl Engine {
         axis: crate::Axis,
         points: i32,
         settings: &Settings,
+        minimums: &WindowMinimums,
     ) -> bool {
         let canvas = settings.canvas();
         let cell = settings.spacing.untile(crate::Rect {
@@ -371,8 +365,8 @@ impl Engine {
             crate::Axis::Horizontal => cell.width,
             crate::Axis::Vertical => cell.height,
         };
-        self.edit_weights(window, |layout, slot| {
-            layout.resize_to(slot, axis, target, canvas)
+        self.edit_weights(window, settings, minimums, |layout, slot, floors| {
+            layout.resize_to_within(slot, axis, target, canvas, floors)
         })
     }
 
@@ -438,7 +432,7 @@ impl Engine {
     }
 
     pub(crate) fn restore_layout(&mut self, mut layout: LayoutTree) {
-        layout.sync(self.model.workspace.axis, &self.model.workspace.slots);
+        layout.sync(layout.root_axis(), &self.model.workspace.slots);
         self.layout = layout;
         self.commit_layout();
     }
@@ -474,12 +468,9 @@ impl Engine {
     /// `edit_weights`); structural edits go through `edit_requested`.
     fn edit_shown(
         &mut self,
-        window: &PhysicalWindowId,
+        slot: crate::SlotId,
         op: impl FnOnce(&mut LayoutTree, crate::SlotId) -> bool,
     ) -> bool {
-        let Some(slot) = self.slot_for_window(window) else {
-            return false;
-        };
         let mut layout = self.display_layout().clone();
         if !op(&mut layout, slot) {
             return false;
@@ -511,11 +502,24 @@ impl Engine {
     /// Edits tile sizes. While the display shows an automatic grouping the
     /// requested layout lacks, the edit changes only that temporary fit:
     /// saving it would make the grouping permanent.
+    ///
+    /// Every tile keeps its window's known minimum size and, past the inner
+    /// gap, at least `MIN_TILE_EXTENT` of its own frame (#407, #408, #409).
     fn edit_weights(
         &mut self,
         window: &PhysicalWindowId,
-        op: impl FnOnce(&mut LayoutTree, crate::SlotId) -> bool,
+        settings: &Settings,
+        minimums: &WindowMinimums,
+        op: impl FnOnce(&mut LayoutTree, crate::SlotId, Minimums<'_>) -> bool,
     ) -> bool {
+        let Some(slot) = self.slot_for_window(window) else {
+            return false;
+        };
+        let known = self.slot_minimums(settings, minimums);
+        let floors = Minimums {
+            known: Some(&known),
+            floor: crate::layout_tree::MIN_TILE_EXTENT + settings.spacing.inner.max(0),
+        };
         let requested = &self.layout;
         let Some(tree) = self
             .fit
@@ -523,20 +527,10 @@ impl Engine {
             .and_then(|fit| fit.tree.as_mut())
             .filter(|tree| tree.regroups(requested))
         else {
-            return self.edit_shown(window, op);
-        };
-        let Some(slot) = self
-            .model
-            .workspace
-            .slots
-            .iter()
-            .find(|slot| slot.bound_window() == Some(window))
-            .map(|slot| slot.id)
-        else {
-            return false;
+            return self.edit_shown(slot, |layout, slot| op(layout, slot, floors));
         };
         let mut edited = tree.clone();
-        if !op(&mut edited, slot) {
+        if !op(&mut edited, slot, floors) {
             return false;
         }
         *tree = edited;
@@ -553,13 +547,26 @@ impl Engine {
     }
 
     fn commit_layout(&mut self) {
-        self.model.workspace.axis = self.layout.root_axis();
-        for slot in &mut self.model.workspace.slots {
-            if let Some(weight) = self.layout.weight(slot.id) {
-                slot.weight = weight;
-            }
-        }
         self.invalidate_layout();
+    }
+
+    /// Bring the layout's leaves in step with the model's slots after one was
+    /// added or removed. The layout alone holds the split axis and weights.
+    fn sync_layout(
+        &mut self,
+        anchor: Option<crate::SlotId>,
+        mode: LayoutMode,
+        output: crate::Rect,
+    ) {
+        let shown = self.fit.as_ref().and_then(|fit| fit.tree.as_ref());
+        self.layout.sync_shown(
+            self.layout.root_axis(),
+            &self.model.workspace.slots,
+            anchor,
+            mode,
+            output,
+            shown,
+        );
     }
 }
 
@@ -588,10 +595,9 @@ mod tests {
 
     use super::*;
 
-    fn slot(id: u64, weight: u32) -> Slot {
+    fn slot(id: u64) -> Slot {
         Slot {
             id: crate::SlotId(id),
-            weight,
             binding: crate::BindingState::Bound(PhysicalWindowId {
                 app: AppInstanceId {
                     pid: 1,
@@ -606,7 +612,7 @@ mod tests {
     fn new_window_joins_the_focused_nested_split() {
         let mut engine = Engine::default();
         for i in 1..=3 {
-            engine.insert_slot(slot(i, 1));
+            engine.insert_slot(slot(i));
         }
         let windows = engine.bound_windows();
         assert!(engine.move_window_relative(&windows[0], &windows[1], crate::Direction::Up));
@@ -642,7 +648,7 @@ mod tests {
     fn dwindle_splits_the_focused_tile_along_its_longer_side() {
         let mut engine = Engine::default();
         for i in 1..=3 {
-            engine.insert_slot(slot(i, 1));
+            engine.insert_slot(slot(i));
         }
         let windows = engine.bound_windows();
         assert!(engine.move_window_relative(&windows[0], &windows[1], crate::Direction::Up));
@@ -689,7 +695,7 @@ mod tests {
     #[test]
     fn structural_layout_edits_commit_axis_and_slot_weights() {
         let mut engine = Engine::default();
-        let slots = [slot(1, 1), slot(2, 1), slot(3, 1)];
+        let slots = [slot(1), slot(2), slot(3)];
         let windows = slots
             .iter()
             .map(|slot| slot.bound_window().unwrap().clone())
@@ -706,14 +712,15 @@ mod tests {
             &windows[0],
             crate::ResizeDirection::Grow,
             50,
-            &Settings::for_output(output)
+            &Settings::for_output(output),
+            &WindowMinimums::new(),
         ));
         assert!(engine.create_implicit_split(&windows[1], crate::Direction::Up));
-        assert_eq!(engine.model().workspace.axis, crate::Axis::Vertical);
-        assert_eq!(engine.model().workspace.slots[1].weight, 1);
+        assert_eq!(engine.layout().root_axis(), crate::Axis::Vertical);
+        assert_eq!(engine.layout().weight(crate::SlotId(2)), Some(1));
 
         assert!(engine.move_window_relative(&windows[2], &windows[0], crate::Direction::Right));
-        assert_eq!(engine.model().workspace.slots[2].weight, 1);
+        assert_eq!(engine.layout().weight(crate::SlotId(3)), Some(1));
     }
 
     #[test]
@@ -725,8 +732,8 @@ mod tests {
         };
         for mode in [LayoutMode::Columns, LayoutMode::Dwindle] {
             let mut engine = Engine::default();
-            engine.insert_slot_with(slot(1, 1), mode, output, None);
-            engine.insert_slot_with(slot(2, 1), mode, output, Some(crate::SlotId(1)));
+            engine.insert_slot_with(slot(1), mode, output, None);
+            engine.insert_slot_with(slot(2), mode, output, Some(crate::SlotId(1)));
             let windows = engine.bound_windows();
             let before = engine.layout().clone();
             let revision = engine.revision();
@@ -738,7 +745,7 @@ mod tests {
 
             // Reversing the pair or re-orienting vertically changes the shape.
             assert!(engine.create_implicit_split(&windows[0], crate::Direction::Up));
-            assert_eq!(engine.model().workspace.axis, crate::Axis::Vertical);
+            assert_eq!(engine.layout().root_axis(), crate::Axis::Vertical);
         }
     }
 
@@ -868,12 +875,10 @@ mod tests {
         let mut engine = Engine::default();
         engine.insert_slot(Slot {
             id: crate::SlotId(1),
-            weight: 1,
             binding: crate::BindingState::Bound(first.clone()),
         });
         engine.insert_slot(Slot {
             id: crate::SlotId(2),
-            weight: 1,
             binding: crate::BindingState::Bound(second.clone()),
         });
         let pending = engine.begin_cycle();
@@ -899,7 +904,6 @@ mod tests {
         let mut engine = Engine::default();
         engine.insert_slot(Slot {
             id: crate::SlotId(1),
-            weight: 1,
             binding: crate::BindingState::Bound(window.clone()),
         });
         let pending = engine.begin_cycle();
@@ -919,7 +923,6 @@ mod tests {
         let pending = engine.begin_cycle();
         engine.insert_slot(Slot {
             id: crate::SlotId(1),
-            weight: 1,
             binding: crate::BindingState::Bound(PhysicalWindowId {
                 app: AppInstanceId {
                     pid: 1,

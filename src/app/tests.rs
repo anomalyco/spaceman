@@ -572,7 +572,6 @@ fn bind(
 ) {
     runtime.workspaces.engine_mut(workspace).insert_slot(Slot {
         id: SlotId(u64::from(window.window_id)),
-        weight: 1,
         binding: BindingState::Bound(window.clone()),
     });
 }

@@ -385,7 +385,7 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
             .bring_forward(&target_display_id, target_selector);
         if let Some(replacement) = source_replacement {
             self.workspaces.show_on(&source_display_id, replacement);
-            if self.workspaces.uses_fullscreen_layout(replacement)
+            if self.workspaces.deck(replacement).is_monocle()
                 && let Some(front) = self.workspaces.preferred_focus(replacement)
             {
                 self.backend.raise_window(&front);

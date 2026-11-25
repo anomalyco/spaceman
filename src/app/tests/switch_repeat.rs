@@ -56,7 +56,9 @@ fn pressing_the_active_workspace_shortcut_again_cycles_its_tiles() {
         for window in [&first, &second, &third] {
             bind(&mut runtime, two, window);
         }
-        runtime.workspaces.set_fullscreen_layout(two, fullscreen);
+        runtime
+            .workspaces
+            .set_deck(two, crate::workspace::DeckMode::from_fullscreen(fullscreen));
 
         // The first press switches to Space 2 and lands on its first tile.
         let status = press(&mut runtime, WorkerAction::SwitchWorkspace(two));
@@ -288,7 +290,9 @@ fn quick_repeat_after_returning_from_another_display_advances_during_activation_
         bind(&mut runtime, two, &first);
         bind(&mut runtime, two, &second);
         bind(&mut runtime, WorkspaceId::SIX, &elsewhere);
-        runtime.workspaces.set_fullscreen_layout(two, fullscreen);
+        runtime
+            .workspaces
+            .set_deck(two, crate::workspace::DeckMode::from_fullscreen(fullscreen));
         press(&mut runtime, WorkerAction::SwitchWorkspace(two));
 
         runtime.backend.focused = Some(elsewhere.clone());

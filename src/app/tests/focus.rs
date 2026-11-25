@@ -199,7 +199,10 @@ fn following_focus_to_a_hidden_workspace_keeps_the_window_that_took_it() {
         } else {
             bind(&mut runtime, target, &notified);
         }
-        runtime.workspaces.set_fullscreen_layout(target, fullscreen);
+        runtime.workspaces.set_deck(
+            target,
+            crate::workspace::DeckMode::from_fullscreen(fullscreen),
+        );
         runtime.workspaces.remember_focus(target, &remembered);
 
         let status = runtime.cycle(outputs(), &AtomicBool::new(false)).unwrap();

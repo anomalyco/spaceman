@@ -16,8 +16,14 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
             "resizing",
             outputs,
             cancelled,
-            |engine, window, settings| {
-                engine.resize_focused_tile(window, direction, KEYBOARD_RESIZE_INCREMENT, settings)
+            |engine, window, settings, minimums| {
+                engine.resize_focused_tile(
+                    window,
+                    direction,
+                    KEYBOARD_RESIZE_INCREMENT,
+                    settings,
+                    minimums,
+                )
             },
         )
     }
@@ -33,8 +39,8 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
             "resizing",
             outputs,
             cancelled,
-            |engine, window, settings| {
-                engine.resize_focused_tile_to(window, axis, points, settings)
+            |engine, window, settings, minimums| {
+                engine.resize_focused_tile_to(window, axis, points, settings, minimums)
             },
         )
     }
@@ -48,7 +54,9 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
             "balancing",
             outputs,
             cancelled,
-            |engine, window, settings| engine.balance_focused_parent(window, settings),
+            |engine, window, settings, minimums| {
+                engine.balance_focused_parent(window, settings, minimums)
+            },
         )
     }
 
@@ -59,18 +67,22 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
         verb: &str,
         outputs: macos::DisplayOutputs,
         cancelled: &AtomicBool,
-        edit: impl FnOnce(&mut crate::Engine, &crate::PhysicalWindowId, &Settings) -> bool,
+        edit: impl FnOnce(
+            &mut crate::Engine,
+            &crate::PhysicalWindowId,
+            &Settings,
+            &crate::runtime::WindowMinimums,
+        ) -> bool,
     ) -> Result<CycleStatus, String> {
         let (window, workspace) = self.focused_active_workspace(&outputs, cancelled, false)?;
-        if self.workspaces.uses_fullscreen_layout(workspace) {
-            return Err(format!(
-                "Exit Fullscreen Layout before {verb} the split layout"
-            ));
-        }
+        self.workspaces.deck(workspace).require_split(verb)?;
         let settings = self.layout_settings(output_for(&self.workspaces, workspace, &outputs));
-        if !edit(self.workspaces.engine_mut(workspace), &window, &settings) {
+        let engine = self.workspaces.engine_mut(workspace);
+        if !edit(engine, &window, &settings, &self.minimum_sizes) {
             return Ok(self.status(0, &outputs));
         }
+        // An explicit size is written exactly, even a point or two away (#412).
+        self.exact_spacing_workspaces.insert(workspace);
         self.relayout_persist(workspace, &outputs, cancelled)
     }
 }

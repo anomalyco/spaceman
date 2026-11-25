@@ -259,15 +259,14 @@ fn drag_nest_into_a_temporary_stack_keeps_the_requested_layout() {
         crate::Axis::Horizontal,
         "the requested row survives"
     );
+    let engine = runtime.workspaces.engine(WorkspaceId::ONE);
     assert!(
-        runtime
-            .workspaces
-            .engine(WorkspaceId::ONE)
+        engine
             .model()
             .workspace
             .slots
             .iter()
-            .all(|slot| slot.weight == 1),
+            .all(|slot| engine.layout().weight(slot.id) == Some(1)),
         "the fit's weights are not saved"
     );
 
@@ -391,7 +390,7 @@ fn drag_nest_through_a_reweighting_fit_keeps_the_requested_weights() {
             .workspace
             .slots
             .iter()
-            .all(|slot| slot.weight == 1),
+            .all(|slot| engine.layout().weight(slot.id) == Some(1)),
         "{:?}",
         engine.model().workspace.slots
     );
@@ -471,7 +470,6 @@ fn outward_move_from_temporarily_stacked_pair_crosses_displays() {
                     rt.workspaces.engine_mut(WorkspaceId::ONE).insert_slot_with(
                         Slot {
                             id: SlotId(u64::from(tile.window_id)),
-                            weight: 1,
                             binding: BindingState::Bound(tile.clone()),
                         },
                         mode,

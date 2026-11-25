@@ -139,7 +139,7 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
         focused: &crate::PhysicalWindowId,
         direction: Direction,
     ) -> Option<crate::PhysicalWindowId> {
-        if !self.workspaces.uses_fullscreen_layout(workspace) {
+        if !self.workspaces.deck(workspace).is_monocle() {
             return None;
         }
         let windows = self.workspaces.engine(workspace).bound_windows();

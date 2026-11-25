@@ -88,7 +88,7 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
     }
 
     fn hud_workspace(&self, workspace: WorkspaceId) -> UiHudWorkspace {
-        let fullscreen = self.workspaces.uses_fullscreen_layout(workspace);
+        let fullscreen = self.workspaces.deck(workspace).is_monocle();
         let engine = self.workspaces.engine(workspace);
         let mut tiles: Vec<UiHudTile> = engine
             .preview_placements(HUD_PREVIEW_RECT)

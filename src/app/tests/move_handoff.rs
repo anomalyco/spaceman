@@ -198,7 +198,8 @@ fn move_focused_in_fullscreen_layout_updates_remembered_focus_to_remaining_tile(
     let mut rt = runtime(backend);
     bind(&mut rt, WorkspaceId::ONE, &first);
     bind(&mut rt, WorkspaceId::ONE, &second);
-    rt.workspaces.set_fullscreen_layout(WorkspaceId::ONE, true);
+    rt.workspaces
+        .set_deck(WorkspaceId::ONE, crate::workspace::DeckMode::Monocle);
     rt.workspaces.remember_focus(WorkspaceId::ONE, &second);
 
     rt.move_focused(WorkspaceId::TWO, outputs(), &AtomicBool::new(false))

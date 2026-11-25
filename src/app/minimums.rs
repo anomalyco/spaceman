@@ -3,8 +3,9 @@ use super::*;
 /// Size difference, in points, below which a constrained readback is noise.
 const MINIMUM_TOLERANCE: i32 = 2;
 /// Refitting can shrink a sibling below a minimum nobody knew yet, which the
-/// next write reveals. A few rounds settle that; a bound keeps it finite.
-const MAX_REFITS: usize = 3;
+/// next write reveals. Each round learns at least one window's minimum, so a
+/// row settles within one round per tile; a bound keeps it finite (#413).
+const MIN_REFITS: usize = 3;
 
 impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
     /// Refit and re-apply while writes keep revealing refused sizes. Returns
@@ -18,7 +19,8 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
     ) -> Option<LayoutStatus> {
         let mut results = results;
         let mut status = None;
-        for _ in 0..MAX_REFITS {
+        let tiles = self.workspaces.engine(workspace).bound_windows().len();
+        for _ in 0..MIN_REFITS.max(tiles + 1) {
             if !self.fit_minimum_sizes(workspace, output, &results) {
                 break;
             }
@@ -39,7 +41,7 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
         output: crate::Rect,
         results: &[macos::ApplyResult],
     ) -> bool {
-        if self.workspaces.uses_fullscreen_layout(workspace) {
+        if self.workspaces.deck(workspace).is_monocle() {
             return false;
         }
         let mut refused = false;

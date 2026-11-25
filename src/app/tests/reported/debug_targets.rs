@@ -78,7 +78,8 @@ fn debug_targets_match_the_focus_command() {
             let mut rt = fixture(&three);
             rt.backend.focused = Some(window(11));
             if case == "fullscreen" {
-                rt.workspaces.set_fullscreen_layout(WorkspaceId::ONE, true);
+                rt.workspaces
+                    .set_deck(WorkspaceId::ONE, crate::workspace::DeckMode::Monocle);
                 rt.layout_workspace(
                     WorkspaceId::ONE,
                     outputs().main().frame,

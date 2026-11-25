@@ -328,6 +328,7 @@ fn edge_band_with_three_tiles_keeps_remaining_nesting_and_relative_weights() {
         &window(20),
         rect(1280, 30, 1280, 405),
         &settings,
+        &std::collections::HashMap::new(),
     ));
     let before_20 = rt
         .workspaces
@@ -373,6 +374,7 @@ fn existing_left_or_right_column_dropped_in_its_own_edge_band_becomes_half_width
         &window(10),
         rect(0, 30, 700, 1410),
         &settings,
+        &std::collections::HashMap::new(),
     ));
     assert_eq!(
         layout(&rt),
@@ -391,6 +393,7 @@ fn existing_left_or_right_column_dropped_in_its_own_edge_band_becomes_half_width
         &window(20),
         rect(1960, 30, 600, 1410),
         &settings,
+        &std::collections::HashMap::new(),
     ));
     assert_eq!(
         layout(&rt),
@@ -542,10 +545,12 @@ fn edge_band_leaves_lone_tile_and_fullscreen_layout_unchanged() {
     // 2. Fullscreen Layout still ignores drags, including edge bands.
     let mut rt = stacked();
     let before = layout(&rt);
-    rt.workspaces.set_fullscreen_layout(WorkspaceId::ONE, true);
+    rt.workspaces
+        .set_deck(WorkspaceId::ONE, crate::workspace::DeckMode::Monocle);
     drag_tracked(&mut rt, 10, (1280, 45), &[], (10, 45));
-    assert!(rt.workspaces.uses_fullscreen_layout(WorkspaceId::ONE));
-    rt.workspaces.set_fullscreen_layout(WorkspaceId::ONE, false);
+    assert!(rt.workspaces.deck(WorkspaceId::ONE).is_monocle());
+    rt.workspaces
+        .set_deck(WorkspaceId::ONE, crate::workspace::DeckMode::Split);
     assert_eq!(layout(&rt), before);
 }
 

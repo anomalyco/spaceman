@@ -241,7 +241,7 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
                 continue;
             };
             if self.constrained[tile.workspace.index()].contains_key(&tile.window) {
-                if !self.workspaces.uses_fullscreen_layout(tile.workspace)
+                if !self.workspaces.deck(tile.workspace).is_monocle()
                     && let Some((_, arranged)) = windows.iter().find(|(id, _)| id == &tile.window)
                     && windows.iter().any(|(other, entry)| {
                         other != &tile.window

@@ -29,7 +29,6 @@ fn floating_disposition_wins_over_pending_replacement_reservation() {
             .engine_mut(WorkspaceId::ONE)
             .insert_slot(Slot {
                 id: SlotId(1),
-                weight: 1,
                 binding: BindingState::Unresolved {
                     previous: old,
                     candidates: vec![replacement.clone()],

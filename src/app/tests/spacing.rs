@@ -46,7 +46,7 @@ fn layout_applies_gaps_padding_and_the_single_window_width() {
 
     runtime
         .workspaces
-        .set_fullscreen_layout(WorkspaceId::ONE, true);
+        .set_deck(WorkspaceId::ONE, crate::workspace::DeckMode::Monocle);
     runtime.layout_workspace(WorkspaceId::ONE, output, &cancelled);
     assert_eq!(runtime.backend.frames[&left], lone);
     assert_eq!(runtime.backend.frames[&right], lone);
@@ -381,7 +381,6 @@ fn startup_with_small_inner_gap_separates_already_touching_windows() {
             .engine_mut(WorkspaceId::ONE)
             .insert_slot(Slot {
                 id: SlotId((index + 1) as u64),
-                weight: 1,
                 binding: BindingState::Bound(win.clone()),
             });
     }

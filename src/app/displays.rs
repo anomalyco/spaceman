@@ -238,7 +238,9 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
         if cancelled.load(Ordering::Acquire) || self.backend.mouse_down() {
             return;
         }
-        let displays: Vec<_> = outputs.frames().collect();
+        // A window is stranded only off every physical display: one released
+        // over a Dock or menu-bar strip is still on its display (#393).
+        let displays = outputs.screens();
         let has_candidate = visible.iter().any(|resolved| {
             self.scope.manages_selector(&resolved.selector)
                 && self
@@ -273,7 +275,7 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
             let engine = self.workspaces.engine_mut(workspace);
             engine.fit_minimums(&settings, &self.minimum_sizes);
             let mut placements = engine.placements(&settings);
-            self.apply_fullscreen_layout(workspace, &mut placements, &settings);
+            self.project_deck(workspace, &mut placements, &settings);
             let mut recover_tiles = Vec::new();
             for placement in placements {
                 let Some(window) = placement.window.as_ref() else {

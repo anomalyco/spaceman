@@ -66,6 +66,27 @@ pub(super) fn is_window_resize(start: Rect, current: Rect) -> bool {
         >= 6
 }
 
+/// The pointer carried the window: on one axis both of its edges moved the way
+/// the pointer went, even if the app changed its size as it landed (#429). A
+/// border drag leaves the opposite edge where it was, and a window Spaceman
+/// moved (parking) did not follow the pointer.
+fn carried(start: Rect, current: Rect, travel: (i32, i32)) -> bool {
+    let along = |leading: i32, trailing: i32, pointer: i32| {
+        [leading, trailing, pointer]
+            .iter()
+            .all(|delta| delta.abs() >= 6 && delta.signum() == pointer.signum())
+    };
+    along(
+        current.x - start.x,
+        current.x + current.width - (start.x + start.width),
+        travel.0,
+    ) || along(
+        current.y - start.y,
+        current.y + current.height - (start.y + start.height),
+        travel.1,
+    )
+}
+
 /// Whether a three-finger workspace swipe must be ignored because a pointer
 /// button is down or a window drag/resize gesture is in progress (such as
 /// macOS Accessibility "Three Finger Drag").
@@ -128,6 +149,7 @@ struct Gesture {
     chosen: Option<usize>,
     last_preview: Option<FinalGesture>,
     bounds: Option<PointerBounds>,
+    start_point: Option<(i32, i32)>,
 }
 
 struct Candidate {
@@ -164,6 +186,7 @@ impl GestureTracker {
             chosen: None,
             last_preview: None,
             bounds: start_point.map(PointerBounds::point),
+            start_point,
         });
     }
 
@@ -222,9 +245,13 @@ impl Gesture {
             bounds.extend(point);
         }
         let bounds = self.bounds;
+        let travel = self
+            .start_point
+            .zip(point)
+            .map(|(start, point)| (point.0 - start.0, point.1 - start.1));
         if let Some(index) = self.chosen {
             let candidate = &mut self.candidates[index];
-            return candidate.classify(frame_of(&candidate.window)?, point, bounds);
+            return candidate.classify(frame_of(&candidate.window)?, point, bounds, travel);
         }
         // Until a preview is sent nothing has moved the candidates but the
         // user, so the first one that changed is the one being dragged.
@@ -232,7 +259,7 @@ impl Gesture {
             let Some(frame) = frame_of(&candidate.window) else {
                 continue;
             };
-            if let Some(gesture) = candidate.classify(frame, point, bounds) {
+            if let Some(gesture) = candidate.classify(frame, point, bounds, travel) {
                 self.chosen = Some(index);
                 return Some(gesture);
             }
@@ -247,9 +274,13 @@ impl Candidate {
         frame: Rect,
         point: Option<(i32, i32)>,
         bounds: Option<PointerBounds>,
+        travel: Option<(i32, i32)>,
     ) -> Option<FinalGesture> {
-        self.resized |= is_window_resize(self.start, frame);
-        self.dragged |= is_window_drag(self.start, frame);
+        // A window carried by its title bar stays a drag: an app that changes
+        // its own size as it lands is not a border resize (#429).
+        let carried_along = travel.is_some_and(|travel| carried(self.start, frame, travel));
+        self.resized |= !self.dragged && !carried_along && is_window_resize(self.start, frame);
+        self.dragged |= carried_along || is_window_drag(self.start, frame);
         if self.resized {
             Some(FinalGesture::Resize(self.window.clone(), frame))
         } else if self.dragged {
@@ -633,5 +664,49 @@ mod tests {
             panic!("expected tracked drop");
         };
         assert!(!armed_bounds.entirely_inside(band));
+    }
+
+    // #429: reproduction contributed by @coygeek. A title-bar drag whose
+    // window changes width at mouse-up is still a drop.
+    #[test]
+    fn portrait_drag_release_classification() {
+        let start = Rect {
+            x: 1707,
+            y: 30,
+            width: 853,
+            height: 1410,
+        };
+        let before_release = Rect {
+            x: -1304,
+            y: 565,
+            ..start
+        };
+        let after_release = Rect {
+            x: -1118,
+            width: 480,
+            ..before_release
+        };
+        let pointer = (-720, 550);
+        for final_frame in [before_release, after_release] {
+            let id = window();
+            let mut tracker = GestureTracker::default();
+            tracker.begin_at(vec![(id.clone(), start)], Some((2133, 44)));
+            assert!(matches!(
+                tracker.preview(|_| Some(before_release), Some(pointer)),
+                Some(FinalGesture::Drop { .. }),
+            ));
+            let final_gesture = tracker.finish(|_| Some(final_frame), Some(pointer));
+            assert!(
+                matches!(final_gesture, Some(FinalGesture::Drop { .. })),
+                "{final_frame:?}: {final_gesture:?}"
+            );
+            // Without a preview tick in between, the release alone still reads as a drop.
+            tracker.begin_at(vec![(id.clone(), start)], Some((2133, 44)));
+            let final_gesture = tracker.finish(|_| Some(final_frame), Some(pointer));
+            assert!(
+                matches!(final_gesture, Some(FinalGesture::Drop { .. })),
+                "no preview, {final_frame:?}: {final_gesture:?}"
+            );
+        }
     }
 }

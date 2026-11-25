@@ -345,14 +345,16 @@ fn tiled_window_keeps_its_tile_through_modal_sheet_non_resizable_state() {
         .unwrap();
 
     let snapshot_slots = |runtime: &WorkspaceRuntime<FakeBackend>| {
-        runtime
-            .workspaces
-            .engine(WorkspaceId::ONE)
+        let engine = runtime.workspaces.engine(WorkspaceId::ONE);
+        engine
             .model()
             .workspace
             .slots
             .iter()
-            .map(|slot| (slot.id, slot.bound_window().cloned(), slot.weight))
+            .map(|slot| {
+                let weight = engine.layout().weight(slot.id);
+                (slot.id, slot.bound_window().cloned(), weight)
+            })
             .collect::<Vec<_>>()
     };
     let slots_before = snapshot_slots(&runtime);

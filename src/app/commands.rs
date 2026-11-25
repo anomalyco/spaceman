@@ -2,10 +2,11 @@ use super::*;
 
 mod drag;
 mod float;
+mod gesture;
 mod sizing;
-pub(super) use drag::DragSession;
 #[cfg(test)]
 pub(super) use drag::{DISPLAY_EDGE_DROP_BAND, display_edge_bands};
+pub(super) use gesture::GestureOverlay;
 
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
 pub(super) enum WarpContext {
@@ -52,18 +53,14 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
             return Some(*accepted);
         }
         let settings = self.layout_settings(output);
-        let tile_frame = if self.workspaces.uses_fullscreen_layout(workspace)
-            && self.workspaces.workspace_of(window) == Some(workspace)
-        {
-            Some(settings.single())
-        } else {
-            self.workspaces
-                .engine(workspace)
-                .placements(&settings)
-                .into_iter()
-                .find(|placement| placement.window.as_ref() == Some(window))
-                .map(|placement| placement.frame)
-        };
+        let mut placements = self.workspaces.engine(workspace).placements(&settings);
+        self.workspaces
+            .deck(workspace)
+            .place(&mut placements, settings.single());
+        let tile_frame = placements
+            .into_iter()
+            .find(|placement| placement.window.as_ref() == Some(window))
+            .map(|placement| placement.frame);
         tile_frame.or_else(|| {
             self.backend
                 .window_server_frame(window)
@@ -134,9 +131,9 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
         cancelled: &AtomicBool,
     ) -> Result<CycleStatus, String> {
         let (window, workspace) = self.focused_active_workspace(&outputs, cancelled, true)?;
-        if self.workspaces.uses_fullscreen_layout(workspace) {
-            return Err("Exit Fullscreen Layout before reordering the split layout".into());
-        }
+        self.workspaces
+            .deck(workspace)
+            .require_split("reordering")?;
         let windows = self.workspaces.engine(workspace).bound_windows();
         let axis = self.workspaces.engine(workspace).root_axis();
         let perpendicular = matches!(
@@ -195,55 +192,22 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
                         .iter()
                         .any(|tile| tile.workspace == resolved.workspace)
             })
-            .map(|resolved| NavigationTile {
-                workspace: resolved.workspace,
-                window: crate::PhysicalWindowId {
-                    app: crate::AppInstanceId {
-                        pid: -1,
-                        launched_at: 0,
+            .map(|resolved| {
+                let settings = self.layout_settings(resolved.output);
+                NavigationTile {
+                    workspace: resolved.workspace,
+                    window: crate::PhysicalWindowId {
+                        app: crate::AppInstanceId {
+                            pid: -1,
+                            launched_at: 0,
+                        },
+                        window_id: u32::try_from(resolved.workspace.index()).unwrap_or(u32::MAX),
                     },
-                    window_id: u32::try_from(resolved.workspace.index()).unwrap_or(u32::MAX),
-                },
-                frame: self.layout_settings(resolved.output).single(),
+                    frame: settings.single(),
+                    display: Some(settings.usable()),
+                }
             })
             .collect()
-    }
-
-    pub(super) fn resize_window(
-        &mut self,
-        window: crate::PhysicalWindowId,
-        frame: crate::Rect,
-        preview: bool,
-        outputs: macos::DisplayOutputs,
-        cancelled: &AtomicBool,
-    ) -> Result<CycleStatus, String> {
-        let Some(workspace) = self.workspaces.workspace_of(&window) else {
-            return self.cycle(outputs, cancelled);
-        };
-        if !self.is_visible(workspace, &outputs) || self.parked.contains_key(&window) {
-            return Ok(self.status(0, &outputs));
-        }
-        if self.workspaces.uses_fullscreen_layout(workspace) {
-            return Ok(self.status(0, &outputs));
-        }
-        self.constrained[workspace.index()].remove(&window);
-        self.applied[workspace.index()].remove(&window);
-        let output = output_for(&self.workspaces, workspace, &outputs);
-        let settings = self.layout_settings(output);
-        let failed = if self
-            .workspaces
-            .engine_mut(workspace)
-            .resize_window(&window, frame, &settings)
-        {
-            self.layout_workspace_during_drag(workspace, output, Some(&window), cancelled)
-                .failed
-        } else {
-            0
-        };
-        if !preview {
-            self.persist_workspace_state_if_changed()?;
-        }
-        Ok(self.status(failed, &outputs))
     }
 
     pub(super) fn cycle_focus(
@@ -361,7 +325,7 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
         workspace: WorkspaceId,
         window: &crate::PhysicalWindowId,
     ) -> Result<(), String> {
-        if !self.workspaces.uses_fullscreen_layout(workspace) {
+        if !self.workspaces.deck(workspace).is_monocle() {
             return Ok(());
         }
         self.focus.settle_fullscreen(workspace);
@@ -375,8 +339,9 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
         cancelled: &AtomicBool,
     ) -> Result<CycleStatus, String> {
         let (_, workspace) = self.focused_owner_workspace(&outputs, cancelled)?;
-        if self.workspaces.uses_fullscreen_layout(workspace) {
-            self.workspaces.set_fullscreen_layout(workspace, false);
+        if self.workspaces.deck(workspace).is_monocle() {
+            self.workspaces
+                .set_deck(workspace, crate::workspace::DeckMode::Split);
             self.focus.settle_fullscreen(workspace);
         }
         self.workspaces.engine_mut(workspace).toggle_axis();
@@ -393,8 +358,9 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
     ) -> Result<CycleStatus, String> {
         let (window, workspace) = self.focused_owner_workspace(&outputs, cancelled)?;
         self.workspaces.remember_focus(workspace, &window);
-        let enabled = !self.workspaces.uses_fullscreen_layout(workspace);
-        self.workspaces.set_fullscreen_layout(workspace, enabled);
+        let deck = self.workspaces.deck(workspace).toggled();
+        self.workspaces.set_deck(workspace, deck);
+        let enabled = deck.is_monocle();
         self.focus.settle_fullscreen(workspace);
         let mut status = self.relayout_persist(workspace, &outputs, cancelled)?;
         status.hud =

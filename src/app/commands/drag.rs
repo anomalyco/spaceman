@@ -1,19 +1,13 @@
 use super::super::input::PointerBounds;
 use super::super::*;
+use super::gesture::{GestureOverlay, OverlayKind};
 
 /// Width inside the tiled area (in addition to any outer gap) of the display's
 /// left and right full-height column drop bands.
 pub(in crate::app) const DISPLAY_EDGE_DROP_BAND: i32 = 64;
 
 #[derive(Clone, Debug)]
-pub(in crate::app) struct DragSession {
-    pub(in crate::app) window: crate::PhysicalWindowId,
-    pub(in crate::app) workspace: WorkspaceId,
-    pub(in crate::app) layout: crate::layout_tree::LayoutTree,
-    pub(in crate::app) pointer_bounds: Option<PointerBounds>,
-}
-
-enum DropTarget {
+pub(in crate::app) enum DropTarget {
     /// Dock into a full-height half-width column on the display's left or right edge.
     DisplayEdge(Direction),
     /// Swap with or nest beside another tile on the same workspace.
@@ -50,44 +44,60 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
         cancelled: &AtomicBool,
     ) -> Result<CycleStatus, String> {
         let Some(source) = self.workspaces.workspace_of(&window) else {
-            self.drag_session = None;
+            self.gesture = None;
             return self.cycle(outputs, cancelled);
         };
         if !self.is_visible(source, &outputs) || self.parked.contains_key(&window) {
-            self.drag_session = None;
+            self.gesture = None;
             return Ok(self.status(0, &outputs));
         }
-        if self.workspaces.uses_fullscreen_layout(source) {
-            self.drag_session = None;
-            return Ok(self.status(0, &outputs));
-        }
-        self.constrained[source.index()].remove(&window);
-        self.applied[source.index()].remove(&window);
-
-        let (pre_drag_layout, effective_bounds) =
-            self.ensure_drag_session(&window, source, bounds, preview);
         let source_output = output_for(&self.workspaces, source, &outputs);
+        if self.workspaces.deck(source).is_monocle() {
+            // Fullscreen Layout ignores pointer drags: once released, the tile
+            // fills its own display again, wherever it was let go (#392).
+            self.gesture = None;
+            if preview {
+                return Ok(self.status(0, &outputs));
+            }
+            self.forget_readback(source, &window);
+            let layout = self.layout_workspace(source, source_output, cancelled);
+            return Ok(self.status(layout.failed, &outputs));
+        }
+        self.forget_readback(source, &window);
+
+        let (pre_drag_layout, effective_bounds, shown) = self.drag_overlay(&window, source, bounds);
         let source_settings = self.layout_settings(source_output);
-        let target = self.resolve_drop_target(
-            &window,
-            source,
-            point,
-            source_output,
-            source_settings.usable(),
-            effective_bounds,
-            &outputs,
-        );
+        // Released where the last preview was shown, the drop is what that
+        // preview showed, even if settings changed in between (#390).
+        let target = match shown.filter(|(at, _)| *at == point) {
+            Some((_, target)) => target,
+            None => self.resolve_drop_target(
+                &window,
+                source,
+                point,
+                source_output,
+                source_settings.usable(),
+                effective_bounds,
+                &outputs,
+            ),
+        };
+        if preview {
+            self.gesture = Some(GestureOverlay {
+                window: window.clone(),
+                workspace: source,
+                kind: OverlayKind::Drag {
+                    layout: pre_drag_layout.clone(),
+                    pointer_bounds: effective_bounds,
+                    shown: Some((point, target.clone())),
+                },
+            });
+        }
 
         match target {
             DropTarget::OtherWorkspace(target) => {
                 if preview {
-                    let failed = self.apply_drag_preview(
-                        source,
-                        &pre_drag_layout,
-                        &source_settings,
-                        &window,
-                        cancelled,
-                    );
+                    let failed =
+                        self.preview_saved_layout(source, &source_settings, &window, cancelled);
                     return Ok(self.status(failed, &outputs));
                 }
                 self.with_warp_context(super::WarpContext::Suppressed, |rt| {
@@ -104,9 +114,7 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
                 self.finish_local_drop(
                     source,
                     &window,
-                    &pre_drag_layout,
-                    candidate,
-                    changed,
+                    changed.then_some(candidate),
                     preview,
                     source_output,
                     &source_settings,
@@ -130,9 +138,7 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
                 self.finish_local_drop(
                     source,
                     &window,
-                    &pre_drag_layout,
-                    candidate,
-                    changed,
+                    changed.then_some(candidate),
                     preview,
                     source_output,
                     &source_settings,
@@ -140,53 +146,56 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
                     cancelled,
                 )
             }
-            DropTarget::None => {
-                if preview {
-                    let failed = self.apply_drag_preview(
-                        source,
-                        &pre_drag_layout,
-                        &source_settings,
-                        &window,
-                        cancelled,
-                    );
-                    return Ok(self.status(failed, &outputs));
-                }
-                let layout = self.layout_workspace(source, source_output, cancelled);
-                self.persist_workspace_state_if_changed()?;
-                Ok(self.status(layout.failed, &outputs))
-            }
+            DropTarget::None => self.finish_local_drop(
+                source,
+                &window,
+                None,
+                preview,
+                source_output,
+                &source_settings,
+                &outputs,
+                cancelled,
+            ),
         }
     }
 
-    fn ensure_drag_session(
+    /// The drag's layout at its start, the pointer's extent so far, and the
+    /// target its last preview showed. A drag of another window starts over.
+    fn drag_overlay(
         &mut self,
         window: &crate::PhysicalWindowId,
         source: WorkspaceId,
         bounds: Option<PointerBounds>,
-        preview: bool,
-    ) -> (crate::layout_tree::LayoutTree, Option<PointerBounds>) {
-        let session = match self.drag_session.take() {
-            Some(mut session) if session.window == *window && session.workspace == source => {
+    ) -> (
+        crate::layout_tree::LayoutTree,
+        Option<PointerBounds>,
+        Option<((i32, i32), DropTarget)>,
+    ) {
+        match self.gesture.take() {
+            Some(GestureOverlay {
+                window: dragged,
+                workspace,
+                kind:
+                    OverlayKind::Drag {
+                        layout,
+                        mut pointer_bounds,
+                        shown,
+                    },
+            }) if dragged == *window && workspace == source => {
                 if let Some(bounds) = bounds {
-                    match &mut session.pointer_bounds {
+                    match &mut pointer_bounds {
                         Some(existing) => existing.merge(bounds),
-                        None => session.pointer_bounds = Some(bounds),
+                        None => pointer_bounds = Some(bounds),
                     }
                 }
-                session
+                (layout, pointer_bounds, shown)
             }
-            _ => DragSession {
-                window: window.clone(),
-                workspace: source,
-                layout: self.workspaces.engine(source).layout().clone(),
-                pointer_bounds: bounds,
-            },
-        };
-        let result = (session.layout.clone(), session.pointer_bounds);
-        if preview {
-            self.drag_session = Some(session);
+            _ => (
+                self.workspaces.engine(source).layout().clone(),
+                bounds,
+                None,
+            ),
         }
-        result
     }
 
     #[allow(clippy::too_many_arguments)]
@@ -235,9 +244,7 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
         &mut self,
         source: WorkspaceId,
         window: &crate::PhysicalWindowId,
-        pre_drag_layout: &crate::layout_tree::LayoutTree,
-        candidate: crate::layout_tree::LayoutTree,
-        changed: bool,
+        candidate: Option<crate::layout_tree::LayoutTree>,
         preview: bool,
         source_output: crate::Rect,
         source_settings: &Settings,
@@ -245,11 +252,26 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
         cancelled: &AtomicBool,
     ) -> Result<CycleStatus, String> {
         if preview {
-            let shown = if changed { &candidate } else { pre_drag_layout };
-            let failed = self.apply_drag_preview(source, shown, source_settings, window, cancelled);
+            let failed = match candidate {
+                Some(candidate) => {
+                    let placements = self.workspaces.engine(source).placements_for_tree(
+                        &candidate,
+                        source_settings,
+                        &self.minimum_sizes,
+                    );
+                    self.apply_gesture_preview(
+                        placements,
+                        source,
+                        source_settings,
+                        window,
+                        cancelled,
+                    )
+                }
+                None => self.preview_saved_layout(source, source_settings, window, cancelled),
+            };
             return Ok(self.status(failed, outputs));
         }
-        if changed {
+        if let Some(candidate) = candidate {
             self.workspaces
                 .engine_mut(source)
                 .commit_layout_tree(candidate);
@@ -259,25 +281,17 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
         Ok(self.status(layout.failed, outputs))
     }
 
-    /// Preview `layout` on sibling tiles without mutating the committed engine
-    /// state or poisoning readback tracking with transient preview frames.
-    fn apply_drag_preview(
+    /// Show the siblings where the saved layout puts them, a minimum-size fit
+    /// and any resize of it included (#388).
+    fn preview_saved_layout(
         &mut self,
         workspace: WorkspaceId,
-        layout: &crate::layout_tree::LayoutTree,
         settings: &Settings,
         dragged: &crate::PhysicalWindowId,
         cancelled: &AtomicBool,
     ) -> usize {
-        let placements = self.workspaces.engine(workspace).placements_for_tree(
-            layout,
-            settings,
-            &self.minimum_sizes,
-        );
-        let results =
-            self.backend
-                .apply_managed_during_drag(&placements, settings, dragged, cancelled);
-        failed_results(&results)
+        let placements = self.workspaces.engine(workspace).placements(settings);
+        self.apply_gesture_preview(placements, workspace, settings, dragged, cancelled)
     }
 }
 

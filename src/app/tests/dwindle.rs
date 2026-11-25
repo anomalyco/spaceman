@@ -250,21 +250,18 @@ fn moving_windows_to_another_workspace_follows_dwindle_layout() {
         .engine_mut(WorkspaceId::TWO)
         .insert_slot(Slot {
             id: SlotId(1),
-            weight: 1,
             binding: BindingState::Bound(w1.clone()),
         });
     rt.workspaces
         .engine_mut(WorkspaceId::TWO)
         .insert_slot(Slot {
             id: SlotId(2),
-            weight: 1,
             binding: BindingState::Bound(w2.clone()),
         });
     rt.workspaces
         .engine_mut(WorkspaceId::ONE)
         .insert_slot(Slot {
             id: SlotId(3),
-            weight: 1,
             binding: BindingState::Bound(w3.clone()),
         });
 
@@ -321,11 +318,11 @@ fn dwindle_supports_axis_toggle_and_fullscreen_layout() {
     // Fullscreen Layout still fills the display and restores the layout on toggle off.
     rt.toggle_fullscreen_layout(outputs.clone(), &cancelled)
         .unwrap();
-    assert!(rt.workspaces.uses_fullscreen_layout(WorkspaceId::ONE));
+    assert!(rt.workspaces.deck(WorkspaceId::ONE).is_monocle());
     assert_eq!(rt.backend.frames[&w2], rect(0, 0, 1280, 800));
 
     rt.toggle_fullscreen_layout(outputs, &cancelled).unwrap();
-    assert!(!rt.workspaces.uses_fullscreen_layout(WorkspaceId::ONE));
+    assert!(!rt.workspaces.deck(WorkspaceId::ONE).is_monocle());
     assert_eq!(rt.backend.frames[&w1], rect(0, 0, 1280, 400));
 }
 
@@ -608,6 +605,7 @@ fn dwindle_reorient_keeps_order_weights_and_untouched_sibling_splits() {
         &ws[1],
         rect(640, 0, 640, 600),
         &settings,
+        &std::collections::HashMap::new(),
     ));
 
     // Close w1 -> 2 | 3 re-orients horizontally while keeping order [w2, w3] and 3:1 weights.

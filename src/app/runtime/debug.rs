@@ -82,9 +82,7 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
                         frame: display.frame,
                         workspace: resolved.workspace,
                         axis: self.workspaces.engine(resolved.workspace).root_axis(),
-                        fullscreen_layout: self
-                            .workspaces
-                            .uses_fullscreen_layout(resolved.workspace),
+                        fullscreen_layout: self.workspaces.deck(resolved.workspace).is_monocle(),
                         layout: self.preview_layout(resolved.workspace, HUD_PREVIEW_RECT),
                     })
                 })

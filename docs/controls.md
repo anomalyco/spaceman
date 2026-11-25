@@ -82,7 +82,9 @@ Dropping onto another display moves the window to that display's active workspac
 managed window with the pointer updates the relevant split weights. Spaceman previews the rest of
 the layout non-destructively against the layout at drag start and commits only on mouse-up, so
 crossing a sibling or leaving a drop zone restores the preview and never leaves an intermediate edit
-behind.
+behind. Releasing where the last preview was shown commits that preview. A drag or resize that ends
+without a mouse-up commit (pausing while the button is held, or a mouse-up whose window frame could
+not be read) puts the siblings back where the saved layout has them.
 
 While the worker is busy, keyboard commands and completed pointer gestures are queued in arrival
 order. Repeated relative commands (resize, focus, move, and toggles) are not discarded. The queue holds

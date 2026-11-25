@@ -304,7 +304,7 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
             false,
         );
         if let WorkspaceFocusOutcome::Focused(ref next) = outcome {
-            if self.workspaces.uses_fullscreen_layout(source) {
+            if self.workspaces.deck(source).is_monocle() {
                 self.workspaces.remember_focus(source, next);
             }
             let source_output = output_for(&self.workspaces, source, outputs);

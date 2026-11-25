@@ -206,7 +206,7 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
                         float_home(self, target, None)
                     } else if let Some(resolved) = visible
                         .iter()
-                        .find(|resolved| resolved.output.contains_center(window.frame))
+                        .find(|resolved| resolved.screen.contains_center(window.frame))
                     {
                         app_owns_window = true;
                         log_event!(

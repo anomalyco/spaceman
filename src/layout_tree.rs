@@ -1,4 +1,5 @@
 mod fitting;
+mod retain;
 mod sizing;
 #[cfg(test)]
 mod tests;
@@ -8,8 +9,11 @@ use std::collections::HashSet;
 use serde::{Deserialize, Serialize};
 
 use crate::{Axis, Direction, Rect, SlotId, config::LayoutMode};
+use retain::{extract, retain_root};
+pub(crate) use sizing::Minimums;
 
-const MIN_TILE_EXTENT: i32 = 50;
+/// The smallest cell a split gives a tile, before the inner gap.
+pub(crate) const MIN_TILE_EXTENT: i32 = 50;
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub(crate) struct LayoutTree {
@@ -63,9 +67,9 @@ impl LayoutTree {
         }
     }
 
-    pub(crate) fn weighted_flat<'a>(
+    pub(crate) fn weighted_flat(
         axis: Axis,
-        slots: impl IntoIterator<Item = &'a crate::Slot>,
+        slots: impl IntoIterator<Item = (SlotId, u32)>,
     ) -> Self {
         Self {
             root: Node::Split {
@@ -73,9 +77,9 @@ impl LayoutTree {
                 auto_axis: false,
                 children: slots
                     .into_iter()
-                    .map(|slot| Child {
-                        weight: slot.weight,
-                        node: Node::Leaf(slot.id),
+                    .map(|(slot, weight)| Child {
+                        weight: weight.max(1),
+                        node: Node::Leaf(slot),
                     })
                     .collect(),
             },
@@ -103,9 +107,24 @@ impl LayoutTree {
         &mut self,
         fallback_axis: Axis,
         slots: &[crate::Slot],
+        anchor: Option<SlotId>,
+        mode: LayoutMode,
+        output: Rect,
+    ) -> bool {
+        self.sync_shown(fallback_axis, slots, anchor, mode, output, None)
+    }
+
+    /// Like `sync_near`, where `shown` is the layout on display when it differs
+    /// from this requested one (a minimum-size fit): Dwindle splits the anchor
+    /// tile along the longer side of the frame it actually has (#410).
+    pub(crate) fn sync_shown(
+        &mut self,
+        fallback_axis: Axis,
+        slots: &[crate::Slot],
         mut anchor: Option<SlotId>,
         mode: LayoutMode,
         output: Rect,
+        mut shown: Option<&Self>,
     ) -> bool {
         let retained = slots.iter().map(|slot| slot.id).collect::<HashSet<_>>();
         let existing = self.slots().into_iter().collect::<HashSet<_>>();
@@ -126,7 +145,8 @@ impl LayoutTree {
         for slot in slots.iter().filter(|slot| !existing.contains(&slot.id)) {
             match mode {
                 LayoutMode::Dwindle => {
-                    anchor = Some(self.insert_dwindle(slot.id, slot.weight, anchor, output));
+                    anchor = Some(self.insert_dwindle(slot.id, anchor, output, shown));
+                    shown = None;
                 }
                 LayoutMode::Columns => {
                     if let Some(previous) = anchor
@@ -134,7 +154,7 @@ impl LayoutTree {
                     {
                         anchor = Some(slot.id);
                     } else {
-                        self.append(fallback_axis, slot.id, slot.weight);
+                        self.append(fallback_axis, slot.id, 1);
                     }
                 }
             }
@@ -230,9 +250,9 @@ impl LayoutTree {
     fn insert_dwindle(
         &mut self,
         slot: SlotId,
-        weight: u32,
         anchor: Option<SlotId>,
         output: Rect,
+        shown: Option<&Self>,
     ) -> SlotId {
         let target = anchor
             .filter(|&id| self.root.contains(id))
@@ -242,13 +262,16 @@ impl LayoutTree {
                 axis: longer_axis(output),
                 auto_axis: true,
                 children: vec![Child {
-                    weight: weight.max(1),
+                    weight: 1,
                     node: Node::Leaf(slot),
                 }],
             };
             return slot;
         };
-        let frame = tile_frame(&self.root, target, output).unwrap_or(output);
+        let frame = shown
+            .and_then(|shown| tile_frame(&shown.root, target, output))
+            .or_else(|| tile_frame(&self.root, target, output))
+            .unwrap_or(output);
         let axis = longer_axis(frame);
         split_leaf(&mut self.root, target, slot, axis);
         self.unwrap_single_split_root();
@@ -415,212 +438,6 @@ fn split_pair(direction: Direction, moved: Node, anchor: Node) -> Node {
         } else {
             vec![anchor, moved]
         },
-    }
-}
-
-fn retain_root(
-    root: Node,
-    retained: &HashSet<SlotId>,
-    fallback_axis: Axis,
-    output: Rect,
-    reorient: bool,
-) -> Node {
-    match root {
-        Node::Split {
-            axis,
-            auto_axis,
-            children,
-        } => {
-            let old_len = children.len();
-            let mut surviving = retain_children(children, retained, output, axis, reorient);
-            let shrank = surviving.len() < old_len;
-            match surviving.len() {
-                0 => Node::Split {
-                    axis,
-                    auto_axis,
-                    children: Vec::new(),
-                },
-                1 if matches!(surviving[0].node, Node::Split { .. }) => {
-                    let mut promoted = surviving.remove(0).node;
-                    if reorient && shrank {
-                        reorient_dwindle(&mut promoted, output);
-                    }
-                    promoted
-                }
-                1 => Node::Split {
-                    axis: if reorient && auto_axis && shrank {
-                        longer_axis(output)
-                    } else {
-                        axis
-                    },
-                    auto_axis,
-                    children: surviving,
-                },
-                _ => {
-                    if reorient && shrank {
-                        reorient_children(&mut surviving, output, axis);
-                    }
-                    Node::Split {
-                        axis,
-                        auto_axis,
-                        children: surviving,
-                    }
-                }
-            }
-        }
-        other => retain_node(other, retained, output, reorient).unwrap_or(Node::Split {
-            axis: fallback_axis,
-            auto_axis: false,
-            children: Vec::new(),
-        }),
-    }
-}
-
-fn retain_node(
-    node: Node,
-    retained: &HashSet<SlotId>,
-    frame: Rect,
-    reorient: bool,
-) -> Option<Node> {
-    match node {
-        Node::Leaf(slot) => retained.contains(&slot).then_some(Node::Leaf(slot)),
-        Node::Split {
-            axis,
-            auto_axis,
-            children,
-        } => {
-            let old_len = children.len();
-            let mut surviving = retain_children(children, retained, frame, axis, reorient);
-            let shrank = surviving.len() < old_len;
-            match surviving.len() {
-                0 => None,
-                1 => {
-                    let mut promoted = surviving.remove(0).node;
-                    if reorient && shrank {
-                        reorient_dwindle(&mut promoted, frame);
-                    }
-                    Some(promoted)
-                }
-                _ => {
-                    if reorient && shrank {
-                        reorient_children(&mut surviving, frame, axis);
-                    }
-                    Some(Node::Split {
-                        axis,
-                        auto_axis,
-                        children: surviving,
-                    })
-                }
-            }
-        }
-    }
-}
-
-fn retain_children(
-    children: Vec<Child>,
-    retained: &HashSet<SlotId>,
-    frame: Rect,
-    axis: Axis,
-    reorient: bool,
-) -> Vec<Child> {
-    let child_frames = if reorient {
-        partition_children(frame, axis, &children)
-    } else {
-        Vec::new()
-    };
-    children
-        .into_iter()
-        .enumerate()
-        .filter_map(|(index, child)| {
-            let child_frame = child_frames.get(index).copied().unwrap_or(frame);
-            retain_node(child.node, retained, child_frame, reorient).map(|node| Child {
-                weight: child.weight,
-                node,
-            })
-        })
-        .collect()
-}
-
-fn reorient_children(children: &mut [Child], frame: Rect, axis: Axis) {
-    let child_frames = partition_children(frame, axis, children);
-    for (child, child_frame) in children.iter_mut().zip(child_frames) {
-        reorient_dwindle(&mut child.node, child_frame);
-    }
-}
-
-/// Re-choose the axis of every auto-chosen split in `node`, outermost first,
-/// from its new container `frame`. Splits the user arranged keep their axis,
-/// while auto-chosen splits nested inside them still follow the shape they get.
-fn reorient_dwindle(node: &mut Node, frame: Rect) {
-    let Node::Split {
-        axis,
-        auto_axis,
-        children,
-    } = node
-    else {
-        return;
-    };
-    if *auto_axis {
-        *axis = longer_axis(frame);
-    }
-    reorient_children(children, frame, *axis);
-}
-
-fn collapse(axis: Axis, auto_axis: bool, mut children: Vec<Child>) -> Option<Node> {
-    match children.len() {
-        0 => None,
-        1 => Some(children.remove(0).node),
-        _ => Some(Node::Split {
-            axis,
-            auto_axis,
-            children,
-        }),
-    }
-}
-
-fn extract(node: Node, slot: SlotId) -> (Option<Node>, Option<Node>) {
-    match node {
-        Node::Leaf(existing) if existing == slot => (None, Some(Node::Leaf(existing))),
-        Node::Leaf(existing) => (Some(Node::Leaf(existing)), None),
-        Node::Split {
-            axis,
-            auto_axis,
-            mut children,
-        } => {
-            for index in 0..children.len() {
-                let child = children.remove(index);
-                let (remaining, moved) = extract(child.node, slot);
-                if let Some(moved) = moved {
-                    if let Some(remaining) = remaining {
-                        children.insert(
-                            index,
-                            Child {
-                                weight: child.weight,
-                                node: remaining,
-                            },
-                        );
-                    }
-                    return (collapse(axis, auto_axis, children), Some(moved));
-                }
-                if let Some(remaining) = remaining {
-                    children.insert(
-                        index,
-                        Child {
-                            weight: child.weight,
-                            node: remaining,
-                        },
-                    );
-                }
-            }
-            (
-                Some(Node::Split {
-                    axis,
-                    auto_axis,
-                    children,
-                }),
-                None,
-            )
-        }
     }
 }
 

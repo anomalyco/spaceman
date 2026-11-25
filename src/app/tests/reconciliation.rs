@@ -491,7 +491,6 @@ fn restored_slots_for_a_dead_application_are_retired() {
     let mut persisted = Workspaces::default();
     persisted.engine_mut(WorkspaceId::ONE).insert_slot(Slot {
         id: SlotId(1),
-        weight: 1,
         binding: BindingState::Bound(dead.clone()),
     });
     let backend = FakeBackend {

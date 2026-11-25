@@ -41,6 +41,18 @@ pub struct NavigationTile {
     pub workspace: WorkspaceId,
     pub window: PhysicalWindowId,
     pub frame: Rect,
+    /// The tiling area of the display showing the tile's workspace. Picking a
+    /// workspace across displays compares these, not where its tiles happen
+    /// to sit, so a width cap cannot hide an adjacent display (#396).
+    #[serde(skip)]
+    pub display: Option<Rect>,
+}
+
+impl NavigationTile {
+    /// The area that stands for this tile's workspace across displays.
+    fn workspace_area(&self) -> Rect {
+        self.display.unwrap_or(self.frame)
+    }
 }
 
 /// Tiles this close past the current tile's edge still count as lying beyond
@@ -150,9 +162,9 @@ fn cross_workspace_neighbor(
             .iter_mut()
             .find(|(workspace, _)| *workspace == tile.workspace)
         {
-            *bounds = union_rect(*bounds, tile.frame);
+            *bounds = union_rect(*bounds, tile.workspace_area());
         } else {
-            workspaces.push((tile.workspace, tile.frame));
+            workspaces.push((tile.workspace, tile.workspace_area()));
         }
     }
     let target_workspace = pick_best_rect(workspaces.into_iter(), from_bounds, direction)?;
@@ -171,7 +183,7 @@ fn workspace_bounds(tiles: &[NavigationTile], workspace: WorkspaceId) -> Option<
     tiles
         .iter()
         .filter(|tile| tile.workspace == workspace)
-        .map(|tile| tile.frame)
+        .map(NavigationTile::workspace_area)
         .reduce(union_rect)
 }
 
@@ -182,9 +194,9 @@ fn workspace_containing_center(tiles: &[NavigationTile], frame: Rect) -> Option<
             .iter_mut()
             .find(|(workspace, _)| *workspace == tile.workspace)
         {
-            *bounds = union_rect(*bounds, tile.frame);
+            *bounds = union_rect(*bounds, tile.workspace_area());
         } else {
-            workspaces.push((tile.workspace, tile.frame));
+            workspaces.push((tile.workspace, tile.workspace_area()));
         }
     }
     workspaces
@@ -313,6 +325,7 @@ mod tests {
                 width,
                 height,
             },
+            display: None,
         }
     }
 

@@ -254,7 +254,6 @@ impl Workspaces {
         let engine = self.engine_mut(workspace);
         let slot = crate::Slot {
             id: crate::SlotId(engine.model().next_slot_id),
-            weight: 1,
             binding: crate::BindingState::Bound(window),
         };
         engine.insert_slot_with(slot, mode, output, anchor);

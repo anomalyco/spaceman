@@ -1,10 +1,9 @@
 use super::*;
 use crate::{ObservedApplication, ObservedWindow};
 
-fn weighted_slot(id: u64, weight: u32) -> Slot {
+fn bound_slot(id: u64) -> Slot {
     Slot {
         id: SlotId(id),
-        weight,
         binding: BindingState::Bound(PhysicalWindowId {
             app: AppInstanceId {
                 pid: 1,
@@ -24,12 +23,7 @@ fn flat_placements_partition_without_gaps_or_rounding_loss() {
             width: 101,
             height: 50,
         }),
-        crate::Axis::Horizontal,
-        &[
-            weighted_slot(1, 1),
-            weighted_slot(2, 1),
-            weighted_slot(3, 1),
-        ],
+        &[bound_slot(1), bound_slot(2), bound_slot(3)],
     );
 
     assert_eq!(placements[0].frame.width, 33);
@@ -42,7 +36,7 @@ fn flat_placements_partition_without_gaps_or_rounding_loss() {
 
 #[test]
 fn flat_placements_reserve_unresolved_slots() {
-    let mut unresolved = weighted_slot(2, 1);
+    let mut unresolved = bound_slot(2);
     unresolved.binding = BindingState::Unresolved {
         previous: unresolved.bound_window().unwrap().clone(),
         candidates: Vec::new(),
@@ -55,8 +49,7 @@ fn flat_placements_reserve_unresolved_slots() {
             height: 50,
             ..Rect::default()
         }),
-        crate::Axis::Horizontal,
-        &[weighted_slot(1, 1), unresolved],
+        &[bound_slot(1), unresolved],
     );
     assert_eq!(placements.len(), 2);
     assert_eq!(placements[0].frame.width, 50);
@@ -65,28 +58,25 @@ fn flat_placements_reserve_unresolved_slots() {
 }
 
 #[test]
-fn flat_placements_preserve_cumulative_weight_rounding() {
-    let placements = flat_placements(
-        &Settings::for_output(Rect {
-            x: 10,
-            y: 20,
-            width: 50,
-            height: 101,
-        }),
+fn weighted_rows_preserve_cumulative_weight_rounding() {
+    let output = Rect {
+        x: 10,
+        y: 20,
+        width: 50,
+        height: 101,
+    };
+    let cells = LayoutTree::weighted_flat(
         crate::Axis::Vertical,
-        &[
-            weighted_slot(1, 2),
-            weighted_slot(2, 3),
-            weighted_slot(3, 5),
-        ],
-    );
+        [(SlotId(1), 2), (SlotId(2), 3), (SlotId(3), 5)],
+    )
+    .placements(output);
 
-    assert_eq!(placements[0].frame.height, 20);
-    assert_eq!(placements[1].frame.y, 40);
-    assert_eq!(placements[1].frame.height, 30);
-    assert_eq!(placements[2].frame.y, 70);
-    assert_eq!(placements[2].frame.height, 51);
-    assert_eq!(placements[2].frame.y + placements[2].frame.height, 121);
+    assert_eq!(cells[0].1.height, 20);
+    assert_eq!(cells[1].1.y, 40);
+    assert_eq!(cells[1].1.height, 30);
+    assert_eq!(cells[2].1.y, 70);
+    assert_eq!(cells[2].1.height, 51);
+    assert_eq!(cells[2].1.y + cells[2].1.height, 121);
 }
 
 const OUTPUT: Rect = Rect {

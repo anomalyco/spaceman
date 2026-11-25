@@ -274,7 +274,7 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
         if focused_is_frontmost
             && let Some(focused) = remembered_focus.as_ref()
             && let Some(workspace) = self.workspaces.workspace_of(focused)
-            && self.workspaces.uses_fullscreen_layout(workspace)
+            && self.workspaces.deck(workspace).is_monocle()
             && !attempted_focus_restore.contains(&workspace)
             && visible
                 .iter()
@@ -331,6 +331,9 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
         } = context;
         let workspace = resolved.workspace;
         let output = resolved.output;
+        // A new window centered over this display's Dock or menu-bar strip is
+        // on this display, though outside its tiling area (#394).
+        let screen = resolved.screen;
         let ticket = {
             let engine = self.workspaces.engine_mut(workspace);
             engine.invalidate();
@@ -367,7 +370,7 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
                         | FrozenWindowAffinity::DetachedTab(_)
                         | FrozenWindowAffinity::Inferred(_)
                         | FrozenWindowAffinity::CurrentDisplay => {
-                            output.contains_center(window.frame)
+                            screen.contains_center(window.frame)
                                 && self
                                     .workspaces
                                     .workspace_of(&window.id)
@@ -450,7 +453,7 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
         for placement in &placements {
             engine.record_placement_target(placement.slot, placement.frame);
         }
-        self.apply_fullscreen_layout(workspace, &mut placements, &settings);
+        self.project_deck(workspace, &mut placements, &settings);
         if !scoped_observation.mouse_down {
             for placement in &placements {
                 let Some(window) = placement.window.as_ref() else {
@@ -483,9 +486,17 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
                 {
                     self.apply_attempts[workspace.index()].remove(window);
                 }
+                // A window that kept its size but left this display was moved
+                // there, not refused its frame: the next write brings it back (#392).
+                let moved_away = observed.width.abs_diff(target.width)
+                    <= settings.frame_tolerance.unsigned_abs()
+                    && observed.height.abs_diff(target.height)
+                        <= settings.frame_tolerance.unsigned_abs()
+                    && !screen.contains_center(observed);
                 if self.applied[workspace.index()]
                     .remove(window)
                     .is_some_and(|applied| applied.target == target)
+                    && !moved_away
                 {
                     self.constrained[workspace.index()].insert(window.clone(), (target, observed));
                     record_apply_attempt(

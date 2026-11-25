@@ -66,7 +66,7 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
                 return Ok(status);
             }
             let windows = self.workspaces.windows(workspace);
-            if self.workspaces.uses_fullscreen_layout(workspace)
+            if self.workspaces.deck(workspace).is_monocle()
                 && let Some(focused) = focused
                     .as_ref()
                     .filter(|focused| self.workspaces.workspace_of(focused) == Some(workspace))

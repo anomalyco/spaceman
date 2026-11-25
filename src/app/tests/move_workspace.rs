@@ -317,14 +317,14 @@ fn move_workspace_preserves_fullscreen_layout_and_focused_tile() {
     bind(&mut runtime, WorkspaceId::ONE, &second);
     runtime
         .workspaces
-        .set_fullscreen_layout(WorkspaceId::ONE, true);
+        .set_deck(WorkspaceId::ONE, crate::workspace::DeckMode::Monocle);
 
     runtime
         .move_workspace_to_display(DisplayTarget::Next, outputs(), &AtomicBool::new(false))
         .unwrap();
 
     let secondary_frame = outputs().secondary().unwrap().frame;
-    assert!(runtime.workspaces.uses_fullscreen_layout(WorkspaceId::ONE));
+    assert!(runtime.workspaces.deck(WorkspaceId::ONE).is_monocle());
     assert_eq!(runtime.backend.frames[&first], secondary_frame);
     assert_eq!(runtime.backend.frames[&second], secondary_frame);
     assert_eq!(runtime.backend.focused, Some(second));

@@ -279,7 +279,7 @@ fn workspace_layout_commands_accept_a_focused_floating_window() {
     runtime
         .toggle_fullscreen_layout(outputs(), &cancelled)
         .unwrap();
-    assert!(runtime.workspaces.uses_fullscreen_layout(WorkspaceId::ONE));
+    assert!(runtime.workspaces.deck(WorkspaceId::ONE).is_monocle());
     assert_ne!(
         runtime.workspaces.preferred_focus(WorkspaceId::ONE),
         Some(dialog.clone()),
@@ -290,14 +290,14 @@ fn workspace_layout_commands_accept_a_focused_floating_window() {
     runtime
         .toggle_fullscreen_layout(outputs(), &cancelled)
         .unwrap();
-    assert!(!runtime.workspaces.uses_fullscreen_layout(WorkspaceId::ONE));
+    assert!(!runtime.workspaces.deck(WorkspaceId::ONE).is_monocle());
 
     runtime
         .toggle_fullscreen_layout(outputs(), &cancelled)
         .unwrap();
     let axis = runtime.workspaces.engine(WorkspaceId::ONE).root_axis();
     runtime.toggle_layout(outputs(), &cancelled).unwrap();
-    assert!(!runtime.workspaces.uses_fullscreen_layout(WorkspaceId::ONE));
+    assert!(!runtime.workspaces.deck(WorkspaceId::ONE).is_monocle());
     assert_ne!(
         runtime.workspaces.engine(WorkspaceId::ONE).root_axis(),
         axis

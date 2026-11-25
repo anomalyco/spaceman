@@ -42,7 +42,7 @@ fn ghostty_native_tab_replacement_preserves_workspace_and_fullscreen_layout() {
         runtime.workspaces.workspace_of(&replacement),
         Some(WorkspaceId::ONE)
     );
-    assert!(runtime.workspaces.uses_fullscreen_layout(WorkspaceId::ONE));
+    assert!(runtime.workspaces.deck(WorkspaceId::ONE).is_monocle());
     assert_eq!(
         runtime.workspaces.preferred_focus(WorkspaceId::ONE),
         Some(replacement.clone())
@@ -72,7 +72,7 @@ fn fullscreen_layout_toggles_without_changing_tile_order() {
 
     assert_eq!(runtime.backend.frames[&first], outputs.main().frame);
     assert_eq!(runtime.backend.frames[&second], outputs.main().frame);
-    assert!(runtime.workspaces.uses_fullscreen_layout(WorkspaceId::ONE));
+    assert!(runtime.workspaces.deck(WorkspaceId::ONE).is_monocle());
     assert!(matches!(status.layouts[0].mode, UiHudLayout::Fullscreen));
     assert_eq!(
         runtime.workspaces.engine(WorkspaceId::ONE).bound_windows(),
@@ -85,7 +85,7 @@ fn fullscreen_layout_toggles_without_changing_tile_order() {
 
     assert_eq!(runtime.backend.frames[&first].width, 500);
     assert_eq!(runtime.backend.frames[&second].x, 500);
-    assert!(!runtime.workspaces.uses_fullscreen_layout(WorkspaceId::ONE));
+    assert!(!runtime.workspaces.deck(WorkspaceId::ONE).is_monocle());
     assert!(matches!(status.layouts[0].mode, UiHudLayout::Split(_)));
     assert_eq!(
         runtime.workspaces.engine(WorkspaceId::ONE).bound_windows(),
@@ -119,7 +119,7 @@ fn removing_the_last_window_exits_fullscreen_layout() {
     });
     let status = runtime.cycle(outputs, &cancelled).unwrap();
 
-    assert!(!runtime.workspaces.uses_fullscreen_layout(WorkspaceId::ONE));
+    assert!(!runtime.workspaces.deck(WorkspaceId::ONE).is_monocle());
     assert!(!runtime.focus.restores_any_fullscreen());
     assert!(matches!(status.layouts[0].mode, UiHudLayout::Split(_)));
 }
@@ -179,12 +179,11 @@ fn fullscreen_layout_activates_persisted_cross_app_focus_after_restart() {
     for (id, window) in [(10, &first), (20, &focused)] {
         persisted.engine_mut(WorkspaceId::ONE).insert_slot(Slot {
             id: SlotId(id),
-            weight: 1,
             binding: BindingState::Bound(window.clone()),
         });
     }
     persisted.remember_focus(WorkspaceId::ONE, &focused);
-    persisted.set_fullscreen_layout(WorkspaceId::ONE, true);
+    persisted.set_deck(WorkspaceId::ONE, crate::workspace::DeckMode::Monocle);
     let mut backend = FakeBackend {
         focused: Some(first.clone()),
         frontmost: Some(first.app.clone()),
@@ -256,12 +255,11 @@ fn failed_fullscreen_focus_restore_does_not_fight_later_focus() {
     for (id, window) in [(10, &first), (20, &persisted_focus)] {
         persisted.engine_mut(WorkspaceId::ONE).insert_slot(Slot {
             id: SlotId(id),
-            weight: 1,
             binding: BindingState::Bound(window.clone()),
         });
     }
     persisted.remember_focus(WorkspaceId::ONE, &persisted_focus);
-    persisted.set_fullscreen_layout(WorkspaceId::ONE, true);
+    persisted.set_deck(WorkspaceId::ONE, crate::workspace::DeckMode::Monocle);
     let mut backend = FakeBackend {
         focused: Some(first.clone()),
         frontmost: Some(first.app.clone()),
@@ -336,7 +334,7 @@ fn switching_away_and_back_restores_fullscreen_layout_focus() {
         .switch(WorkspaceId::ONE, outputs.clone(), &cancelled)
         .unwrap();
 
-    assert!(runtime.workspaces.uses_fullscreen_layout(WorkspaceId::ONE));
+    assert!(runtime.workspaces.deck(WorkspaceId::ONE).is_monocle());
     assert_eq!(runtime.backend.frames[&first], outputs.main().frame);
     assert_eq!(runtime.backend.frames[&focused], outputs.main().frame);
     assert_eq!(runtime.backend.focused, Some(focused));
@@ -450,7 +448,7 @@ fn directional_focus_steps_through_a_fullscreen_stack_then_crosses_displays() {
     assert_eq!(focus(&mut runtime, Direction::Down), 30);
     // The end of the stack continues to the adjacent display.
     assert_eq!(focus(&mut runtime, Direction::Right), 40);
-    assert!(runtime.workspaces.uses_fullscreen_layout(WorkspaceId::ONE));
+    assert!(runtime.workspaces.deck(WorkspaceId::ONE).is_monocle());
 }
 
 #[test]
@@ -470,7 +468,7 @@ fn opening_a_new_tiled_window_exits_fullscreen_layout_and_splits_side_by_side() 
     runtime
         .toggle_fullscreen_layout(outputs.clone(), &cancelled)
         .unwrap();
-    assert!(runtime.workspaces.uses_fullscreen_layout(WorkspaceId::ONE));
+    assert!(runtime.workspaces.deck(WorkspaceId::ONE).is_monocle());
     assert_eq!(runtime.backend.frames[&first], outputs.main().frame);
 
     runtime.backend.frames.insert(second.clone(), frame(400));
@@ -485,7 +483,7 @@ fn opening_a_new_tiled_window_exits_fullscreen_layout_and_splits_side_by_side() 
     ));
     let status = runtime.cycle(outputs, &cancelled).unwrap();
 
-    assert!(!runtime.workspaces.uses_fullscreen_layout(WorkspaceId::ONE));
+    assert!(!runtime.workspaces.deck(WorkspaceId::ONE).is_monocle());
     assert!(matches!(status.layouts[0].mode, UiHudLayout::Split(_)));
     assert_eq!(runtime.backend.frames[&first].width, 500);
     assert_eq!(runtime.backend.frames[&second].x, 500);
@@ -509,7 +507,7 @@ fn opening_a_floating_window_preserves_fullscreen_layout() {
     runtime
         .toggle_fullscreen_layout(outputs.clone(), &cancelled)
         .unwrap();
-    assert!(runtime.workspaces.uses_fullscreen_layout(WorkspaceId::ONE));
+    assert!(runtime.workspaces.deck(WorkspaceId::ONE).is_monocle());
 
     let mut observed = observation_for_windows(
         "com.example.Test",
@@ -530,7 +528,7 @@ fn opening_a_floating_window_preserves_fullscreen_layout() {
     runtime.backend.observation = Some(observed);
     runtime.cycle(outputs.clone(), &cancelled).unwrap();
 
-    assert!(runtime.workspaces.uses_fullscreen_layout(WorkspaceId::ONE));
+    assert!(runtime.workspaces.deck(WorkspaceId::ONE).is_monocle());
     assert_eq!(runtime.backend.frames[&tiled], outputs.main().frame);
     assert_eq!(runtime.backend.frames[&dialog], frame(300));
     assert_eq!(
@@ -568,7 +566,7 @@ fn reappearing_parked_tile_exits_fullscreen_layout_and_splits_side_by_side() {
     let cancelled = AtomicBool::new(false);
     rt.cycle(outputs(), &cancelled).unwrap();
     rt.toggle_fullscreen_layout(outputs(), &cancelled).unwrap();
-    assert!(rt.workspaces.uses_fullscreen_layout(WorkspaceId::ONE));
+    assert!(rt.workspaces.deck(WorkspaceId::ONE).is_monocle());
     assert_eq!(rt.backend.frames[&first], rt.backend.frames[&second]);
 
     rt.backend.frames.insert(returning.clone(), frame(100));
@@ -593,7 +591,7 @@ fn reappearing_parked_tile_exits_fullscreen_layout_and_splits_side_by_side() {
         rt.workspaces.engine(WorkspaceId::ONE).bound_windows().len(),
         3
     );
-    assert!(!rt.workspaces.uses_fullscreen_layout(WorkspaceId::ONE));
+    assert!(!rt.workspaces.deck(WorkspaceId::ONE).is_monocle());
     let frames = [&first, &second, &returning].map(|id| rt.backend.frames[id]);
     assert_ne!(frames[0], frames[1]);
     assert_ne!(frames[0], frames[2]);
@@ -630,7 +628,7 @@ fn reappearing_parked_floating_window_preserves_fullscreen_layout() {
     let cancelled = AtomicBool::new(false);
     rt.cycle(outputs(), &cancelled).unwrap();
     rt.toggle_fullscreen_layout(outputs(), &cancelled).unwrap();
-    assert!(rt.workspaces.uses_fullscreen_layout(WorkspaceId::ONE));
+    assert!(rt.workspaces.deck(WorkspaceId::ONE).is_monocle());
 
     rt.backend.frames.insert(floating.clone(), frame(100));
     let mut returned = observation_for_windows(
@@ -657,7 +655,7 @@ fn reappearing_parked_floating_window_preserves_fullscreen_layout() {
         Some(WorkspaceId::ONE)
     );
     assert!(!rt.parked.contains_key(&floating));
-    assert!(rt.workspaces.uses_fullscreen_layout(WorkspaceId::ONE));
+    assert!(rt.workspaces.deck(WorkspaceId::ONE).is_monocle());
     assert_eq!(rt.backend.frames[&first], outputs().main().frame);
     assert_eq!(rt.backend.frames[&second], outputs().main().frame);
 }

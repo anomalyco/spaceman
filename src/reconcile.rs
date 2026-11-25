@@ -132,7 +132,7 @@ pub fn reconcile(
         let mut model = model.clone();
         reset_settling(&mut model, observation.cycle, None);
         return Reconciliation {
-            placements: flat_placements(settings, model.workspace.axis, &model.workspace.slots),
+            placements: flat_placements(settings, &model.workspace.slots),
             model,
             decisions: vec![Decision::MouseDownDeferred],
         };
@@ -235,7 +235,7 @@ pub fn reconcile(
         }
     }
 
-    let placements = flat_placements(settings, next.workspace.axis, &next.workspace.slots);
+    let placements = flat_placements(settings, &next.workspace.slots);
     Reconciliation {
         model: next,
         placements,
@@ -441,7 +441,6 @@ fn insert_windows(model: &mut Model, windows: &[PhysicalWindowId], decisions: &m
         model.next_slot_id += 1;
         model.workspace.slots.push(Slot {
             id: slot_id,
-            weight: 1,
             binding: BindingState::Bound(window.clone()),
         });
         decisions.push(Decision::WindowInserted {
@@ -451,8 +450,11 @@ fn insert_windows(model: &mut Model, windows: &[PhysicalWindowId], decisions: &m
     }
 }
 
-fn flat_placements(settings: &Settings, axis: crate::Axis, slots: &[Slot]) -> Vec<Placement> {
-    let cells = LayoutTree::weighted_flat(axis, slots.iter()).placements(settings.canvas());
+/// An even row of the slots: what a model alone, with no layout tree, places.
+/// The engine replaces these with its own layout's placements.
+fn flat_placements(settings: &Settings, slots: &[Slot]) -> Vec<Placement> {
+    let cells = LayoutTree::flat(crate::Axis::Horizontal, slots.iter().map(|slot| slot.id))
+        .placements(settings.canvas());
     slots
         .iter()
         .zip(settings.spacing.place(settings.usable(), cells))

@@ -25,6 +25,8 @@ pub(super) struct ResolvedWorkspace {
     pub(super) selector: DisplaySelector,
     pub(super) display_id: String,
     pub(super) output: crate::Rect,
+    /// The display's full bounds, menu bar and Dock strips included.
+    pub(super) screen: crate::Rect,
 }
 
 pub(super) struct WorkspaceRuntime<B = MacWorkspaceBackend> {
@@ -57,7 +59,8 @@ pub(super) struct WorkspaceRuntime<B = MacWorkspaceBackend> {
     /// Focus intent: a request in flight, focus left behind, and the
     /// cross-display workspace history Option+Tab reads.
     pub(super) focus: super::focus::FocusTracker,
-    pub(super) drag_session: Option<super::commands::DragSession>,
+    /// The pointer drag or resize being previewed, until mouse-up commits it.
+    pub(super) gesture: Option<super::commands::GestureOverlay>,
     pub(super) warp_context: super::commands::WarpContext,
     pub(super) exact_spacing_workspaces: HashSet<WorkspaceId>,
     pub(super) persisted_workspace_state: crate::workspace::WorkspaceState,
@@ -113,17 +116,12 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
         {
             self.follow_displays(outputs);
         }
-        if !matches!(
-            command,
-            WorkerCommand::Gesture(FinalGesture::Drop { .. }, _, _)
-        ) && let Some(session) = self.drag_session.take()
-            && let WorkerCommand::Action(action, outputs) = &command
-            && !matches!(action, WorkerAction::Retile)
+        // Once the button is up, a gesture whose mouse-up never arrived (an
+        // unreadable final frame, #395) is over: its previews are undone.
+        if let WorkerCommand::Action(_, outputs) = &command
             && !self.backend.mouse_down()
-            && self.is_visible(session.workspace, outputs)
         {
-            let output = output_for(&self.workspaces, session.workspace, outputs);
-            let _ = self.layout_workspace(session.workspace, output, cancelled);
+            self.abandon_gesture(Some(outputs), cancelled);
         }
         let (result, outputs) = match command {
             WorkerCommand::Action(action, outputs) => (
@@ -163,6 +161,8 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
                 if let Some(outputs) = &outputs {
                     self.note_outputs(outputs);
                 }
+                // Pausing mid-drag discards the gesture and its previews (#387, #389).
+                self.abandon_gesture(outputs.as_ref(), cancelled);
                 let requested = self.parked.len();
                 // Restored scratchpad windows are ordinary windows when tiling resumes.
                 self.clear_scratchpad();
@@ -314,7 +314,7 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
         let fullscreen_restore = if restored_workspace_state {
             WorkspaceId::all()
                 .filter(|workspace| {
-                    workspaces.uses_fullscreen_layout(*workspace)
+                    workspaces.deck(*workspace).is_monocle()
                         && scope.manages_selector(workspaces.assignment(*workspace))
                 })
                 .collect()
@@ -343,7 +343,7 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
             minimum_sizes: HashMap::new(),
             config,
             focus: super::focus::FocusTracker::with_fullscreen_restore(fullscreen_restore),
-            drag_session: None,
+            gesture: None,
             warp_context: super::commands::WarpContext::Direct,
             exact_spacing_workspaces: WorkspaceId::all().filter(|_| has_spacing).collect(),
             persisted_workspace_state,
@@ -371,10 +371,12 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
         outputs: &macos::DisplayOutputs,
     ) -> Vec<ResolvedWorkspace> {
         let connected = |id: &str| outputs.displays().iter().any(|display| display.id == id);
+        let screens = outputs.screens();
         outputs
             .displays()
             .iter()
-            .filter_map(|display| {
+            .zip(screens)
+            .filter_map(|(display, screen)| {
                 let lands_here =
                     |selector: &DisplaySelector| outputs.resolve(selector).id == display.id;
                 let candidates = || {
@@ -401,6 +403,7 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
                     selector: selected.0.clone(),
                     display_id: display.id.clone(),
                     output: display.frame,
+                    screen,
                 })
             })
             .collect()
@@ -446,7 +449,7 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
     }
 
     pub(super) fn exit_fullscreen_if_split(&mut self, workspace: WorkspaceId) {
-        if !self.workspaces.uses_fullscreen_layout(workspace) {
+        if !self.workspaces.deck(workspace).is_monocle() {
             return;
         }
         let bound_count = self
@@ -460,7 +463,8 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
             .count();
         if bound_count > 1 {
             log_event!("workspace {workspace}: exited Fullscreen Layout ({bound_count} tiles)");
-            self.workspaces.set_fullscreen_layout(workspace, false);
+            self.workspaces
+                .set_deck(workspace, crate::workspace::DeckMode::Split);
             self.focus.settle_fullscreen(workspace);
         }
     }
@@ -491,16 +495,16 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
                 .workspaces
                 .engine(resolved.workspace)
                 .placements(&settings);
-            if self.workspaces.uses_fullscreen_layout(resolved.workspace) {
-                for placement in &mut placements {
-                    placement.frame = settings.single();
-                }
-            }
+            self.workspaces
+                .deck(resolved.workspace)
+                .place(&mut placements, settings.single());
+            let display = Some(settings.usable());
             tiles.extend(placements.into_iter().filter_map(|placement| {
                 placement.window.map(|window| NavigationTile {
                     workspace: resolved.workspace,
                     window,
                     frame: placement.frame,
+                    display,
                 })
             }));
         }
@@ -545,7 +549,7 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
         let engine = self.workspaces.engine_mut(workspace);
         engine.fit_minimums(&settings, &self.minimum_sizes);
         let mut placements = engine.placements(&settings);
-        self.apply_fullscreen_layout(workspace, &mut placements, &settings);
+        self.project_deck(workspace, &mut placements, &settings);
         let attempts = &mut self.apply_attempts[workspace.index()];
         for placement in &placements {
             if let Some(window) = placement.window.as_ref() {
@@ -609,26 +613,27 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
     }
 
     pub(super) fn clear_fullscreen_restore_if_inactive(&mut self, workspace: WorkspaceId) {
-        if !self.workspaces.uses_fullscreen_layout(workspace) {
+        if !self.workspaces.deck(workspace).is_monocle() {
             self.focus.settle_fullscreen(workspace);
         }
     }
 
-    pub(super) fn apply_fullscreen_layout(
+    /// Project the split tree's placements through the workspace's deck mode,
+    /// recording each tile's projected frame as its target.
+    pub(super) fn project_deck(
         &mut self,
         workspace: WorkspaceId,
         placements: &mut [crate::Placement],
         settings: &Settings,
     ) {
-        if !self.workspaces.uses_fullscreen_layout(workspace) {
+        let deck = self.workspaces.deck(workspace);
+        if deck == crate::workspace::DeckMode::Split {
             return;
         }
-        let frame = settings.single();
-        for placement in placements {
-            placement.frame = frame;
-            self.workspaces
-                .engine_mut(workspace)
-                .record_placement_target(placement.slot, frame);
+        deck.place(placements, settings.single());
+        let engine = self.workspaces.engine_mut(workspace);
+        for placement in placements.iter() {
+            engine.record_placement_target(placement.slot, placement.frame);
         }
     }
 
@@ -655,7 +660,7 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
 
     fn preview_layout(&self, workspace: WorkspaceId, output: crate::Rect) -> Vec<crate::Rect> {
         let mut layout = self.workspaces.engine(workspace).preview(output);
-        if self.workspaces.uses_fullscreen_layout(workspace) {
+        if self.workspaces.deck(workspace).is_monocle() {
             layout.fill(output);
         }
         layout
@@ -711,7 +716,7 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
     }
 
     fn workspace_preview(&self, workspace: WorkspaceId) -> UiHudLayout {
-        if self.workspaces.uses_fullscreen_layout(workspace) {
+        if self.workspaces.deck(workspace).is_monocle() {
             UiHudLayout::Fullscreen
         } else {
             UiHudLayout::Split(self.preview_layout(workspace, HUD_PREVIEW_RECT))
