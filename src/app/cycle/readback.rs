@@ -41,7 +41,34 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
         let applied = &mut self.applied[workspace.index()];
         let attempts = &mut self.apply_attempts[workspace.index()];
         for result in results {
+            // A write right after a move to another display can come back
+            // cut to the display the window left (a window sent to a taller
+            // portrait display stops at the old bottom edge). Leave it
+            // unaccepted so the next cycle writes it again from where it now
+            // is, until the attempt limit accepts it as it is (#428).
+            let short_after_move = self.relocated.contains(&result.window)
+                && matches!(
+                    (result.outcome, result.actual),
+                    (macos::ApplyOutcome::Constrained, Some(actual))
+                        if falls_short(actual, result.target)
+                );
+            // A drag defers the write; the window keeps its pending retry.
+            if !short_after_move && result.outcome != macos::ApplyOutcome::Deferred {
+                self.relocated.remove(&result.window);
+            }
             match (result.outcome, result.actual) {
+                (macos::ApplyOutcome::Constrained, Some(actual)) if short_after_move => {
+                    applied.remove(&result.window);
+                    constrained.remove(&result.window);
+                    record_apply_attempt(attempts, workspace, &result.window, result.target);
+                    if attempts
+                        .get(&result.window)
+                        .is_some_and(|(_, count)| *count >= APPLY_ATTEMPT_LIMIT)
+                    {
+                        constrained.insert(result.window.clone(), (result.target, actual));
+                        self.relocated.remove(&result.window);
+                    }
+                }
                 (macos::ApplyOutcome::Constrained, Some(actual)) => {
                     applied.remove(&result.window);
                     constrained.insert(result.window.clone(), (result.target, actual));
@@ -72,6 +99,12 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
             }
         }
     }
+}
+
+/// Whether a readback is smaller than its target on either axis. A larger
+/// readback is a minimum size, which refitting handles instead.
+fn falls_short(actual: crate::Rect, target: crate::Rect) -> bool {
+    actual.width < target.width || actual.height < target.height
 }
 
 pub(in crate::app) fn record_apply_attempt(

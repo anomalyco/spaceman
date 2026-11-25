@@ -44,6 +44,10 @@ pub(super) struct WorkspaceRuntime<B = MacWorkspaceBackend> {
     /// target frame; past `APPLY_ATTEMPT_LIMIT` the target is frozen.
     pub(super) apply_attempts:
         [HashMap<crate::PhysicalWindowId, (crate::Rect, u8)>; WorkspaceId::COUNT],
+    /// Windows moved to another workspace whose first frame write there has
+    /// not come back yet. macOS can clamp that write to the display the window
+    /// is leaving, so its first short readback is retried, not accepted (#428).
+    pub(super) relocated: HashSet<crate::PhysicalWindowId>,
     /// Parked windows' recovery frames and parking phases, and the windows
     /// exempt from parking because they keep un-parking themselves.
     pub(super) parked: ParkTable,
@@ -337,6 +341,7 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
             constrained: std::array::from_fn(|_| HashMap::new()),
             applied: std::array::from_fn(|_| HashMap::new()),
             apply_attempts: std::array::from_fn(|_| HashMap::new()),
+            relocated: HashSet::new(),
             parked: parked.into(),
             omitted_windows: HashMap::new(),
             inaccessible_since: HashMap::new(),

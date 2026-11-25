@@ -105,6 +105,9 @@ struct FakeBackend {
     refuses_position: Option<fn(crate::Rect) -> bool>,
     /// Widths windows refuse to shrink below, clamped synchronously like AppKit.
     minimum_widths: HashMap<crate::PhysicalWindowId, i32>,
+    /// Cuts writes' bottom edge to this y, like AppKit clamping a resize to
+    /// the display a window is leaving.
+    clamp_bottom: HashMap<crate::PhysicalWindowId, i32>,
     focus_outcome: Option<bool>,
     /// Raised by the next position write: an activation cancelling the worker
     /// in the middle of a switch.
@@ -420,6 +423,19 @@ impl WorkspaceBackend for FakeBackend {
                         window.clone(),
                         crate::Rect {
                             width,
+                            ..placement.frame
+                        },
+                    );
+                }
+                if let Some(&bottom) = self.clamp_bottom.get(&window)
+                    && self.managed_outcome.is_none()
+                    && placement.frame.y + placement.frame.height > bottom
+                {
+                    outcome = macos::ApplyOutcome::Constrained;
+                    self.frames.insert(
+                        window.clone(),
+                        crate::Rect {
+                            height: bottom - placement.frame.y,
                             ..placement.frame
                         },
                     );
