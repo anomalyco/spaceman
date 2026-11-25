@@ -56,9 +56,15 @@ fn overlap(a: Rect, b: Rect) -> (i64, i64) {
 /// display edge with its center outside while most of it stays visible.
 #[must_use]
 pub fn shows_on(frame: Rect, displays: &[Rect]) -> bool {
+    shows_wider_than(frame, displays, 1)
+}
+
+/// Whether a column of `frame` wider than `strip` pixels shows on any display.
+#[must_use]
+pub fn shows_wider_than(frame: Rect, displays: &[Rect], strip: i64) -> bool {
     displays.iter().any(|display| {
         let (width, height) = overlap(frame, *display);
-        width > 1 && height > 0
+        width > strip && height > 0
     })
 }
 

@@ -11,6 +11,67 @@ use super::*;
 /// Rescued windows on one display cascade by this much, so none hides another.
 const RESCUE_CASCADE: i32 = 24;
 
+/// First wait before retrying a window recovery could not move; it doubles per failure.
+pub(super) const RESCUE_RETRY_FIRST: Duration = Duration::from_secs(2);
+/// Longest wait between retries of a window recovery could not move.
+pub(super) const RESCUE_RETRY_CAP: Duration = Duration::from_secs(32);
+
+/// Windows recovery could not move, by window ID. A failed write can wait out the
+/// Accessibility timeout, so retrying every cycle would slow every retile; a window that only
+/// failed because its app was still launching must still be rescued, so retries back off
+/// rather than stop.
+#[derive(Default)]
+pub(super) struct UnmovableStale {
+    /// Display frames when the failures were recorded: a display change retries every window.
+    displays: Vec<crate::Rect>,
+    windows: HashMap<u32, RescueFailure>,
+}
+
+struct RescueFailure {
+    /// Window-server frame at the failure: a window that moves is retried at once.
+    frame: crate::Rect,
+    failures: u32,
+    retry_at: Instant,
+}
+
+impl UnmovableStale {
+    /// Forget failures for windows that closed or moved, and every failure when the displays
+    /// changed.
+    fn refresh(&mut self, displays: &[crate::Rect], server_frames: &HashMap<u32, crate::Rect>) {
+        if self.displays != displays {
+            self.displays = displays.to_vec();
+            self.windows.clear();
+        }
+        self.windows
+            .retain(|id, failure| server_frames.get(id) == Some(&failure.frame));
+    }
+
+    fn waiting(&self, id: u32, now: Instant) -> bool {
+        self.windows
+            .get(&id)
+            .is_some_and(|failure| now < failure.retry_at)
+    }
+
+    fn failed(&mut self, id: u32, frame: crate::Rect, now: Instant) {
+        let failures = self.windows.get(&id).map_or(0, |failure| failure.failures) + 1;
+        let delay = RESCUE_RETRY_FIRST
+            .saturating_mul(1 << (failures - 1).min(8))
+            .min(RESCUE_RETRY_CAP);
+        self.windows.insert(
+            id,
+            RescueFailure {
+                frame,
+                failures,
+                retry_at: now + delay,
+            },
+        );
+    }
+
+    fn succeeded(&mut self, id: u32) {
+        self.windows.remove(&id);
+    }
+}
+
 impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
     /// Reveal every window sitting exactly at a display's parking spot that Spaceman neither
     /// parked nor owns.
@@ -22,12 +83,21 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
         let displays = outputs.frames().collect::<Vec<_>>();
         let screens = outputs.screens();
         let parked_ids: HashSet<u32> = self.parked.keys().map(|window| window.window_id).collect();
+        let now = self.backend.now();
+        self.unmovable_stale.refresh(&displays, server_frames);
         // Almost every window is on screen or parked by Spaceman: both are skipped before any
-        // geometry or window-server lookup.
+        // geometry or window-server lookup. Menu-bar strips (more than the parking strip, give
+        // or take its one-pixel tolerance, shows on a screen), one-pixel and empty windows are
+        // never at a parking spot.
         let mut stale: Vec<(u32, crate::Rect, crate::Rect)> = server_frames
             .iter()
             .filter(|(id, frame)| {
-                !parked_ids.contains(id) && !displays.iter().any(|d| d.contains_center(**frame))
+                !parked_ids.contains(id)
+                    && !self.unmovable_stale.waiting(**id, now)
+                    && frame.width > 1
+                    && frame.height > 1
+                    && !displays.iter().any(|d| d.contains_center(**frame))
+                    && !crate::geometry::shows_wider_than(**frame, &screens, 2)
             })
             .filter_map(|(&id, &frame)| {
                 outputs.displays().iter().find_map(|display| {
@@ -93,12 +163,15 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
                 target
             );
             let outcome = self.backend.set_position(&window, target);
-            if !matches!(outcome, macos::ApplyOutcome::Applied) {
+            if matches!(outcome, macos::ApplyOutcome::Applied) {
+                self.unmovable_stale.succeeded(id);
+            } else {
                 log_event!(
                     "stale parked recovery incomplete for {:?}: {:?}",
                     window,
                     outcome
                 );
+                self.unmovable_stale.failed(id, frame, now);
             }
         }
     }

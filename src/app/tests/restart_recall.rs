@@ -211,3 +211,140 @@ fn reopened_notes_find_their_workspaces_by_size() {
     let persisted = serde_json::to_string(&runtime.memory.memory).unwrap();
     assert!(!persisted.contains("title"), "{persisted}");
 }
+
+fn position_writes(runtime: &WorkspaceRuntime<FakeBackend>, id: u32) -> usize {
+    runtime
+        .backend
+        .calls
+        .iter()
+        .filter(
+            |call| matches!(call, BackendCall::SetPosition(window, _) if window.window_id == id),
+        )
+        .count()
+}
+
+#[test]
+fn a_window_at_a_parking_spot_that_cannot_move_backs_off_and_is_rescued_later() {
+    // Each failed write can wait out the Accessibility timeout, so retrying it on every cycle
+    // makes every retile slow (#481). A relaunching app may refuse the first writes, so the
+    // window is still rescued once it accepts, with its frame unchanged.
+    let tile = outputs().main().frame;
+    let stuck = reopened(7, 30);
+    let parked = main_parked_frame(tile);
+    let other = window(10);
+    let mut runtime = runtime(FakeBackend {
+        frames: HashMap::from([(stuck.clone(), parked), (other.clone(), tile)]),
+        observation: Some(observation(&other, tile)),
+        refuses_position: Some(|_| true),
+        ..FakeBackend::default()
+    });
+    let cancelled = AtomicBool::new(false);
+
+    runtime.cycle(outputs(), &cancelled).unwrap();
+    runtime.cycle(outputs(), &cancelled).unwrap();
+    runtime.cycle(outputs(), &cancelled).unwrap();
+    assert_eq!(position_writes(&runtime, 30), 1);
+
+    // After the first delay it is tried once more, still refused; the next wait is longer.
+    runtime
+        .backend
+        .advance(crate::app::stale_parked::RESCUE_RETRY_FIRST);
+    runtime.cycle(outputs(), &cancelled).unwrap();
+    assert_eq!(position_writes(&runtime, 30), 2);
+    runtime
+        .backend
+        .advance(crate::app::stale_parked::RESCUE_RETRY_FIRST);
+    runtime.cycle(outputs(), &cancelled).unwrap();
+    assert_eq!(position_writes(&runtime, 30), 2);
+
+    // The app now accepts the move: the next retry rescues the window on screen.
+    runtime.backend.refuses_position = None;
+    runtime
+        .backend
+        .advance(crate::app::stale_parked::RESCUE_RETRY_CAP);
+    runtime.cycle(outputs(), &cancelled).unwrap();
+    assert_eq!(position_writes(&runtime, 30), 3);
+    let rescued = runtime.backend.frames[&stuck];
+    assert!(tile.contains_center(rescued), "{rescued:?}");
+}
+
+#[test]
+fn a_window_that_moves_after_a_failed_rescue_is_tried_again_at_once() {
+    let tile = outputs().main().frame;
+    let stuck = reopened(7, 30);
+    let other = window(10);
+    let mut runtime = runtime(FakeBackend {
+        frames: HashMap::from([
+            (stuck.clone(), main_parked_frame(tile)),
+            (other.clone(), tile),
+        ]),
+        observation: Some(observation(&other, tile)),
+        refuses_position: Some(|_| true),
+        ..FakeBackend::default()
+    });
+    let cancelled = AtomicBool::new(false);
+    runtime.cycle(outputs(), &cancelled).unwrap();
+    assert_eq!(position_writes(&runtime, 30), 1);
+
+    // Still at the spot, but another size.
+    let resized = main_parked_frame(crate::Rect {
+        width: tile.width / 2,
+        ..tile
+    });
+    runtime.backend.frames.insert(stuck, resized);
+    runtime.cycle(outputs(), &cancelled).unwrap();
+    assert_eq!(position_writes(&runtime, 30), 2);
+}
+
+#[test]
+fn a_window_one_pixel_off_its_parking_spot_is_still_rescued() {
+    let tile = outputs().main().frame;
+    let parked = main_parked_frame(tile);
+    // One pixel toward the display, so two columns of it show.
+    let toward = if parked.x < tile.x { 1 } else { -1 };
+    let off = crate::Rect {
+        x: parked.x + toward,
+        ..parked
+    };
+    let stray = reopened(7, 30);
+    let other = window(10);
+    let mut runtime = runtime(FakeBackend {
+        frames: HashMap::from([(stray.clone(), off), (other.clone(), tile)]),
+        observation: Some(observation(&other, tile)),
+        ..FakeBackend::default()
+    });
+
+    runtime.cycle(outputs(), &AtomicBool::new(false)).unwrap();
+
+    assert_eq!(position_writes(&runtime, 30), 1);
+}
+
+#[test]
+fn one_pixel_and_empty_windows_at_a_parking_spot_are_never_rescued() {
+    let dot = crate::Rect {
+        width: 1,
+        height: 1,
+        ..crate::Rect::default()
+    };
+    let empty = crate::Rect {
+        width: 0,
+        height: 0,
+        ..crate::Rect::default()
+    };
+    let tile = outputs().main().frame;
+    let other = window(10);
+    let mut runtime = runtime(FakeBackend {
+        frames: HashMap::from([
+            (reopened(7, 30), main_parked_frame(dot)),
+            (reopened(7, 31), main_parked_frame(empty)),
+            (other.clone(), tile),
+        ]),
+        observation: Some(observation(&other, tile)),
+        ..FakeBackend::default()
+    });
+
+    runtime.cycle(outputs(), &AtomicBool::new(false)).unwrap();
+
+    assert_eq!(position_writes(&runtime, 30), 0);
+    assert_eq!(position_writes(&runtime, 31), 0);
+}

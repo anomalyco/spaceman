@@ -472,6 +472,11 @@ on the same letter.
   `every_window_reopened_at_a_parking_spot_is_rescued_and_recalled` (three Safari windows on
   workspaces 1-3, reopened minutes later in the background),
   `a_window_parked_by_spaceman_is_never_rescued`,
+  `a_window_at_a_parking_spot_that_cannot_move_backs_off_and_is_rescued_later` (failed moves are
+  retried after a delay that doubles from 2 s to 32 s, at once when the window's frame or the
+  displays change, issue 481), `a_window_that_moves_after_a_failed_rescue_is_tried_again_at_once`,
+  `a_window_one_pixel_off_its_parking_spot_is_still_rescued`,
+  `one_pixel_and_empty_windows_at_a_parking_spot_are_never_rescued`,
   `a_single_window_cold_launch_still_opens_on_the_active_workspace`, and
   `reopened_notes_find_their_workspaces_by_size`; `src/window_memory.rs`:
   `sizes_match_before_creation_order`. Whether AppKit restores a quit app's windows in creation
