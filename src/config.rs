@@ -197,32 +197,40 @@ impl HudPosition {
 
 /// Size of the Workspace HUD: `settings.hud_size`.
 #[derive(Clone, Copy, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
-#[serde(rename_all = "lowercase")]
+#[serde(rename_all = "kebab-case")]
 pub enum HudSize {
     Small,
     #[default]
     Medium,
     Large,
+    ExtraLarge,
+    Massive,
 }
 
 impl HudSize {
+    /// Presets in the order shown in Settings, from smallest to largest.
+    pub const ALL: [Self; 5] = [
+        Self::Small,
+        Self::Medium,
+        Self::Large,
+        Self::ExtraLarge,
+        Self::Massive,
+    ];
+
     #[must_use]
     pub const fn as_str(self) -> &'static str {
         match self {
             Self::Small => "small",
             Self::Medium => "medium",
             Self::Large => "large",
+            Self::ExtraLarge => "extra-large",
+            Self::Massive => "massive",
         }
     }
 
     #[must_use]
     pub fn parse(value: &str) -> Option<Self> {
-        match value {
-            "small" => Some(Self::Small),
-            "medium" => Some(Self::Medium),
-            "large" => Some(Self::Large),
-            _ => None,
-        }
+        Self::ALL.into_iter().find(|size| size.as_str() == value)
     }
 
     #[must_use]
@@ -231,6 +239,8 @@ impl HudSize {
             Self::Small => 0.8,
             Self::Medium => 1.0,
             Self::Large => 1.25,
+            Self::ExtraLarge => 1.5,
+            Self::Massive => 260.0 / 140.0,
         }
     }
 }

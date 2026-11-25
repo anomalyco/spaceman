@@ -44,11 +44,16 @@ fn hud_position_index(position: HudPosition) -> usize {
         .unwrap_or(0)
 }
 
-const HUD_SIZES: [(&str, HudSize); 3] = [
-    ("Small", HudSize::Small),
-    ("Medium", HudSize::Medium),
-    ("Large", HudSize::Large),
-];
+fn hud_size_label(size: HudSize) -> String {
+    match size {
+        HudSize::Small => "Small",
+        HudSize::Medium => "Medium",
+        HudSize::Large => "Large",
+        HudSize::ExtraLarge => "Extra-large",
+        HudSize::Massive => "Massive",
+    }
+    .to_owned()
+}
 
 const MOUSE_FOLLOW_MODES: [(&str, MouseFollowsFocus, &str); 3] = [
     ("Off", MouseFollowsFocus::Off, "The pointer stays put"),
@@ -295,15 +300,13 @@ pub fn hud_sheet(
         "Size",
         None,
         SegmentedControl::new(
-            &HUD_SIZES.map(|(label, _)| label.to_owned()),
-            HUD_SIZES
-                .iter()
-                .position(|(_, candidate)| *candidate == size),
+            &HudSize::ALL.map(hud_size_label),
+            HudSize::ALL.iter().position(|candidate| *candidate == size),
         )
         .label("Size")
         .fit()
         .on_pick(|ui: &mut Ui, index, _: &mut Tx| {
-            if let Some((_, size)) = HUD_SIZES.get(index) {
+            if let Some(size) = HudSize::ALL.get(index) {
                 ui.edit(|doc| doc.set_hud_size(*size));
             }
         })

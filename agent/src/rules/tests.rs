@@ -188,7 +188,7 @@ fn hud_size_round_trips_and_leaves_medium_out() {
     let mut doc = Doc::parse(SOURCE);
     assert_eq!(doc.hud_size(), HudSize::Medium);
     doc.set_hud_style(spaceman::config::HudStyle::Layouts);
-    for size in [HudSize::Small, HudSize::Large, HudSize::Medium] {
+    for size in HudSize::ALL {
         doc.set_hud_size(size);
         let source = doc.source();
         assert_eq!(doc.hud_size(), size);

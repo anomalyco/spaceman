@@ -63,9 +63,13 @@ fn overlay_size(size: HudSize) -> (f32, f32) {
     (OVERLAY_SIZE.0, OVERLAY_SIZE.1 * size.scale())
 }
 
-/// Keep the capsule 60 pt from the display edge, allowing for its scaled shadow.
+/// Shadow space inside the panel. The display edge clips the largest shadows.
+fn edge_padding(size: HudSize) -> f32 {
+    (pill::SHADOW_REACH * size.scale()).min(pill::CAPSULE_INSET)
+}
+
 fn overlay_margin(size: HudSize) -> f32 {
-    pill::CAPSULE_INSET - pill::SHADOW_REACH * size.scale()
+    pill::CAPSULE_INSET - edge_padding(size)
 }
 
 /// The edge of each display the capsule sits on.
@@ -557,8 +561,15 @@ fn overlay_view(overlay: &HudOverlay, cx: &mut Cx<HudOverlay>) -> El {
     }
     let p = Paint::new(true, cx.env().scale);
     overlay.flow.mark_drawn();
-    row().key("hud-root").w_full().h_full().center().children(
-        overlay.flow.view(cx.is_reduced_motion()).map(|view| {
+    let padding = edge_padding(overlay.size);
+    let root = match overlay.position {
+        HudPosition::Top => row().items_start().pt(padding),
+        HudPosition::Bottom => row().items_end().pb(padding),
+    };
+    root.key("hud-root")
+        .w_full()
+        .h_full()
+        .children(overlay.flow.view(cx.is_reduced_motion()).map(|view| {
             pill::sized_slot(OVERLAY_SIZE.0, overlay.size, |width| {
                 pill::interactive_slot(
                     &view,
@@ -569,6 +580,5 @@ fn overlay_view(overlay: &HudOverlay, cx: &mut Cx<HudOverlay>) -> El {
                     p,
                 )
             })
-        }),
-    )
+        }))
 }

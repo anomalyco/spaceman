@@ -28,8 +28,8 @@ Spaceman currently:
   cross-workspace moves, and layout toggles (`[settings] hud = true`): a row of that display's
   workspaces, drawn as numbers and app icons by default or (`hud_style = "layouts"`) as their layouts with app
   icons, with a marker that travels to the one you are on. It sits above the bottom edge by default
-  or below the top one (`hud_position = "top"`). Its size is adjustable in Settings or with
-  `hud_size`. It follows quick switches without restarting and
+  or below the top one (`hud_position = "top"`). Choose one of five sizes from Small to Massive
+  in Settings or with `hud_size`. It follows quick switches without restarting and
   honors Reduce Motion. `workspace_order` sets the order the HUD, menu bar menu, and three-finger
   swipes list workspaces in, such as the keyboard row `Q W E R T Y`;
 - can register its signed app bundle with macOS to launch automatically at login;

@@ -375,9 +375,8 @@ impl SettingValue {
             SettingKey::HudSize => HudSize::parse(raw_value)
                 .map(Self::HudSize)
                 .ok_or_else(|| {
-                    format!(
-                        "invalid value for hud_size: expected 'small', 'medium', or 'large', got {raw_value:?}"
-                    )
+                    let choices = HudSize::ALL.map(HudSize::as_str).join(", ");
+                    format!("invalid value for hud_size: expected one of {choices}, got {raw_value:?}")
                 }),
             SettingKey::Layout => LayoutMode::parse(raw_value)
                 .map(Self::Layout)

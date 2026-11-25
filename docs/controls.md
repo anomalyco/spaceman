@@ -137,7 +137,7 @@ The menu-bar control shows active workspace/layout glyphs and runtime errors. It
   `Settings > General > Workspace HUD` picks `Off`, `Icons`, or `Layouts` (`[settings] hud` and `hud_style`, default `Icons`),
   and, while the HUD is on, `Customize…` beside it opens a sheet whose `Position` picks `Bottom` or `Top`
   (`[settings] hud_position`, default `Bottom`) and whose `Size` picks `Small`, `Medium` (default),
-  or `Large` (`[settings] hud_size`). The miniature previews both choices;
+  `Large`, `Extra-large`, or `Massive` (`[settings] hud_size`). The miniature previews both choices;
 - `Launch at Login`, shown checked when macOS has enabled the signed app bundle;
 - `Settings...` (`⌘,`), opening the Rune Settings window (`General`, `Layout`, `Rules`, `Workspaces`, `Shortcuts`, and, with `[labs] activity = true`, `Activity`, plus `⇧⌘D` Playground);
 - `Check for Updates...`, which checks and opens Settings (its sidebar and `General > Updates` show

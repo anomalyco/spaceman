@@ -181,6 +181,12 @@ pub(crate) const SCENES: &[Scene] = &[
     ("hud-customize-large", |ui| {
         general::fixture_hud_sheet(ui, HudPosition::Bottom, HudSize::Large);
     }),
+    ("hud-customize-extra-large", |ui| {
+        general::fixture_hud_sheet(ui, HudPosition::Bottom, HudSize::ExtraLarge);
+    }),
+    ("hud-customize-massive", |ui| {
+        general::fixture_hud_sheet(ui, HudPosition::Bottom, HudSize::Massive);
+    }),
     ("hud-customize-top", |ui| {
         general::fixture_hud_sheet(ui, HudPosition::Top, HudSize::Medium);
     }),

@@ -35,7 +35,7 @@ version = 1
 hud = true                            # optional (default: true); non-activating Workspace HUD
 hud_style = "icons"                   # optional (default: "icons"); or "layouts"
 hud_position = "bottom"               # optional (default: "bottom"); or "top"
-hud_size = "medium"                   # "small", "medium" (default), or "large"
+hud_size = "medium"                   # "small", "medium" (default), "large", "extra-large", or "massive"
 layout = "dwindle"                    # optional (default: "dwindle"); or "columns"
 update_channel = "stable"             # optional (default: "stable"); or "dev", a build of every merge
 mouse_follows_focus = "off"           # optional (default: "off"); or "display", "window"
@@ -105,19 +105,20 @@ Title matching occurs only in memory. Titles are not serialized into persisted s
 `"layouts"`. `settings.hud_position` puts the capsule on each display's `"bottom"` edge (the
 default, just above the Dock) or its `"top"` edge (just below the menu bar); a top capsule slides
 down into place and back up, and a bottom one rises and settles back down. A file without the key
-keeps the bottom position. Set `settings.hud_size` to `"small"`, `"medium"`, or `"large"`
-to resize the capsule and its contents. Existing configs use `"medium"`, the original size.
+keeps the bottom position. Set `settings.hud_size` to `"small"`, `"medium"`, `"large"`, `"extra-large"`,
+or `"massive"` to resize the capsule and its contents. Existing configs use `"medium"`, the original size.
+The two largest presets use 210 pt and 260 pt overlay windows, respectively, including space for the shadow.
 
 ```sh
 spaceman config set settings.hud_position top
 spaceman config get settings.hud_position
 spaceman config reset settings.hud_position
-spaceman config set settings.hud_size large
+spaceman config set settings.hud_size extra-large
 ```
 
 In Settings › General, **Workspace HUD** picks `Off`, `Icons` or `Layouts`. While it is not
 `Off`, **Customize…** beside it opens a sheet: a live miniature of the capsule over **Position**
-(`Bottom` or `Top`), **Size** (`Small`, `Medium`, or `Large`), and a link to Settings › Workspaces, which decides the workspaces each display's
+(`Bottom` or `Top`), **Size** (`Small`, `Medium`, `Large`, `Extra-large`, or `Massive`), and a link to Settings › Workspaces, which decides the workspaces each display's
 capsule lists. `spaceman config reset` removes any settings key, back to its default.
 
 ## New-Window Layout

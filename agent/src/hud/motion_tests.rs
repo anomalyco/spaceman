@@ -771,13 +771,21 @@ fn a_moved_window_s_icon_leaves_one_workspace_for_the_other() {
 }
 
 #[test]
-fn the_widest_capsule_and_its_shadow_fit_the_panel() {
+fn hud_presets_have_their_documented_panel_heights() {
+    assert_eq!(
+        HudSize::ALL.map(|size| overlay_size(size).1.round() as u32),
+        [112, 140, 175, 210, 260]
+    );
+}
+
+#[test]
+fn the_widest_capsule_and_its_visible_shadow_fit_the_panel() {
     let apps: Vec<String> = (0..16)
         .map(|index| format!("com.test.app{index}"))
         .collect();
     let apps: Vec<&str> = apps.iter().map(String::as_str).collect();
     for style in STYLES {
-        for size in [HudSize::Small, HudSize::Medium, HudSize::Large] {
+        for size in HudSize::ALL {
             for visible in [1, 5, 10] {
                 let workspaces = (1..=10).map(|number| workspace(number, &apps)).collect();
                 let hud = Hud::with_size(
@@ -796,7 +804,8 @@ fn the_widest_capsule_and_its_shadow_fit_the_panel() {
                     "{x} + {width}"
                 );
                 assert!(
-                    y + height + pill::SHADOW_REACH * size.scale() <= overlay_size(size).1 + 0.01
+                    y + height + (pill::SHADOW_REACH * size.scale()).min(pill::CAPSULE_INSET)
+                        <= overlay_size(size).1 + 0.01
                 );
                 // A row that overflows still keeps your workspace in view.
                 let marker = hud.snaps("hud-marker", 0)[0].rect;
@@ -885,7 +894,7 @@ fn hovering_the_pill_holds_it_open_and_leaving_resumes_a_clean_exit() {
 fn each_size_scales_the_capsule_and_preserves_the_edge_inset_and_click_targets() {
     for style in STYLES {
         for position in [HudPosition::Top, HudPosition::Bottom] {
-            for size in [HudSize::Small, HudSize::Medium, HudSize::Large] {
+            for size in HudSize::ALL {
                 let sink = Arc::new(RecordingSink::new());
                 let mut hud =
                     Hud::with_size(style, position, size, row(1, None), true, sink.clone());
@@ -896,6 +905,10 @@ fn each_size_scales_the_capsule_and_preserves_the_edge_inset_and_click_targets()
                     HudPosition::Top => y,
                     HudPosition::Bottom => overlay_size(size).1 - y - height,
                 };
+                assert!(
+                    overlay_margin(size) >= 0.0,
+                    "{size:?} panel crosses the display edge"
+                );
                 assert!((overlay_margin(size) + edge_inset - pill::CAPSULE_INSET).abs() < 1.0);
                 let (x, y) = hud.center_of("ws3");
                 hud.run.rt.pointer_move(x, y);

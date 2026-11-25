@@ -27,6 +27,8 @@ fn hud_size_round_trips_through_the_config_cli() {
         ("small", HudSize::Small),
         ("medium", HudSize::Medium),
         ("large", HudSize::Large),
+        ("extra-large", HudSize::ExtraLarge),
+        ("massive", HudSize::Massive),
     ] {
         let set = temp.run(&["config", "set", "settings.hud_size", name]);
         assert_eq!(set.exit_code, 0, "{:?}", set.stderr);
