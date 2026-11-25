@@ -1,9 +1,11 @@
-//! Keyboard edits of the focused tile's split: `resize shrink|grow`, `resize width|height`, and
-//! `balance`.
+//! Keyboard edits of the focused tile's split: `resize shrink|grow`, `resize width|height`,
+//! `resize width|height grow|shrink` (the Relative resize Lab), and `balance`.
 
 use super::*;
 
 const KEYBOARD_RESIZE_INCREMENT: i32 = 50;
+const RELATIVE_RESIZE_OFF: &str =
+    "Relative resize is off (set [labs] relative_resize = true in config.toml)";
 
 impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
     pub(in crate::app) fn resize_focused(
@@ -41,6 +43,26 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
             cancelled,
             |engine, window, settings, minimums| {
                 engine.resize_focused_tile_to(window, axis, points, settings, minimums)
+            },
+        )
+    }
+
+    pub(in crate::app) fn resize_focused_by(
+        &mut self,
+        axis: crate::Axis,
+        delta: i32,
+        outputs: macos::DisplayOutputs,
+        cancelled: &AtomicBool,
+    ) -> Result<CycleStatus, String> {
+        if !self.config.labs().relative_resize {
+            return Err(RELATIVE_RESIZE_OFF.into());
+        }
+        self.edit_focused_split(
+            "resizing",
+            outputs,
+            cancelled,
+            |engine, window, settings, minimums| {
+                engine.resize_focused_tile_by(window, axis, delta, settings, minimums)
             },
         )
     }

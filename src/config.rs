@@ -210,6 +210,9 @@ pub struct LabsConfig {
     /// Top and bottom display edge drop bands that make a half-height row on portrait displays.
     #[serde(default)]
     pub portrait_edge_rows: bool,
+    /// `resize width|height grow|shrink POINTS`: step the focused window's width or height.
+    #[serde(default)]
+    pub relative_resize: bool,
 }
 
 impl LabsConfig {
@@ -220,6 +223,7 @@ impl LabsConfig {
             LabFeature::Scratchpad => self.scratchpad,
             LabFeature::Activity => self.activity,
             LabFeature::PortraitEdgeRows => self.portrait_edge_rows,
+            LabFeature::RelativeResize => self.relative_resize,
         }
     }
 }
@@ -233,11 +237,18 @@ pub enum LabFeature {
     Activity,
     /// Top and bottom display edge drop bands that make a half-height row on portrait displays.
     PortraitEdgeRows,
+    /// `resize width|height grow|shrink POINTS`: step the focused window's width or height.
+    RelativeResize,
 }
 
 impl LabFeature {
     /// Every switch, in the order `[labs]` lists them.
-    pub const ALL: [Self; 3] = [Self::Scratchpad, Self::Activity, Self::PortraitEdgeRows];
+    pub const ALL: [Self; 4] = [
+        Self::Scratchpad,
+        Self::Activity,
+        Self::PortraitEdgeRows,
+        Self::RelativeResize,
+    ];
 
     /// The `[labs]` key that turns this feature on.
     #[must_use]
@@ -246,6 +257,7 @@ impl LabFeature {
             Self::Scratchpad => "scratchpad",
             Self::Activity => "activity",
             Self::PortraitEdgeRows => "portrait_edge_rows",
+            Self::RelativeResize => "relative_resize",
         }
     }
 
@@ -1203,6 +1215,10 @@ monitor = "main"
         assert!(!both.labs().enabled(LabFeature::PortraitEdgeRows));
         let rows = Config::parse("version = 1\n[labs]\nportrait_edge_rows = true\n").unwrap();
         assert!(rows.labs().portrait_edge_rows);
+        let relative = Config::parse("version = 1\n[labs]\nrelative_resize = true\n").unwrap();
+        assert!(relative.labs().relative_resize);
+        assert!(relative.labs().enabled(LabFeature::RelativeResize));
+        assert!(!both.labs().enabled(LabFeature::RelativeResize));
     }
 
     #[test]

@@ -286,11 +286,14 @@ pub enum Command {
     Resize(ResizeDirection),
     /// Resize the focused window to this width (`Horizontal`) or height (`Vertical`) in points.
     ResizeTo(Axis, i32),
+    /// Grow (positive) or shrink (negative) the focused window's width (`Horizontal`) or height
+    /// (`Vertical`) by this many points: the Relative resize Lab.
+    ResizeBy(Axis, i32),
     Balance,
     Retile,
 }
 
-pub const COMMAND_USAGE: &str = "switch WORKSPACE|move WORKSPACE [--follow]|move-tab WORKSPACE [--follow]|back-and-forth|move-workspace [next|prev|DISPLAY]|focus DIR|focus next|focus prev|move-direction DIR|layout|fullscreen|float|resize shrink|resize grow|resize width|height POINTS|balance|retile|none";
+pub const COMMAND_USAGE: &str = "switch WORKSPACE|move WORKSPACE [--follow]|move-tab WORKSPACE [--follow]|back-and-forth|move-workspace [next|prev|DISPLAY]|focus DIR|focus next|focus prev|move-direction DIR|layout|fullscreen|float|resize shrink|resize grow|resize width|height POINTS|resize width|height grow|shrink POINTS|balance|retile|none";
 
 /// `[shortcuts]` as written.
 #[derive(Deserialize)]
@@ -487,6 +490,10 @@ pub fn parse_command(source: &str) -> Result<Option<Command>, String> {
             let (axis, points) = crate::parse_resize_to(dimension, points)?;
             Command::ResizeTo(axis, points)
         }
+        ["resize", dimension, verb, points] => {
+            let (axis, delta) = crate::parse_resize_by(dimension, verb, points)?;
+            Command::ResizeBy(axis, delta)
+        }
         ["balance"] => Command::Balance,
         ["retile"] => Command::Retile,
         _ => {
@@ -545,6 +552,14 @@ impl Command {
             }
             Self::ResizeTo(Axis::Vertical, points) => {
                 format!("resize focused window to {points} tall")
+            }
+            Self::ResizeBy(axis, delta) => {
+                let verb = if *delta < 0 { "shrink" } else { "grow" };
+                let dimension = match axis {
+                    Axis::Horizontal => "width",
+                    Axis::Vertical => "height",
+                };
+                format!("{verb} focused window {dimension} by {}", delta.abs())
             }
             Self::Balance => "balance layout".into(),
             Self::Retile => "retile".into(),
@@ -651,6 +666,19 @@ mod tests {
                 Some(Command::ResizeTo(Axis::Vertical, 480)),
             ),
             (
+                "resize width grow 50",
+                Some(Command::ResizeBy(Axis::Horizontal, 50)),
+            ),
+            (
+                "resize height shrink 25",
+                Some(Command::ResizeBy(Axis::Vertical, -25)),
+            ),
+            // `+N` keeps meaning a size.
+            (
+                "resize width +100",
+                Some(Command::ResizeTo(Axis::Horizontal, 100)),
+            ),
+            (
                 "move-workspace",
                 Some(Command::MoveWorkspace(DisplayTarget::Next)),
             ),
@@ -670,6 +698,12 @@ mod tests {
             "resize width",
             "resize width -5",
             "resize width 99999",
+            "resize width grow 0",
+            "resize width grow -50",
+            "resize width grow wide",
+            "resize width grow 16385",
+            "resize width widen 50",
+            "resize depth grow 50",
             "balance now",
         ] {
             assert!(parse_command(invalid).is_err(), "{invalid}");

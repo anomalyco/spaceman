@@ -332,6 +332,52 @@ fn resize_to_requires_leaving_fullscreen_layout() {
 }
 
 #[test]
+fn resize_by_steps_the_focused_window_only_with_its_lab_on() {
+    let (first, second) = (window(10), window(20));
+    let backend = || {
+        let mut backend = FakeBackend {
+            focused: Some(second.clone()),
+            ..FakeBackend::default()
+        };
+        backend.frames.insert(first.clone(), frame(50));
+        backend.frames.insert(second.clone(), frame(500));
+        backend
+    };
+    let cancelled = AtomicBool::new(false);
+    let horizontal = crate::Axis::Horizontal;
+
+    let mut off = runtime(backend());
+    bind(&mut off, WorkspaceId::ONE, &first);
+    bind(&mut off, WorkspaceId::ONE, &second);
+    let Err(refused) = off.resize_focused_by(horizontal, 50, outputs(), &cancelled) else {
+        panic!("resize width grow must wait for its Lab");
+    };
+    assert!(refused.contains("relative_resize"), "{refused}");
+    assert!(off.backend.workspace_state.is_none());
+
+    let lab = Config::parse("version = 1\n[labs]\nrelative_resize = true\n").unwrap();
+    let mut runtime = runtime_with_config(backend(), lab);
+    bind(&mut runtime, WorkspaceId::ONE, &first);
+    bind(&mut runtime, WorkspaceId::ONE, &second);
+    // Two tiles split the 1000-point output evenly.
+    for (delta, expected) in [(50, 550), (50, 600), (-100, 500)] {
+        runtime
+            .resize_focused_by(horizontal, delta, outputs(), &cancelled)
+            .unwrap();
+        assert_eq!(runtime.backend.frames[&second].width, expected);
+    }
+    assert!(runtime.backend.workspace_state.is_some());
+
+    runtime
+        .toggle_fullscreen_layout(outputs(), &cancelled)
+        .unwrap();
+    let Err(resize) = runtime.resize_focused_by(horizontal, 50, outputs(), &cancelled) else {
+        panic!("resize width grow must not apply in Fullscreen Layout");
+    };
+    assert!(resize.contains("Exit Fullscreen Layout"), "{resize}");
+}
+
+#[test]
 fn reorder_moves_to_the_adjacent_display_at_a_tile_boundary() {
     let moving = window(10);
     let secondary = window(20);

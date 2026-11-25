@@ -45,6 +45,10 @@ fn actions() -> Vec<(WorkerAction, DirectAction)> {
             WorkerAction::ResizeTo(crate::Axis::Horizontal, 600),
             |r, o, c| r.resize_focused_to(crate::Axis::Horizontal, 600, o, c),
         ),
+        (
+            WorkerAction::ResizeBy(crate::Axis::Horizontal, 50),
+            |r, o, c| r.resize_focused_by(crate::Axis::Horizontal, 50, o, c),
+        ),
         (WorkerAction::Balance, |r, o, c| r.balance_focused(o, c)),
         (WorkerAction::ToggleFullscreenLayout, |r, o, c| {
             r.toggle_fullscreen_layout(o, c)

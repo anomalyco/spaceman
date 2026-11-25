@@ -73,14 +73,39 @@ pub enum ResizeDirection {
 /// Largest `resize width|height` size, in points.
 pub const MAX_RESIZE_POINTS: i32 = 16_384;
 
+fn parse_resize_dimension(dimension: &str) -> Result<Axis, String> {
+    match dimension {
+        "width" => Ok(Axis::Horizontal),
+        "height" => Ok(Axis::Vertical),
+        other => Err(format!("expected width or height, got {other:?}")),
+    }
+}
+
+/// Parses the arguments of `resize width|height grow|shrink POINTS`: the axis that `width` or
+/// `height` runs along, and the signed change to the window's size in points.
+pub fn parse_resize_by(dimension: &str, verb: &str, points: &str) -> Result<(Axis, i32), String> {
+    let axis = parse_resize_dimension(dimension)?;
+    let sign = match verb {
+        "grow" => 1,
+        "shrink" => -1,
+        other => return Err(format!("expected grow or shrink, got {other:?}")),
+    };
+    let points = points
+        .parse::<i32>()
+        .ok()
+        .filter(|points| (1..=MAX_RESIZE_POINTS).contains(points))
+        .ok_or_else(|| {
+            format!(
+                "resize {dimension} {verb} takes an amount from 1 to {MAX_RESIZE_POINTS} points, got {points:?}"
+            )
+        })?;
+    Ok((axis, sign * points))
+}
+
 /// Parses the arguments of `resize width|height POINTS`: the axis that `width` or `height` runs
 /// along, and the window size in points.
 pub fn parse_resize_to(dimension: &str, points: &str) -> Result<(Axis, i32), String> {
-    let axis = match dimension {
-        "width" => Axis::Horizontal,
-        "height" => Axis::Vertical,
-        other => return Err(format!("expected width or height, got {other:?}")),
-    };
+    let axis = parse_resize_dimension(dimension)?;
     let points = points
         .parse::<i32>()
         .ok()
