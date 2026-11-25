@@ -205,8 +205,8 @@ Pinned floats                                              // ws.pin
 ├── action = "pin" rule, spaceman ctl pin, or a [shortcuts.bindings] chord bound to "pin" on the focused window (floats it first; again unpins)
 ├── Never parked by a switch, a move or a display change: shows on every workspace of its display
 ├── Keeps its owning workspace for memory and the HUD; unpinning hands it to the workspace showing it
-├── A pin rule added while the float is parked brings it back (matched by bundle; title rules wait
-│   until it is observed)
+├── A pin rule added while the float is parked brings it back (matched by bundle and the title it
+│   last showed, so an earlier title rule still wins; title rules wait until it is observed)
 └── Hand pins persist in workspace-state.json (`pinned`); pause, quit and restart restore as usual
 
 Reopened at a parking spot                                 // ws.stale-parked
@@ -482,7 +482,8 @@ on the same letter.
   `title_contains_routes_matching_windows_without_persisting_titles`,
   `a_pinned_float_stays_visible_across_switches_and_never_pulls_focus` (pause restores nothing
   extra), `activating_an_app_whose_only_window_is_pinned_never_switches_to_its_owner` (frontmost
-  app, no focused window reported), `a_pin_rule_added_while_a_note_is_parked_brings_it_back`, and
+  app, no focused window reported), `a_pin_rule_added_while_a_note_is_parked_brings_it_back`,
+  `a_pin_rule_reload_leaves_a_parked_note_an_earlier_title_rule_floats` (#549), and
   `ctl_pin_floats_and_pins_the_focused_window_then_unpins_where_it_is_seen`. Unit,
   `src/config.rs`: `built_in_float_defaults_apply_only_after_user_rules`,
   `pin_rule_parses_and_rejects_a_workspace`, `title_contains_matches_case_insensitively_in_memory`;

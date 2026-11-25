@@ -288,3 +288,46 @@ fn ctl_pin_floats_and_pins_the_focused_window_then_unpins_where_it_is_seen() {
     runtime.cycle(outputs(), &cancelled).unwrap();
     assert!(!runtime.parked.contains_key(&editor));
 }
+
+#[test]
+fn a_pin_rule_reload_leaves_a_parked_note_an_earlier_title_rule_floats() {
+    let quiet = sticky(1);
+    let public = sticky(2);
+    let notes = [(quiet.clone(), note(600)), (public.clone(), note(300))];
+    let rules = |action: &str| {
+        Config::parse(&format!(
+            "version = 1\n[[rules]]\nbundle_id = '{STICKIES}'\ntitle_contains = 'qUiEt'\naction = 'float'\n[[rules]]\nbundle_id = '{STICKIES}'\naction = '{action}'"
+        ))
+        .unwrap()
+    };
+    let mut backend = stickies_backend(&notes);
+    let crate::AppObservation::Complete { windows, .. } =
+        &mut backend.observation.as_mut().unwrap().applications[0]
+    else {
+        unreachable!()
+    };
+    windows[0].title = Some("B1 Quiet".into());
+    windows[1].title = Some("B2 Public".into());
+    let mut runtime = runtime_with_config(backend, rules("float"));
+    let cancelled = AtomicBool::new(false);
+    runtime.cycle(outputs(), &cancelled).unwrap();
+    runtime
+        .switch(WorkspaceId::TWO, outputs(), &cancelled)
+        .unwrap();
+    assert!(runtime.parked.contains_key(&quiet));
+    assert!(runtime.parked.contains_key(&public));
+    let parked_at = runtime.backend.frames[&quiet];
+
+    runtime.backend.advance(Duration::from_secs(3));
+    runtime.replace_config(rules("pin"));
+    for _ in 0..4 {
+        runtime.cycle(outputs(), &cancelled).unwrap();
+        assert!(runtime.workspaces.is_pinned(&public));
+        assert!(!runtime.parked.contains_key(&public));
+        assert!(!runtime.workspaces.is_pinned(&quiet));
+        assert!(runtime.parked.contains_key(&quiet));
+        assert_eq!(runtime.backend.frames[&quiet], parked_at, "never revealed");
+        runtime.backend.advance(Duration::from_secs(3));
+    }
+    assert_eq!(active(&runtime), Some(WorkspaceId::TWO));
+}

@@ -81,6 +81,13 @@ pub(super) struct MemoryState {
 }
 
 impl MemoryState {
+    /// The last title observed for `window`, kept while it is parked.
+    pub(super) fn last_title(&self, window: &crate::PhysicalWindowId) -> Option<&str> {
+        self.identities
+            .get(window)
+            .and_then(|identity| identity.title.as_deref())
+    }
+
     pub(super) fn recalled(&self, window: &crate::PhysicalWindowId) -> Option<RecalledPlacement> {
         self.recalls
             .get(&window.app)

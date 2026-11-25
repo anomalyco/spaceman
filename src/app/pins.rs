@@ -21,19 +21,40 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
         window: &crate::PhysicalWindowId,
         frame: crate::Rect,
     ) -> Option<crate::config::DispositionPatch> {
+        self.disposition_with_title(window, frame, None)
+    }
+
+    /// What rules and defaults say about a parked window: by its bundle and the title it last
+    /// showed, or by its bundle alone if it was never observed with one.
+    fn parked_disposition(
+        &self,
+        window: &crate::PhysicalWindowId,
+        frame: crate::Rect,
+    ) -> Option<crate::config::DispositionPatch> {
+        let title = self.memory.last_title(window).map(std::sync::Arc::from);
+        self.disposition_with_title(window, frame, title)
+    }
+
+    fn disposition_with_title(
+        &self,
+        window: &crate::PhysicalWindowId,
+        frame: crate::Rect,
+        title: Option<std::sync::Arc<str>>,
+    ) -> Option<crate::config::DispositionPatch> {
         let bundle_id = self.memory.bundles.get(&window.app)?;
         let probe = crate::ObservedWindow {
             id: window.clone(),
             frame,
             resizable: true,
-            title: None,
+            title,
             document: None,
         };
         Some(self.config.patch(bundle_id, &probe))
     }
 
     /// A `pin` rule that arrived while a float was parked: no observation lists a parked
-    /// window, so judge it by its app's bundle and let restore_visible bring it back.
+    /// window, so judge it by its app's bundle and its last observed title (an earlier title
+    /// rule keeps precedence, #549), and let restore_visible bring it back.
     pub(super) fn pin_parked_floats_by_rule(&mut self) {
         let parked: Vec<_> = self
             .parked
@@ -46,7 +67,7 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
             .collect();
         for (window, frame) in parked {
             if self
-                .bundle_disposition(&window, frame)
+                .parked_disposition(&window, frame)
                 .is_some_and(crate::config::DispositionPatch::pins)
             {
                 log_event!("pin rule now matches parked {:?}; showing it", window);
