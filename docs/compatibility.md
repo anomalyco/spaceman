@@ -61,9 +61,12 @@ Apps run as a bare executable rather than opened as an `.app` (for example a dev
 started from a terminal) have no LaunchServices launch date; Spaceman tells their process
 incarnations apart by kernel process start time instead and manages their windows like any other.
 
-Ghostty native tabs are the primary stable-logical-window target. Replacement is conservative: when
-the evidence is ambiguous, Spaceman preserves existing logical state rather than guessing. Other apps
-with physical-window identity churn are not implicitly guaranteed to behave like Ghostty.
+Native tabs in any app (Finder, Safari, Terminal and others) keep their tile when the evidence is
+unambiguous: one window of the app leaves, one arrives in its place with focus and the tile's frame,
+and the tile keeps its slot, order and place. Ghostty native tabs are the primary
+stable-logical-window target: only for Ghostty does ambiguous evidence hold the slot for a bounded
+settle; for other apps it is treated as one window closing and another opening. Replacement is
+conservative: when the evidence is ambiguous, Spaceman never guesses which window replaced which.
 
 Unresolved Ghostty slots still count toward application workspace affinity, and pending replacement
 candidates are reserved against adoption by another workspace while reconciliation settles.

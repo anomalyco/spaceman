@@ -334,6 +334,77 @@ fn valid_ghostty_replacement_preserves_slot() {
 }
 
 #[test]
+fn finder_tab_replacement_keeps_its_slot_and_place_in_the_row() {
+    let finder = app(10, 1);
+    let calendar = app(20, 1);
+    let left = Rect {
+        width: 500,
+        ..OUTPUT
+    };
+    let right = Rect {
+        x: 500,
+        width: 500,
+        ..OUTPUT
+    };
+    let first = run(
+        &Model::default(),
+        1,
+        vec![
+            complete(
+                &finder,
+                "com.apple.finder",
+                Some(1),
+                vec![window(&finder, 1, left)],
+            ),
+            complete(
+                &calendar,
+                "com.apple.iCal",
+                Some(2),
+                vec![window(&calendar, 2, right)],
+            ),
+        ],
+    );
+    let order: Vec<_> = first.model.workspace.slots.iter().map(|s| s.id).collect();
+    let evidence = ReconciliationEvidence {
+        previous_placements: HashMap::from([(order[0], left), (order[1], right)]),
+    };
+    let result = reconcile(
+        &first.model,
+        &NativeObservation {
+            cycle: 2,
+            mouse_down: false,
+            applications: vec![complete(
+                &finder,
+                "com.apple.finder",
+                Some(3),
+                vec![window(&finder, 3, left)],
+            )],
+        },
+        &evidence,
+        &Settings::for_output(OUTPUT),
+    );
+
+    let slots = &result.model.workspace.slots;
+    assert_eq!(slots.iter().map(|s| s.id).collect::<Vec<_>>(), order);
+    assert_eq!(slots[0].bound_window().unwrap().window_id, 3);
+    assert_eq!(slots[1].bound_window().unwrap().window_id, 2);
+    assert_eq!(
+        result.decisions,
+        vec![Decision::NativeTabReplaced {
+            slot: order[0],
+            previous: PhysicalWindowId {
+                app: finder.clone(),
+                window_id: 1,
+            },
+            current: PhysicalWindowId {
+                app: finder,
+                window_id: 3,
+            },
+        }]
+    );
+}
+
+#[test]
 fn ambiguous_ghostty_replacement_reserves_the_slot_without_a_write() {
     let ghostty = app(10, 1);
     let first = run(
