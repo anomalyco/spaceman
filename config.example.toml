@@ -14,8 +14,9 @@ hud_position = "bottom"
 # tile's longer side) or "columns" (side-by-side siblings).
 layout = "dwindle"
 update_channel = "stable"
-# Move the mouse pointer on explicit keyboard/ctl focus changes: "off" (default),
-# "display" (only when focus lands on another display), or "window" (every focus change).
+# Whether explicit keyboard/ctl focus actions move the mouse pointer: "off" (default) leaves
+# it alone, "display" warps it when it is not on the target's display, and "window" warps it
+# when it is outside the newly focused window (on an empty target workspace, the display).
 # mouse_follows_focus = "off"
 # Center a window that is alone on its display (or in Fullscreen Layout) at this width;
 # 0 (the default) lets it fill the display. 320 through 16384 points.
