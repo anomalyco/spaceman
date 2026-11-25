@@ -151,6 +151,87 @@ fn title_route_rule_routes_matching_secondary_window() {
     assert!(runtime.backend.frames[&created].x >= 1000);
 }
 
+/// Routes a new `Huddle` window from the main display into visible workspace 6 (Columns),
+/// which already tiles `tiled` and is first arranged by `arrange`. Returns the routed window.
+fn route_huddle_into_columns(
+    tiled: &[crate::PhysicalWindowId],
+    arrange: impl FnOnce(&mut WorkspaceRuntime<FakeBackend>),
+) -> (WorkspaceRuntime<FakeBackend>, crate::PhysicalWindowId) {
+    let created = window(40);
+    let mut windows: Vec<_> = tiled
+        .iter()
+        .zip((1050..).step_by(250))
+        .map(|(tiled, x)| (tiled.clone(), frame(x)))
+        .collect();
+    windows.push((created.clone(), frame(100)));
+    let mut observed = observation_for_windows("com.example.Test", &created, &windows);
+    if let crate::AppObservation::Complete {
+        windows: observed_windows,
+        ..
+    } = &mut observed.applications[0]
+    {
+        observed_windows.last_mut().unwrap().title = Some("Huddle".into());
+    }
+    let mut backend = FakeBackend {
+        observation: Some(observed),
+        ..FakeBackend::default()
+    };
+    backend.frames.extend(windows);
+    let config = Config::parse(
+        "version = 1\n[settings]\nlayout = 'columns'\n[[rules]]\nbundle_id = 'com.example.Test'\ntitle = 'Huddle'\naction = 'route'\nworkspace = 6",
+    )
+    .unwrap();
+    let mut runtime = runtime_with_config(backend, config);
+    for window in tiled {
+        bind(&mut runtime, WorkspaceId::SIX, window);
+    }
+    arrange(&mut runtime);
+
+    runtime.cycle(outputs(), &AtomicBool::new(false)).unwrap();
+
+    assert_eq!(
+        runtime.workspaces.workspace_of(&created),
+        Some(WorkspaceId::SIX)
+    );
+    (runtime, created)
+}
+
+#[test]
+fn columns_route_into_a_visible_workspace_joins_its_focused_tile_split() {
+    let (left, right) = (window(30), window(31));
+    let (runtime, created) = route_huddle_into_columns(&[left.clone(), right.clone()], |rt| {
+        rt.workspaces
+            .engine_mut(WorkspaceId::SIX)
+            .remember_insertion_focus(&left);
+    });
+
+    // Beside the focused tile, as if it had opened there, not appended after `right` (#494).
+    let frames = &runtime.backend.frames;
+    assert!(frames[&left].x < frames[&created].x, "{frames:?}");
+    assert!(frames[&created].x < frames[&right].x, "{frames:?}");
+}
+
+#[test]
+fn columns_route_joins_a_nested_focused_split_and_keeps_the_other_column() {
+    let (top, right, below) = (window(30), window(31), window(32));
+    let tiled = [top.clone(), right.clone(), below.clone()];
+    let (runtime, created) = route_huddle_into_columns(&tiled, |rt| {
+        let engine = rt.workspaces.engine_mut(WorkspaceId::SIX);
+        // (top / below) | right, with `below` focused.
+        assert!(engine.move_window_relative(&below, &top, crate::Direction::Down));
+        engine.remember_insertion_focus(&below);
+    });
+
+    // A third row under `below`; `right` keeps half the display at full height (#494).
+    let frames = &runtime.backend.frames;
+    let column = [&top, &below, &created].map(|window| frames[window]);
+    assert!(column.iter().all(|frame| frame.x == column[0].x), "{frames:?}");
+    assert!(column[0].y < column[1].y && column[1].y < column[2].y, "{frames:?}");
+    assert_eq!(frames[&right].width, column[0].width, "{frames:?}");
+    assert!(frames[&right].x > column[0].x, "{frames:?}");
+    assert!(frames[&right].height > column[0].height * 2, "{frames:?}");
+}
+
 #[test]
 fn floating_rule_converts_existing_and_new_windows_to_floating_ownership() {
     let existing = window(10);
