@@ -65,7 +65,10 @@ jobs:
           bun run build
           rm -rf "$RUNNER_TEMP/site"
           mkdir -p "$RUNNER_TEMP/site"
-          cp worker.ts "$RUNNER_TEMP/site/worker.ts"
+          # Bundle the Worker the way wrangler will deploy it: worker.ts imports
+          # modules from src/, and the deploy job holds only this artifact, so it
+          # gets one self-contained module instead of an unbundleable entry point.
+          bun build worker.ts --target browser --format esm --outfile "$RUNNER_TEMP/site/worker.js"
           cp -R dist "$RUNNER_TEMP/site/dist"
       - id: upload
         uses: ./.github/release/upload
