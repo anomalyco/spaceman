@@ -525,19 +525,17 @@ impl ConfigDoc {
     }
 
     pub(crate) fn load_or_default(path: &Path) -> Result<(Self, bool), String> {
-        let source = match fs::read_to_string(path) {
-            Ok(source) => source,
-            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
-                return Ok((Self::default(), false));
-            }
-            Err(error) => {
-                return Err(format!("failed to read {}: {error}", path.display()));
-            }
+        let source = read_source(path)?;
+        let exists = source.is_some();
+        Ok((Self::from_source(path, source.as_deref())?, exists))
+    }
+
+    fn from_source(path: &Path, source: Option<&str>) -> Result<Self, String> {
+        let Some(source) = source else {
+            return Ok(Self::default());
         };
-        Config::parse(&source).map_err(|error| format!("{}: {error}", path.display()))?;
-        let doc: Self =
-            toml::from_str(&source).map_err(|error| format!("{}: {error}", path.display()))?;
-        Ok((doc, true))
+        Config::parse(source).map_err(|error| format!("{}: {error}", path.display()))?;
+        toml::from_str(source).map_err(|error| format!("{}: {error}", path.display()))
     }
 
     pub(crate) fn effective_settings(&self) -> EffectiveSettings {
@@ -589,26 +587,41 @@ impl ConfigDoc {
         Ok(rendered)
     }
 
-    pub(crate) fn save_atomic(&self, path: &Path) -> Result<(), String> {
-        let rendered = self.render_toml()?;
-        write_config_atomic(path, rendered.as_bytes())
-            .map_err(|error| format!("failed to write {}: {error}", path.display()))
-    }
-
     /// Acquires an exclusive config lock, reads the latest document from `path`,
-    /// runs `edit`, and writes atomically when `edit` reports a change.
+    /// runs `edit`, and writes atomically when `edit` reports a change. The write
+    /// changes only what the edit changed: the file keeps its comments, order,
+    /// and formatting everywhere else.
     pub(crate) fn edit_locked<T>(
         path: &Path,
         edit: impl FnOnce(&mut Self) -> Result<(T, bool), String>,
     ) -> Result<T, String> {
         let _lock = lock_config(path)
             .map_err(|error| format!("failed to lock {}: {error}", path.display()))?;
-        let (mut doc, _) = Self::load_or_default(path)?;
+        let source = read_source(path)?;
+        let mut doc = Self::from_source(path, source.as_deref())?;
         let (result, changed) = edit(&mut doc)?;
         if changed {
-            doc.save_atomic(path)?;
+            let rendered = doc.render_toml()?;
+            let text = source
+                .as_deref()
+                .and_then(|source| Self::merged(source, &rendered))
+                .unwrap_or(rendered);
+            if source.as_deref() != Some(text.as_str()) {
+                write_config_atomic(path, text.as_bytes())
+                    .map_err(|error| format!("failed to write {}: {error}", path.display()))?;
+            }
         }
         Ok(result)
+    }
+
+    /// `source` edited to hold `rendered`'s content, when that edit is valid and
+    /// reads back as exactly `rendered`; otherwise `None`, and the caller writes
+    /// `rendered` itself.
+    fn merged(source: &str, rendered: &str) -> Option<String> {
+        let merged = super::merge::merge_into(source, rendered)?;
+        Config::parse(&merged).ok()?;
+        let reread: Self = toml::from_str(&merged).ok()?;
+        (reread.render_toml().ok()? == rendered).then_some(merged)
     }
 
     pub(crate) fn rule_views(&self) -> Vec<RuleView> {
@@ -643,6 +656,14 @@ impl ConfigDoc {
         }
         out.extend(named);
         out
+    }
+}
+
+fn read_source(path: &Path) -> Result<Option<String>, String> {
+    match fs::read_to_string(path) {
+        Ok(source) => Ok(Some(source)),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(None),
+        Err(error) => Err(format!("failed to read {}: {error}", path.display())),
     }
 }
 
