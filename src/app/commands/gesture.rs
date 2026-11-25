@@ -7,6 +7,9 @@ use super::super::input::PointerBounds;
 use super::super::*;
 use super::drag::DropTarget;
 
+/// The pointer location a drag preview was shown at, and the target it showed.
+pub(in crate::app) type ShownDrop = ((i32, i32), DropTarget);
+
 #[derive(Clone, Debug)]
 pub(in crate::app) struct GestureOverlay {
     pub(in crate::app) window: crate::PhysicalWindowId,
@@ -21,7 +24,7 @@ pub(in crate::app) enum OverlayKind {
     Drag {
         layout: crate::layout_tree::LayoutTree,
         pointer_bounds: Option<PointerBounds>,
-        shown: Option<((i32, i32), DropTarget)>,
+        shown: Option<ShownDrop>,
     },
     /// A border drag, previewed by resizing a copy of the engine.
     Resize,

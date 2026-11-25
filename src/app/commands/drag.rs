@@ -1,6 +1,6 @@
 use super::super::input::PointerBounds;
 use super::super::*;
-use super::gesture::{GestureOverlay, OverlayKind};
+use super::gesture::{GestureOverlay, OverlayKind, ShownDrop};
 
 /// Width inside the tiled area (in addition to any outer gap) of the display's
 /// left and right full-height column drop bands.
@@ -169,7 +169,7 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
     ) -> (
         crate::layout_tree::LayoutTree,
         Option<PointerBounds>,
-        Option<((i32, i32), DropTarget)>,
+        Option<ShownDrop>,
     ) {
         match self.gesture.take() {
             Some(GestureOverlay {

@@ -15,6 +15,7 @@ pub(crate) struct Minimums<'a> {
 }
 
 impl Minimums<'_> {
+    #[cfg(test)]
     pub(crate) const FLOOR: Minimums<'static> = Minimums {
         known: None,
         floor: MIN_TILE_EXTENT,
