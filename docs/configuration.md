@@ -315,13 +315,16 @@ in the file are kept.
 
 `[labs]` turns on experimental features one by one. Every switch is off by default, and with all of
 them off Spaceman behaves exactly as if Labs did not exist: no extra shortcuts register and no
-command changes behavior. Unknown keys are config errors.
+command changes behavior. Unknown keys are config errors. Settings › Labs lists every switch,
+grouped by what it changes (`Windows`: Scratchpad and Portrait edge rows; `Menu bar & HUD`: Physical
+display order; `Settings`: Activity), and flipping one there writes the same key.
 
 ```toml
 [labs]
 scratchpad = false                    # optional (default: false); the i3/sway-style Scratchpad
 activity = false                      # optional (default: false); Settings › Activity
 portrait_edge_rows = false            # optional (default: false); top/bottom drop bands on portrait displays
+physical_displays = false             # optional (default: false); menu bar in physical display order and shape
 ```
 
 `scratchpad = true` enables the Scratchpad (see [Controls › Scratchpad](controls.md#scratchpad-lab)) and
@@ -332,13 +335,22 @@ hidden in the scratchpad brings them back on screen, where they tile again.
 
 `activity = true` adds Settings › Activity, the live arrangement log, journal health, process vitals,
 and Save snapshot (see [Restarts and Recovery](features/restarts-and-recovery.md)). With it off the pane
-stays out of the Settings sidebar and its `⌘6` shortcut does nothing; `spaceman doctor` and the journal
+stays out of the Settings sidebar and `⌘6` opens Labs instead; `spaceman doctor` and the journal
 keep recording either way. Turning it off while the pane is open returns Settings to General.
 
 `portrait_edge_rows = true` adds drop bands along the top and bottom edges of a display whose tiled
 area is taller than it is wide: dragging a tiled window into one docks it into a full-width,
 half-height row on that edge (see [Controls](controls.md)). With it off, only the left and right edge
 bands exist. The switch applies to the next drag.
+
+`physical_displays = true` makes the menu bar follow the displays on your desk. The workspace glyphs
+and the menu's display sections go left to right, then top to bottom, the order `Option+Shift+Tab`
+moves through; a portrait display's glyph, and its previews in the Workspace HUD's Layouts style, are
+drawn tall; when displays share a product name, each section says which one it is (`DELL U2720Q
+(left)`, `DELL U2720Q (right)`) in place of the `(1)` / `(2)` macOS adds; and VoiceOver reads each
+glyph's workspace with its display. Rearranging, rotating, connecting or disconnecting a display
+updates them on the next refresh. With it off, or with one landscape display, the menu bar is
+unchanged. In Settings it is `Labs › Menu bar & HUD › Physical display order`.
 
 ```sh
 spaceman config set labs.activity true

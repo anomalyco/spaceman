@@ -116,6 +116,7 @@ impl Doc {
             scratchpad: self.lab(LabFeature::Scratchpad),
             activity: self.lab(LabFeature::Activity),
             portrait_edge_rows: self.lab(LabFeature::PortraitEdgeRows),
+            physical_displays: self.lab(LabFeature::PhysicalDisplays),
         }
     }
 
@@ -356,25 +357,32 @@ impl Doc {
 
     /// Sets `key` in `[settings]`, or removes it (and an emptied table) for `None`, the default.
     fn set_setting(&mut self, key: &str, item: Option<Item>) {
+        self.set_table_key("settings", key, item);
+    }
+
+    /// Turns `feature`'s `[labs]` switch on, or removes it (and an emptied table) to turn it off.
+    pub fn set_lab(&mut self, feature: LabFeature, on: bool) {
+        self.set_table_key("labs", feature.key(), on.then(|| value(true)));
+    }
+
+    /// Sets `key` in the `[name]` table, or removes it (and an emptied table) for `None`.
+    fn set_table_key(&mut self, name: &str, key: &str, item: Option<Item>) {
         let Some(item) = item else {
-            let empty = if let Some(table) = self
-                .doc
-                .get_mut("settings")
-                .and_then(Item::as_table_like_mut)
-            {
-                table.remove(key);
-                table.is_empty()
-            } else {
-                false
-            };
+            let empty =
+                if let Some(table) = self.doc.get_mut(name).and_then(Item::as_table_like_mut) {
+                    table.remove(key);
+                    table.is_empty()
+                } else {
+                    false
+                };
             if empty {
-                self.remove_table("settings");
+                self.remove_table(name);
             }
             return;
         };
         let entry = self
             .doc
-            .entry("settings")
+            .entry(name)
             .or_insert_with(|| Item::Table(Table::new()));
         if !entry.is_table_like() {
             *entry = Item::Table(Table::new());

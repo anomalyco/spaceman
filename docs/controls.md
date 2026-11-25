@@ -153,14 +153,16 @@ The menu-bar control shows active workspace/layout glyphs and runtime errors. It
 - `Setup Tour…`, shown while Accessibility permission is missing;
 - while tiling, the workspaces of each display (under the display's name when there are several):
   the visible one checked, plus every workspace holding windows, each with its apps' icons (names on
-  hover) and its `Option` shortcut. Choosing one switches to it;
+  hover) and its `Option` shortcut. Choosing one switches to it. With `[labs] physical_displays = true`
+  (Settings › Labs › `Physical display order`) the glyphs and sections go left to right, portrait displays' glyphs are tall, and same-named
+  displays are told apart by position (see [Configuration › Labs](configuration.md#labs));
 - `Pause Tiling`, or `Resume Tiling` while paused;
 - `Workspace HUD`, checked while the non-activating workspace capsule (`[settings] hud = true`) is enabled;
   `Settings > General > Workspace HUD` picks `Off`, `Icons`, or `Layouts` (`[settings] hud` and `hud_style`, default `Icons`),
   and, while the HUD is on, `Customize…` beside it opens a sheet whose `Position` picks `Bottom` or `Top`
   (`[settings] hud_position`, default `Bottom`) under a live miniature of the capsule;
 - `Launch at Login`, shown checked when macOS has enabled the signed app bundle;
-- `Settings...` (`⌘,`), opening the Rune Settings window (`General`, `Layout`, `Rules`, `Workspaces`, `Shortcuts`, and, with `[labs] activity = true`, `Activity`, plus `⇧⌘D` Playground);
+- `Settings...` (`⌘,`), opening the Rune Settings window (`General`, `Layout`, `Rules`, `Workspaces`, `Shortcuts`, with `[labs] activity = true`, `Activity`, and `Labs`, the experimental features' switches, plus `⇧⌘D` Playground);
 - `Check for Updates...`, which checks and opens Settings (its sidebar and `General > Updates` show
   the result), or `Install Spaceman <version> and Restart` once an update is downloaded and verified;
 - `Quit Spaceman` (`⌘Q`).
@@ -226,7 +228,7 @@ spaceman ctl wrong
 spaceman ctl restart
 spaceman ctl quit
 spaceman open spaceman://settings/workspaces
-spaceman open spaceman://labs/scrolling-strip
+spaceman open spaceman://labs/physical-displays
 spaceman ctl open features/gaps
 spaceman hud
 spaceman doctor
@@ -285,7 +287,7 @@ Spaceman registers the `spaceman://` URL scheme (and clickable web bounce links 
 
 - `spaceman://settings` — open Settings
 - `spaceman://settings/<pane>` — open `general`, `rules`, `workspaces`, `shortcuts`, `labs`, `layout`, or `activity` (plus optional `/<focus>`); `activity` falls back to `general` while `[labs] activity` is off
-- `spaceman://labs` / `spaceman://labs/<slug>` — open Settings › Labs and highlight `<slug>` (e.g. `scrolling-strip`, `playground`)
+- `spaceman://labs` / `spaceman://labs/<slug>` — open Settings › Labs and highlight `<slug>`, a switch's key with `-` for `_` (`scratchpad`, `activity`, `portrait-edge-rows`, `physical-displays`)
 - `spaceman://features/<slug>` — open the Settings pane and highlight for a feature (e.g. `workspaces`, `rules`, `shortcuts`, `gaps`, `hud`)
 
 Deep links only open Settings and highlight the requested pane or card. They never modify

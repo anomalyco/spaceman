@@ -15,6 +15,24 @@ pub const HUD_PREVIEW_RECT: Rect = Rect {
     height: 1100,
 };
 
+/// [`HUD_PREVIEW_RECT`] turned on its side, for a portrait display's previews.
+pub const HUD_PORTRAIT_PREVIEW_RECT: Rect = Rect {
+    x: 0,
+    y: 0,
+    width: HUD_PREVIEW_RECT.height,
+    height: HUD_PREVIEW_RECT.width,
+};
+
+/// The preview space for a display: [`HUD_PORTRAIT_PREVIEW_RECT`] when `portrait`.
+#[must_use]
+pub const fn hud_preview_rect(portrait: bool) -> Rect {
+    if portrait {
+        HUD_PORTRAIT_PREVIEW_RECT
+    } else {
+        HUD_PREVIEW_RECT
+    }
+}
+
 /// Actions the in-process Rune window or HUD overlay can send to the agent loop.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum UiAction {
@@ -117,6 +135,9 @@ pub struct UiHudDisplay {
     /// Every workspace in listing order (`settings.workspace_order`, then 1-10 and A-Z), so the
     /// HUD can place a workspace this row leaves out; empty means that default order.
     pub order: Vec<WorkspaceId>,
+    /// A portrait display, with `[labs] physical_displays` on: its previews are in
+    /// [`HUD_PORTRAIT_PREVIEW_RECT`] space and the Layouts style draws them tall.
+    pub portrait: bool,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -134,7 +155,7 @@ pub struct UiHudWorkspace {
 pub struct UiHudTile {
     /// The tile's slot, stable while the window keeps its place.
     pub key: u64,
-    /// In [`HUD_PREVIEW_RECT`] space.
+    /// In [`HUD_PREVIEW_RECT`] space, or [`HUD_PORTRAIT_PREVIEW_RECT`] on a portrait row.
     pub rect: Rect,
     pub bundle: Option<String>,
 }

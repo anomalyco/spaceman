@@ -206,6 +206,6 @@ mod tests {
             let digit = char::from_digit((index + 1) as u32, 10).unwrap();
             assert_eq!(Pane::from_shortcut(digit, labs), Some(expected));
         }
-        assert_eq!(Pane::from_shortcut('7', labs), None);
+        assert_eq!(Pane::from_shortcut('8', labs), None);
     }
 }

@@ -748,9 +748,8 @@ mod tests {
             .unwrap()
             .resolve();
         ui.open_target(lab);
-        // Labs pane isn't registered yet, so it falls back to General while
-        // preserving highlight_lab for when Labs cards are present.
-        assert_eq!(ui.pane, Pane::General);
+        // Settings › Labs opens with the slug kept for its row's highlight.
+        assert_eq!(ui.pane, Pane::Labs);
         assert_eq!(ui.highlight_lab.as_deref(), Some("scrolling-strip"));
         assert_eq!(ui.highlight_feature.as_deref(), Some("scrolling-strip"));
 
@@ -832,5 +831,16 @@ mod tests {
         assert!(doc.lab(spaceman::config::LabFeature::Activity));
         ui.doc = doc;
         assert!(ui.doc.labs().activity);
+    }
+
+    #[test]
+    fn a_labs_switch_turns_on_and_off_without_touching_the_others() {
+        use spaceman::config::LabFeature;
+        let mut ui = playground::blank_fixture();
+        ui.edit(|doc| doc.set_lab(LabFeature::PhysicalDisplays, true));
+        assert!(ui.doc.labs().physical_displays);
+        assert!(!ui.doc.labs().activity && !ui.doc.labs().scratchpad);
+        ui.edit(|doc| doc.set_lab(LabFeature::PhysicalDisplays, false));
+        assert!(!ui.doc.labs().physical_displays);
     }
 }

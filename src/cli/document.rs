@@ -41,11 +41,16 @@ pub(crate) struct LabsDoc {
     pub activity: Option<bool>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub portrait_edge_rows: Option<bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub physical_displays: Option<bool>,
 }
 
 impl LabsDoc {
     fn is_empty(&self) -> bool {
-        self.scratchpad.is_none() && self.activity.is_none() && self.portrait_edge_rows.is_none()
+        self.scratchpad.is_none()
+            && self.activity.is_none()
+            && self.portrait_edge_rows.is_none()
+            && self.physical_displays.is_none()
     }
 
     /// The switch as the file asks for it: off while unset.
@@ -68,6 +73,7 @@ impl LabsDoc {
             LabFeature::Scratchpad => self.scratchpad,
             LabFeature::Activity => self.activity,
             LabFeature::PortraitEdgeRows => self.portrait_edge_rows,
+            LabFeature::PhysicalDisplays => self.physical_displays,
         }
     }
 
@@ -76,6 +82,7 @@ impl LabsDoc {
             LabFeature::Scratchpad => &mut self.scratchpad,
             LabFeature::Activity => &mut self.activity,
             LabFeature::PortraitEdgeRows => &mut self.portrait_edge_rows,
+            LabFeature::PhysicalDisplays => &mut self.physical_displays,
         }
     }
 }

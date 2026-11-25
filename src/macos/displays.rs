@@ -128,6 +128,43 @@ impl DisplayOutputs {
         displays
     }
 
+    /// `display`'s name for people: its product name, and when another connected display
+    /// shares that name, where it sits among them in place of the "(1)" / "(2)" macOS appends.
+    /// Twins whose horizontal ranges all overlap are a stack ("top", "bottom", "2 from top");
+    /// any others go left to right ("left", "right", "2 from left").
+    #[must_use]
+    pub fn label(&self, display: &DisplayOutput) -> String {
+        let base = product_name(&display.name);
+        let mut twins: Vec<&DisplayOutput> = self
+            .ordered()
+            .into_iter()
+            .filter(|other| product_name(&other.name) == base)
+            .collect();
+        if twins.len() < 2 || !twins.iter().any(|other| other.id == display.id) {
+            return display.name.clone();
+        }
+        let stacked = twins.iter().enumerate().all(|(index, first)| {
+            twins[index + 1..]
+                .iter()
+                .all(|second| overlap_horizontally(first.frame, second.frame))
+        });
+        if stacked {
+            twins.sort_by_key(|twin| (twin.frame.y, twin.frame.x, twin.id.as_str()));
+        }
+        let Some(index) = twins.iter().position(|other| other.id == display.id) else {
+            return display.name.clone();
+        };
+        let position = match (twins.len(), stacked, index) {
+            (2, true, 0) => "top".to_owned(),
+            (2, true, _) => "bottom".to_owned(),
+            (2, false, 0) => "left".to_owned(),
+            (2, false, _) => "right".to_owned(),
+            (_, true, _) => format!("{} from top", index + 1),
+            (_, false, _) => format!("{} from left", index + 1),
+        };
+        format!("{base} ({position})")
+    }
+
     pub fn frames(&self) -> impl Iterator<Item = Rect> + '_ {
         self.displays.iter().map(|display| display.frame)
     }
@@ -326,6 +363,22 @@ fn union_rect(left: Rect, right: Rect) -> Rect {
     }
 }
 
+/// Whether `first` and `second` share some horizontal span, as stacked displays do.
+const fn overlap_horizontally(first: Rect, second: Rect) -> bool {
+    first.x < second.x + second.width && second.x < first.x + first.width
+}
+
+/// `name` without the " (1)" / " (2)" macOS appends to tell same-model displays apart.
+fn product_name(name: &str) -> &str {
+    name.rsplit_once(" (")
+        .filter(|(_, suffix)| {
+            suffix.strip_suffix(')').is_some_and(|digits| {
+                !digits.is_empty() && digits.bytes().all(|b| b.is_ascii_digit())
+            })
+        })
+        .map_or(name, |(base, _)| base)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -362,6 +415,91 @@ mod tests {
             .map(|display| outputs.selector_for(display).as_str().to_owned())
             .collect();
         assert_eq!(selectors, ["main", "secondary", "studio-b"]);
+    }
+
+    #[test]
+    fn label_tells_same_named_displays_apart_by_position() {
+        let outputs = DisplayOutputs::new(vec![
+            display("built-in", "Built-in Retina Display", 0, true),
+            display("dell-a", "DELL U2720Q (1)", -100, false),
+            display("dell-b", "DELL U2720Q (2)", 100, false),
+        ])
+        .unwrap();
+        let labels: Vec<String> = outputs
+            .displays()
+            .iter()
+            .map(|display| outputs.label(display))
+            .collect();
+        assert_eq!(
+            labels,
+            [
+                "Built-in Retina Display",
+                "DELL U2720Q (left)",
+                "DELL U2720Q (right)"
+            ]
+        );
+        let stacked = DisplayOutputs::new(vec![
+            display("upper", "Studio Display", 0, true),
+            DisplayOutput {
+                frame: Rect {
+                    y: 100,
+                    ..display("lower", "Studio Display", 0, false).frame
+                },
+                ..display("lower", "Studio Display", 0, false)
+            },
+        ])
+        .unwrap();
+        assert_eq!(
+            stacked.label(&stacked.displays()[1]),
+            "Studio Display (bottom)"
+        );
+        // Offset sideways but still above one another: a stack, not left and right.
+        let offset = DisplayOutputs::new(vec![
+            display("upper", "Studio Display", 0, true),
+            DisplayOutput {
+                frame: Rect {
+                    x: 40,
+                    y: 100,
+                    ..display("lower", "Studio Display", 0, false).frame
+                },
+                ..display("lower", "Studio Display", 0, false)
+            },
+        ])
+        .unwrap();
+        assert_eq!(offset.label(&offset.displays()[0]), "Studio Display (top)");
+        assert_eq!(
+            offset.label(&offset.displays()[1]),
+            "Studio Display (bottom)"
+        );
+        let tower = DisplayOutputs::new(
+            [(0, 0), (10, 100), (-10, 200)]
+                .into_iter()
+                .enumerate()
+                .map(|(index, (x, y))| DisplayOutput {
+                    frame: Rect {
+                        x,
+                        y,
+                        ..display("", "LG", 0, false).frame
+                    },
+                    ..display(
+                        &format!("t{index}"),
+                        &format!("LG ({})", index + 1),
+                        0,
+                        index == 0,
+                    )
+                })
+                .collect(),
+        )
+        .unwrap();
+        assert_eq!(tower.label(&tower.displays()[2]), "LG (3 from top)");
+        let three = DisplayOutputs::new(vec![
+            display("a", "LG (1)", 0, true),
+            display("b", "LG (2)", 100, false),
+            display("c", "LG (3)", 200, false),
+        ])
+        .unwrap();
+        assert_eq!(three.label(&three.displays()[1]), "LG (2 from left)");
+        assert_eq!(product_name("Display (Work)"), "Display (Work)");
     }
 
     #[test]
