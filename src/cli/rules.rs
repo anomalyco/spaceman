@@ -1,7 +1,7 @@
 use std::path::Path;
 
 use serde::Serialize;
-use spaceman::WorkspaceId;
+use spaceman::{WorkspaceId, config::RouteWindows};
 
 use super::{
     Outcome,
@@ -46,6 +46,8 @@ struct AddOptions {
     title: Option<String>,
     title_contains: Option<String>,
     action: ActionArg,
+    /// `--windows first|all`, written as the route rule's `windows` key.
+    windows: Option<RouteWindows>,
     position: Option<usize>,
     json: bool,
 }
@@ -125,7 +127,13 @@ fn add_requests_help(args: &[&str]) -> bool {
         }
         if matches!(
             arg,
-            "--app" | "--bundle-id" | "--title" | "--title-contains" | "--workspace" | "--position"
+            "--app"
+                | "--bundle-id"
+                | "--title"
+                | "--title-contains"
+                | "--workspace"
+                | "--windows"
+                | "--position"
         ) {
             index += 2;
         } else {
@@ -141,6 +149,7 @@ fn parse_add_options(args: &[&str]) -> Result<AddOptions, String> {
     let mut title_contains: Option<String> = None;
     let mut action: Option<ActionArg> = None;
     let mut position: Option<usize> = None;
+    let mut windows: Option<RouteWindows> = None;
     let mut json = false;
 
     let mut index = 0;
@@ -236,6 +245,15 @@ fn parse_add_options(args: &[&str]) -> Result<AddOptions, String> {
                 }
                 action = Some(ActionArg::Ignore);
             }
+            "--windows" => {
+                if windows.is_some() {
+                    return Err("--windows specified more than once".into());
+                }
+                let value = next_value(flag, inline_value, &mut index)?;
+                windows = Some(RouteWindows::parse(&value).ok_or_else(|| {
+                    format!("--windows takes \"first\" or \"all\", got {value:?}")
+                })?);
+            }
             "--position" => {
                 if position.is_some() {
                     return Err("--position specified more than once".into());
@@ -271,11 +289,16 @@ fn parse_add_options(args: &[&str]) -> Result<AddOptions, String> {
         );
     };
 
+    if windows.is_some() && !matches!(action, ActionArg::Workspace(_)) {
+        return Err("--windows applies only to a route rule; add --workspace <ws>".into());
+    }
+
     Ok(AddOptions {
         app,
         title,
         title_contains,
         action,
+        windows,
         position,
         json,
     })
@@ -297,6 +320,7 @@ fn run_add(args: &[&str], path_override: Option<&Path>) -> Result<String, String
         title_contains: options.title_contains,
         action,
         workspace,
+        windows: options.windows,
     };
 
     let display_index = ConfigDoc::edit_locked(&path, |doc| {
@@ -462,6 +486,7 @@ fn run_remove(args: &[&str], path_override: Option<&Path>) -> Result<String, Str
             title_contains: entry.title_contains.clone(),
             action: entry.action.clone(),
             workspace: entry.workspace,
+            windows: entry.windows,
         };
         Ok(format!(
             "removed rule {}: {}",

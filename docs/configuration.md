@@ -70,6 +70,7 @@ action = "tile"                       # tiles an app Spaceman floats by default
 bundle_id = "ai.opencode.desktop"
 action = "route"
 workspace = "D"                       # named workspace A through Z
+windows = "first"                     # optional, route only: "first" (default) or "all"; "all" needs [labs] route_all_windows
 
 [[workspaces]]
 workspace = 9                         # 1 through 10 or "A" through "Z"; unique
@@ -104,7 +105,9 @@ overrides the default for what it decides: `action = "tile"` tiles one of these 
 - `route` assigns a newly inserted resizable logical window to workspace 1 through 10 or a configured
   named workspace A through Z. A bundle-level `route` rule (without `title` or `title_contains`)
   applies to the application's initial window while secondary windows opened later stay on the
-  active workspace; a title-matched `route` rule routes every matching window. Movable
+  active workspace; a title-matched `route` rule routes every matching window. With the
+  `route_all_windows` Lab on, `windows = "all"` makes a bundle-level `route` rule route every new
+  window of its application too (see [Labs](#labs)). Movable
   non-resizable windows remain floating on the workspace where first observed. A rule does not
   repeatedly route existing slots, including a Ghostty native-tab physical replacement.
 - `ignore` leaves the window entirely alone: never tiled, never owned by a workspace, never moved or
@@ -350,7 +353,7 @@ in the file are kept.
 them off Spaceman behaves exactly as if Labs did not exist: no extra shortcuts register and no
 command changes behavior. Unknown keys are config errors. Settings › Labs lists every switch,
 grouped by what it changes (`Windows`: Scratchpad, Portrait edge rows, Recent focus, Dragged
-floats follow their display and Single-window height; `Workspaces`: Swipe switch, Focus empty workspaces on other
+floats follow their display, Single-window height and Route every window; `Workspaces`: Swipe switch, Focus empty workspaces on other
 displays, Workspace steps and Four-finger swipe; `Menu bar & HUD`: Physical display order; `Settings`: Activity), and flipping one there
 writes the same key.
 
@@ -367,6 +370,7 @@ float_follows_display = false         # optional (default: false); dragged float
 workspace_steps = false               # optional (default: false); switch/move next|prev
 four_finger_swipe = false             # optional (default: false); the workspace swipe takes four fingers
 single_window_height = false          # optional (default: false); reads settings.single_window_max_height
+route_all_windows = false             # optional (default: false); reads a route rule's windows = "all"
 ```
 
 `scratchpad = true` enables the Scratchpad (see [Controls › Scratchpad](controls.md#scratchpad-lab)) and
@@ -388,6 +392,26 @@ Settings › Layout › Wide displays, with Off, 900, 1050 and 1200 (the 16:10 h
 presets 1440, 1680 and 1920) and any other height `config.toml` sets. With it off, the key is
 ignored and its row is hidden. It applies live. In Settings it is
 `Labs › Windows › Single-window height`.
+
+`route_all_windows = true` makes Spaceman read `windows = "all"` on `route` rules (see
+[Current Schema](#current-schema)): every new window of the rule's application goes to the rule's
+workspace, not only its first one, so a Chrome window another app opens while you work elsewhere
+still lands on Chrome's workspace. Windows already open stay where they are. `windows` is allowed
+only on `route` rules; `"first"`, or no key, keeps today's behavior. With the Lab off the key is
+ignored. `spaceman rules add --app <bundle-id> --workspace <ws> --windows all` writes such a rule,
+and Settings › Rules keeps the key while the rule routes and drops it when the rule stops routing.
+In Settings it is `Labs › Windows › Route every window`.
+
+```toml
+[labs]
+route_all_windows = true
+
+[[rules]]
+bundle_id = "com.google.Chrome"
+action = "route"
+workspace = 4
+windows = "all"
+```
 
 `swipe_switch = true` makes Spaceman read `settings.trackpad_swipe` and turns the fixed three-finger
 swipe row in Settings › Shortcuts into the **Swipe to switch workspace** switch (see

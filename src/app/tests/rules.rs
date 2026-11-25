@@ -71,6 +71,48 @@ fn bundle_route_applies_to_initial_window_while_secondary_windows_stay_on_active
     assert!(runtime.backend.frames[&created].x < 1000);
 }
 
+/// Where a second window of `com.example.Test` lands, beside one already tiled on workspace 1,
+/// under `config`'s rules. Asserts the tiled window stays put.
+fn second_window_home(config: &str) -> Option<WorkspaceId> {
+    let tiled = window(20);
+    let opened = window(21);
+    let mut backend = FakeBackend {
+        observation: Some(observation_for_windows(
+            "com.example.Test",
+            &opened,
+            &[(tiled.clone(), frame(50)), (opened.clone(), frame(100))],
+        )),
+        ..FakeBackend::default()
+    };
+    backend.frames.insert(tiled.clone(), frame(50));
+    backend.frames.insert(opened.clone(), frame(100));
+    let mut runtime = runtime_with_config(backend, Config::parse(config).unwrap());
+    bind(&mut runtime, WorkspaceId::ONE, &tiled);
+    runtime.cycle(outputs(), &AtomicBool::new(false)).unwrap();
+    assert_eq!(
+        runtime.workspaces.workspace_of(&tiled),
+        Some(WorkspaceId::ONE)
+    );
+    runtime.workspaces.workspace_of(&opened)
+}
+
+#[test]
+fn windows_all_sends_a_later_window_to_the_route_once_its_lab_is_on() {
+    const RULE: &str =
+        "[[rules]]\nbundle_id = 'com.example.Test'\naction = 'route'\nworkspace = 6\n";
+    const LAB: &str = "[labs]\nroute_all_windows = true\n";
+    let cases = [
+        ("", "windows = 'all'", WorkspaceId::ONE),
+        (LAB, "windows = 'first'", WorkspaceId::ONE),
+        (LAB, "", WorkspaceId::ONE),
+        (LAB, "windows = 'all'", WorkspaceId::SIX),
+    ];
+    for (lab, windows, home) in cases {
+        let config = format!("version = 1\n{lab}{RULE}{windows}\n");
+        assert_eq!(second_window_home(&config), Some(home), "{config}");
+    }
+}
+
 #[test]
 fn title_route_rule_routes_matching_secondary_window() {
     let existing = window(10);

@@ -80,6 +80,8 @@ action = "float"
 bundle_id = "com.tinyspeck.slackmacgap"
 action = "route"
 workspace = 2
+# windows = "all" routes every new Slack window here, not only the first one;
+# read only with [labs] route_all_windows = true.
 
 # Named workspaces A-Z are opt-in. Configuring one registers Option+letter to
 # switch and Option+Shift+letter to move the focused window there.
@@ -143,6 +145,8 @@ monitor = "main"
 # macOS.
 # single_window_height = true makes settings.single_window_max_height cap a lone
 # window's height too, and adds its row to Settings › Layout › Wide displays.
+# route_all_windows = true makes a route rule with windows = "all" send every new
+# window of its app to its workspace, not only the first one.
 #
 # [labs]
 # scratchpad = false
@@ -156,3 +160,4 @@ monitor = "main"
 # workspace_steps = false
 # four_finger_swipe = false
 # single_window_height = false
+# route_all_windows = false

@@ -41,6 +41,11 @@ const GROUPS: [(&str, &str, &[Lab]); 4] = [
                 "Single-window height",
                 "Caps a lone window's height too, set in Layout › Wide displays",
             ),
+            (
+                LabFeature::RouteAllWindows,
+                "Route every window",
+                "Route rules with windows = \"all\" take every new window, not only the first",
+            ),
         ],
     ),
     (
