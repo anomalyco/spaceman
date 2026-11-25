@@ -117,7 +117,7 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
         let switch_started = self.backend.now();
         let mut outgoing = self.workspaces.windows(previous);
         self.order_back_to_front(&mut outgoing, |window| window.window_id);
-        let incoming = self.workspaces.windows(workspace);
+        let mut incoming = self.workspaces.windows(workspace);
         log_event!(
             "switch: workspace {} -> {} (outgoing {}, incoming {})",
             previous,
@@ -191,6 +191,7 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
                 "Workspace {workspace} stayed inactive because its windows did not finish restoring"
             ));
         }
+        let set_aside_floats = self.release_set_aside(workspace, &mut incoming);
         let layout = self.layout_workspace(workspace, output, cancelled);
         if cancelled.load(Ordering::Acquire) {
             log_event!("switch cancelled while laying out incoming windows");
@@ -254,7 +255,8 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
         self.record_focused_workspace(workspace);
         // Re-read incoming windows after reveal/layout so a tile retired as Gone
         // during restore is never chosen over a surviving tile (#308).
-        let live_incoming = self.workspaces.windows(workspace);
+        let mut live_incoming = self.workspaces.windows(workspace);
+        live_incoming.retain(|window| !set_aside_floats.contains(window));
         let outcome = self.focus_workspace_entry(
             workspace,
             &live_incoming,
@@ -359,6 +361,49 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
             );
         }
         outcome
+    }
+
+    /// Incoming windows the user minimized (⌘M) or hid (⌘H) while their
+    /// workspace was away. Laying them out or focusing one as the entry
+    /// window would bring a minimized window back out of the Dock (#496).
+    /// Their recovery frames are already restored, so a tile is released and
+    /// rejoins as a new tile when it comes back, like a set-aside tile on a
+    /// visible workspace; a float keeps its place but is not focused. Only
+    /// windows the window server does not show on screen are asked, so an
+    /// ordinary switch makes no extra Accessibility reads. Returns the
+    /// set-aside floats.
+    fn release_set_aside(
+        &mut self,
+        workspace: WorkspaceId,
+        incoming: &mut Vec<crate::PhysicalWindowId>,
+    ) -> Vec<crate::PhysicalWindowId> {
+        let Some(onscreen) = self.backend.onscreen_window_frames() else {
+            return Vec::new();
+        };
+        let candidates: Vec<_> = incoming
+            .iter()
+            .filter(|window| !onscreen.contains_key(&window.window_id))
+            .filter(|window| !self.parked.contains_key(window))
+            .cloned()
+            .collect();
+        let mut floats = Vec::new();
+        for window in candidates {
+            if !self.backend.confirms_set_aside(&window) {
+                continue;
+            }
+            if self.workspaces.workspace_of(&window) != Some(workspace) {
+                floats.push(window);
+                continue;
+            }
+            log_event!(
+                "switch: releasing {:?}, minimized or hidden while workspace {} was away",
+                window,
+                workspace
+            );
+            self.forget_window(workspace, &window);
+            incoming.retain(|other| other != &window);
+        }
+        floats
     }
 
     /// Bounded wait until every incoming window's restore is confirmed by the

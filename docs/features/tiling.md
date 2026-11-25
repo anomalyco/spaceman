@@ -227,7 +227,9 @@ pause, quit, or hotkey loss.
   period. Minimizing an app's only window (Command-M) or hiding the app (Command-H) skips that
   period: macOS confirms it, so the siblings reflow at once, and the window comes back as a
   new tile at the end of the layout. While nothing on the display is observed (another macOS Space
-  is showing), tiles are kept.
+  is showing), tiles are kept, except a window macOS reports minimized or hidden, such as a
+  workspace's only window. A window minimized while its workspace is hidden stays minimized when
+  you switch back; it also comes back as a new tile.
 - `balance` and `resize width|height` have no default hotkey; bind them in
   `[shortcuts.bindings]` or run them from the CLI.
 - With gaps, a drop that lands in the gap between two tiles misses both and leaves the layout as it
