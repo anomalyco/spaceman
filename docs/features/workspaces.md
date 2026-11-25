@@ -574,6 +574,10 @@ on the same letter.
   repeated undoing honors the reappearance and re-homes the window to the visible workspace. In the
   working tree, a window that does so twice in five minutes stays tiled but is no longer hidden
   across switches (`parking_exempt`).
+- Leaving an app's native fullscreen Space (browser video) makes macOS move that app's windows
+  parked on other workspaces back to their last on-screen frames. Right after a Space slide only the
+  focused window counts as summoned; the others are re-parked, not re-homed (#489,
+  `leaving_native_fullscreen_re_parks_the_apps_windows_from_other_workspaces`).
 - Focus-follow switches workspaces as a side effect of any app activation, including ones the user
   did not intend (an app raising itself). Each `focus follow` line in `agent.log` records recent
   input timing and whether Command was held, so Command-Tab can be told apart from self-activation.

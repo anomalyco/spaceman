@@ -3,7 +3,8 @@
 //! and Accessibility writes to the incoming Space's windows can fail, so
 //! background cycles wait for the slide to settle instead of laying out a mix
 //! of both Spaces (#334) or rolling back a focus follow and re-homing the
-//! window it revealed (#329).
+//! window it revealed (#329), and a parked window macOS puts back on screen
+//! when an app leaves its fullscreen Space is parked again, not re-homed (#489).
 
 use super::focus::FAILED_FOLLOW_RETRY_WINDOW;
 use super::*;
@@ -27,6 +28,14 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
             return false;
         };
         self.backend.now() < changed + SPACE_TRANSITION_SETTLE + SLIDE_ARRIVAL_WINDOW
+    }
+
+    /// Whether a parked window of the frontmost app that is back on screen was
+    /// put there by macOS rather than summoned by the user. Leaving an app's
+    /// native fullscreen Space moves its other windows back to their last
+    /// on-screen frames (#489); the window the user lands on is the focused one.
+    pub(super) fn returned_by_space_slide(&mut self, window: &crate::PhysicalWindowId) -> bool {
+        self.space_slide_just_settled() && self.backend.focused_window().as_ref() != Some(window)
     }
 
     /// The status of a background cycle held back by a Space slide. Nothing

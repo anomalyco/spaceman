@@ -46,7 +46,10 @@ Some applications reposition their own windows. If a parked window reappears on 
 application is frontmost, the user summoned it: the stale recovery frame is discarded and the window —
 tiled or floating — is re-homed to the workspace it reappeared on. If it reappears in the background —
 Electron applications re-assert saved bounds on screen-parameter changes — it is quietly pushed back
-off screen with its recovery frame intact. If an application undoes several re-parks in a row, the
+off screen with its recovery frame intact. The same holds for a frontmost application's other
+windows that macOS moves back on screen as it slides out of that application's native fullscreen
+Space: for about two seconds after the slide settles, only the focused window counts as summoned.
+If an application undoes several re-parks in a row, the
 reappearance is honored after all and the window is re-homed. A window whose reappearance is honored
 twice within five minutes becomes parking-exempt for the rest of the session: it remains owned and
 tiled on its workspace, but is left visible when another workspace is active rather than being fought
