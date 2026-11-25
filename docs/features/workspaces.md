@@ -145,7 +145,7 @@ Focus follows                                              // ws.focus-follow
 │   └── Activation slides macOS to another Space (Cmd+Tab out of a native fullscreen app)
 │       -> follows once the slide settles; a follow the slide made fail is retried, not re-homed
 ├── Focusing a window on another display's visible workspace -> no switch; Option+Tab remembers it
-├── Focusing a pinned window (`action = "pin"`, `ctl pin`) -> never switches: it shows everywhere
+├── Focusing a pinned window (`action = "pin"`, `ctl pin`, a `pin` shortcut) -> never switches: it shows everywhere
 └── No focused window reported -> follows the frontmost app only when all its windows, tiled
     or floating, are on one workspace; windows the window server no longer lists (just closed,
     not yet retired) don't count, so closing all of an app's windows never switches (#516)
@@ -193,7 +193,7 @@ Settings › Rules                                           // ws.rules-pane
     (action = "tile"), `Pin on all workspaces` (action = "pin", which moves it to `Floating`)
 
 Pinned floats                                              // ws.pin
-├── action = "pin" rule, or spaceman ctl pin on the focused window (floats it first; again unpins)
+├── action = "pin" rule, spaceman ctl pin, or a [shortcuts.bindings] chord bound to "pin" on the focused window (floats it first; again unpins)
 ├── Never parked by a switch, a move or a display change: shows on every workspace of its display
 ├── Keeps its owning workspace for memory and the HUD; unpinning hands it to the workspace showing it
 ├── A pin rule added while the float is parked brings it back (matched by bundle; title rules wait
