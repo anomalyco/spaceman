@@ -32,11 +32,17 @@ Your workspaces                                                      // tour.arr
 └── One window or none -> "Nothing to arrange yet", primary reads Start tiling
 
 Try it                                                               // tour.try
-├── A miniature desktop: two workspaces of two windows, a menu bar, a Workspace HUD capsule
-├── Four moves, by key or by click: ⌥2, ⌥1, ⌥⇧Space (float), ⌥⇧F (Fullscreen Layout)
-│   ├── Each ticks green the first time it changes the miniature; four -> "All 4 mastered"
-│   ├── The chords follow [shortcuts] (Base modifier, rebinds); free play goes on afterwards
+├── A miniature desktop: two workspaces of two windows, a menu bar, and a Workspace HUD capsule
+│   that shows for a moment after a switch
+├── Six lessons, one prompt at a time, by key only: ⌥2 (workspace 2), ⌥1 (back), ⌥⇧Space
+│   (float), ⌥⇧Space (tile again), ⌥⇧F (Fullscreen Layout), ⌥⇧F (back to tiles)
+│   ├── The press asked for ticks, plays a soft sound and brings up the next; six -> "You're ready"
+│   ├── Any of the four shortcuts moves the miniature whichever lesson is up, and afterwards
+│   ├── The prompt's keys sink while pressed; clicking the prompt does nothing
+│   ├── The chords follow [shortcuts] (Base modifier, rebinds)
 │   └── Reduce Motion: workspaces and windows cross-fade instead of travelling
+├── Modifier: ⌥ · ⌃⌥ · ⌃⌥⌘ saves [shortcuts] modifier; the prompt asks for the new keys at once
+│   └── Hidden while the built-in shortcuts are off
 ├── Setup window has the keyboard -> global hotkeys held off; a chord moves only the miniature
 │   └── Another window in front -> the real shortcut runs and the miniature follows along
 ├── The window floats above the tiles while this step shows; it never advances by itself
@@ -70,30 +76,37 @@ Unit, `agent/src/onboarding/tests.rs` (flow, board and fixtures):
 `a_conflict_shows_only_when_its_switch_is_on`.
 
 Unit, `agent/src/onboarding/demo/tests.rs` (the Try it miniature):
-`switching_to_two_goes_there_and_counts_only_when_the_desktop_moves`,
-`switching_back_to_one_counts_after_going_there`,
-`floating_lifts_the_focused_window_and_the_other_takes_the_screen`,
-`fullscreen_layout_toggles_and_keeps_the_other_window_behind`,
-`four_moves_complete_it_in_any_order_and_free_play_goes_on`,
+`the_six_lessons_are_asked_for_one_at_a_time_in_order`,
+`switching_counts_only_when_the_desktop_moves`,
+`another_shortcut_moves_the_desktop_without_learning_the_lesson_asked_for`,
+`floating_lifts_the_focused_window_and_the_second_press_tiles_it_again`,
+`fullscreen_layout_keeps_the_other_window_behind_and_the_second_press_brings_the_tiles_back`,
+`free_play_goes_on_after_the_last_lesson`,
 `the_default_chords_are_heard_by_key_code`,
 `a_custom_base_modifier_moves_every_chord_and_the_window_hears_what_the_tap_cannot`,
+`the_modifier_picker_saves_the_base_modifier_and_the_prompt_asks_for_the_new_chord`,
 `a_press_sinks_its_keys_for_a_beat_and_a_held_modifier_for_as_long_as_it_is_held`,
-`the_ring_shows_once_when_the_last_move_is_made`,
+`a_learned_lesson_keeps_its_tick_for_a_beat_then_the_next_is_asked_for`,
 `a_press_counts_only_on_try_it_and_undo_starts_the_desktop_over`.
 
-Motion (the real view at 120 Hz, clicked and typed at), `agent/src/onboarding/motion_tests.rs`:
-`a_click_makes_the_move_and_the_workspaces_slide_with_the_marker_stretching`,
-`a_click_gives_the_stage_the_keyboard_and_real_keys_make_the_other_moves`,
+Unit, `agent/src/onboarding/sound.rs`: `both_cues_are_quiet_system_sounds`.
+
+Motion (the real view at 120 Hz on a virtual clock, typed at), `agent/src/onboarding/motion_tests.rs`:
+`a_switch_slides_the_workspaces_and_the_hud_rises_with_its_marker_stretching`,
+`only_the_keyboard_makes_a_move`,
 `arriving_from_the_arrangement_gives_the_stage_the_keyboard`,
+`a_learned_lesson_wears_its_tick_for_a_beat_and_then_the_next_is_asked_for`,
 `floating_lifts_the_window_off_the_grid_while_the_other_springs_wide`,
-`fullscreen_fills_the_screen_and_leaves_a_tab_of_the_window_behind`.
+`fullscreen_fills_the_screen_and_leaves_a_tab_of_the_window_behind`,
+`the_last_lesson_brings_the_seal_and_the_desktop_stays_free_to_play_with`,
+`another_base_modifier_changes_the_keys_asked_for_on_the_spot`.
 
 Unit, `src/app/app_loop/live_shortcuts.rs`:
 `a_recording_holds_for_its_limit_and_the_tour_for_as_long_as_it_practices`.
 
 Scenes (`--scene`): `onboarding-welcome`, `onboarding-permission` (`-waiting`, `-ready`,
 `-conflict`), `onboarding-arrange` (`-dual`, `-drag`, `-empty`), `onboarding-try-it`
-(`-ws2`, `-floated`, `-fullscreen`, `-complete`).
+(`-ws2`, `-floated`, `-fullscreen`, `-complete`, `-modifier`).
 
 ## Known gaps
 
@@ -101,8 +114,9 @@ Scenes (`--scene`): `onboarding-welcome`, `onboarding-permission` (`-waiting`, `
   tap, the hotkey hold while the setup window has the keyboard, the floating window level, and both
   `Turn off` writes are covered by unit tests and scenes only.
 - The key tap hears a Try it chord only if it holds Option. A chord without Option is heard by the
-  setup window's own key events, so only while the miniature has the keyboard; clicking its keys
-  always works.
+  setup window's own key events, so only while the miniature has the keyboard.
+- The lesson sounds (`NSSound` Tink and Glass) play only in the real setup window; no test or scene
+  hears them.
 - The miniature always has the same four windows (Safari, Terminal, Notes, Mail), not the ones open.
 - A window that opens between the plan being drawn and `Arrange & start` follows its app's last
   slot; an app that was not open then is tiled where you are, as always.

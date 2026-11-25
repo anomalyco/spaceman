@@ -37,6 +37,7 @@ pub(crate) fn action_chord(
 
 /// A physical key press read as the recorder reads it: the modifiers held, and the chord it
 /// spells on the active keyboard layout.
+pub(crate) use catalog::PRESETS;
 pub(crate) use recorder::{modifiers as held_modifiers, pressed_chord};
 
 use crate::{
@@ -136,7 +137,8 @@ fn modifier_rows(ui: &Ui, p: Paint, shortcuts: &Shortcuts) -> Vec<El> {
     rows
 }
 
-fn set_modifier(ui: &mut Ui, modifier: Modifiers) {
+/// Saves the base modifier every built-in shortcut holds.
+pub(crate) fn set_modifier(ui: &mut Ui, modifier: Modifiers) {
     recorder::cancel(ui);
     ui.shortcut_capture = Capture::Idle;
     recorder::edit_shortcuts(ui, |doc| doc.set_shortcut_modifier(modifier));

@@ -1,15 +1,11 @@
-//! The tour's last step: a miniature desktop to try four shortcuts on. Each move plays on the
-//! stage (`stage.rs`), ticks its keys the first time it is made and leaves the desktop free to
-//! play with after all four. Its keys can be pressed for real or clicked. Nothing here
-//! advances by itself, and nothing here moves a real window.
+//! The tour's last step: a miniature desktop to learn four shortcuts on, one lesson at a time.
+//! Each press plays on the stage (`stage.rs`); the press a lesson asks for ticks it and brings
+//! the next one up (`prompt.rs`), and after the last the desktop stays free to play with. Only
+//! the keyboard makes a move: nothing here is clicked through, nothing advances by itself, and
+//! nothing moves a real window.
 
-use std::time::{Duration, Instant};
-
-use rune::{
-    Cursor, El, LoopSpec, Mods, PhysicalInput, PhysicalKeyCode, Spring, SpringPair, Transition, Tx,
-    col, el, icon, row, text,
-};
-use rune_kit::Checkbox;
+use rune::{El, Mods, PhysicalInput, PhysicalKeyCode, Tx, col, row, text};
+use rune_kit::{Checkbox, SegmentedControl};
 use spaceman::{
     app::UiLaunchAtLogin,
     shortcuts::{Chord, Modifiers},
@@ -17,87 +13,124 @@ use spaceman::{
 
 use super::{
     Input,
-    demo::{self, Demo, Move},
+    demo::{self, Demo, Move, Pressed},
     flow::View,
-    input, stage,
+    input, prompt, stage,
     view::title_block,
 };
-use crate::{
-    Ui,
-    controls::{self, METRICS, Paint},
-    panes,
-};
+use crate::{Ui, controls::Paint, panes};
 
-/// How long a pressed key stays down.
-pub const KEY_BEAT: Duration = Duration::from_millis(140);
-/// How long the completion ring shows before it widens and fades.
-const CHEER_BEAT: Duration = Duration::from_millis(280);
-/// A tick lands with a little bounce.
-const TICK: Spring = Spring::new(0.3, 0.4);
-/// The next move's mark breathes, so the eye finds what to press.
-const NEXT: LoopSpec = LoopSpec::opacity(1.6, 0.0, 1.0, 0.35);
-const CHIP_H: f32 = 68.0;
+/// How long a pressed key stays down, in seconds on the window's clock.
+pub const KEY_BEAT: f64 = 0.14;
+/// How long a learned lesson keeps its tick before the next one is asked for.
+pub const TICK_BEAT: f64 = 0.72;
+/// How long the Workspace HUD stays up after a switch.
+pub const HUD_BEAT: f64 = 1.25;
 
-/// The miniature desktop, and what is pressed on it right now.
+/// What the prompt under the desktop is showing.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum Card {
+    /// A lesson: being asked for, or just learned and wearing its tick.
+    Lesson { index: usize, learned: bool },
+    /// Every lesson is learned.
+    Ready,
+}
+
+/// The miniature desktop, and what is pressed and showing on it right now. Its beats are
+/// stamped with the window's clock, so a scripted run plays them exactly.
 #[derive(Clone, Copy, Debug, Default)]
 pub struct Play {
     pub demo: Demo,
     /// The move whose keys are down, and since when.
-    down: Option<(Move, Instant)>,
+    down: Option<(Move, f64)>,
     /// The modifier keys held, while the stage has the keyboard.
     held: Modifiers,
-    /// When the last move was made, while its ring still shows.
-    cheer: Option<Instant>,
+    /// The lesson just learned, while its tick shows, and since when.
+    ticked: Option<(usize, f64)>,
+    /// When a switch last brought the Workspace HUD up, while it shows.
+    hud: Option<f64>,
 }
 
 impl Play {
-    /// Presses `mv`'s keys: the desktop makes the move, and the first time every move has
-    /// been made the ring shows.
-    pub fn press(&mut self, mv: Move) {
-        let now = Instant::now();
-        let was_complete = self.demo.complete();
-        self.demo.press(mv);
+    /// Presses `mv`'s keys at `now`: the desktop makes the move, a switch shows the HUD, and
+    /// the lesson asking for this press gets its tick.
+    pub fn press(&mut self, mv: Move, now: f64) -> Pressed {
+        let asked = self.demo.learned();
+        let pressed = self.demo.press(mv);
         self.down = Some((mv, now));
-        if !was_complete && self.demo.complete() {
-            self.cheer = Some(now);
+        if pressed.moved && matches!(mv, Move::There | Move::Back) {
+            self.hud = Some(now);
         }
+        if pressed.learned {
+            self.ticked = Some((asked, now));
+        }
+        pressed
     }
 
-    /// Lets a pressed key up and the ring go once each has had its beat. Returns whether
-    /// anything changed.
-    pub fn settle(&mut self) -> bool {
-        let key = self.down.is_some_and(|(_, at)| at.elapsed() >= KEY_BEAT);
-        let ring = self.cheer.is_some_and(|at| at.elapsed() >= CHEER_BEAT);
-        if key {
+    /// Lets a pressed key up, the tick go and the HUD leave once each has had its beat.
+    /// Returns whether anything changed.
+    pub fn settle(&mut self, now: f64) -> bool {
+        let mut changed = false;
+        let mut end = |since: Option<f64>, beat: f64| {
+            // As `due` adds them, so the wake it asks for always finds its beat over.
+            let over = since.is_some_and(|at| now >= at + beat);
+            changed |= over;
+            over
+        };
+        if end(self.down.map(|(_, at)| at), KEY_BEAT) {
             self.down = None;
         }
-        if ring {
-            self.cheer = None;
+        if end(self.ticked.map(|(_, at)| at), TICK_BEAT) {
+            self.ticked = None;
         }
-        key || ring
+        if end(self.hud, HUD_BEAT) {
+            self.hud = None;
+        }
+        changed
     }
 
-    /// How long until the next key or ring is due to settle.
-    pub fn pending(&self) -> Option<Duration> {
-        let key = self
-            .down
-            .map(|(_, at)| KEY_BEAT.saturating_sub(at.elapsed()));
-        let ring = self.cheer.map(|at| CHEER_BEAT.saturating_sub(at.elapsed()));
-        match (key, ring) {
-            (Some(key), Some(ring)) => Some(key.min(ring)),
-            (key, ring) => key.or(ring),
-        }
+    /// When the next beat ends, on the window's clock.
+    pub fn due(&self) -> Option<f64> {
+        [
+            self.down.map(|(_, at)| at + KEY_BEAT),
+            self.ticked.map(|(_, at)| at + TICK_BEAT),
+            self.hud.map(|at| at + HUD_BEAT),
+        ]
+        .into_iter()
+        .flatten()
+        .reduce(f64::min)
     }
 
     /// Everything at rest, as a scene draws it.
     pub fn rest(&mut self) {
         self.down = None;
-        self.cheer = None;
+        self.ticked = None;
+        self.hud = None;
         self.held = Modifiers::default();
     }
 
-    pub const fn cheering(&self) -> bool {
-        self.cheer.is_some()
+    /// Whether the Workspace HUD is up.
+    pub const fn hud(&self) -> bool {
+        self.hud.is_some()
+    }
+
+    /// Keeps the Workspace HUD up, as a scene of a switch draws it.
+    pub fn show_hud(&mut self) {
+        self.hud = Some(0.0);
+    }
+
+    pub fn card(&self) -> Card {
+        match self.ticked {
+            Some((index, _)) => Card::Lesson {
+                index,
+                learned: true,
+            },
+            None if self.demo.complete() => Card::Ready,
+            None => Card::Lesson {
+                index: self.demo.learned(),
+                learned: false,
+            },
+        }
     }
 
     /// The modifier keys now held. Returns whether that changed.
@@ -173,13 +206,65 @@ fn hold(ui: &mut Ui, held: Modifiers) -> bool {
 pub fn view(ui: &Ui, p: Paint, view: &View, play: &Play, still: bool) -> El {
     let scene = stage::Scene {
         demo: play.demo,
-        cheering: play.cheering(),
+        hud: play.hud(),
         still,
     };
     let display = stage::stage(ui, p, scene)
         .focusable(true)
         .focus_ring(2.0, 3.0, p.k.c.border_focus)
         .on_physical_input(on_input);
+    col()
+        .key("try-it")
+        .gap(12.0)
+        .center()
+        .child(
+            col()
+                .key("heading")
+                .pb(8.0)
+                .center()
+                .child(title_block(p, "Try it", None)),
+        )
+        .child(display)
+        .child(prompt::card(ui, p, play, still))
+        .child(options(ui, p, view))
+}
+
+/// Two quiet settings under the prompt, on its edges: the modifier every shortcut holds, to
+/// try another on the spot, and Launch at login.
+fn options(ui: &Ui, p: Paint, view: &View) -> El {
+    let shortcuts = ui.doc.shortcuts();
+    let presets = panes::shortcuts::PRESETS;
+    // With the built-in shortcuts off there is no base modifier to pick.
+    let modifier = shortcuts.defaults.then(|| {
+        let symbols = presets.map(|(label, _)| label.split(' ').next().unwrap_or(label));
+        let selected = presets
+            .iter()
+            .position(|(_, modifier)| *modifier == shortcuts.modifier);
+        row()
+            .key("modifier")
+            .gap(8.0)
+            .center_y()
+            .child(
+                text("Modifier")
+                    .key("label")
+                    .font(p.row_title())
+                    .color(p.muted()),
+            )
+            .child(
+                SegmentedControl::new(&symbols, selected)
+                    .label("Base modifier")
+                    .fit()
+                    .on_pick(|ui: &mut Ui, index: usize, tx: &mut Tx| {
+                        if let Some((_, modifier)) = panes::shortcuts::PRESETS.get(index) {
+                            super::set_modifier(ui, *modifier);
+                        }
+                        // The stage keeps the keyboard, so the new chord can be pressed.
+                        tx.focus(stage::KEY, false);
+                    })
+                    .build(p.k)
+                    .key("picker"),
+            )
+    });
     let mut login = Checkbox::new(view.launch_at_login).label("Launch at login");
     match ui.agent.as_ref().map(|agent| &agent.launch_at_login) {
         Some(UiLaunchAtLogin::NeedsApproval) => {
@@ -189,135 +274,21 @@ pub fn view(ui: &Ui, p: Paint, view: &View, play: &Play, still: bool) -> El {
         Some(UiLaunchAtLogin::Failed(error)) => login = login.description(error.clone()),
         _ => {}
     }
-    col()
-        .key("try-it")
-        .gap(18.0)
-        .center()
-        .child(
-            col()
-                .key("heading")
-                .gap(8.0)
-                .center()
-                .child(title_block(p, "Try it", None))
-                .child(status(p, play.demo)),
-        )
-        .child(display)
-        .child(moves(ui, p, play, still))
+    row()
+        .key("options")
+        .w(stage::DISPLAY_W)
+        .min_h(28.0)
+        .px(prompt::INSET)
+        .center_y()
+        .children(modifier)
+        .child(row().key("space").grow(1.0))
         .child(
             login
-                .on_toggle(|ui: &mut Ui| input(ui, Input::ToggleLaunchAtLogin))
+                .on_toggle_tx(|ui: &mut Ui, tx: &mut Tx| {
+                    input(ui, Input::ToggleLaunchAtLogin);
+                    tx.focus(stage::KEY, false);
+                })
                 .build(p.k)
                 .key("try-login"),
-        )
-}
-
-/// One line under the title: what to do, then that it is done.
-fn status(p: Paint, demo: Demo) -> El {
-    let line = if demo.complete() {
-        row()
-            .key("mastered")
-            .gap(6.0)
-            .center_y()
-            .child(
-                icon(p.k.glyph.check_small, METRICS.icon)
-                    .key("check")
-                    .color(p.success()),
-            )
-            .child(
-                text("All 4 mastered — you're ready")
-                    .key("label")
-                    .font(p.strong())
-                    .color(p.success()),
-            )
-    } else {
-        row().key("hint").center_y().child(
-            text("Press each shortcut, or click it")
-                .key("label")
-                .font(p.row_title())
-                .color(p.muted()),
-        )
-    };
-    row()
-        .key("status")
-        .h(20.0)
-        .center()
-        .child(line.transition(Transition::blur_replace()))
-}
-
-fn moves(ui: &Ui, p: Paint, play: &Play, still: bool) -> El {
-    let next = play.demo.next();
-    row().key("moves").w_full().gap(8.0).children(
-        Move::ALL
-            .into_iter()
-            .zip(demo::chords(ui))
-            .map(|(mv, chord)| chip(p, mv, chord, play, next == Some(mv), still)),
-    )
-}
-
-/// A move: its keys, which sink while they are pressed, over what it does and whether it has
-/// been made. Pressing the chip makes the move too.
-fn chip(p: Paint, mv: Move, chord: Option<Chord>, play: &Play, next: bool, still: bool) -> El {
-    let c = &p.k.c;
-    let done = play.demo.done(mv);
-    let keys = match chord {
-        Some(chord) => controls::tray_held(p, "tray", &play.caps(mv, chord)),
-        None => controls::chords(p, &[]),
-    };
-    let dot = METRICS.dot;
-    let mark = if done {
-        el().key("done")
-            .size(dot, dot)
-            .radius(dot / 2.0)
-            .fill(p.success())
-            .transition(
-                Transition::scale(0.2)
-                    .allow_small_scale()
-                    .springs(SpringPair::new(TICK, TICK)),
-            )
-    } else {
-        let ring = el()
-            .key("todo")
-            .size(dot, dot)
-            .radius(dot / 2.0)
-            .border(1.5, if next { p.muted() } else { c.border_base });
-        if next && !still {
-            ring.looping(NEXT)
-        } else {
-            ring
-        }
-    };
-    let said = chord.map_or_else(String::new, |chord| chord.keycaps().join(" "));
-    col()
-        .key(mv.key())
-        .role("button")
-        .label(format!(
-            "{}, {said}, {}",
-            mv.title(),
-            if done { "done" } else { "not done yet" }
-        ))
-        .grow(1.0)
-        .w(0.0)
-        .h(CHIP_H)
-        .gap(8.0)
-        .center()
-        .radius(p.k.radius.lg)
-        .fill(if next { c.layer_01 } else { c.bg_deep })
-        .border(p.hair, if next { c.border_strong } else { c.border_weak })
-        .hover(c.hover)
-        .press(c.pressed)
-        .cursor(Cursor::Pointer)
-        .on_press_tx(move |ui: &mut Ui, tx: &mut Tx| {
-            // The stage keeps the keyboard, so the next move can be pressed.
-            tx.focus(stage::KEY, false);
-            super::pressed(ui, mv, tx);
-        })
-        .child(keys)
-        .child(
-            row().key("caption").gap(6.0).center_y().child(mark).child(
-                text(mv.title())
-                    .key("title")
-                    .font(p.description())
-                    .color(if next { p.text() } else { p.muted() }),
-            ),
         )
 }

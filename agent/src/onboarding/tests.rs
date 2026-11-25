@@ -4,7 +4,6 @@ use spaceman::WorkspaceId;
 
 use super::arrange::{Board, Geometry, Target, Tile};
 use super::conflicts::{Conflict, switch_on};
-use super::demo::Move;
 use super::flow::{
     Effect, Flow, Input, SetupState, Step, completion_recorded_at, launch_step_at,
     record_completion_at, record_step_at, saved_step_at,
@@ -215,15 +214,15 @@ fn try_it_never_advances_by_itself() {
     // Making every move leaves the tour on Try it: Done is the only way on.
     let mut ui = crate::playground::blank_fixture();
     super::tour_scene(&mut ui, Step::TryIt, true, false);
-    for mv in Move::ALL {
-        assert!(super::press(&mut ui, mv));
+    for mv in super::ALL_LESSONS {
+        let pressed = super::press(&mut ui, mv, 0.0);
+        assert!(pressed.is_some_and(|pressed| pressed.learned), "{mv:?}");
     }
     let tour = ui.tour.as_ref().unwrap();
     assert!(tour.play.demo.complete());
     assert_eq!(tour.flow.step(), Step::TryIt);
-    // Nor do the beats that let the keys up and the ring go.
-    std::thread::sleep(std::time::Duration::from_millis(300));
-    assert!(ui.tour.as_mut().unwrap().play.settle());
+    // Nor do the beats that let the keys up, the tick go and the HUD leave.
+    assert!(ui.tour.as_mut().unwrap().play.settle(10.0));
     assert_eq!(ui.tour.as_ref().unwrap().flow.step(), Step::TryIt);
     super::input(&mut ui, Input::Continue);
     assert!(ui.tour.is_none());

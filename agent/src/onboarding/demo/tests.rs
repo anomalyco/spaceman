@@ -24,45 +24,100 @@ fn set_base_modifier(ui: &mut Ui, modifier: Modifiers) {
     assert_eq!(ui.error, None);
 }
 
-#[test]
-fn switching_to_two_goes_there_and_counts_only_when_the_desktop_moves() {
-    let mut demo = Demo::default();
-    assert_eq!(demo.workspace(), 0);
-    assert_eq!(demo.next(), Some(Move::There));
-    // Coming back before going anywhere moves nothing and ticks nothing.
-    assert!(!demo.press(Move::Back));
-    assert!(!demo.done(Move::Back));
+const MOVED: Pressed = Pressed {
+    moved: true,
+    learned: false,
+};
+const LEARNED: Pressed = Pressed {
+    moved: true,
+    learned: true,
+};
+const NOTHING: Pressed = Pressed {
+    moved: false,
+    learned: false,
+};
 
-    assert!(demo.press(Move::There));
-    assert_eq!(demo.workspace(), 1);
-    assert!(demo.done(Move::There));
-    assert_eq!(demo.next(), Some(Move::Back));
-    assert!(!demo.press(Move::There), "already there");
-    assert_eq!(demo.mastered(), 1);
+#[test]
+fn the_six_lessons_are_asked_for_one_at_a_time_in_order() {
+    let mut demo = Demo::default();
+    let titles: Vec<&str> = LESSONS.iter().map(|lesson| lesson.title).collect();
+    assert_eq!(
+        titles,
+        [
+            "Switch to workspace 2",
+            "Switch back to workspace 1",
+            "Float this window",
+            "Tile it again",
+            "Fill the screen",
+            "Back to tiles",
+        ]
+    );
+    let presses = [
+        Move::There,
+        Move::Back,
+        Move::Float,
+        Move::Float,
+        Move::Fullscreen,
+        Move::Fullscreen,
+    ];
+    for (index, mv) in presses.into_iter().enumerate() {
+        assert_eq!(demo.learned(), index);
+        assert_eq!(demo.next().map(|lesson| lesson.mv), Some(mv));
+        assert!(!demo.complete());
+        assert_eq!(demo.press(mv), LEARNED, "lesson {index}");
+    }
+    assert!(demo.complete());
+    assert_eq!(demo.next(), None);
+    // Each layout was undone by its second press: the desktop ends as it began.
+    assert_eq!(
+        (demo.workspace(), demo.mode(0), demo.mode(1)),
+        (0, Mode::Tiled, Mode::Tiled)
+    );
 }
 
 #[test]
-fn switching_back_to_one_counts_after_going_there() {
+fn switching_counts_only_when_the_desktop_moves() {
+    let mut demo = Demo::default();
+    // Coming back before going anywhere moves nothing and teaches nothing.
+    assert_eq!(demo.press(Move::Back), NOTHING);
+    assert_eq!(demo.learned(), 0);
+
+    assert_eq!(demo.press(Move::There), LEARNED);
+    assert_eq!(demo.workspace(), 1);
+    assert_eq!(demo.press(Move::There), NOTHING, "already there");
+    assert_eq!(demo.learned(), 1);
+    assert_eq!(demo.press(Move::Back), LEARNED);
+    assert_eq!((demo.workspace(), demo.learned()), (0, 2));
+}
+
+#[test]
+fn another_shortcut_moves_the_desktop_without_learning_the_lesson_asked_for() {
+    let mut demo = Demo::default();
+    // Float is not the first lesson: the window lifts, and Switch to 2 is still asked for.
+    assert_eq!(demo.press(Move::Float), MOVED);
+    assert_eq!(demo.mode(0), Mode::Floated);
+    assert_eq!(demo.next().map(|lesson| lesson.mv), Some(Move::There));
+    assert_eq!(demo.press(Move::Fullscreen), MOVED);
+    assert_eq!(demo.mode(0), Mode::Fullscreen);
+    assert_eq!(demo.learned(), 0);
+}
+
+#[test]
+fn floating_lifts_the_focused_window_and_the_second_press_tiles_it_again() {
     let mut demo = Demo::default();
     demo.press(Move::There);
-    assert!(demo.press(Move::Back));
-    assert_eq!(demo.workspace(), 0);
-    assert!(demo.done(Move::Back));
-    assert_eq!(demo.next(), Some(Move::Float));
-    assert_eq!(demo.mastered(), 2);
-}
-
-#[test]
-fn floating_lifts_the_focused_window_and_the_other_takes_the_screen() {
-    let mut demo = Demo::default();
-    assert!(demo.press(Move::Float));
+    demo.press(Move::Back);
+    assert_eq!(demo.press(Move::Float), LEARNED);
     assert_eq!(demo.mode(0), Mode::Floated);
     assert_eq!(
         demo.mode(1),
         Mode::Tiled,
         "the other workspace is untouched"
     );
-    assert!(demo.done(Move::Float));
+    assert_eq!(
+        demo.next().map(|lesson| lesson.title),
+        Some("Tile it again")
+    );
 
     let [lifted, other] = frames(Mode::Floated);
     assert_eq!(lifted.pose, Pose::Lifted);
@@ -80,18 +135,23 @@ fn floating_lifts_the_focused_window_and_the_other_takes_the_screen() {
     assert!(wide_w > 2.0 * tiled_w, "{wide_w} against {tiled_w}");
     assert_eq!(wide_x, left_x);
 
-    // Pressing again puts it back on the grid; the tick stays.
-    assert!(demo.press(Move::Float));
-    assert_eq!(demo.mode(0), Mode::Tiled);
-    assert!(demo.done(Move::Float));
+    // Floating the other workspace's window is not tiling this one again.
+    demo.press(Move::There);
+    assert_eq!(demo.press(Move::Float), MOVED);
+    assert_eq!(demo.learned(), 3);
+    // Tiling it is.
+    assert_eq!(demo.press(Move::Float), LEARNED);
+    assert_eq!((demo.mode(1), demo.learned()), (Mode::Tiled, 4));
 }
 
 #[test]
-fn fullscreen_layout_toggles_and_keeps_the_other_window_behind() {
+fn fullscreen_layout_keeps_the_other_window_behind_and_the_second_press_brings_the_tiles_back() {
     let mut demo = Demo::default();
-    assert!(demo.press(Move::Fullscreen));
+    for mv in [Move::There, Move::Back, Move::Float, Move::Float] {
+        demo.press(mv);
+    }
+    assert_eq!(demo.press(Move::Fullscreen), LEARNED);
     assert_eq!(demo.mode(0), Mode::Fullscreen);
-    assert!(demo.done(Move::Fullscreen));
 
     let [front, behind] = frames(Mode::Fullscreen);
     assert_eq!((front.w, front.h, front.pose), (1.0, 1.0, Pose::Tiled));
@@ -102,44 +162,33 @@ fn fullscreen_layout_toggles_and_keeps_the_other_window_behind() {
     assert!(tab_y < front_y && tab_y + tab_h > front_y);
     assert!(tab_x > front_x && tab_x + tab_w < front_x + front_w);
 
-    assert!(demo.press(Move::Fullscreen));
-    assert_eq!(demo.mode(0), Mode::Tiled);
-
-    // Float and Fullscreen take over from each other, one press each.
-    demo.press(Move::Fullscreen);
-    demo.press(Move::Float);
+    // Float takes over from Fullscreen Layout, which is not going back to the tiles.
+    assert_eq!(demo.press(Move::Float), MOVED);
     assert_eq!(demo.mode(0), Mode::Floated);
-    demo.press(Move::Fullscreen);
-    assert_eq!(demo.mode(0), Mode::Fullscreen);
+    assert_eq!(demo.press(Move::Fullscreen), MOVED);
+    assert_eq!((demo.mode(0), demo.learned()), (Mode::Fullscreen, 5));
+    assert_eq!(demo.press(Move::Fullscreen), LEARNED);
+    assert_eq!(demo.mode(0), Mode::Tiled);
+    assert!(demo.complete());
 }
 
 #[test]
-fn four_moves_complete_it_in_any_order_and_free_play_goes_on() {
+fn free_play_goes_on_after_the_last_lesson() {
     let mut demo = Demo::default();
-    for mv in [Move::Fullscreen, Move::Float, Move::There] {
-        demo.press(mv);
-        assert!(!demo.complete());
+    for lesson in LESSONS {
+        demo.press(lesson.mv);
     }
-    assert_eq!(demo.next(), Some(Move::Back));
-    demo.press(Move::Back);
     assert!(demo.complete());
-    assert_eq!(demo.mastered(), 4);
-    assert_eq!(demo.next(), None);
-
-    // After that every key still moves the desktop, and each workspace keeps its own layout.
-    assert_eq!(demo.mode(0), Mode::Floated);
-    assert!(demo.press(Move::Float));
-    assert_eq!(demo.mode(0), Mode::Tiled);
-    assert!(demo.press(Move::There));
-    assert!(demo.press(Move::Fullscreen));
+    // Every key still moves the desktop, and each workspace keeps its own layout.
+    assert_eq!(demo.press(Move::Float), MOVED);
+    assert_eq!(demo.press(Move::There), MOVED);
+    assert_eq!(demo.press(Move::Fullscreen), MOVED);
     assert_eq!(
         (demo.mode(0), demo.mode(1)),
-        (Mode::Tiled, Mode::Fullscreen)
+        (Mode::Floated, Mode::Fullscreen)
     );
-    assert!(demo.press(Move::Fullscreen));
-    assert!(demo.press(Move::Float));
-    assert!(demo.press(Move::Back));
-    assert_eq!((demo.workspace(), demo.mode(1)), (0, Mode::Floated));
+    assert_eq!(demo.press(Move::Back), MOVED);
+    assert_eq!(demo.learned(), LESSONS.len());
     assert!(demo.complete());
 }
 
@@ -255,6 +304,29 @@ fn a_custom_base_modifier_moves_every_chord_and_the_window_hears_what_the_tap_ca
 }
 
 #[test]
+fn the_modifier_picker_saves_the_base_modifier_and_the_prompt_asks_for_the_new_chord() {
+    let mut ui = try_it_ui();
+    let control_option = crate::panes::shortcuts::PRESETS[1].1;
+    onboarding::set_modifier(&mut ui, control_option);
+    assert_eq!(ui.error, None);
+    assert_eq!(ui.doc.shortcuts().modifier, control_option);
+    assert_eq!(
+        chords(&ui),
+        [
+            Some(chord("ctrl+alt+2")),
+            Some(chord("ctrl+alt+1")),
+            Some(chord("ctrl+alt+shift+space")),
+            Some(chord("ctrl+alt+shift+f")),
+        ]
+    );
+    // The lessons learned so far stay learned.
+    assert_eq!(onboarding::press(&mut ui, Move::There, 0.0), Some(LEARNED));
+    onboarding::set_modifier(&mut ui, crate::panes::shortcuts::PRESETS[0].1);
+    assert_eq!(ui.tour.as_ref().unwrap().play.demo.learned(), 1);
+    assert_eq!(chords(&ui)[1], Some(chord("alt+1")));
+}
+
+#[test]
 fn a_press_sinks_its_keys_for_a_beat_and_a_held_modifier_for_as_long_as_it_is_held() {
     let mut play = try_it::Play::default();
     let there = chord("alt+2");
@@ -274,56 +346,116 @@ fn a_press_sinks_its_keys_for_a_beat_and_a_held_modifier_for_as_long_as_it_is_he
     assert_eq!(down(&play, Move::Float, float), [true, false, false]);
 
     // The press sinks the whole chord, on that move only, and makes the move.
-    play.press(Move::There);
+    play.press(Move::There, 10.0);
     assert_eq!(play.demo.workspace(), 1);
     assert_eq!(down(&play, Move::There, there), [true, true]);
     assert_eq!(down(&play, Move::Float, float), [true, false, false]);
-    assert!(play.pending().is_some());
+    assert_eq!(play.due(), Some(10.0 + try_it::KEY_BEAT));
 
-    std::thread::sleep(try_it::KEY_BEAT + std::time::Duration::from_millis(20));
-    assert!(play.settle());
-    assert!(!play.settle(), "settled once");
-    assert_eq!(play.pending(), None);
+    // The beats run on the clock they are given, so a scripted run plays them exactly.
+    assert!(!play.settle(10.0 + try_it::KEY_BEAT - 0.01), "not yet");
+    assert!(play.settle(10.0 + try_it::KEY_BEAT));
+    assert!(!play.settle(10.0 + try_it::KEY_BEAT), "settled once");
     assert_eq!(down(&play, Move::There, there), [true, false]);
     assert!(play.hold(Modifiers::default()));
     assert_eq!(down(&play, Move::There, there), [false, false]);
 }
 
 #[test]
-fn the_ring_shows_once_when_the_last_move_is_made() {
+fn a_learned_lesson_keeps_its_tick_for_a_beat_then_the_next_is_asked_for() {
+    use try_it::Card;
     let mut play = try_it::Play::default();
-    for mv in [Move::There, Move::Back, Move::Float] {
-        play.press(mv);
-        assert!(!play.cheering());
+    let asking = |index| Card::Lesson {
+        index,
+        learned: false,
+    };
+    assert_eq!(play.card(), asking(0));
+    // A press that is not the lesson changes nothing on the card.
+    play.press(Move::Float, 1.0);
+    play.press(Move::Float, 1.1);
+    assert_eq!(play.card(), asking(0));
+
+    play.press(Move::There, 2.0);
+    assert_eq!(
+        play.card(),
+        Card::Lesson {
+            index: 0,
+            learned: true
+        }
+    );
+    assert!(play.hud(), "a switch brings the Workspace HUD up");
+    play.settle(2.0 + try_it::KEY_BEAT);
+    assert_eq!(
+        play.card(),
+        Card::Lesson {
+            index: 0,
+            learned: true
+        },
+        "the tick outlasts the keys"
+    );
+    assert_eq!(play.due(), Some(2.0 + try_it::TICK_BEAT));
+    assert!(play.settle(2.0 + try_it::TICK_BEAT));
+    assert_eq!(play.card(), asking(1));
+    // The HUD leaves after its own beat, like the real one.
+    assert!(play.hud());
+    assert!(play.settle(2.0 + try_it::HUD_BEAT));
+    assert!(!play.hud());
+    assert_eq!(play.due(), None);
+
+    // A quick second press moves the tick on to its own lesson.
+    play.press(Move::Back, 5.0);
+    play.press(Move::Float, 5.1);
+    assert_eq!(
+        play.card(),
+        Card::Lesson {
+            index: 2,
+            learned: true
+        }
+    );
+    // Float and Fullscreen Layout leave the HUD alone.
+    play.settle(5.0 + try_it::HUD_BEAT);
+    play.press(Move::Float, 9.0);
+    assert!(!play.hud());
+
+    for mv in [Move::Fullscreen, Move::Fullscreen] {
+        play.press(mv, 12.0);
     }
-    play.press(Move::Fullscreen);
-    assert!(play.demo.complete());
-    assert!(play.cheering());
+    assert_eq!(
+        play.card(),
+        Card::Lesson {
+            index: 5,
+            learned: true
+        }
+    );
     play.rest();
-    assert!(!play.cheering());
-    assert_eq!(play.pending(), None);
-    // Free play never brings it back.
-    play.press(Move::Fullscreen);
-    play.press(Move::Fullscreen);
-    assert!(!play.cheering());
+    assert_eq!(play.card(), Card::Ready);
+    // Free play never brings a lesson back.
+    play.press(Move::Fullscreen, 20.0);
+    play.settle(30.0);
+    assert_eq!(play.card(), Card::Ready);
 }
 
 #[test]
 fn a_press_counts_only_on_try_it_and_undo_starts_the_desktop_over() {
     let mut ui = crate::playground::blank_fixture();
-    assert!(!onboarding::press(&mut ui, Move::There), "no tour");
+    assert_eq!(
+        onboarding::press(&mut ui, Move::There, 0.0),
+        None,
+        "no tour"
+    );
     onboarding::tour_scene(&mut ui, Step::Arrange, true, false);
-    assert!(
-        !onboarding::press(&mut ui, Move::There),
+    assert_eq!(
+        onboarding::press(&mut ui, Move::There, 0.0),
+        None,
         "not on Try it yet"
     );
 
     let mut ui = try_it_ui();
     // Even a press that moves nothing shows on its keys.
-    assert!(onboarding::press(&mut ui, Move::Back));
+    assert_eq!(onboarding::press(&mut ui, Move::Back, 0.0), Some(NOTHING));
     assert_eq!(ui.tour.as_ref().unwrap().play.demo, Demo::default());
-    assert!(onboarding::press(&mut ui, Move::There));
-    assert!(onboarding::press(&mut ui, Move::Float));
+    assert_eq!(onboarding::press(&mut ui, Move::There, 0.0), Some(LEARNED));
+    assert_eq!(onboarding::press(&mut ui, Move::Float, 0.0), Some(MOVED));
     let demo = ui.tour.as_ref().unwrap().play.demo;
     assert_eq!((demo.workspace(), demo.mode(1)), (1, Mode::Floated));
 

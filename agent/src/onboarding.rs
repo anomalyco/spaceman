@@ -8,6 +8,8 @@ mod flow;
 mod keys;
 #[cfg(test)]
 mod motion_tests;
+mod prompt;
+mod sound;
 mod stage;
 #[cfg(test)]
 mod tests;
@@ -23,7 +25,7 @@ pub use flow::{Effect, Flow, Input, SetupState, Step, launch_step};
 pub use view::overlay;
 
 use rune::Tx;
-use spaceman::{app::UiLaunchAtLogin, onboarding_plan::Inventory};
+use spaceman::{app::UiLaunchAtLogin, onboarding_plan::Inventory, shortcuts::Modifiers};
 
 use crate::{
     Pane, Ui, apps,
@@ -171,19 +173,19 @@ pub fn poll(ui: &mut Ui, tx: &mut Tx) -> bool {
     after.as_ref() != Some(&before) || settled
 }
 
-/// Lets a pressed key back up and the completion ring go once their beats have passed, and
-/// asks to be woken for whichever is still due.
+/// Lets a pressed key back up, a learned lesson's tick go and the Workspace HUD leave once
+/// their beats have passed, and asks to be woken for whichever is due next.
 fn settle_play(ui: &mut Ui, tx: &mut Tx) -> bool {
     let Some(tour) = &mut ui.tour else {
         return false;
     };
-    let settled = tour.play.settle();
+    let settled = tour.play.settle(tx.clock());
     if settled {
         // A beat ending isn't input to this window, so ask for its motion.
         tx.animated();
     }
-    if let Some(wait) = tour.play.pending() {
-        tx.wake_after(wait.max(Duration::from_millis(1)));
+    if let Some(due) = tour.play.due() {
+        tx.wake_at(due);
     }
     settled
 }
@@ -215,28 +217,54 @@ pub fn inventory(ui: &mut Ui, mut inventory: Inventory) -> bool {
     true
 }
 
-/// A move's shortcut was pressed on the Try it step: its keys go down and the miniature
-/// desktop makes the move. Returns whether the view changed.
-pub fn press(ui: &mut Ui, mv: Move) -> bool {
+/// A move's shortcut was pressed on the Try it step at `now` on the window's clock: its keys
+/// go down and the miniature desktop makes the move. `None` anywhere else.
+pub fn press(ui: &mut Ui, mv: Move, now: f64) -> Option<demo::Pressed> {
     match &mut ui.tour {
-        Some(tour) if tour.flow.step() == Step::TryIt => {
-            tour.play.press(mv);
-            true
-        }
-        _ => false,
+        Some(tour) if tour.flow.step() == Step::TryIt => Some(tour.play.press(mv, now)),
+        _ => None,
     }
 }
 
-/// As [`press`], from a key or a click: the keys and the desktop move on their springs, and the
-/// window wakes to let the keys back up.
+/// As [`press`], from the keyboard: the keys and the desktop move on their springs, the
+/// window wakes to let the keys back up, and the real setup window plays a learned lesson's
+/// sound. Returns whether the view changed.
 pub fn pressed(ui: &mut Ui, mv: Move, tx: &mut Tx) -> bool {
-    if !press(ui, mv) {
+    let Some(pressed) = press(ui, mv, tx.clock()) else {
         return false;
-    }
+    };
     // A press from the key tap isn't input to this window, so ask for its motion.
     tx.animated();
-    tx.wake_after(try_it::KEY_BEAT);
+    if let Some(due) = ui.tour.as_ref().and_then(|tour| tour.play.due()) {
+        tx.wake_at(due);
+    }
+    // A scene, a headless render and a test show fixed data and stay silent.
+    if pressed.learned && !ui.fixture {
+        let complete = ui
+            .tour
+            .as_ref()
+            .is_some_and(|tour| tour.play.demo.complete());
+        sound::play(if complete {
+            sound::Cue::Chime
+        } else {
+            sound::Cue::Tick
+        });
+    }
     true
+}
+
+/// The Try it step's Modifier picker: saves the base modifier every built-in shortcut holds,
+/// and listens for the new chords at once, so they can be tried on the spot.
+pub fn set_modifier(ui: &mut Ui, modifier: Modifiers) {
+    crate::panes::shortcuts::set_modifier(ui, modifier);
+    if !ui.fixture
+        && ui
+            .tour
+            .as_ref()
+            .is_some_and(|tour| tour.flow.step() == Step::TryIt)
+    {
+        listen_on_try_it(ui, Step::TryIt);
+    }
 }
 
 /// The button on a conflict's row: turn the macOS feature off, or quit the other window
@@ -470,16 +498,26 @@ fn board_scene(ui: &mut Ui, board: Board) {
     }
 }
 
-/// Try it after `moves`, at rest: no key down and no ring showing.
+/// Try it after `moves`, at rest: no key down, no tick showing and the HUD away.
 fn play_scene(ui: &mut Ui, moves: &[Move]) {
     tour_scene(ui, Step::TryIt, true, false);
     for mv in moves {
-        press(ui, *mv);
+        press(ui, *mv, 0.0);
     }
     if let Some(tour) = &mut ui.tour {
         tour.play.rest();
     }
 }
+
+/// The presses that learn every lesson, in order.
+const ALL_LESSONS: [Move; 6] = [
+    Move::There,
+    Move::Back,
+    Move::Float,
+    Move::Float,
+    Move::Fullscreen,
+    Move::Fullscreen,
+];
 
 pub(crate) const SCENES: &[Scene] = &[
     ("onboarding-welcome", |ui| {
@@ -522,31 +560,38 @@ pub(crate) const SCENES: &[Scene] = &[
         board_scene(ui, Board::fixture_single())
     }),
     ("onboarding-try-it", |ui| play_scene(ui, &[])),
-    ("onboarding-try-it-ws2", |ui| play_scene(ui, &[Move::There])),
+    // Just switched: the Workspace HUD is still up.
+    ("onboarding-try-it-ws2", |ui| {
+        play_scene(ui, &[Move::There]);
+        if let Some(tour) = &mut ui.tour {
+            tour.play.show_hud();
+        }
+    }),
     ("onboarding-try-it-floated", |ui| {
         play_scene(ui, &[Move::There, Move::Back, Move::Float]);
     }),
-    // The last move: Fullscreen Layout, and all four are made.
     ("onboarding-try-it-fullscreen", |ui| {
-        play_scene(
-            ui,
-            &[Move::There, Move::Back, Move::Float, Move::Fullscreen],
-        );
-    }),
-    // Free play after the four moves, back on the tiles.
-    ("onboarding-try-it-complete", |ui| {
         play_scene(
             ui,
             &[
                 Move::There,
                 Move::Back,
                 Move::Float,
-                Move::Fullscreen,
+                Move::Float,
                 Move::Fullscreen,
             ],
         );
+    }),
+    // Every lesson learned, back on the tiles and free to play.
+    ("onboarding-try-it-complete", |ui| {
+        play_scene(ui, &ALL_LESSONS);
         if let Some(agent) = &mut ui.agent {
             agent.launch_at_login = UiLaunchAtLogin::On;
         }
+    }),
+    // Control-Option as the base modifier: every prompt's keys follow it.
+    ("onboarding-try-it-modifier", |ui| {
+        play_scene(ui, &[Move::There, Move::Back]);
+        ui.edit(|doc| doc.set_shortcut_modifier(crate::panes::shortcuts::PRESETS[1].1));
     }),
 ];

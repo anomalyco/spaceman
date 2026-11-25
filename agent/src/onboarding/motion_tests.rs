@@ -1,12 +1,14 @@
-//! Frame-by-frame checks of the Try it step: the real view, clicked and typed at as a window
-//! would be, stepped at 120 Hz on a virtual clock and read back as presented rects.
+//! Frame-by-frame checks of the Try it step: the real view, typed at as a window would be,
+//! stepped at 120 Hz on a virtual clock and read back as presented rects. The step's beats
+//! (a key coming back up, a tick, the HUD leaving) run on that same clock.
 
 use rune::{Env, Mods, PhysicalInput, PhysicalKeyCode, Runtime, motion_gate::Run};
 
 use super::{
     Step,
-    demo::{Demo, Mode},
+    demo::{Demo, LESSONS, Mode},
     stage,
+    try_it::{Card, HUD_BEAT, Play, TICK_BEAT},
 };
 use crate::Ui;
 
@@ -17,15 +19,20 @@ struct Tour {
 }
 
 impl Tour {
-    /// The Try it step, drawn and at rest.
+    /// The Try it step, drawn and at rest, with the keyboard on its desktop.
     fn on_try_it() -> Self {
-        Self::on(Step::TryIt)
+        let mut tour = Self::on(Step::TryIt);
+        // As arriving from the arrangement does, and without a pointer over the step.
+        tour.run.rt.update(|_, tx| tx.focus(stage::KEY, false));
+        tour.run.step();
+        tour
     }
 
     fn on(step: Step) -> Self {
         let mut ui = crate::playground::blank_fixture();
         super::tour_scene(&mut ui, step, true, false);
-        let rt = Runtime::new(ui, crate::view::view, (920.0, 660.0), Env::new(true, 2.0));
+        let mut rt = Runtime::new(ui, crate::view::view, (920.0, 660.0), Env::new(true, 2.0));
+        rt.poll = Some(|ui, _, tx| super::poll(ui, tx));
         let mut run = Run::new(rt, HZ);
         run.idle(0.5);
         run.step();
@@ -49,31 +56,64 @@ impl Tour {
         self.run.rec.frames - 1
     }
 
-    fn demo(&mut self) -> Demo {
-        let mut demo = Demo::default();
+    fn play(&mut self) -> Play {
+        let mut play = Play::default();
         self.run.rt.update_if(|ui, _| {
-            demo = ui.tour.as_ref().unwrap().play.demo;
+            play = ui.tour.as_ref().unwrap().play;
             false
         });
-        demo
+        play
     }
 
-    /// The presented rect of the element whose path ends in `path`, on each frame from `from`.
-    fn rects(&self, path: &str, from: usize) -> Vec<[f32; 4]> {
+    fn demo(&mut self) -> Demo {
+        self.play().demo
+    }
+
+    fn step(&mut self) -> Step {
+        let mut step = Step::Welcome;
+        self.run.rt.update_if(|ui, _| {
+            step = ui.tour.as_ref().unwrap().flow.step();
+            false
+        });
+        step
+    }
+
+    fn track(&self, path: &str) -> &rune::motion_gate::Track {
         let suffix = format!("/{path}");
-        let track = self
-            .run
+        self.run
             .rec
             .tracks
             .iter()
             .rfind(|track| track.path == path || track.path.ends_with(&suffix))
-            .unwrap_or_else(|| panic!("nothing drawn at {path}"));
-        track
+            .unwrap_or_else(|| panic!("nothing drawn at {path}"))
+    }
+
+    /// The presented rect of the element whose path ends in `path`, on each frame from `from`.
+    fn rects(&self, path: &str, from: usize) -> Vec<[f32; 4]> {
+        self.track(path)
             .frames
             .iter()
             .filter(|(frame, _)| *frame >= from)
             .map(|(_, snap)| snap.rect)
             .collect()
+    }
+
+    /// How opaque that element is now.
+    fn opacity(&self, path: &str) -> f32 {
+        self.track(path).frames.last().unwrap().1.op
+    }
+
+    /// Whether anything is drawn at `path` on the newest frame.
+    fn shows(&self, path: &str) -> bool {
+        let suffix = format!("/{path}");
+        let newest = self.run.rec.frames - 1;
+        self.run.rec.tracks.iter().any(|track| {
+            (track.path == path || track.path.ends_with(&suffix))
+                && track
+                    .frames
+                    .last()
+                    .is_some_and(|(frame, _)| *frame == newest)
+        })
     }
 
     fn findings(&self) -> Vec<String> {
@@ -101,14 +141,16 @@ fn glides(xs: &[f32], most: f32) -> bool {
 }
 
 #[test]
-fn a_click_makes_the_move_and_the_workspaces_slide_with_the_marker_stretching() {
+fn a_switch_slides_the_workspaces_and_the_hud_rises_with_its_marker_stretching() {
     let mut tour = Tour::on_try_it();
     let strip_rest = tour.rects("strip", 0)[0];
-    let marker_rest = tour.rects("marker", 0)[0];
+    // Like the real one, the HUD is away until a switch.
+    assert!(tour.opacity("hud") < 0.01);
 
-    let from = tour.click("there");
+    let from = tour.press(PhysicalKeyCode::Digit2, option());
     assert_eq!(tour.demo().workspace(), 1);
     tour.run.play(1.0);
+    assert!(tour.opacity("hud") > 0.99);
 
     // The strip travels one screen to the left, and never more than a few points a frame.
     let strip: Vec<f32> = tour
@@ -119,34 +161,46 @@ fn a_click_makes_the_move_and_the_workspaces_slide_with_the_marker_stretching() 
     let travelled = strip_rest[0] - strip[strip.len() - 1];
     assert!(travelled > 400.0, "{travelled}");
     assert!(glides(&strip, 30.0), "{strip:?}");
-    // The HUD's marker goes to the second group, and is wider on the way than at either end.
+    let there = *tour.rects("marker", from).last().unwrap();
+
+    // Back again: the HUD's marker returns to the first group, wider on the way than at
+    // either end.
+    let from = tour.press(PhysicalKeyCode::Digit1, option());
+    tour.run.play(1.0);
     let marker = tour.rects("marker", from);
-    let landed = marker[marker.len() - 1];
-    assert!(landed[0] > marker_rest[0] + 30.0);
-    assert!((landed[2] - marker_rest[2]).abs() < 0.5);
+    let back = marker[marker.len() - 1];
+    assert!(back[0] < there[0] - 30.0, "{back:?} from {there:?}");
+    assert!((back[2] - there[2]).abs() < 0.5);
     let widest = marker.iter().map(|rect| rect[2]).fold(0.0, f32::max);
-    assert!(
-        widest > marker_rest[2] + 4.0,
-        "{widest} against {}",
-        marker_rest[2]
-    );
+    assert!(widest > there[2] + 4.0, "{widest} against {}", there[2]);
+
+    // And it leaves once its beat is over.
+    tour.run.play(HUD_BEAT);
+    assert!(!tour.play().hud());
+    assert!(tour.opacity("hud") < 0.01);
     assert_eq!(tour.findings(), Vec::<String>::new());
 }
 
 #[test]
-fn a_click_gives_the_stage_the_keyboard_and_real_keys_make_the_other_moves() {
-    let mut tour = Tour::on_try_it();
+fn only_the_keyboard_makes_a_move() {
+    let mut tour = Tour::on(Step::TryIt);
     // Before anything has focus, a chord goes nowhere.
     tour.press(PhysicalKeyCode::Digit2, option());
-    assert_eq!(tour.demo().workspace(), 0);
+    assert_eq!(tour.demo(), Demo::default());
+    // The prompt is not a button: clicking it, its keys or its progress does nothing.
+    for key in ["prompt", "tray", "progress"] {
+        tour.click(key);
+        assert_eq!(tour.demo(), Demo::default(), "{key}");
+    }
 
-    tour.click("there");
-    tour.run.play(0.6);
+    // Clicking the display gives it the keyboard, and the chord lands.
+    tour.click(stage::KEY);
+    assert_eq!(tour.demo(), Demo::default());
+    tour.press(PhysicalKeyCode::Digit2, option());
     assert_eq!(tour.demo().workspace(), 1);
-    // The click handed the keyboard to the stage: Option-1 comes back.
     tour.press(PhysicalKeyCode::Digit1, option());
     assert_eq!(tour.demo().workspace(), 0);
-    tour.run.play(0.6);
+    tour.run.play(1.0);
     // A held key's repeats and its release make no second move.
     tour.press(PhysicalKeyCode::Space, option_shift());
     assert_eq!(tour.demo().mode(0), Mode::Floated);
@@ -168,12 +222,7 @@ fn a_click_gives_the_stage_the_keyboard_and_real_keys_make_the_other_moves() {
     // Option-Shift-2 moves a window in the real thing; it is not one of the four.
     tour.press(PhysicalKeyCode::Digit2, option_shift());
     assert_eq!(tour.demo().workspace(), 0);
-    // Clicking the display itself takes the keyboard too.
-    tour.click("float");
-    tour.click(stage::KEY);
-    tour.press(PhysicalKeyCode::Digit2, option());
-    assert_eq!(tour.demo().workspace(), 1);
-    assert_eq!(tour.demo().mastered(), 3);
+    assert_eq!(tour.demo().learned(), 3);
 }
 
 #[test]
@@ -181,15 +230,48 @@ fn arriving_from_the_arrangement_gives_the_stage_the_keyboard() {
     let mut tour = Tour::on(Step::Arrange);
     tour.click("tour-continue");
     tour.run.play(0.8);
-    let mut step = Step::Welcome;
-    tour.run.rt.update_if(|ui, _| {
-        step = ui.tour.as_ref().unwrap().flow.step();
-        false
-    });
-    assert_eq!(step, Step::TryIt);
+    assert_eq!(tour.step(), Step::TryIt);
     // No click on the step yet, and its shortcut already lands.
     tour.press(PhysicalKeyCode::Digit2, option());
     assert_eq!(tour.demo().workspace(), 1);
+}
+
+#[test]
+fn a_learned_lesson_wears_its_tick_for_a_beat_and_then_the_next_is_asked_for() {
+    let mut tour = Tour::on_try_it();
+    let asking = |index| Card::Lesson {
+        index,
+        learned: false,
+    };
+    assert_eq!(tour.play().card(), asking(0));
+    assert!(tour.shows("lesson0") && !tour.shows("tick"));
+
+    // The wrong shortcut still moves the desktop, and the same lesson stays up.
+    tour.press(PhysicalKeyCode::Space, option_shift());
+    assert_eq!(tour.demo().mode(0), Mode::Floated);
+    assert_eq!(tour.play().card(), asking(0));
+    tour.press(PhysicalKeyCode::Space, option_shift());
+    tour.run.play(0.6);
+
+    // The one asked for: its tick and its progress mark show while the beat lasts.
+    tour.press(PhysicalKeyCode::Digit2, option());
+    assert_eq!(
+        tour.play().card(),
+        Card::Lesson {
+            index: 0,
+            learned: true
+        }
+    );
+    tour.run.play(TICK_BEAT - 0.1);
+    assert!(tour.shows("tick") && tour.shows("mark0/done"));
+    // Then the next lesson rises into its place, by itself, and the step stays put.
+    tour.run.play(0.9);
+    assert_eq!(tour.play().card(), asking(1));
+    assert!(tour.shows("lesson1") && !tour.shows("lesson0") && !tour.shows("tick"));
+    assert_eq!(tour.step(), Step::TryIt);
+    // The HUD the switch brought up has left by now too.
+    tour.run.play(1.0);
+    assert_eq!(tour.findings(), Vec::<String>::new());
 }
 
 #[test]
@@ -198,7 +280,7 @@ fn floating_lifts_the_window_off_the_grid_while_the_other_springs_wide() {
     let safari_rest = tour.rects("w-com.apple.Safari", 0)[0];
     let terminal_rest = tour.rects("w-com.apple.Terminal", 0)[0];
 
-    let from = tour.click("float");
+    let from = tour.press(PhysicalKeyCode::Space, option_shift());
     tour.run.play(1.0);
     let safari = tour.rects("w-com.apple.Safari", from);
     let terminal = tour.rects("w-com.apple.Terminal", from);
@@ -214,7 +296,7 @@ fn floating_lifts_the_window_off_the_grid_while_the_other_springs_wide() {
     assert!(glides(&widths, 30.0), "{widths:?}");
 
     // Again, and both are back on the grid.
-    let from = tour.click("float");
+    let from = tour.press(PhysicalKeyCode::Space, option_shift());
     tour.run.play(1.0);
     let safari = tour.rects("w-com.apple.Safari", from);
     let terminal = tour.rects("w-com.apple.Terminal", from);
@@ -234,7 +316,8 @@ fn fullscreen_fills_the_screen_and_leaves_a_tab_of_the_window_behind() {
     let safari_rest = tour.rects("w-com.apple.Safari", 0)[0];
     let terminal_rest = tour.rects("w-com.apple.Terminal", 0)[0];
 
-    let from = tour.click("fullscreen");
+    let from = tour.press(PhysicalKeyCode::KeyF, option_shift());
+    assert_eq!(tour.demo().mode(0), Mode::Fullscreen);
     tour.run.play(1.0);
     let front = *tour.rects("w-com.apple.Safari", from).last().unwrap();
     let tab = *tour.rects("w-com.apple.Terminal", from).last().unwrap();
@@ -242,9 +325,67 @@ fn fullscreen_fills_the_screen_and_leaves_a_tab_of_the_window_behind() {
     assert!(tab[1] < front[1] && tab[3] < 20.0, "{tab:?} over {front:?}");
     assert!(tab[0] > front[0] && tab[0] + tab[2] < front[0] + front[2]);
 
-    let from = tour.click("fullscreen");
+    let from = tour.press(PhysicalKeyCode::KeyF, option_shift());
     tour.run.play(1.0);
     let back = *tour.rects("w-com.apple.Terminal", from).last().unwrap();
     assert!((back[2] - terminal_rest[2]).abs() < 0.5 && (back[3] - terminal_rest[3]).abs() < 0.5);
     assert_eq!(tour.findings(), Vec::<String>::new());
+}
+
+#[test]
+fn the_last_lesson_brings_the_seal_and_the_desktop_stays_free_to_play_with() {
+    let mut tour = Tour::on_try_it();
+    let presses = [
+        (PhysicalKeyCode::Digit2, option()),
+        (PhysicalKeyCode::Digit1, option()),
+        (PhysicalKeyCode::Space, option_shift()),
+        (PhysicalKeyCode::Space, option_shift()),
+        (PhysicalKeyCode::KeyF, option_shift()),
+        (PhysicalKeyCode::KeyF, option_shift()),
+    ];
+    for (index, (key, mods)) in presses.into_iter().enumerate() {
+        assert_eq!(tour.demo().learned(), index);
+        tour.press(key, mods);
+        tour.run.play(1.2);
+    }
+    assert!(tour.demo().complete());
+    assert_eq!(tour.demo().learned(), LESSONS.len());
+    // The keys' place is taken by the seal, every mark is filled, and nothing moved on.
+    assert_eq!(tour.play().card(), Card::Ready);
+    tour.run.play(1.0);
+    assert!(tour.shows("seal/disc/check") && !tour.shows("tray"));
+    assert!((0..LESSONS.len()).all(|index| tour.shows(&format!("mark{index}/done"))));
+    assert_eq!(tour.step(), Step::TryIt);
+
+    // Every shortcut still plays, and the prompt stays as it is.
+    tour.press(PhysicalKeyCode::Digit2, option());
+    assert_eq!(tour.demo().workspace(), 1);
+    tour.press(PhysicalKeyCode::Space, option_shift());
+    assert_eq!(tour.demo().mode(1), Mode::Floated);
+    tour.run.play(2.2);
+    assert_eq!(tour.play().card(), Card::Ready);
+    assert_eq!(tour.step(), Step::TryIt);
+    assert_eq!(tour.findings(), Vec::<String>::new());
+}
+
+#[test]
+fn another_base_modifier_changes_the_keys_asked_for_on_the_spot() {
+    let mut tour = Tour::on_try_it();
+    let control_option = Mods {
+        ctrl: true,
+        ..option()
+    };
+    tour.run.act("modifier", |rt| {
+        rt.update_if(|ui, _| {
+            super::set_modifier(ui, crate::panes::shortcuts::PRESETS[1].1);
+            true
+        });
+    });
+    tour.run.play(0.6);
+    // The old chord is no longer a move; the new one is, and it is the lesson asked for.
+    tour.press(PhysicalKeyCode::Digit2, option());
+    assert_eq!(tour.demo(), Demo::default());
+    tour.press(PhysicalKeyCode::Digit2, control_option);
+    assert_eq!(tour.demo().workspace(), 1);
+    assert_eq!(tour.demo().learned(), 1);
 }

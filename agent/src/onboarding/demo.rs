@@ -1,5 +1,6 @@
-//! The Try it step's miniature desktop as plain state: two workspaces of two windows each, and
-//! the four moves the step teaches. It is a sandbox: nothing here touches a real window.
+//! The Try it step's miniature desktop as plain state: two workspaces of two windows each, the
+//! four shortcuts that move it, and the six lessons the step teaches with them, one at a time.
+//! It is a sandbox: nothing here touches a real window.
 
 #[cfg(test)]
 mod tests;
@@ -17,6 +18,7 @@ pub const APPS: [[&str; 2]; 2] = [
     ["com.apple.Notes", "com.apple.mail"],
 ];
 
+/// A shortcut the step listens for.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum Move {
     /// Switch to workspace 2.
@@ -40,25 +42,28 @@ impl Move {
             Self::Fullscreen => 3,
         }
     }
+}
 
-    pub const fn key(self) -> &'static str {
-        match self {
-            Self::There => "there",
-            Self::Back => "back",
-            Self::Float => "float",
-            Self::Fullscreen => "fullscreen",
-        }
-    }
+/// One thing to try: a shortcut, and what pressing it now does.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct Lesson {
+    pub mv: Move,
+    pub title: &'static str,
+}
 
-    /// What the move does, under its keys.
-    pub const fn title(self) -> &'static str {
-        match self {
-            Self::There => "Switch to 2",
-            Self::Back => "Back to 1",
-            Self::Float => "Float",
-            Self::Fullscreen => "Fullscreen",
-        }
-    }
+/// The lessons in the order they are asked for. Float and Fullscreen Layout are each pressed
+/// twice: once to make the change and once to undo it.
+pub const LESSONS: [Lesson; 6] = [
+    lesson(Move::There, "Switch to workspace 2"),
+    lesson(Move::Back, "Switch back to workspace 1"),
+    lesson(Move::Float, "Float this window"),
+    lesson(Move::Float, "Tile it again"),
+    lesson(Move::Fullscreen, "Fill the screen"),
+    lesson(Move::Fullscreen, "Back to tiles"),
+];
+
+const fn lesson(mv: Move, title: &'static str) -> Lesson {
+    Lesson { mv, title }
 }
 
 /// How a workspace's focused window sits.
@@ -105,18 +110,27 @@ pub const fn frames(mode: Mode) -> [Frame; 2] {
             frame(0.0, 0.0, 0.5, 1.0, Pose::Tiled),
             frame(0.5, 0.0, 0.5, 1.0, Pose::Tiled),
         ],
-        Mode::Floated => [frame(0.19, 0.15, 0.62, 0.7, Pose::Lifted), WHOLE],
+        Mode::Floated => [frame(0.2, 0.13, 0.6, 0.7, Pose::Lifted), WHOLE],
         Mode::Fullscreen => [WHOLE, frame(0.0, 0.0, 1.0, 1.0, Pose::Behind)],
     }
 }
 
-/// The miniature desktop and which moves have been made on it.
+/// What a press did.
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub struct Pressed {
+    /// The desktop changed.
+    pub moved: bool,
+    /// The press was the lesson being asked for, so the next one is up.
+    pub learned: bool,
+}
+
+/// The miniature desktop and how many lessons have been learned on it.
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
 pub struct Demo {
     /// The workspace showing: 0 or 1.
     workspace: usize,
     modes: [Mode; 2],
-    done: [bool; 4],
+    learned: usize,
 }
 
 impl Demo {
@@ -128,51 +142,54 @@ impl Demo {
         self.modes[workspace]
     }
 
-    pub const fn done(self, mv: Move) -> bool {
-        self.done[mv.index()]
+    /// How many lessons are done: the place in `LESSONS` of the one being asked for.
+    pub const fn learned(self) -> usize {
+        self.learned
     }
 
-    pub fn mastered(self) -> usize {
-        self.done.iter().filter(|done| **done).count()
+    pub const fn complete(self) -> bool {
+        self.learned == LESSONS.len()
     }
 
-    pub fn complete(self) -> bool {
-        self.done.iter().all(|done| *done)
-    }
-
-    /// The move to try next: the first one not made yet.
-    pub fn next(self) -> Option<Move> {
-        Move::ALL.into_iter().find(|mv| !self.done(*mv))
+    /// The lesson being asked for.
+    pub fn next(self) -> Option<Lesson> {
+        LESSONS.get(self.learned).copied()
     }
 
     /// Makes `mv` on the desktop. A switch to the workspace already showing does nothing; Float
-    /// and Fullscreen toggle, each taking over from the other. A move counts the first time it
-    /// changes something: going there, coming back, floating, filling the screen. Returns
-    /// whether the desktop changed.
-    pub fn press(&mut self, mv: Move) -> bool {
+    /// and Fullscreen toggle, each taking over from the other. Every shortcut moves the desktop
+    /// whichever lesson is up, and after the last; the lesson is learned when its own shortcut
+    /// does what it asks for.
+    pub fn press(&mut self, mv: Move) -> Pressed {
         let before = *self;
-        let mode = &mut self.modes[self.workspace];
-        let counts = match mv {
-            Move::There => std::mem::replace(&mut self.workspace, 1) == 0,
-            Move::Back => std::mem::replace(&mut self.workspace, 0) == 1,
-            Move::Float => {
-                *mode = toggled(*mode, Mode::Floated);
-                *mode == Mode::Floated
-            }
-            Move::Fullscreen => {
-                *mode = toggled(*mode, Mode::Fullscreen);
-                *mode == Mode::Fullscreen
-            }
-        };
-        self.done[mv.index()] |= counts;
-        *self != before
+        match mv {
+            Move::There => self.workspace = 1,
+            Move::Back => self.workspace = 0,
+            Move::Float => self.toggle(Mode::Floated),
+            Move::Fullscreen => self.toggle(Mode::Fullscreen),
+        }
+        let moved = *self != before;
+        let was = before.modes[before.workspace];
+        let now = self.modes[self.workspace];
+        let learned = moved
+            && self.next().is_some_and(|lesson| lesson.mv == mv)
+            && match self.learned {
+                // Coming back out of each layout is its own lesson.
+                3 => was == Mode::Floated && now == Mode::Tiled,
+                5 => was == Mode::Fullscreen && now == Mode::Tiled,
+                2 => now == Mode::Floated,
+                4 => now == Mode::Fullscreen,
+                _ => true,
+            };
+        if learned {
+            self.learned += 1;
+        }
+        Pressed { moved, learned }
     }
-}
 
-const fn toggled(mode: Mode, to: Mode) -> Mode {
-    match (mode, to) {
-        (Mode::Floated, Mode::Floated) | (Mode::Fullscreen, Mode::Fullscreen) => Mode::Tiled,
-        _ => to,
+    fn toggle(&mut self, to: Mode) {
+        let mode = &mut self.modes[self.workspace];
+        *mode = if *mode == to { Mode::Tiled } else { to };
     }
 }
 

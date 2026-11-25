@@ -115,9 +115,11 @@ maintainer workflow.
    and terminals on 2, chat and mail on 3, documents on 4, media on 5, at most two tiles a workspace
    on a laptop display, with small utilities left floating. Click or drag an app's icon to move it,
    then press `Arrange & start`, or `Skip` to leave every window where it is.
-5. `Try it` is a miniature desktop to practise four shortcuts on: `⌥2`, `⌥1`, `⌥⇧Space` (float) and
-   `⌥⇧F` (Fullscreen Layout). Press them or click them. While the setup window has the keyboard
-   they move the miniature and none of your windows. `Launch at login` is here too, and
+5. `Try it` is a miniature desktop that teaches four shortcuts, one prompt at a time: `⌥2` and
+   `⌥1` switch workspaces, `⌥⇧Space` floats a window and tiles it again, and `⌥⇧F` turns
+   Fullscreen Layout on and off. Only the keyboard moves it, and while the setup window has the
+   keyboard those presses move the miniature and none of your windows. `Modifier` under the prompt
+   changes the modifier every shortcut holds, `Launch at login` is here too, and
    `Undo & restore` pauses tiling and puts every window back where it was.
 6. Confirm operation with `spaceman ctl status`.
 
