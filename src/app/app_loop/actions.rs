@@ -60,6 +60,7 @@ impl MainThreadAgent {
             match action {
                 Action::ToggleAutomatic if self.automatic => {
                     self.awaiting_accessibility = false;
+                    self.builtin_display.on_manual_pause();
                     self.stop_automatic_and_restore(RestoreKind::Restore);
                     status_item::set_status(if self.worker.is_busy() {
                         "Paused"
@@ -73,6 +74,8 @@ impl MainThreadAgent {
                 Action::ToggleAutomatic => {
                     // An explicit start also ends a first-run tour's hold.
                     self.startup_tiling.setup_finished();
+                    self.builtin_display
+                        .on_manual_resume(self.pause_on_builtin_display, macos::display_topology());
                     self.start_automatic();
                 }
                 Action::FinishSetup => {
@@ -141,6 +144,11 @@ impl MainThreadAgent {
                     self.hud = enabled;
                     self.config_stamp = crate::config::modified();
                     status_item::set_hud(enabled);
+                    self.ui_dirty = true;
+                }
+                Action::SetPauseOnBuiltinDisplay(enabled) => {
+                    self.set_pause_on_builtin_display(enabled);
+                    self.config_stamp = crate::config::modified();
                     self.ui_dirty = true;
                 }
                 Action::CheckForUpdates => {

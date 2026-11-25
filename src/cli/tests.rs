@@ -10,6 +10,7 @@ use spaceman::{
     config::{Config, HudPosition, HudStyle, MouseFollowsFocus, WindowDisposition},
 };
 
+mod builtin_display;
 mod labs;
 mod regressions;
 

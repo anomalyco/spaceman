@@ -7,7 +7,7 @@ use crate::rules::Place;
 
 use super::{
     FRESH_MS, HOLD_MS, HudFlow, HudTick, HudTransition, LEAVE_MS, OVERLAY_MARGIN, OVERLAY_SIZE,
-    RESUME_HOLD_MS, assign_panels, grow, icons, menu, panel_edge, pill,
+    RESUME_HOLD_MS, TOAST_HOLD_MS, assign_panels, grow, icons, menu, panel_edge, pill,
 };
 
 #[test]
@@ -574,4 +574,47 @@ fn moving_an_empty_workspace_away_retires_its_slot_on_the_old_display() {
     let observed = rows(&flows);
     println!("rows after moving workspace 2: {observed:?}");
     assert_eq!(observed, [vec![id(1)], vec![id(2), id(6)], vec![id(9)]]);
+}
+
+#[test]
+fn transient_status_toast_shows_even_when_workspace_hud_is_off_and_holds_for_toast_duration() {
+    use spaceman::app::UiHudToast;
+
+    let mut flow = HudFlow::new(false);
+    // Normal workspace HUD events stay ignored while HUD is off.
+    assert_eq!(flow.trigger(row(1, None), 1_000), HudTransition::Ignored);
+    assert!(flow.view(false).is_none());
+    assert!(flow.toast_view(false).is_none());
+
+    // A status toast still shows cleanly when Workspace HUD is off.
+    let paused = UiHudToast::paused("Tiling paused — built-in display");
+    assert_eq!(
+        flow.trigger_toast(paused.clone(), 1_000),
+        HudTransition::Show
+    );
+    assert!(flow.view(false).is_none());
+    let view = flow.toast_view(false).expect("toast view");
+    assert!(view.shown);
+    assert_eq!(view.toast, &paused);
+    assert_eq!(flow.remaining_ms(1_000), Some(TOAST_HOLD_MS));
+
+    // Re-affirming HUD off does not prematurely dismiss an active status toast.
+    assert!(!flow.set_enabled(false, 1_500));
+    assert!(flow.toast_view(false).is_some_and(|v| v.shown));
+
+    // Still shown before TOAST_HOLD_MS, then leaves and hides cleanly.
+    assert_eq!(flow.tick(1_000 + TOAST_HOLD_MS - 1), HudTick::Idle);
+    assert_eq!(flow.tick(1_000 + TOAST_HOLD_MS), HudTick::Leave);
+    assert!(flow.toast_view(false).is_some_and(|v| !v.shown));
+    assert_eq!(flow.tick(1_000 + TOAST_HOLD_MS + LEAVE_MS), HudTick::Gone);
+    assert!(!flow.is_up());
+
+    // A resumed toast also renders and replaces an active toast in place.
+    let resumed = UiHudToast::resumed("Tiling resumed — external display");
+    assert_eq!(flow.trigger_toast(paused, 5_000), HudTransition::Show);
+    assert_eq!(
+        flow.trigger_toast(resumed.clone(), 5_200),
+        HudTransition::Update
+    );
+    assert_eq!(flow.toast_view(false).unwrap().toast, &resumed);
 }

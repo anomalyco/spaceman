@@ -26,7 +26,7 @@ secondary-display workspaces ships in the notarized preview at
 | Workspaces, tiling, Fullscreen Layout, parking/restoration | Preview artifact and source builds |
 | Parking exemption, remembered placements (`window-memory.json`), arrangement journal, `spaceman doctor` | Preview artifact and source builds |
 | Settings › Labs | One off-by-default switch per `[labs]` feature, written to `config.toml`; `spaceman://labs/<slug>` highlights a row. Covered by `agent/src/panes/labs.rs` and `agent/src/panes/tests.rs` |
-| Single-process Rune Settings, four-step [setup tour](setup-tour.md), non-activating Workspace HUD (`[settings] hud`) | Preview artifact and source builds |
+| Single-process Rune Settings, four-step [setup tour](setup-tour.md), non-activating Workspace HUD (`[settings] hud`), dimmed paused menu bar glyph & `[settings] pause_on_builtin_display` auto-pause/resume with transient HUD toast | Preview artifact and source builds |
 | Named workspaces A-Z | Opt-in: enabled by a `route` rule or `[[workspaces]]` entry |
 | Custom shortcuts (`[shortcuts]`) | Preview artifact and source builds; rebind, unbind, or replace the built-in keys in `config.toml` or by recording a chord in Settings › Shortcuts, with a base `modifier` for the built-ins, applied live without a restart. Covered by unit tests in `src/shortcuts.rs`, `src/hotkeys.rs`, `src/config.rs`, `src/app/app_loop/live_shortcuts.rs`, `agent/src/rules/shortcuts/tests.rs`, and `agent/src/panes/shortcuts/`; no live harness exercises a rebound chord or live re-registration yet |
 | Scratchpad (`[labs] scratchpad`) | Opt-in Lab in source builds; off by default, shortcuts register only when on |

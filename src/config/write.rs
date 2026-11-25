@@ -62,6 +62,8 @@ struct EditableSettings {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     menu_bar_icon: Option<MenuBarIcon>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    pause_on_builtin_display: Option<bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     single_window_max_width: Option<i64>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     single_window_max_height: Option<i64>,
@@ -81,6 +83,7 @@ impl EditableSettings {
             && self.mouse_follows_focus.is_none()
             && self.trackpad_swipe.is_none()
             && self.menu_bar_icon.is_none()
+            && self.pause_on_builtin_display.is_none()
             && self.single_window_max_width.is_none()
             && self.single_window_max_height.is_none()
             && self.workspace_order.is_none()

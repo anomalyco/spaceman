@@ -5,6 +5,53 @@ use crate::onboarding_plan::Arrangement;
 
 use super::*;
 
+/// Whether automatic tiling may start without the user asking for it.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(in crate::app) enum TilingStart {
+    /// Start now: Accessibility is granted and nothing is holding tiling.
+    Now,
+    /// Hold: the first-run setup tour is still open.
+    AfterSetup,
+}
+
+/// Automatic tiling's first start, held while a first-run setup tour is open.
+///
+/// The tour grants Accessibility while the user is still reading it, and the
+/// grant is noticed on the next tick. Starting tiling then rearranges every
+/// window behind the setup window, so the tour finishes first.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(in crate::app) struct TilingStartup {
+    setup_tour_open: bool,
+}
+
+impl TilingStartup {
+    pub(in crate::app) const fn new(setup_tour_open: bool) -> Self {
+        Self { setup_tour_open }
+    }
+
+    /// Accessibility became available, or the loop noticed it now.
+    pub(in crate::app) fn accessibility_granted(&mut self) -> TilingStart {
+        if self.setup_tour_open {
+            TilingStart::AfterSetup
+        } else {
+            TilingStart::Now
+        }
+    }
+
+    /// Whether a first-run tour still holds tiling.
+    pub(in crate::app) const fn held(&self) -> bool {
+        self.setup_tour_open
+    }
+
+    /// The first-run tour finished, was dismissed, or the user asked for tiling
+    /// directly. A manual re-open of the tour never holds tiling, so this is only
+    /// ever called for a first-run tour or an explicit start.
+    pub(in crate::app) fn setup_finished(&mut self) -> TilingStart {
+        self.setup_tour_open = false;
+        TilingStart::Now
+    }
+}
+
 /// What the setup tour has asked for and the worker has not taken yet.
 #[derive(Default)]
 pub(super) struct SetupRequests {

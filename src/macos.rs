@@ -39,7 +39,9 @@ pub use ax::{
     window_server_frames, windows_at_point,
 };
 pub use display_link::{DisplayFrame, DisplayLink, DisplayLinkError};
-pub use displays::{DisplayOutput, DisplayOutputs, display_ids, outputs};
+pub use displays::{
+    DisplayOutput, DisplayOutputs, DisplayTopology, display_ids, display_topology, outputs,
+};
 pub use events::WindowEventMonitor;
 pub use keys::{KeyMonitor, key_press};
 pub use presenter::{

@@ -70,7 +70,8 @@ pub use app_loop::{MainThreadAgent, TickOutcome};
 pub use bridge::{
     HUD_MAX_DISPLAYS, HUD_MAX_FLOATING, HUD_MAX_TILES, HUD_PORTRAIT_PREVIEW_RECT, HUD_PREVIEW_RECT,
     UiAction, UiAgentSnapshot, UiBridge, UiHudDisplay, UiHudEvent, UiHudKind, UiHudLayout,
-    UiHudTile, UiHudWorkspace, UiLaunchAtLogin, UiNews, UiUpdateStatus, hud_preview_rect,
+    UiHudTile, UiHudToast, UiHudWorkspace, UiLaunchAtLogin, UiNews, UiUpdateStatus,
+    hud_preview_rect,
 };
 
 pub struct HostCallbacks {
@@ -229,6 +230,7 @@ pub(crate) enum Action {
     OpenAccessibility,
     ToggleHud,
     SetHud(bool),
+    SetPauseOnBuiltinDisplay(bool),
     CheckForUpdates,
     InstallUpdate,
     ConfirmUpdateSwitch,
@@ -448,6 +450,7 @@ pub struct PreparedAgent {
     swipe_fingers: Fingers,
     menu_bar_icon: crate::config::MenuBarIcon,
     focus_follows_mouse: bool,
+    pause_on_builtin_display: bool,
     controls: Receiver<ControlRequest>,
     control_server: control::Server,
     bridge: UiBridge,
@@ -468,6 +471,7 @@ pub fn prepare() -> Result<(PreparedAgent, UiBridge), String> {
     let swipe_fingers = config.swipe_fingers();
     let menu_bar_icon = config.menu_bar_icon();
     let focus_follows_mouse = config.labs().focus_follows_mouse;
+    let pause_on_builtin_display = config.pause_on_builtin_display();
     let shortcuts = config.shortcuts().clone();
     let mut configured_workspaces = Workspaces::default();
     config.configure_workspaces(&mut configured_workspaces);
@@ -520,6 +524,7 @@ pub fn prepare() -> Result<(PreparedAgent, UiBridge), String> {
             swipe_fingers,
             menu_bar_icon,
             focus_follows_mouse,
+            pause_on_builtin_display,
             controls,
             control_server,
             bridge: bridge.clone(),
@@ -585,6 +590,7 @@ impl PreparedAgent {
                 hud: self.hud,
                 swipe_fingers: self.swipe_fingers,
                 focus_follows_mouse: self.focus_follows_mouse,
+                pause_on_builtin_display: self.pause_on_builtin_display,
                 trusted,
                 setup_tour_open,
                 controls: self.controls,

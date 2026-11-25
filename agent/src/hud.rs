@@ -29,13 +29,13 @@ use rune::{
 };
 use spaceman::{
     WorkspaceId,
-    app::{UiHudDisplay, UiHudEvent},
+    app::{UiHudDisplay, UiHudEvent, UiHudToast},
     config::{HudPosition, HudStyle},
 };
 
 use flow::FRESH_MS;
 #[cfg(test)]
-use flow::{HOLD_MS, RESUME_HOLD_MS};
+use flow::{HOLD_MS, RESUME_HOLD_MS, TOAST_HOLD_MS};
 pub use flow::{HudFlow, HudTick, HudTransition, LEAVE_MS};
 pub use icons::{MARKER_INSET, MARKER_RADIUS};
 pub use menu::HudSink;
@@ -365,6 +365,55 @@ impl HudDriver {
         }
     }
 
+    /// Shows a brief non-activating status toast (~2.5 s) on the primary display, even when
+    /// the Workspace HUD is turned off.
+    pub fn trigger_toast(&self, toast: UiHudToast) {
+        let reduce_motion = reduce_motion();
+        let Ok(mut panels) = self.panels.lock() else {
+            return;
+        };
+        for panel in panels.panels.iter_mut().skip(1) {
+            panel.display = None;
+            panel.handle.update_if(|overlay, _| {
+                overlay.flow.dismiss();
+                if let Some(handle) = &overlay.handle {
+                    handle.hide();
+                }
+                false
+            });
+        }
+        let Some(panel) = panels.panels.first_mut() else {
+            return;
+        };
+        panel.display = None;
+        panel.handle.update_if(move |overlay, tx| {
+            if let Some(handle) = &overlay.handle {
+                handle.set_display(DisplayTarget::Primary);
+            }
+            overlay.display = None;
+            let now_ms = overlay.now_ms();
+            let handle = overlay.handle.clone();
+            match overlay.flow.trigger_toast(toast, now_ms) {
+                HudTransition::Ignored => return false,
+                HudTransition::Show if overlay.primed => {
+                    if let Some(handle) = handle {
+                        handle.fade_in(REVEAL_FADE);
+                    }
+                }
+                HudTransition::Show => {
+                    overlay.primed = true;
+                    if let Some(handle) = handle {
+                        handle.fade_in(FIRST_FADE);
+                    }
+                }
+                HudTransition::Update => {}
+            }
+            overlay.reduce_motion = reduce_motion;
+            overlay.schedule_wake(now_ms, tx);
+            true
+        });
+    }
+
     pub fn set_enabled(&self, enabled: bool) {
         self.each(move |overlay, tx| {
             let left = overlay
@@ -529,9 +578,12 @@ fn overlay_view(overlay: &HudOverlay, cx: &mut Cx<HudOverlay>) -> El {
         cx.reduced_motion(true);
     }
     let p = Paint::new(true, cx.env().scale);
+    let still = cx.is_reduced_motion();
     overlay.flow.mark_drawn();
-    row().key("hud-root").w_full().h_full().center().children(
-        overlay.flow.view(cx.is_reduced_motion()).map(|view| {
+    let content = overlay
+        .flow
+        .view(still)
+        .map(|view| {
             pill::interactive_slot(
                 &view,
                 overlay.position,
@@ -540,6 +592,17 @@ fn overlay_view(overlay: &HudOverlay, cx: &mut Cx<HudOverlay>) -> El {
                 OVERLAY_SIZE.0,
                 p,
             )
-        }),
-    )
+        })
+        .or_else(|| {
+            overlay
+                .flow
+                .toast_view(still)
+                .map(|view| pill::toast_slot(&view, overlay.position, p))
+        });
+    row()
+        .key("hud-root")
+        .w_full()
+        .h_full()
+        .center()
+        .children(content)
 }

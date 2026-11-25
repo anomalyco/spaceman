@@ -160,8 +160,23 @@ pub fn pane(ui: &Ui, p: Paint) -> El {
             .doc
             .lab(LabFeature::MenuBarIconStyle)
             .then(|| highlight(menu_bar_icon_row(ui, p), "menu-bar-icon"));
+        let pause_on_builtin = highlight(
+            controls::toggle_row(
+                p,
+                "pause-on-builtin-display",
+                "Pause on built-in display",
+                Some((
+                    "Resumes automatically when an external display connects".into(),
+                    p.muted(),
+                )),
+                ui.doc.pause_on_builtin_display(),
+                |ui| ui.toggle_pause_on_builtin_display(),
+            ),
+            "pause-on-builtin-display",
+        );
         let mut rows = vec![
             tiling,
+            pause_on_builtin,
             highlight(hud_row(ui, p), "hud"),
             highlight(mouse_follows_focus_row(ui, p), "mouse-follows-focus"),
         ];
@@ -474,5 +489,35 @@ mod tests {
         ui.open_hud_sheet();
         assert!(ui.sheet.is_none(), "no HUD, no sheet");
         let _ = pane(&ui, p);
+    }
+
+    #[test]
+    fn pause_on_builtin_display_toggle_round_trips_and_omits_false_default() {
+        let mut ui = crate::playground::blank_fixture();
+        crate::playground::reset_fixture(&mut ui, Pane::General);
+        assert!(!ui.doc.pause_on_builtin_display());
+
+        ui.toggle_pause_on_builtin_display();
+        assert!(ui.doc.pause_on_builtin_display());
+        let enabled = ui.doc.source();
+        assert!(
+            enabled.contains("pause_on_builtin_display = true"),
+            "{enabled}"
+        );
+        assert!(
+            spaceman::config::Config::parse(&enabled)
+                .unwrap()
+                .pause_on_builtin_display()
+        );
+
+        ui.toggle_pause_on_builtin_display();
+        assert!(!ui.doc.pause_on_builtin_display());
+        let disabled = ui.doc.source();
+        assert!(!disabled.contains("pause_on_builtin_display"), "{disabled}");
+        assert!(
+            !spaceman::config::Config::parse(&disabled)
+                .unwrap()
+                .pause_on_builtin_display()
+        );
     }
 }

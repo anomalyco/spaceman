@@ -286,6 +286,14 @@ impl Ui {
         self.send_action(UiAction::ToggleAutomatic);
     }
 
+    pub fn toggle_pause_on_builtin_display(&mut self) {
+        let next = !self.doc.pause_on_builtin_display();
+        self.edit(|doc| doc.set_pause_on_builtin_display(next));
+        if self.error.is_none() {
+            self.send_action(UiAction::SetPauseOnBuiltinDisplay(next));
+        }
+    }
+
     pub fn open_accessibility(&self) {
         self.send_action(UiAction::OpenAccessibility);
     }
@@ -500,6 +508,11 @@ fn poll(ui: &mut Ui, clock: f64, tx: &mut Tx) -> bool {
         && let Some(driver) = &ui.hud_driver
     {
         driver.trigger(hud_event);
+    }
+    if let Some(toast) = news.toast
+        && let Some(driver) = &ui.hud_driver
+    {
+        driver.trigger_toast(toast);
     }
     if let Some(inventory) = news.inventory {
         changed |= onboarding::inventory(ui, inventory);

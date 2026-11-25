@@ -4,6 +4,7 @@ use super::*;
 
 mod actions;
 mod automatic;
+mod builtin_display;
 mod controls;
 mod dispatch;
 mod hotkey_health;
@@ -15,53 +16,7 @@ mod setup;
 #[cfg(test)]
 pub(super) use dispatch::{AfterCommand, WorkerLifecycle};
 pub(super) use dispatch::{RestoreKind, WorkerDispatch};
-
-/// Whether automatic tiling may start without the user asking for it.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub(super) enum TilingStart {
-    /// Start now: Accessibility is granted and nothing is holding tiling.
-    Now,
-    /// Hold: the first-run setup tour is still open.
-    AfterSetup,
-}
-
-/// Automatic tiling's first start, held while a first-run setup tour is open.
-///
-/// The tour grants Accessibility while the user is still reading it, and the
-/// grant is noticed on the next tick. Starting tiling then rearranges every
-/// window behind the setup window, so the tour finishes first.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub(super) struct TilingStartup {
-    setup_tour_open: bool,
-}
-
-impl TilingStartup {
-    pub(super) const fn new(setup_tour_open: bool) -> Self {
-        Self { setup_tour_open }
-    }
-
-    /// Accessibility became available, or the loop noticed it now.
-    pub(super) fn accessibility_granted(&mut self) -> TilingStart {
-        if self.setup_tour_open {
-            TilingStart::AfterSetup
-        } else {
-            TilingStart::Now
-        }
-    }
-
-    /// Whether a first-run tour still holds tiling.
-    pub(super) const fn held(&self) -> bool {
-        self.setup_tour_open
-    }
-
-    /// The first-run tour finished, was dismissed, or the user asked for tiling
-    /// directly. A manual re-open of the tour never holds tiling, so this is only
-    /// ever called for a first-run tour or an explicit start.
-    pub(super) fn setup_finished(&mut self) -> TilingStart {
-        self.setup_tour_open = false;
-        TilingStart::Now
-    }
-}
+pub(super) use setup::{TilingStart, TilingStartup};
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum TickOutcome {
@@ -88,6 +43,8 @@ pub(super) struct AppLoopInit {
     pub(super) swipe_fingers: Fingers,
     /// `[labs] focus_follows_mouse` as loaded at startup; the config probe keeps it current.
     pub(super) focus_follows_mouse: bool,
+    /// `settings.pause_on_builtin_display` as loaded at startup; the config probe keeps it current.
+    pub(super) pause_on_builtin_display: bool,
     pub(super) trusted: bool,
     /// A first-run setup tour is open and holds automatic tiling until it ends.
     pub(super) setup_tour_open: bool,
@@ -126,6 +83,10 @@ pub struct MainThreadAgent {
     /// The Focus follows mouse Lab: hover focuses tiles, timed by `hover`.
     focus_follows_mouse: bool,
     hover: hover::HoverTracker,
+    pause_on_builtin_display: bool,
+    builtin_display: builtin_display::BuiltinDisplayPolicy,
+    last_display_topology_check: Instant,
+    display_topology_dirty: bool,
     awaiting_accessibility: bool,
     startup_tiling: TilingStartup,
     accessibility_requested: bool,
@@ -174,7 +135,18 @@ impl MainThreadAgent {
         launch_status: Result<login_item::Status, String>,
     ) -> Self {
         let trusted = init.trusted;
-        let (hotkeys, hotkey_error) = if trusted {
+        let mut builtin_display = builtin_display::BuiltinDisplayPolicy::default();
+        let initial_topology = init
+            .pause_on_builtin_display
+            .then(macos::display_topology)
+            .flatten();
+        let start_auto_paused = trusted
+            && !init.setup_tour_open
+            && builtin_display
+                .should_start_auto_paused(init.pause_on_builtin_display, initial_topology);
+        let (hotkeys, hotkey_error) = if start_auto_paused {
+            (None, None)
+        } else if trusted {
             match HotkeyPlan::current(&init.hotkey_workspaces, &init.shortcuts)
                 .and_then(|plan| Hotkeys::install(init.actions_sender.clone(), plan))
             {
@@ -190,7 +162,7 @@ impl MainThreadAgent {
         } else {
             (None, Some("Accessibility permission is required".into()))
         };
-        let automatic = hotkeys.is_some() && !init.setup_tour_open;
+        let automatic = hotkeys.is_some() && !init.setup_tour_open && !start_auto_paused;
         let mut worker = WorkerDispatch::new(init.commands);
 
         status_item::set_automatic(automatic);
@@ -202,6 +174,7 @@ impl MainThreadAgent {
             status_item::set_status(match hotkey_error.as_deref() {
                 Some(error) => error,
                 None if init.setup_tour_open => "Setup in progress · tiling starts when you finish",
+                None if start_auto_paused => builtin_display::PAUSED_STATUS,
                 None => "Paused",
             });
             worker.send_restore();
@@ -233,6 +206,10 @@ impl MainThreadAgent {
             swipe_fingers: init.swipe_fingers,
             focus_follows_mouse: init.focus_follows_mouse,
             hover: hover::HoverTracker::default(),
+            pause_on_builtin_display: init.pause_on_builtin_display,
+            builtin_display,
+            last_display_topology_check: Instant::now(),
+            display_topology_dirty: false,
             awaiting_accessibility: !trusted,
             startup_tiling: TilingStartup::new(init.setup_tour_open),
             accessibility_requested: false,
@@ -270,6 +247,11 @@ impl MainThreadAgent {
         status_item::set_update(agent.updater.status().ready_version());
         if automatic {
             agent.listen_for_input();
+        } else if start_auto_paused {
+            log_event!("auto-paused tiling at startup: built-in display only");
+            agent
+                .bridge
+                .publish_toast(UiHudToast::paused(builtin_display::TOAST_PAUSED));
         }
         agent.publish_ui(false);
         agent
@@ -311,6 +293,7 @@ impl MainThreadAgent {
                     self.release_hotkey_hold_on_stop();
                     self.pending_inputs.clear();
                     self.gesture_tracker.clear();
+                    self.builtin_display.clear_auto_pause();
                     status_item::set_automatic(false);
                     self.automatic = false;
                     self.worker.reset_disconnected();
@@ -461,6 +444,7 @@ impl MainThreadAgent {
         }
 
         self.send_wanted_inventory();
+        self.tick_builtin_display();
         if self.automatic {
             self.tick_automatic();
         }
@@ -486,12 +470,14 @@ impl MainThreadAgent {
             None if self.startup_tiling.held() => {
                 "Setup in progress · tiling starts when you finish"
             }
+            None if self.builtin_display.auto_paused_for_builtin => builtin_display::PAUSED_STATUS,
             None => "Paused",
         }
     }
 
     fn stop_automatic_and_restore(&mut self, kind: RestoreKind) {
         self.automatic = false;
+        self.builtin_display.clear_auto_pause();
         self.cancelled.store(true, Ordering::Release);
         self.hotkeys = None;
         self.release_hotkey_hold_on_stop();
@@ -598,6 +584,9 @@ impl MainThreadAgent {
                     if let Some(on) = probe.focus_follows_mouse {
                         self.focus_follows_mouse = on;
                         self.hover.interrupt();
+                    }
+                    if let Some(on) = probe.pause_on_builtin_display {
+                        self.set_pause_on_builtin_display(on);
                     }
                 }
             }
