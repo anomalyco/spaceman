@@ -18,7 +18,11 @@ use super::{
     input, prompt, stage,
     view::title_block,
 };
-use crate::{Ui, controls::Paint, panes};
+use crate::{
+    Ui,
+    controls::{Held, Paint},
+    panes,
+};
 
 /// How long a pressed key stays down, in seconds on the window's clock.
 pub const KEY_BEAT: f64 = 0.14;
@@ -52,13 +56,14 @@ pub struct Play {
 }
 
 impl Play {
-    /// Presses `mv`'s keys at `now`: the desktop makes the move, a switch shows the HUD, and
-    /// the lesson asking for this press gets its tick.
+    /// Presses `mv`'s keys at `now`: the desktop makes the move, a switch of workspace shows
+    /// the HUD, and the lesson asking for this press gets its tick.
     pub fn press(&mut self, mv: Move, now: f64) -> Pressed {
         let asked = self.demo.learned();
+        let was = self.demo.workspace();
         let pressed = self.demo.press(mv);
         self.down = Some((mv, now));
-        if pressed.moved && matches!(mv, Move::There | Move::Back) {
+        if self.demo.workspace() != was {
             self.hud = Some(now);
         }
         if pressed.learned {
@@ -141,24 +146,30 @@ impl Play {
     }
 
     /// `chord`'s keys for `mv`, each with whether it is down: all of them while the move's
-    /// press has its beat, and a modifier for as long as it is really held.
-    pub fn caps(&self, mv: Move, chord: Chord) -> Vec<(String, bool)> {
+    /// press has its beat, and a modifier for as long as it is really held. Each modifier is
+    /// itself from one chord to the next, and the last key is always the same key, whatever its
+    /// legend.
+    pub fn caps(&self, mv: Move, chord: Chord) -> Vec<Held> {
         let pressed = self.down.is_some_and(|(down, _)| down == mv);
         let modifiers = chord.modifiers.keycaps().len();
         chord
             .keycaps()
             .into_iter()
             .enumerate()
-            .map(|(index, cap)| {
-                let held = index < modifiers
-                    && match cap.as_str() {
-                        "⌃" => self.held.control,
-                        "⌥" => self.held.option,
-                        "⇧" => self.held.shift,
-                        "⌘" => self.held.command,
-                        _ => false,
-                    };
-                (cap, pressed || held)
+            .map(|(index, legend)| {
+                let (id, held) = match legend.as_str() {
+                    _ if index >= modifiers => ("action", false),
+                    "⌃" => ("control", self.held.control),
+                    "⌥" => ("option", self.held.option),
+                    "⇧" => ("shift", self.held.shift),
+                    "⌘" => ("command", self.held.command),
+                    _ => ("modifier", false),
+                };
+                Held {
+                    id,
+                    legend,
+                    down: pressed || held,
+                }
             })
             .collect()
     }

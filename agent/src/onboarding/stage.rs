@@ -10,6 +10,7 @@
 //! |                   | the HUD rises in; its marker's leading edge, then its trailing edge | .16 / 0, .20 / 0, .30 / 0 |
 //! | Float             | the focused window lifts to the middle, the other goes wide         | .36 / .14 |
 //! | Fullscreen Layout | the focused window fills the screen, the other tucks behind         | .36 / .14 |
+//! | Its number again  | the window behind comes forward over the one in front, which tucks | .36 / .14 |
 //!
 //! Under Reduce Motion nothing travels: the workspace and its windows cross-fade.
 
@@ -22,6 +23,7 @@ use rune::{
 
 use super::demo::{self, APPS, Demo, Frame, Mode, Pose};
 use crate::{Ui, apps, controls::Paint};
+use window::Look;
 
 /// The display's key: it takes the keyboard while the step is up.
 pub const KEY: &str = "demo-stage";
@@ -134,7 +136,7 @@ pub fn stage(ui: &Ui, p: Paint, scene: Scene) -> El {
         .gradient(oklch(0.2, 0.04, 266.0), oklch(0.12, 0.03, 285.0))
         .child(wallpaper(demo.workspace(), still))
         .child(desk)
-        .child(menu_bar())
+        .child(menu_bar(demo))
         .child(hud_pill(ui, p, demo, hud, still));
     let dark = Paint::new(true, 1.0 / p.hair);
     let mut display = el()
@@ -215,15 +217,23 @@ fn wallpaper(workspace: usize, still: bool) -> El {
 }
 
 /// One workspace's windows. The focused window comes last, so it draws over the other while
-/// it lifts off the grid and settles back.
+/// it lifts off the grid and settles back, and comes forward when its number cycles to it.
 fn workspace(ui: &Ui, p: Paint, demo: Demo, index: usize, still: bool) -> El {
-    let mode = demo.mode(index);
-    let [front, back] = demo::frames(mode);
-    let [first, second] = APPS[index];
+    let desk = demo.desk(index);
+    let frames = demo::frames(desk);
+    let look = |slot: usize| Look {
+        bundle: APPS[index][slot],
+        frame: frames[slot],
+        mode: desk.mode,
+        focused: slot == desk.focus,
+        first: slot == 0,
+        still,
+    };
+    let behind = 1 - desk.focus;
     el().key(format!("ws{index}"))
         .size(SCREEN_W, SCREEN_H)
-        .child(window::window(p, ui, second, back, mode, false, still))
-        .child(window::window(p, ui, first, front, mode, true, still))
+        .child(window::window(p, ui, look(behind)))
+        .child(window::window(p, ui, look(desk.focus)))
 }
 
 /// An app's icon, or its initial on a quiet tile when this Mac doesn't have the app.
@@ -249,15 +259,18 @@ fn app_badge(ui: &Ui, bundle: &str, size: f32) -> El {
     }
 }
 
-/// The menu bar: the Apple menu, the app's name a touch brighter than its menus, and the
-/// status items and clock at the far end.
-fn menu_bar() -> El {
-    let word = |key: &str, width: f32, alpha: f32| {
-        el().key(key)
-            .size(width, 3.5)
-            .radius(1.75)
-            .fill(Color::WHITE.alpha(alpha))
+/// The menu bar: the Apple menu, the focused app's name a touch brighter than its menus, and
+/// the status items and clock at the far end. It is nearly a quarter past two.
+fn menu_bar(demo: Demo) -> El {
+    let ws = demo.workspace();
+    let bundle = APPS[ws][demo.desk(ws).focus];
+    let word = |key: &str, label: &str, alpha: f32, weight: f32| {
+        text(label.to_owned())
+            .key(key)
+            .font(TextStyle::new(5.5, weight).lh(7.0))
+            .color(Color::WHITE.alpha(alpha))
     };
+    let name = apps::fallback_name(bundle);
     row()
         .key("menu-bar")
         .absolute(0.0, 0.0)
@@ -274,10 +287,17 @@ fn menu_bar() -> El {
                 .radius(2.2)
                 .fill(Color::WHITE.alpha(0.86)),
         )
-        .child(word("app", 20.0, 0.78))
-        .child(word("menu0", 13.0, 0.4))
-        .child(word("menu1", 16.0, 0.4))
-        .child(word("menu2", 12.0, 0.4))
+        // The name cross-fades as focus moves to another app.
+        .child(
+            el().key("app-slot").child(
+                word(&format!("name-{bundle}"), &name, 0.86, 650.0)
+                    .transition(Transition::opacity().springs(SETTLE)),
+            ),
+        )
+        .child(word("menu0", "File", 0.5, 450.0))
+        .child(word("menu1", "Edit", 0.5, 450.0))
+        .child(word("menu2", "View", 0.5, 450.0))
+        .child(word("menu3", "Window", 0.5, 450.0))
         .child(el().key("space").grow(1.0))
         .child(
             el().key("status0")
@@ -291,7 +311,7 @@ fn menu_bar() -> El {
                 .radius(1.8)
                 .border(1.0, Color::WHITE.alpha(0.46)),
         )
-        .child(word("clock", 22.0, 0.62))
+        .child(word("clock", "Tue 2:11 PM", 0.66, 500.0))
 }
 
 /// The Workspace HUD in miniature, in its Icons style: each workspace's number and apps, and a

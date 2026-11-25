@@ -1,5 +1,5 @@
 //! The Try it step's miniature desktop as plain state: two workspaces of two windows each, the
-//! four shortcuts that move it, and the six lessons the step teaches with them, one at a time.
+//! four shortcuts that move it, and the seven lessons the step teaches with them, one at a time.
 //! It is a sandbox: nothing here touches a real window.
 
 #[cfg(test)]
@@ -12,7 +12,8 @@ use spaceman::{
 
 use crate::{Ui, panes};
 
-/// The windows on the two workspaces, by the app each one is. The first of a pair has focus.
+/// The windows on the two workspaces, by the app each one is, in tile order: the first tiles on
+/// the left and has focus to begin with.
 pub const APPS: [[&str; 2]; 2] = [
     ["com.apple.Safari", "com.apple.Terminal"],
     ["com.apple.Notes", "com.apple.mail"],
@@ -21,9 +22,9 @@ pub const APPS: [[&str; 2]; 2] = [
 /// A shortcut the step listens for.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum Move {
-    /// Switch to workspace 2.
+    /// Switch to workspace 2, or, on it already, focus its next window.
     There,
-    /// And back to workspace 1.
+    /// The same for workspace 1.
     Back,
     /// Toggle the focused window's floating.
     Float,
@@ -52,15 +53,20 @@ pub struct Lesson {
 }
 
 /// The lessons in the order they are asked for. Float and Fullscreen Layout are each pressed
-/// twice: once to make the change and once to undo it.
-pub const LESSONS: [Lesson; 6] = [
+/// twice: once to make the change and once to undo it, and in between the workspace's own
+/// number, pressed again, brings the window behind forward, as it does in Spaceman.
+pub const LESSONS: [Lesson; 7] = [
     lesson(Move::There, "Switch to workspace 2"),
     lesson(Move::Back, "Switch back to workspace 1"),
     lesson(Move::Float, "Float this window"),
     lesson(Move::Float, "Tile it again"),
     lesson(Move::Fullscreen, "Fill the screen"),
+    lesson(Move::Back, "Cycle to the window behind"),
     lesson(Move::Fullscreen, "Back to tiles"),
 ];
+
+/// The lesson that cycles the windows of a workspace in Fullscreen Layout.
+const CYCLE: usize = 5;
 
 const fn lesson(mv: Move, title: &'static str) -> Lesson {
     Lesson { mv, title }
@@ -76,6 +82,14 @@ pub enum Mode {
     Floated,
     /// Fullscreen Layout: the focused window fills the screen with the other behind it.
     Fullscreen,
+}
+
+/// One workspace: how it is laid out and which of its windows has focus.
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub struct Desk {
+    pub mode: Mode,
+    /// The focused window's place in `APPS`.
+    pub focus: usize,
 }
 
 /// How a window sits in its frame.
@@ -102,16 +116,24 @@ const fn frame(x: f32, y: f32, w: f32, h: f32, pose: Pose) -> Frame {
     Frame { x, y, w, h, pose }
 }
 
-/// Where a workspace's two windows sit in `mode`, the focused one first.
-pub const fn frames(mode: Mode) -> [Frame; 2] {
+/// Where a workspace's two windows sit, in `APPS` order. Tiles keep their places whichever has
+/// focus; floating lifts the focused one, and Fullscreen Layout puts it in front.
+pub const fn frames(desk: Desk) -> [Frame; 2] {
     const WHOLE: Frame = frame(0.0, 0.0, 1.0, 1.0, Pose::Tiled);
-    match mode {
-        Mode::Tiled => [
-            frame(0.0, 0.0, 0.5, 1.0, Pose::Tiled),
-            frame(0.5, 0.0, 0.5, 1.0, Pose::Tiled),
-        ],
+    let [focused, other] = match desk.mode {
+        Mode::Tiled => {
+            return [
+                frame(0.0, 0.0, 0.5, 1.0, Pose::Tiled),
+                frame(0.5, 0.0, 0.5, 1.0, Pose::Tiled),
+            ];
+        }
         Mode::Floated => [frame(0.2, 0.13, 0.6, 0.7, Pose::Lifted), WHOLE],
         Mode::Fullscreen => [WHOLE, frame(0.0, 0.0, 1.0, 1.0, Pose::Behind)],
+    };
+    if desk.focus == 0 {
+        [focused, other]
+    } else {
+        [other, focused]
     }
 }
 
@@ -129,7 +151,7 @@ pub struct Pressed {
 pub struct Demo {
     /// The workspace showing: 0 or 1.
     workspace: usize,
-    modes: [Mode; 2],
+    desks: [Desk; 2],
     learned: usize,
 }
 
@@ -138,8 +160,12 @@ impl Demo {
         self.workspace
     }
 
+    pub const fn desk(self, workspace: usize) -> Desk {
+        self.desks[workspace]
+    }
+
     pub const fn mode(self, workspace: usize) -> Mode {
-        self.modes[workspace]
+        self.desks[workspace].mode
     }
 
     /// How many lessons are done: the place in `LESSONS` of the one being asked for.
@@ -156,30 +182,32 @@ impl Demo {
         LESSONS.get(self.learned).copied()
     }
 
-    /// Makes `mv` on the desktop. A switch to the workspace already showing does nothing; Float
-    /// and Fullscreen toggle, each taking over from the other. Every shortcut moves the desktop
-    /// whichever lesson is up, and after the last; the lesson is learned when its own shortcut
-    /// does what it asks for.
+    /// Makes `mv` on the desktop. A switch to the workspace already showing brings focus to its
+    /// next window, as a repeat press does in Spaceman, unless a window floats there. Float and
+    /// Fullscreen toggle, each taking over from the other. Every shortcut moves the desktop whichever lesson is up, and after the last;
+    /// the lesson is learned when its own shortcut does what it asks for.
     pub fn press(&mut self, mv: Move) -> Pressed {
         let before = *self;
         match mv {
-            Move::There => self.workspace = 1,
-            Move::Back => self.workspace = 0,
+            Move::There => self.switch(1),
+            Move::Back => self.switch(0),
             Move::Float => self.toggle(Mode::Floated),
             Move::Fullscreen => self.toggle(Mode::Fullscreen),
         }
         let moved = *self != before;
-        let was = before.modes[before.workspace];
-        let now = self.modes[self.workspace];
+        let was = before.desks[before.workspace];
+        let now = self.desks[self.workspace];
+        let cycled = before.workspace == self.workspace && was.focus != now.focus;
         let learned = moved
             && self.next().is_some_and(|lesson| lesson.mv == mv)
             && match self.learned {
+                0 | 1 => self.workspace != before.workspace,
+                2 => now.mode == Mode::Floated,
                 // Coming back out of each layout is its own lesson.
-                3 => was == Mode::Floated && now == Mode::Tiled,
-                5 => was == Mode::Fullscreen && now == Mode::Tiled,
-                2 => now == Mode::Floated,
-                4 => now == Mode::Fullscreen,
-                _ => true,
+                3 => was.mode == Mode::Floated && now.mode == Mode::Tiled,
+                4 => now.mode == Mode::Fullscreen,
+                CYCLE => cycled && now.mode == Mode::Fullscreen,
+                _ => was.mode == Mode::Fullscreen && now.mode == Mode::Tiled,
             };
         if learned {
             self.learned += 1;
@@ -187,8 +215,17 @@ impl Demo {
         Pressed { moved, learned }
     }
 
+    fn switch(&mut self, workspace: usize) {
+        let desk = &mut self.desks[workspace];
+        if self.workspace != workspace {
+            self.workspace = workspace;
+        } else if desk.mode != Mode::Floated {
+            desk.focus = (desk.focus + 1) % APPS[workspace].len();
+        }
+    }
+
     fn toggle(&mut self, to: Mode) {
-        let mode = &mut self.modes[self.workspace];
+        let mode = &mut self.desks[self.workspace].mode;
         *mode = if *mode == to { Mode::Tiled } else { to };
     }
 }

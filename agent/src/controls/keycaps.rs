@@ -3,7 +3,7 @@
 //! the card. A held key sinks its face into the skirt; the key's bounds never change. Sizes are
 //! `KEYS` (`tokens.rs`).
 
-use rune::{Color, Edge, El, Shadow, Spring, TextStyle, Transition, col, row, text};
+use rune::{Color, Edge, El, Shadow, Spring, SpringPair, TextStyle, Transition, col, row, text};
 use rune_kit::Kit;
 use spaceman::shortcuts::Chord;
 
@@ -56,14 +56,56 @@ impl Material {
     }
 }
 
+/// One key in a tray whose keys can be down: which key it is, its legend, and whether it is
+/// down. A key keeps its place in the tray by which key it is, so when a chord changes only its
+/// last key, the others stay where they are and that key's legend rolls over.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct Held {
+    pub id: &'static str,
+    pub legend: String,
+    pub down: bool,
+}
+
 /// One key. `down` sinks the face into the skirt, tightens the cap's shadow and shades the
 /// face toward its bottom edge.
 pub fn keycap(p: Paint, index: usize, label: &str, down: bool) -> El {
+    cap(p, format!("keycap{index}"), label, down, false)
+}
+
+/// A key whose legend rolls up and over to its next one inside the face, which springs to the
+/// new legend's width.
+fn cap(p: Paint, key: String, label: &str, down: bool, rolls: bool) -> El {
     let k = p.k;
     let m = Material::new(k);
     let pressed = if down { 1.0 } else { 0.0 };
     let travel = TRAVEL * pressed;
     let face_height = KEYS.key_h - KEYS.rim - KEYS.skirt;
+    let legend = text(label.to_owned()).font(LEGEND).color(m.ink);
+    let legend = if rolls {
+        legend
+            .key(format!("legend-{label}"))
+            // The old legend is gone before the key's width closes over it.
+            .transition(roll().springs(SpringPair::new(KEY_UP, LEGEND_OUT)))
+    } else {
+        legend.key("label")
+    };
+    let mut face = row()
+        .key("face")
+        .min_w(KEYS.key_h - 2.0 * KEYS.rim)
+        .h(face_height)
+        .px(KEYS.face_px)
+        .center()
+        .radius(KEYS.face_radius)
+        .continuous_corners()
+        .fill(m.face)
+        .gradient(
+            k.light(0.03 - 0.03 * pressed),
+            k.dark_a(0.02 + 0.06 * pressed),
+        )
+        .child(legend);
+    if rolls {
+        face = face.clip_rounded(KEYS.face_radius);
+    }
     // Shadow offsets never spring, so the resting and pressed casts are two layers that
     // trade strength.
     let cast = |y: f32, blur: f32, strength: f32| Shadow {
@@ -84,29 +126,9 @@ pub fn keycap(p: Paint, index: usize, label: &str, down: bool) -> El {
         .shadow(0.5, 0.5, k.dark_a(m.contact))
         .box_shadow(cast(KEYS.skirt, 2.0 * KEYS.skirt, 1.0 - pressed))
         .box_shadow(cast(KEYS.rim, 2.0, pressed))
-        .child(
-            row()
-                .key("face")
-                .min_w(KEYS.key_h - 2.0 * KEYS.rim)
-                .h(face_height)
-                .px(KEYS.face_px)
-                .center()
-                .radius(KEYS.face_radius)
-                .continuous_corners()
-                .fill(m.face)
-                .gradient(
-                    k.light(0.03 - 0.03 * pressed),
-                    k.dark_a(0.02 + 0.06 * pressed),
-                )
-                .child(
-                    text(label.to_owned())
-                        .key("label")
-                        .font(LEGEND)
-                        .color(m.ink),
-                ),
-        );
+        .child(face);
     col()
-        .key(format!("keycap{index}"))
+        .key(key)
         .h(KEYS.key_h)
         .pt(travel)
         .motion(if down { KEY_DOWN } else { KEY_UP })
@@ -119,12 +141,33 @@ pub fn tray(p: Paint, key: &str, caps: &[String]) -> El {
     tray_of(p, key, caps.iter().map(|cap| (cap.as_str(), false)))
 }
 
-/// A tray whose keys can be down: each cap with whether it is pressed.
-pub fn tray_held(p: Paint, key: &str, caps: &[(String, bool)]) -> El {
-    tray_of(p, key, caps.iter().map(|(cap, down)| (cap.as_str(), *down)))
+/// A tray whose keys can be down and stay put from one chord to the next: a key the next chord
+/// adds springs in between its neighbours as they part, one it drops leaves as they close up,
+/// and the tray's width follows them.
+pub fn tray_held(p: Paint, key: &str, caps: &[Held]) -> El {
+    well(p, key)
+        .motion(KEY_UP)
+        .children(caps.iter().map(|held| {
+            cap(
+                p,
+                format!("keycap-{}", held.id),
+                &held.legend,
+                held.down,
+                true,
+            )
+            .transition(Transition::scale(0.96).springs(SpringPair::new(KEY_UP, KEY_DOWN)))
+        }))
 }
 
 fn tray_of<'a>(p: Paint, key: &str, caps: impl Iterator<Item = (&'a str, bool)>) -> El {
+    well(p, key).children(
+        caps.enumerate()
+            .map(|(index, (cap, down))| keycap(p, index, cap, down).transition(roll())),
+    )
+}
+
+/// The recess a chord's keys rest in.
+fn well(p: Paint, key: &str) -> El {
     let k = p.k;
     let c = &k.c;
     let (top, bottom, rim, well) = if k.dark {
@@ -162,11 +205,9 @@ fn tray_of<'a>(p: Paint, key: &str, caps: impl Iterator<Item = (&'a str, bool)>)
             inset: true,
             ..Shadow::default()
         })
-        .children(
-            caps.enumerate()
-                .map(|(index, (cap, down))| keycap(p, index, cap, down).transition(roll())),
-        )
 }
+
+const LEGEND_OUT: Spring = Spring::new(0.1, 0.0);
 
 /// In from the bottom, out through the top, inside the parent's clip.
 pub fn roll() -> Transition {

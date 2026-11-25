@@ -38,7 +38,7 @@ const NOTHING: Pressed = Pressed {
 };
 
 #[test]
-fn the_six_lessons_are_asked_for_one_at_a_time_in_order() {
+fn the_seven_lessons_are_asked_for_one_at_a_time_in_order() {
     let mut demo = Demo::default();
     let titles: Vec<&str> = LESSONS.iter().map(|lesson| lesson.title).collect();
     assert_eq!(
@@ -49,6 +49,7 @@ fn the_six_lessons_are_asked_for_one_at_a_time_in_order() {
             "Float this window",
             "Tile it again",
             "Fill the screen",
+            "Cycle to the window behind",
             "Back to tiles",
         ]
     );
@@ -58,6 +59,7 @@ fn the_six_lessons_are_asked_for_one_at_a_time_in_order() {
         Move::Float,
         Move::Float,
         Move::Fullscreen,
+        Move::Back,
         Move::Fullscreen,
     ];
     for (index, mv) in presses.into_iter().enumerate() {
@@ -68,26 +70,47 @@ fn the_six_lessons_are_asked_for_one_at_a_time_in_order() {
     }
     assert!(demo.complete());
     assert_eq!(demo.next(), None);
-    // Each layout was undone by its second press: the desktop ends as it began.
+    // Each layout was undone by its second press: the desktop ends as it began, but for the
+    // window that came forward, which keeps focus.
     assert_eq!(
         (demo.workspace(), demo.mode(0), demo.mode(1)),
         (0, Mode::Tiled, Mode::Tiled)
     );
+    assert_eq!(demo.desk(0).focus, 1);
 }
 
 #[test]
-fn switching_counts_only_when_the_desktop_moves() {
+fn switching_counts_only_when_the_workspace_changes_and_its_number_again_moves_focus() {
     let mut demo = Demo::default();
-    // Coming back before going anywhere moves nothing and teaches nothing.
-    assert_eq!(demo.press(Move::Back), NOTHING);
+    // Workspace 1's number on workspace 1 focuses its next window, and teaches nothing yet.
+    assert_eq!(demo.press(Move::Back), MOVED);
+    assert_eq!((demo.workspace(), demo.desk(0).focus), (0, 1));
+    assert_eq!(demo.press(Move::Back), MOVED);
+    assert_eq!(demo.desk(0).focus, 0, "and wraps around");
     assert_eq!(demo.learned(), 0);
 
     assert_eq!(demo.press(Move::There), LEARNED);
     assert_eq!(demo.workspace(), 1);
-    assert_eq!(demo.press(Move::There), NOTHING, "already there");
-    assert_eq!(demo.learned(), 1);
+    assert_eq!(demo.press(Move::There), MOVED, "already there");
+    assert_eq!((demo.desk(1).focus, demo.learned()), (1, 1));
     assert_eq!(demo.press(Move::Back), LEARNED);
     assert_eq!((demo.workspace(), demo.learned()), (0, 2));
+    // Each workspace keeps its own focus.
+    assert_eq!((demo.desk(0).focus, demo.desk(1).focus), (0, 1));
+}
+
+#[test]
+fn tiles_keep_their_places_as_focus_moves_and_a_floating_window_keeps_focus() {
+    let mut demo = Demo::default();
+    let tiled = frames(demo.desk(0));
+    demo.press(Move::Back);
+    assert_eq!(frames(demo.desk(0)), tiled);
+    // The focused window is the one that lifts, wherever it tiles.
+    demo.press(Move::Float);
+    let [safari, terminal] = frames(demo.desk(0));
+    assert_eq!((safari.pose, terminal.pose), (Pose::Tiled, Pose::Lifted));
+    assert_eq!(demo.press(Move::Back), NOTHING);
+    assert_eq!(demo.desk(0).focus, 1);
 }
 
 #[test]
@@ -119,7 +142,7 @@ fn floating_lifts_the_focused_window_and_the_second_press_tiles_it_again() {
         Some("Tile it again")
     );
 
-    let [lifted, other] = frames(Mode::Floated);
+    let [lifted, other] = frames(demo.desk(0));
     assert_eq!(lifted.pose, Pose::Lifted);
     // Off the grid: inset from every edge.
     assert!(lifted.x > 0.0 && lifted.y > 0.0);
@@ -128,7 +151,7 @@ fn floating_lifts_the_focused_window_and_the_second_press_tiles_it_again() {
     assert_eq!(other.pose, Pose::Tiled);
     // On the stage the tile that stays is more than twice as wide as it was beside the other,
     // and starts at the screen's left edge.
-    let [left, right] = frames(Mode::Tiled);
+    let [left, right] = frames(Desk::default());
     let (left_x, _, _, _) = stage::rect(left, Mode::Tiled);
     let (_, _, tiled_w, _) = stage::rect(right, Mode::Tiled);
     let (wide_x, _, wide_w, _) = stage::rect(other, Mode::Floated);
@@ -153,7 +176,7 @@ fn fullscreen_layout_keeps_the_other_window_behind_and_the_second_press_brings_t
     assert_eq!(demo.press(Move::Fullscreen), LEARNED);
     assert_eq!(demo.mode(0), Mode::Fullscreen);
 
-    let [front, behind] = frames(Mode::Fullscreen);
+    let [front, behind] = frames(demo.desk(0));
     assert_eq!((front.w, front.h, front.pose), (1.0, 1.0, Pose::Tiled));
     assert_eq!(behind.pose, Pose::Behind);
     // The window behind shows as a narrower tab above the one in front.
@@ -167,9 +190,36 @@ fn fullscreen_layout_keeps_the_other_window_behind_and_the_second_press_brings_t
     assert_eq!(demo.mode(0), Mode::Floated);
     assert_eq!(demo.press(Move::Fullscreen), MOVED);
     assert_eq!((demo.mode(0), demo.learned()), (Mode::Fullscreen, 5));
+
+    // Workspace 1's number again brings Terminal forward from behind, and Safari tucks behind.
+    assert_eq!(
+        demo.next().map(|lesson| lesson.title),
+        Some("Cycle to the window behind")
+    );
+    assert_eq!(demo.press(Move::Back), LEARNED);
+    let [safari, terminal] = frames(demo.desk(0));
+    assert_eq!((safari.pose, terminal.pose), (Pose::Behind, Pose::Tiled));
+    assert_eq!((terminal.w, terminal.h), (1.0, 1.0));
     assert_eq!(demo.press(Move::Fullscreen), LEARNED);
     assert_eq!(demo.mode(0), Mode::Tiled);
     assert!(demo.complete());
+}
+
+#[test]
+fn the_cycle_is_learned_only_in_fullscreen_layout() {
+    let mut demo = Demo::default();
+    for mv in [Move::There, Move::Back, Move::Float, Move::Float] {
+        demo.press(mv);
+    }
+    demo.press(Move::Fullscreen);
+    // Leaving Fullscreen Layout first moves the desktop but is not the cycle.
+    assert_eq!(demo.press(Move::Fullscreen), MOVED);
+    assert_eq!(demo.press(Move::Back), MOVED);
+    assert_eq!(demo.learned(), 5);
+    // Back in Fullscreen Layout, the next press is.
+    demo.press(Move::Fullscreen);
+    assert_eq!(demo.press(Move::Back), LEARNED);
+    assert_eq!(demo.desk(0).focus, 0, "round again to Safari");
 }
 
 #[test]
@@ -334,9 +384,22 @@ fn a_press_sinks_its_keys_for_a_beat_and_a_held_modifier_for_as_long_as_it_is_he
     let down = |play: &try_it::Play, mv, chord| -> Vec<bool> {
         play.caps(mv, chord)
             .into_iter()
-            .map(|(_, down)| down)
+            .map(|held| held.down)
             .collect()
     };
+    // Each key is the same key from one chord to the next, by which key it is.
+    let ids = |chord| -> Vec<&str> {
+        play.caps(Move::There, chord)
+            .into_iter()
+            .map(|held| held.id)
+            .collect()
+    };
+    assert_eq!(ids(there), ["option", "action"]);
+    assert_eq!(ids(float), ["option", "shift", "action"]);
+    assert_eq!(
+        ids(chord("ctrl+alt+cmd+f")),
+        ["control", "option", "command", "action"]
+    );
     assert_eq!(down(&play, Move::There, there), [false, false]);
 
     // Holding Option sinks every Option key, and nothing else.
@@ -417,13 +480,13 @@ fn a_learned_lesson_keeps_its_tick_for_a_beat_then_the_next_is_asked_for() {
     play.press(Move::Float, 9.0);
     assert!(!play.hud());
 
-    for mv in [Move::Fullscreen, Move::Fullscreen] {
+    for mv in [Move::Fullscreen, Move::Back, Move::Fullscreen] {
         play.press(mv, 12.0);
     }
     assert_eq!(
         play.card(),
         Card::Lesson {
-            index: 5,
+            index: 6,
             learned: true
         }
     );
@@ -451,9 +514,11 @@ fn a_press_counts_only_on_try_it_and_undo_starts_the_desktop_over() {
     );
 
     let mut ui = try_it_ui();
-    // Even a press that moves nothing shows on its keys.
+    assert_eq!(onboarding::press(&mut ui, Move::Float, 0.0), Some(MOVED));
+    // Even a press that moves nothing shows on its keys: a floating window keeps focus.
+    let floated = ui.tour.as_ref().unwrap().play.demo;
     assert_eq!(onboarding::press(&mut ui, Move::Back, 0.0), Some(NOTHING));
-    assert_eq!(ui.tour.as_ref().unwrap().play.demo, Demo::default());
+    assert_eq!(ui.tour.as_ref().unwrap().play.demo, floated);
     assert_eq!(onboarding::press(&mut ui, Move::There, 0.0), Some(LEARNED));
     assert_eq!(onboarding::press(&mut ui, Move::Float, 0.0), Some(MOVED));
     let demo = ui.tour.as_ref().unwrap().play.demo;

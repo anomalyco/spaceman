@@ -34,11 +34,17 @@ Your workspaces                                                      // tour.arr
 Try it                                                               // tour.try
 ├── A miniature desktop: two workspaces of two windows, a menu bar, and a Workspace HUD capsule
 │   that shows for a moment after a switch
-├── Six lessons, one prompt at a time, by key only: ⌥2 (workspace 2), ⌥1 (back), ⌥⇧Space
-│   (float), ⌥⇧Space (tile again), ⌥⇧F (Fullscreen Layout), ⌥⇧F (back to tiles)
-│   ├── The press asked for ticks, plays a soft sound and brings up the next; six -> "You're ready"
-│   ├── Any of the four shortcuts moves the miniature whichever lesson is up, and afterwards
+├── Seven lessons, one prompt at a time, by key only: ⌥2 (workspace 2), ⌥1 (back), ⌥⇧Space
+│   (float), ⌥⇧Space (tile again), ⌥⇧F (Fullscreen Layout), ⌥1 again (cycle to the window
+│   behind, as a repeat press does in Spaceman), ⌥⇧F (back to tiles)
+│   ├── The press asked for ticks, plays a soft sound and brings up the next; seven -> "You're ready"
+│   ├── Any of the four shortcuts moves the miniature whichever lesson is up, and afterwards;
+│   │   the workspace's own number focuses its next window (none while one floats)
+│   ├── The prompt, its title and its keys stay from lesson to lesson: the title rolls, ⇧ springs
+│   │   in or out beside ⌥, the last key's legend rolls, and each progress mark fills green
 │   ├── The prompt's keys sink while pressed; clicking the prompt does nothing
+│   ├── The four windows have small real contents (Safari, Terminal, Notes, Mail); the menu bar
+│   │   names the focused app
 │   ├── The chords follow [shortcuts] (Base modifier, rebinds)
 │   └── Reduce Motion: workspaces and windows cross-fade instead of travelling
 ├── Modifier: ⌥ · ⌃⌥ · ⌃⌥⌘ saves [shortcuts] modifier; the prompt asks for the new keys at once
@@ -76,11 +82,13 @@ Unit, `agent/src/onboarding/tests.rs` (flow, board and fixtures):
 `a_conflict_shows_only_when_its_switch_is_on`.
 
 Unit, `agent/src/onboarding/demo/tests.rs` (the Try it miniature):
-`the_six_lessons_are_asked_for_one_at_a_time_in_order`,
-`switching_counts_only_when_the_desktop_moves`,
+`the_seven_lessons_are_asked_for_one_at_a_time_in_order`,
+`switching_counts_only_when_the_workspace_changes_and_its_number_again_moves_focus`,
+`tiles_keep_their_places_as_focus_moves_and_a_floating_window_keeps_focus`,
 `another_shortcut_moves_the_desktop_without_learning_the_lesson_asked_for`,
 `floating_lifts_the_focused_window_and_the_second_press_tiles_it_again`,
 `fullscreen_layout_keeps_the_other_window_behind_and_the_second_press_brings_the_tiles_back`,
+`the_cycle_is_learned_only_in_fullscreen_layout`,
 `free_play_goes_on_after_the_last_lesson`,
 `the_default_chords_are_heard_by_key_code`,
 `a_custom_base_modifier_moves_every_chord_and_the_window_hears_what_the_tap_cannot`,
@@ -99,14 +107,16 @@ Motion (the real view at 120 Hz on a virtual clock, typed at), `agent/src/onboar
 `floating_lifts_the_window_off_the_grid_while_the_other_springs_wide`,
 `fullscreen_fills_the_screen_and_leaves_a_tab_of_the_window_behind`,
 `the_last_lesson_brings_the_seal_and_the_desktop_stays_free_to_play_with`,
-`another_base_modifier_changes_the_keys_asked_for_on_the_spot`.
+`another_base_modifier_changes_the_keys_asked_for_on_the_spot`,
+`the_prompt_and_its_keys_stay_on_screen_from_one_lesson_to_the_next`,
+`workspace_ones_number_again_brings_the_window_behind_forward`.
 
 Unit, `src/app/app_loop/live_shortcuts.rs`:
 `a_recording_holds_for_its_limit_and_the_tour_for_as_long_as_it_practices`.
 
 Scenes (`--scene`): `onboarding-welcome`, `onboarding-permission` (`-waiting`, `-ready`,
 `-conflict`), `onboarding-arrange` (`-dual`, `-drag`, `-empty`), `onboarding-try-it`
-(`-ws2`, `-floated`, `-fullscreen`, `-complete`, `-modifier`).
+(`-ws2`, `-floated`, `-fullscreen`, `-cycled`, `-complete`, `-modifier`).
 
 ## Known gaps
 
