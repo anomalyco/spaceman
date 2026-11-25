@@ -7,6 +7,7 @@ mod config_same_display_alias;
 mod debug_targets;
 mod drop_focus_history;
 mod dwindle_split_after_focus;
+mod edge_return_busy;
 mod float_dock_release;
 mod focus_ring_no_ax_window;
 mod fullscreen_frame_move;

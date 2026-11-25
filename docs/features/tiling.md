@@ -135,10 +135,12 @@ pause, quit, or hotkey loss.
 - Unit (FakeBackend), `src/app/tests/reported/`: pointer resize previews leave the saved split alone
   until mouse-up and pausing discards them (#387), a drag over a resized temporary stack keeps its
   sizes (#388), pausing a held drag restores the previewed siblings (#389), a release keeps the target
-  its preview showed across a config reload (#390), a Fullscreen Layout tile and a tile moved to
-  another display without a gesture come back (#392), a float or new window over a Dock strip stays
-  on that display (#393, #394), a lost mouse-up sample restores the previews (#395), a width cap
-  does not hide an adjacent display from directional focus and moves (#396), an emptied named
+  its preview showed across a config reload (#390), returning to an edge band's last preview point
+  after leaving it while the worker was busy docks the edge column (#495), a Fullscreen Layout tile
+  and a tile moved to another display without a gesture come back (#392), a float or new window
+  over a Dock strip stays on that display (#393, #394), a lost mouse-up sample restores the
+  previews (#395), a width cap does not hide an adjacent display from directional focus and moves
+  (#396), an emptied named
   workspace keeps its split direction across a restart (#402), absolute and keyboard resizes keep
   the 50-point floor past gaps and every known minimum (#407, #408, #409), reach an absolute width
   that fits on the first try even when a sibling first reveals its minimum during it (#492), and

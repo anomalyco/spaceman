@@ -75,8 +75,9 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
 
         let (pre_drag_layout, effective_bounds, shown) = self.drag_overlay(&window, source, bounds);
         let source_settings = self.layout_settings(source_output);
-        // Released where the last preview was shown, the drop is what that
-        // preview showed, even if settings changed in between (#390).
+        // Released where the last preview was shown, with the pointer nowhere
+        // new since, the drop is what that preview showed, even if settings
+        // changed in between (#390).
         let target = match shown.filter(|(at, _)| *at == point) {
             Some((_, target)) => target,
             None => self.resolve_drop_target(
@@ -188,12 +189,17 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
                         shown,
                     },
             }) if dragged == *window && workspace == source => {
+                let shown_with = pointer_bounds;
                 if let Some(bounds) = bounds {
                     match &mut pointer_bounds {
                         Some(existing) => existing.merge(bounds),
                         None => pointer_bounds = Some(bounds),
                     }
                 }
+                // A pointer that has been somewhere new since that preview (out of
+                // an edge band and back while the worker was busy) may have armed a
+                // different target, so the shown one no longer stands (#495).
+                let shown = shown.filter(|_| pointer_bounds == shown_with);
                 (layout, pointer_bounds, shown)
             }
             _ => (
