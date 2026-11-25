@@ -28,8 +28,6 @@ use crate::{
 pub const KEY_BEAT: f64 = 0.14;
 /// How long a learned lesson keeps its tick before the next one is asked for.
 pub const TICK_BEAT: f64 = 0.72;
-/// How long the Workspace HUD stays up after a switch.
-pub const HUD_BEAT: f64 = 1.25;
 
 /// What the prompt under the desktop is showing.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -51,28 +49,22 @@ pub struct Play {
     held: Modifiers,
     /// The lesson just learned, while its tick shows, and since when.
     ticked: Option<(usize, f64)>,
-    /// When a switch last brought the Workspace HUD up, while it shows.
-    hud: Option<f64>,
 }
 
 impl Play {
-    /// Presses `mv`'s keys at `now`: the desktop makes the move, a switch of workspace shows
-    /// the HUD, and the lesson asking for this press gets its tick.
+    /// Presses `mv`'s keys at `now`: the desktop makes the move and the lesson asking for this
+    /// press gets its tick.
     pub fn press(&mut self, mv: Move, now: f64) -> Pressed {
         let asked = self.demo.learned();
-        let was = self.demo.workspace();
         let pressed = self.demo.press(mv);
         self.down = Some((mv, now));
-        if self.demo.workspace() != was {
-            self.hud = Some(now);
-        }
         if pressed.learned {
             self.ticked = Some((asked, now));
         }
         pressed
     }
 
-    /// Lets a pressed key up, the tick go and the HUD leave once each has had its beat.
+    /// Lets a pressed key up and the tick go once each has had its beat.
     /// Returns whether anything changed.
     pub fn settle(&mut self, now: f64) -> bool {
         let mut changed = false;
@@ -88,9 +80,6 @@ impl Play {
         if end(self.ticked.map(|(_, at)| at), TICK_BEAT) {
             self.ticked = None;
         }
-        if end(self.hud, HUD_BEAT) {
-            self.hud = None;
-        }
         changed
     }
 
@@ -99,7 +88,6 @@ impl Play {
         [
             self.down.map(|(_, at)| at + KEY_BEAT),
             self.ticked.map(|(_, at)| at + TICK_BEAT),
-            self.hud.map(|at| at + HUD_BEAT),
         ]
         .into_iter()
         .flatten()
@@ -110,18 +98,7 @@ impl Play {
     pub fn rest(&mut self) {
         self.down = None;
         self.ticked = None;
-        self.hud = None;
         self.held = Modifiers::default();
-    }
-
-    /// Whether the Workspace HUD is up.
-    pub const fn hud(&self) -> bool {
-        self.hud.is_some()
-    }
-
-    /// Keeps the Workspace HUD up, as a scene of a switch draws it.
-    pub fn show_hud(&mut self) {
-        self.hud = Some(0.0);
     }
 
     pub fn card(&self) -> Card {
@@ -217,7 +194,6 @@ fn hold(ui: &mut Ui, held: Modifiers) -> bool {
 pub fn view(ui: &Ui, p: Paint, view: &View, play: &Play, still: bool) -> El {
     let scene = stage::Scene {
         demo: play.demo,
-        hud: play.hud(),
         still,
     };
     let display = stage::stage(ui, p, scene)

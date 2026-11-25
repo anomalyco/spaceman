@@ -160,8 +160,8 @@ fn title(p: Paint, index: usize, label: &str, learned: bool) -> El {
 
 /// The lesson's keys in their tray, each down while it is pressed or held. The tray is the
 /// same from lesson to lesson, and its keys keep their places by which key they are. It sits
-/// at the start of room for the longest chord the lessons ask for, so the modifiers stay where
-/// they are while the keys after them come and go.
+/// at the end of room for the longest chord the lessons ask for, flush with the card's inset,
+/// so its right edge stays put while its width springs and the modifiers slide along.
 fn keys(p: Paint, play: &Play, mv: demo::Move, chord: Option<Chord>, chords: &demo::Chords) -> El {
     let Some(chord) = chord else {
         return controls::chords(p, &[]).transition(swap());
@@ -180,7 +180,12 @@ fn keys(p: Paint, play: &Play, mv: demo::Move, chord: Option<Chord>, chords: &de
                 .opacity(0.0)
                 .a11y_hidden(),
         )
-        .child(controls::tray_held(p, "tray", &play.caps(mv, chord)).absolute(0.0, 0.0))
+        .child(controls::tray_held(p, "tray", &play.caps(mv, chord)).pin(
+            None,
+            Some(0.0),
+            Some(0.0),
+            None,
+        ))
 }
 
 /// One mark for each lesson: filled as it is learned, a touch brighter for the one asked for.

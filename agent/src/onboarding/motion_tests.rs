@@ -1,6 +1,6 @@
 //! Frame-by-frame checks of the Try it step: the real view, typed at as a window would be,
 //! stepped at 120 Hz on a virtual clock and read back as presented rects. The step's beats
-//! (a key coming back up, a tick, the HUD leaving) run on that same clock.
+//! (a key coming back up, a tick) run on that same clock.
 
 use rune::{Env, Mods, PhysicalInput, PhysicalKeyCode, Runtime, motion_gate::Run};
 
@@ -8,7 +8,7 @@ use super::{
     Step,
     demo::{Demo, LESSONS, Mode},
     stage,
-    try_it::{Card, HUD_BEAT, Play, TICK_BEAT},
+    try_it::{Card, Play, TICK_BEAT},
 };
 use crate::Ui;
 
@@ -151,16 +151,21 @@ fn glides(xs: &[f32], most: f32) -> bool {
 }
 
 #[test]
-fn a_switch_slides_the_workspaces_and_the_hud_rises_with_its_marker_stretching() {
+fn a_switch_slides_the_workspaces_and_the_hud_marker_stretches_across() {
     let mut tour = Tour::on_try_it();
     let strip_rest = tour.rects("strip", 0)[0];
-    // Like the real one, the HUD is away until a switch.
-    assert!(tour.opacity("hud") < 0.01);
+    let small = tour.rects("hws1", 0)[0];
+    // The HUD is up from the start and stays up.
+    assert!(tour.opacity("hud") > 0.99);
 
     let from = tour.press(PhysicalKeyCode::Digit2, option());
     assert_eq!(tour.demo().workspace(), 1);
     tour.run.play(1.0);
-    assert!(tour.opacity("hud") > 0.99);
+    let least = tour.opacities("hud", from).into_iter().fold(1.0, f32::min);
+    assert!(least > 0.99, "the HUD faded to {least}");
+    // Workspace 2's screen grew to full size as it became the one showing.
+    let grown = *tour.rects("hws1", from).last().unwrap();
+    assert!(grown[2] > small[2] * 1.4, "{grown:?} from {small:?}");
 
     // The strip travels one screen to the left, and never more than a few points a frame.
     let strip: Vec<f32> = tour
@@ -173,21 +178,19 @@ fn a_switch_slides_the_workspaces_and_the_hud_rises_with_its_marker_stretching()
     assert!(glides(&strip, 30.0), "{strip:?}");
     let there = *tour.rects("marker", from).last().unwrap();
 
-    // Back again: the HUD's marker returns to the first group, wider on the way than at
+    // Back again: the HUD's marker returns to the first screen, wider on the way than at
     // either end.
     let from = tour.press(PhysicalKeyCode::Digit1, option());
     tour.run.play(1.0);
     let marker = tour.rects("marker", from);
     let back = marker[marker.len() - 1];
-    assert!(back[0] < there[0] - 30.0, "{back:?} from {there:?}");
+    assert!(back[0] < there[0] - 20.0, "{back:?} from {there:?}");
     assert!((back[2] - there[2]).abs() < 0.5);
     let widest = marker.iter().map(|rect| rect[2]).fold(0.0, f32::max);
-    assert!(widest > there[2] + 4.0, "{widest} against {}", there[2]);
-
-    // And it leaves once its beat is over.
-    tour.run.play(HUD_BEAT);
-    assert!(!tour.play().hud());
-    assert!(tour.opacity("hud") < 0.01);
+    assert!(widest > there[2] + 2.0, "{widest} against {}", there[2]);
+    // Once the next lesson has come up, everything has settled and the HUD is still there.
+    tour.run.play(1.5);
+    assert!(tour.opacity("hud") > 0.99);
     assert_eq!(tour.findings(), Vec::<String>::new());
 }
 
@@ -279,7 +282,6 @@ fn a_learned_lesson_wears_its_tick_for_a_beat_and_then_the_next_is_asked_for() {
     assert_eq!(tour.play().card(), asking(1));
     assert!(tour.shows("lesson1") && !tour.shows("lesson0") && !tour.shows("tick"));
     assert_eq!(tour.step(), Step::TryIt);
-    // The HUD the switch brought up has left by now too.
     tour.run.play(1.0);
     assert_eq!(tour.findings(), Vec::<String>::new());
 }
@@ -406,6 +408,7 @@ fn the_prompt_and_its_keys_stay_on_screen_from_one_lesson_to_the_next() {
     let mut tour = Tour::on_try_it();
     let option_at = tour.rects("keycap-option", 0)[0];
     let action_at = tour.rects("keycap-action", 0)[0];
+    let tray_at = tour.rects("tray", 0)[0];
     // Option-2, Option-1, then Option-Shift-Space: Shift joins between Option and the last
     // key, whose legend rolls from 1 to Space.
     let from = tour.press(PhysicalKeyCode::Digit2, option());
@@ -434,22 +437,29 @@ fn the_prompt_and_its_keys_stay_on_screen_from_one_lesson_to_the_next() {
     assert!(tour.shows("keycap-shift") && tour.shows("legend-Space"));
     assert!(!tour.shows("legend-1") && !tour.shows("legend-2"));
 
-    // Option never moved; the last key slid along to make room for Shift, and grew for Space.
-    let option = tour.rects("keycap-option", from);
+    // The tray's right edge never moved, flush with the card's inset, while it widened to the
+    // left; Option slid along to make room for Shift, and the last key grew for Space.
+    let right = tray_at[0] + tray_at[2];
+    let tray = tour.rects("tray", from);
     assert!(
-        option
-            .iter()
-            .all(|rect| (rect[0] - option_at[0]).abs() < 0.5),
-        "{option:?}"
+        tray.iter()
+            .all(|rect| (rect[0] + rect[2] - right).abs() < 0.5),
+        "{tray:?}"
     );
+    let prompt = tour.rects("prompt", 0)[0];
+    let inset = prompt[0] + prompt[2] - right;
+    assert!((inset - super::prompt::INSET).abs() < 0.5, "{inset}");
+    let option = tour.rects("keycap-option", from);
+    let xs: Vec<f32> = option.iter().map(|rect| rect[0]).collect();
+    assert!(xs[xs.len() - 1] < option_at[0] - 10.0, "{xs:?}");
+    assert!(glides(&xs, 6.0), "{xs:?}");
     let action = tour.rects("keycap-action", from);
     let last = action[action.len() - 1];
+    assert!(last[2] > action_at[2] + 10.0, "{last:?}");
     assert!(
-        last[0] > action_at[0] + 10.0 && last[2] > action_at[2] + 10.0,
+        (last[0] + last[2] - action_at[0] - action_at[2]).abs() < 0.5,
         "{last:?}"
     );
-    let xs: Vec<f32> = action.iter().map(|rect| rect[0]).collect();
-    assert!(glides(&xs, 6.0), "{xs:?}");
     // And the two marks filled.
     assert!(tour.shows("mark0/done") && tour.shows("mark1/done") && !tour.shows("mark2/done"));
     // The next lesson came up at the end of the tick's beat; let it settle.
@@ -492,8 +502,20 @@ fn workspace_ones_number_again_brings_the_window_behind_forward() {
     assert!(near(safari[safari.len() - 1], tab), "{safari:?}");
     let heights: Vec<f32> = terminal.iter().map(|rect| rect[3]).collect();
     assert!(glides(&heights, 30.0), "{heights:?}");
-    // The menu bar names the app in front.
-    assert!(tour.shows("name-com.apple.Terminal") && !tour.shows("name-com.apple.Safari"));
+    // The menu bar names the app in front, and the HUD has it in front too: its icon large,
+    // Safari's small beside it.
+    assert!(tour.shows("menus-com.apple.Terminal") && !tour.shows("menus-com.apple.Safari"));
+    let front_icon = *tour
+        .rects("hws0/i-com.apple.Terminal", from)
+        .last()
+        .unwrap();
+    let behind_icon = *tour.rects("hws0/i-com.apple.Safari", from).last().unwrap();
+    assert!(
+        front_icon[2] > behind_icon[2] * 1.4,
+        "{front_icon:?} {behind_icon:?}"
+    );
+    assert!(front_icon[0] < behind_icon[0]);
+    assert!(tour.opacity("hws0/i-com.apple.Safari") < 0.6);
     tour.run.play(1.0);
     assert_eq!(tour.findings(), Vec::<String>::new());
 }
