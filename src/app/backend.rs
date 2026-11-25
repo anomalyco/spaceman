@@ -89,6 +89,11 @@ pub(super) trait WorkspaceBackend {
     fn pointer_location(&mut self) -> Option<(i32, i32)> {
         None
     }
+    /// The window focus follows mouse may focus at `point` now (the front-most
+    /// ordinary window there); see [`macos::hover_window_at`].
+    fn hover_window_at(&mut self, _point: (i32, i32)) -> Option<u32> {
+        None
+    }
     fn mouse_down(&mut self) -> bool {
         false
     }
@@ -267,6 +272,10 @@ impl WorkspaceBackend for MacWorkspaceBackend {
 
     fn pointer_location(&mut self) -> Option<(i32, i32)> {
         macos::mouse_position()
+    }
+
+    fn hover_window_at(&mut self, point: (i32, i32)) -> Option<u32> {
+        macos::hover_window_at(point)
     }
 
     fn mouse_down(&mut self) -> bool {

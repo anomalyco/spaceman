@@ -10,7 +10,8 @@ use super::super::*;
 impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
     /// Focuses the visible tile `window_id` the pointer rests on at `point`,
     /// unless the Lab is off, the pointer has moved on, a button is held, a
-    /// drag or a Space slide is under way, or Spaceman put the pointer there.
+    /// drag or a Space slide is under way, Spaceman put the pointer there, or
+    /// another window is in front of the point by the time the hover runs.
     pub(in crate::app) fn focus_hovered(
         &mut self,
         window_id: u32,
@@ -27,6 +28,10 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
             || self.backend.any_mouse_button_down()
             || pointer != Some(point)
             || self.space_transition_until().is_some()
+            // The pointer stayed put but what is in front of it changed while
+            // the hover waited in the queue: a workspace switch showed a float
+            // over the tile (#539). Hovering never raises a tile over it.
+            || self.backend.hover_window_at(point) != Some(window_id)
         {
             return Ok(self.status(0, &outputs));
         }

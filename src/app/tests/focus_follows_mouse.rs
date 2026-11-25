@@ -149,3 +149,24 @@ fn coming_straight_back_to_the_last_warp_point_hovers() {
     hover(&mut rt, &window(60), warp);
     assert_eq!(rt.backend.focused, Some(window(60)));
 }
+
+#[test]
+fn a_queued_hover_leaves_a_float_that_now_covers_the_point_in_front() {
+    // #539: the hover queued while the side tile was in front; by the time the
+    // worker ran it, a workspace switch had shown a float over that point.
+    let point = (1200, 200);
+    let mut rt = two_displays(LAB, point);
+    rt.backend.window_in_front = Some(Some(99));
+    hover(&mut rt, &window(60), point);
+    assert_eq!(rt.backend.focused, Some(window(10)));
+    assert!(
+        !rt.backend
+            .calls
+            .iter()
+            .any(|call| matches!(call, BackendCall::Raise(_) | BackendCall::Focus(_)))
+    );
+    // With the tile in front again, the next hover focuses it.
+    rt.backend.window_in_front = None;
+    hover(&mut rt, &window(60), point);
+    assert_eq!(rt.backend.focused, Some(window(60)));
+}

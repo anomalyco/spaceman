@@ -135,6 +135,9 @@ struct FakeBackend {
     fail_persist_config: bool,
     persisted_monitors: Vec<(WorkspaceId, DisplaySelector)>,
     pointer: Option<(i32, i32)>,
+    /// The window in front at the pointer when a test sets one (a float over
+    /// a tile); otherwise the lowest-numbered window whose frame holds the point.
+    window_in_front: Option<Option<u32>>,
     mouse_down: bool,
     /// The right or middle mouse button is held.
     other_button_down: bool,
@@ -419,6 +422,17 @@ impl WorkspaceBackend for FakeBackend {
 
     fn pointer_location(&mut self) -> Option<(i32, i32)> {
         self.pointer
+    }
+
+    fn hover_window_at(&mut self, point: (i32, i32)) -> Option<u32> {
+        if let Some(front) = self.window_in_front {
+            return front;
+        }
+        self.frames
+            .iter()
+            .filter(|(_, frame)| frame.contains(point.0, point.1))
+            .map(|(window, _)| window.window_id)
+            .min()
     }
 
     fn mouse_down(&mut self) -> bool {
