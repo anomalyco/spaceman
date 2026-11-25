@@ -24,6 +24,9 @@ update_channel = "stable"
 # Center a window that is alone on its display (or in Fullscreen Layout) at this width;
 # 0 (the default) lets it fill the display. 320 through 16384 points.
 single_window_max_width = 0
+# The same for its height, read only with [labs] single_window_height = true; with both,
+# the window is centered on both axes. 0 (the default) or 320 through 16384 points.
+single_window_max_height = 0
 # The order the Workspace HUD, the menu bar menu and three-finger swipes list workspaces in.
 # Listed workspaces come first; the rest follow as 1-10, then A-Z. It never enables a letter.
 # workspace_order = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, "Q", "W", "E", "R", "T", "Y", "U", "I", "O", "P"]
@@ -138,6 +141,8 @@ monitor = "main"
 # four_finger_swipe = true makes the workspace swipe take four fingers instead of
 # three (for Accessibility "Three Finger Drag"), leaving three-finger swipes to
 # macOS.
+# single_window_height = true makes settings.single_window_max_height cap a lone
+# window's height too, and adds its row to Settings › Layout › Wide displays.
 #
 # [labs]
 # scratchpad = false
@@ -150,3 +155,4 @@ monitor = "main"
 # float_follows_display = false
 # workspace_steps = false
 # four_finger_swipe = false
+# single_window_height = false

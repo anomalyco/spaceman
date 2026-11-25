@@ -36,6 +36,11 @@ const GROUPS: [(&str, &str, &[Lab]); 4] = [
                 "Dragged floats follow their display",
                 "A floating window dropped on another display joins its workspace",
             ),
+            (
+                LabFeature::SingleWindowHeight,
+                "Single-window height",
+                "Caps a lone window's height too, set in Layout › Wide displays",
+            ),
         ],
     ),
     (

@@ -1,6 +1,6 @@
 //! Layout pane: one gap for everything by default, or the space between tiled windows and each
-//! screen edge on its own, and the width a lone window keeps on a wide display, under a live
-//! miniature of the result.
+//! screen edge on its own, and the width (and, with its Lab, the height) a lone window keeps on a
+//! wide display, under a live miniature of the result.
 
 mod preview;
 mod slider;
@@ -8,7 +8,7 @@ mod slider;
 use rune::{El, Tx, icon, text};
 use rune_kit::SegmentedControl;
 use spaceman::{
-    config::LayoutMode,
+    config::{LabFeature, LayoutMode},
     spacing::{Spacing, SpacingKey},
 };
 
@@ -24,6 +24,8 @@ use slider::{Channel, slider};
 const SLIDER_MAX: i32 = 32;
 /// Single-window widths offered besides Off.
 const WIDTHS: [i32; 3] = [1440, 1680, 1920];
+/// Single-window heights offered besides Off: the 16:10 counterparts of [`WIDTHS`].
+const HEIGHTS: [i32; 3] = [900, 1050, 1200];
 const LAYOUT_MODES: [(&str, LayoutMode); 2] = [
     ("Dwindle", LayoutMode::Dwindle),
     ("Columns", LayoutMode::Columns),
@@ -126,7 +128,12 @@ fn apply_highlight(el: El, p: Paint, target: Option<Highlight>, wanted: Highligh
 
 pub fn pane(ui: &Ui, p: Paint) -> El {
     let layout = ui.doc.layout();
-    let spacing = ui.spacing_draft.unwrap_or_else(|| ui.doc.spacing());
+    let height_lab = ui.doc.lab(LabFeature::SingleWindowHeight);
+    let mut spacing = ui.spacing_draft.unwrap_or_else(|| ui.doc.spacing());
+    // With its Lab off the height cap does nothing, so the preview leaves it out too.
+    if !height_lab {
+        spacing.single_window_max_height = 0;
+    }
     let open = customize_open(ui, &spacing);
     let target = highlight_target(ui);
     let new_windows = controls::card(
@@ -166,12 +173,37 @@ pub fn pane(ui: &Ui, p: Paint) -> El {
                 "Centers a lone window, and Fullscreen Layout, at this width".to_owned(),
                 p.muted(),
             )),
-            width_picker(p, spacing.single_window_max_width),
+            cap_picker(
+                p,
+                "width-picker",
+                &WIDTHS,
+                spacing.single_window_max_width,
+                with_width,
+            ),
         ),
         p,
         target,
         Highlight::MaxWidth,
     );
+    let mut wide = vec![width];
+    if height_lab {
+        wide.push(controls::setting_row(
+            p,
+            "single-height",
+            "Single-window height",
+            Some((
+                "Centers a lone window, and Fullscreen Layout, at this height".to_owned(),
+                p.muted(),
+            )),
+            cap_picker(
+                p,
+                "height-picker",
+                &HEIGHTS,
+                spacing.single_window_max_height,
+                with_height,
+            ),
+        ));
+    }
     scroll_body(
         "layout-body",
         controls::page(
@@ -180,7 +212,7 @@ pub fn pane(ui: &Ui, p: Paint) -> El {
                 preview::card(p, layout, spacing),
                 new_windows,
                 gaps,
-                controls::section(p, "wide", "Wide displays", vec![width]),
+                controls::section(p, "wide", "Wide displays", wide),
             ],
         ),
     )
@@ -271,37 +303,55 @@ fn disclosure(p: Paint, open: bool) -> El {
         .child(icon(chevron, 12.0).key("chevron").color(p.k.c.icon_muted))
 }
 
-/// Off, the common widths, and a width only `config.toml` set when it holds one.
-fn width_options(current: i32) -> (Vec<(String, i32)>, usize) {
+/// Off, the common sizes, and a size only `config.toml` set when it holds one.
+fn cap_options(presets: &[i32], current: i32) -> (Vec<(String, i32)>, usize) {
     let mut options = vec![("Off".to_owned(), 0)];
-    options.extend(WIDTHS.map(|width| (width.to_string(), width)));
-    if !options.iter().any(|(_, width)| *width == current) {
+    options.extend(presets.iter().map(|size| (size.to_string(), *size)));
+    if !options.iter().any(|(_, size)| *size == current) {
         options.push((format!("{current} px"), current));
     }
     let selected = options
         .iter()
-        .position(|(_, width)| *width == current)
+        .position(|(_, size)| *size == current)
         .unwrap_or(0);
     (options, selected)
 }
 
-fn width_picker(p: Paint, current: i32) -> El {
-    let (options, selected) = width_options(current);
+const fn with_width(spacing: Spacing, single_window_max_width: i32) -> Spacing {
+    Spacing {
+        single_window_max_width,
+        ..spacing
+    }
+}
+
+const fn with_height(spacing: Spacing, single_window_max_height: i32) -> Spacing {
+    Spacing {
+        single_window_max_height,
+        ..spacing
+    }
+}
+
+/// A lone-window cap's picker; `apply` writes the picked size into the file's spacing.
+fn cap_picker(
+    p: Paint,
+    key: &str,
+    presets: &[i32],
+    current: i32,
+    apply: fn(Spacing, i32) -> Spacing,
+) -> El {
+    let (options, selected) = cap_options(presets, current);
     let labels: Vec<String> = options.iter().map(|(label, _)| label.clone()).collect();
-    let widths: Vec<i32> = options.iter().map(|(_, width)| *width).collect();
+    let sizes: Vec<i32> = options.iter().map(|(_, size)| *size).collect();
     SegmentedControl::new(&labels, Some(selected))
         .fit()
         .on_pick(move |ui: &mut Ui, index, _: &mut Tx| {
-            if let Some(width) = widths.get(index) {
+            if let Some(size) = sizes.get(index) {
                 let base = ui.doc.spacing();
-                ui.set_spacing(Spacing {
-                    single_window_max_width: *width,
-                    ..base
-                });
+                ui.set_spacing(apply(base, *size));
             }
         })
         .build(p.k)
-        .key("width-picker")
+        .key(key)
 }
 
 #[cfg(test)]
@@ -310,14 +360,17 @@ mod tests {
 
     #[test]
     fn width_picker_offers_off_the_presets_and_a_custom_width() {
-        let (options, selected) = width_options(0);
+        let (options, selected) = cap_options(&WIDTHS, 0);
         assert_eq!(options.len(), 4);
         assert_eq!(selected, 0);
-        let (_, selected) = width_options(1680);
+        let (_, selected) = cap_options(&WIDTHS, 1680);
         assert_eq!(selected, 2);
-        let (options, selected) = width_options(1600);
+        let (options, selected) = cap_options(&WIDTHS, 1600);
         assert_eq!(options.len(), 5);
         assert_eq!(options[selected], ("1600 px".to_owned(), 1600));
+        let (options, selected) = cap_options(&HEIGHTS, 1050);
+        assert_eq!(options.len(), 4);
+        assert_eq!(options[selected], ("1050".to_owned(), 1050));
     }
 
     #[test]

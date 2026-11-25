@@ -19,6 +19,7 @@ fn spacing(inner: i32, [top, bottom, left, right]: [i32; 4]) -> Spacing {
         left,
         right,
         single_window_max_width: 0,
+        single_window_max_height: 0,
     }
 }
 
@@ -206,6 +207,40 @@ fn fullscreen_layout_uses_the_padded_and_capped_single_frame() {
     assert_eq!(Settings::for_output(OUTPUT).single(), OUTPUT);
 }
 
+#[test]
+fn a_height_cap_centers_the_lone_tile_on_both_axes() {
+    let both = Settings::for_output(OUTPUT).spaced(Spacing {
+        single_window_max_width: 600,
+        single_window_max_height: 500,
+        ..spacing(0, [20, 0, 0, 0])
+    });
+    let usable = both.usable();
+    let frame = both.single();
+    assert_eq!((frame.width, frame.height), (600, 500));
+    assert_eq!(frame.x, usable.x + (usable.width - 600) / 2);
+    assert_eq!(frame.y, usable.y + (usable.height - 500) / 2);
+
+    // Height alone keeps the full width; a cap past the usable height changes nothing.
+    let tall = Settings::for_output(OUTPUT).spaced(Spacing {
+        single_window_max_height: 400,
+        ..Spacing::NONE
+    });
+    assert_eq!(
+        tall.single(),
+        Rect {
+            x: OUTPUT.x,
+            y: OUTPUT.y + (OUTPUT.height - 400) / 2,
+            width: OUTPUT.width,
+            height: 400,
+        }
+    );
+    let past = Settings::for_output(OUTPUT).spaced(Spacing {
+        single_window_max_height: OUTPUT.height + 1,
+        ..Spacing::NONE
+    });
+    assert_eq!(past.single(), OUTPUT);
+}
+
 fn window(id: u32) -> PhysicalWindowId {
     PhysicalWindowId {
         app: AppInstanceId {
@@ -351,6 +386,8 @@ fn keys_parse_check_and_round_trip() {
     assert_eq!(SpacingKey::SingleWindowMaxWidth.check(0), Ok(0));
     assert_eq!(SpacingKey::SingleWindowMaxWidth.check(320), Ok(320));
     assert!(SpacingKey::SingleWindowMaxWidth.check(319).is_err());
+    assert_eq!(SpacingKey::SingleWindowMaxHeight.check(1050), Ok(1050));
+    assert!(SpacingKey::SingleWindowMaxHeight.check(16_385).is_err());
     assert_eq!(spacing(0, [4, 4, 4, 4]).uniform_edges(), Some(4));
     assert_eq!(spacing(0, [4, 4, 4, 5]).uniform_edges(), None);
     assert_eq!(Spacing::NONE.with_edges(9).uniform_edges(), Some(9));

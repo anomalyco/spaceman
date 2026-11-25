@@ -275,6 +275,8 @@ struct RawSettings {
     #[serde(default)]
     single_window_max_width: i64,
     #[serde(default)]
+    single_window_max_height: i64,
+    #[serde(default)]
     workspace_order: Vec<WorkspaceId>,
     #[serde(default)]
     gaps: RawGaps,
@@ -291,6 +293,7 @@ impl Default for RawSettings {
             mouse_follows_focus: MouseFollowsFocus::default(),
             trackpad_swipe: true,
             single_window_max_width: 0,
+            single_window_max_height: 0,
             workspace_order: Vec::new(),
             gaps: RawGaps::default(),
         }
@@ -323,6 +326,10 @@ impl RawSettings {
             (
                 SpacingKey::SingleWindowMaxWidth,
                 Some(self.single_window_max_width),
+            ),
+            (
+                SpacingKey::SingleWindowMaxHeight,
+                Some(self.single_window_max_height),
             ),
         ] {
             let value = match value {
@@ -524,10 +531,15 @@ impl Config {
             .chain(WorkspaceId::all().filter(|workspace| !self.workspace_order.contains(workspace)))
     }
 
-    /// Gaps between tiles, outer screen padding and the lone-window width cap.
+    /// Gaps between tiles, outer screen padding and the lone-window caps. The height cap
+    /// counts only with `[labs] single_window_height` on; with it off it reads as `0` (off).
     #[must_use]
     pub const fn spacing(&self) -> Spacing {
-        self.settings.spacing
+        let mut spacing = self.settings.spacing;
+        if !self.labs.single_window_height {
+            spacing.single_window_max_height = 0;
+        }
+        spacing
     }
 
     pub fn load() -> Result<Self, String> {
@@ -1470,7 +1482,19 @@ right = 128
                 left: 0,
                 right: 128,
                 single_window_max_width: 1600,
+                single_window_max_height: 0,
             }
+        );
+        let height = "version = 1\n[settings]\nsingle_window_max_height = 1050\n";
+        assert_eq!(
+            Config::parse(height).unwrap().spacing().single_window_max_height,
+            0,
+            "the height cap waits for its Lab"
+        );
+        let lab = format!("{height}[labs]\nsingle_window_height = true\n");
+        assert_eq!(
+            Config::parse(&lab).unwrap().spacing().single_window_max_height,
+            1050
         );
         let partial = Config::parse("version = 1\n[settings.gaps]\ninner = 12\n").unwrap();
         assert_eq!(partial.spacing().inner, 12);
@@ -1503,6 +1527,10 @@ right = 128
             (
                 "[settings]\nsingle_window_max_width = 99999",
                 "settings.single_window_max_width must be 0 (off) or between 320 and 16384 px, got 99999",
+            ),
+            (
+                "[settings]\nsingle_window_max_height = 200",
+                "settings.single_window_max_height must be 0 (off) or between 320 and 16384 px, got 200",
             ),
         ] {
             let error = Config::parse(&format!("version = 1\n{source}\n")).unwrap_err();

@@ -8,7 +8,8 @@ entering macOS native fullscreen; leave the mode to get the exact previous split
 ```ts
 Toggle on (focused workspace)                         // fullscreen.toggle
 ├── Every tiled window -> frame = whole display, less settings.gaps edge padding, and centered at
-│   settings.single_window_max_width when the display is wider
+│   settings.single_window_max_width when the display is wider (and at
+│   settings.single_window_max_height when taller, with [labs] single_window_height)
 ├── Windows stay stacked: focused one raised, the rest full-size underneath (not hidden)
 ├── Leaving the workspace parks them back to front -> nothing underneath is uncovered
 ├── Split tree, order, and weights untouched

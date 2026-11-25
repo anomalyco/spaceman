@@ -61,6 +61,8 @@ struct EditableSettings {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     single_window_max_width: Option<i64>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    single_window_max_height: Option<i64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     workspace_order: Option<Vec<WorkspaceId>>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     gaps: Option<toml::Table>,
@@ -76,6 +78,7 @@ impl EditableSettings {
             && self.mouse_follows_focus.is_none()
             && self.trackpad_swipe.is_none()
             && self.single_window_max_width.is_none()
+            && self.single_window_max_height.is_none()
             && self.workspace_order.is_none()
             && self.gaps.is_none()
     }

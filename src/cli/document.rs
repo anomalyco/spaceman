@@ -55,6 +55,8 @@ pub(crate) struct LabsDoc {
     pub workspace_steps: Option<bool>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub four_finger_swipe: Option<bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub single_window_height: Option<bool>,
 }
 
 impl LabsDoc {
@@ -69,6 +71,7 @@ impl LabsDoc {
             && self.float_follows_display.is_none()
             && self.workspace_steps.is_none()
             && self.four_finger_swipe.is_none()
+            && self.single_window_height.is_none()
     }
 
     /// The switch as the file asks for it: off while unset.
@@ -98,6 +101,7 @@ impl LabsDoc {
             LabFeature::FloatFollowsDisplay => self.float_follows_display,
             LabFeature::WorkspaceSteps => self.workspace_steps,
             LabFeature::FourFingerSwipe => self.four_finger_swipe,
+            LabFeature::SingleWindowHeight => self.single_window_height,
         }
     }
 
@@ -113,6 +117,7 @@ impl LabsDoc {
             LabFeature::FloatFollowsDisplay => &mut self.float_follows_display,
             LabFeature::WorkspaceSteps => &mut self.workspace_steps,
             LabFeature::FourFingerSwipe => &mut self.four_finger_swipe,
+            LabFeature::SingleWindowHeight => &mut self.single_window_height,
         }
     }
 }
@@ -181,6 +186,8 @@ pub(crate) struct SettingsDoc {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub single_window_max_width: Option<i64>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub single_window_max_height: Option<i64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub workspace_order: Option<Vec<WorkspaceId>>,
     #[serde(default, skip_serializing_if = "GapsDoc::is_empty")]
     pub gaps: GapsDoc,
@@ -225,6 +232,7 @@ impl SettingsDoc {
             && self.mouse_follows_focus.is_none()
             && self.trackpad_swipe.is_none()
             && self.single_window_max_width.is_none()
+            && self.single_window_max_height.is_none()
             && self.workspace_order.is_none()
             && self.gaps.is_empty()
     }
@@ -237,6 +245,7 @@ impl SettingsDoc {
             SpacingKey::Left => &mut self.gaps.left,
             SpacingKey::Right => &mut self.gaps.right,
             SpacingKey::SingleWindowMaxWidth => &mut self.single_window_max_width,
+            SpacingKey::SingleWindowMaxHeight => &mut self.single_window_max_height,
         }
     }
 
@@ -279,6 +288,7 @@ impl SettingsDoc {
             SpacingKey::Left => self.gaps.left.is_some(),
             SpacingKey::Right => self.gaps.right.is_some(),
             SpacingKey::SingleWindowMaxWidth => self.single_window_max_width.is_some(),
+            SpacingKey::SingleWindowMaxHeight => self.single_window_max_height.is_some(),
         }
     }
 
@@ -407,6 +417,7 @@ pub(crate) struct EffectiveSettings {
     pub mouse_follows_focus: &'static str,
     pub trackpad_swipe: bool,
     pub single_window_max_width: i32,
+    pub single_window_max_height: i32,
     pub workspace_order: Vec<WorkspaceId>,
     pub gaps: EffectiveGaps,
 }
@@ -501,6 +512,7 @@ impl ConfigDoc {
             mouse_follows_focus: self.settings.effective_mouse_follows_focus().as_str(),
             trackpad_swipe: self.settings.effective_trackpad_swipe(),
             single_window_max_width: spacing.single_window_max_width,
+            single_window_max_height: spacing.single_window_max_height,
             workspace_order: self.settings.workspace_order.clone().unwrap_or_default(),
             gaps: EffectiveGaps {
                 inner: spacing.inner,
