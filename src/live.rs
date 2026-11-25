@@ -145,6 +145,7 @@ mod tests {
                     },
                     resizable: true,
                     title: None,
+                    document: None,
                 }],
             }],
         };
@@ -202,6 +203,7 @@ mod tests {
                         frame: settings.output,
                         resizable: true,
                         title: None,
+                        document: None,
                     }],
                 }],
             },

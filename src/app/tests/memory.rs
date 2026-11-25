@@ -28,6 +28,8 @@ fn memory(placements: &[(u8, crate::Rect)]) -> WindowMemory {
                 workspace: workspace(*value),
                 frame: *frame,
                 floating: false,
+                document: None,
+                title: None,
             })
             .collect(),
         1,
@@ -581,6 +583,8 @@ fn a_recalled_floating_placement_keeps_the_window_floating() {
             workspace: WorkspaceId::ONE,
             frame: original,
             floating: true,
+            document: None,
+            title: None,
         }],
         1,
     ));
@@ -659,4 +663,81 @@ fn bare_executables_without_bundle_ids_do_not_share_placement_memory() {
 
     assert_eq!(rt.workspaces.workspace_of(&b), Some(WorkspaceId::ONE));
     assert!(!rt.parked.contains_key(&b));
+}
+
+#[test]
+fn memory_records_document_and_title_across_parking_and_ignores_case_only_title_churn() {
+    let first = window(10);
+    let second = window(11);
+    let mut observed = observation_for_windows(
+        BUNDLE,
+        &first,
+        &[(first.clone(), frame(50)), (second.clone(), frame(500))],
+    );
+    if let crate::AppObservation::Complete { windows, .. } = &mut observed.applications[0] {
+        windows[0].document = Some("file:///Users/example/code/spaceman".into());
+        windows[0].title = Some("spaceman — Cargo.toml".into());
+        windows[1].title = Some("Inbox (3) - Gmail".into());
+    }
+    let mut runtime = runtime(FakeBackend {
+        frames: HashMap::from([(first.clone(), frame(50)), (second.clone(), frame(500))]),
+        observation: Some(observed),
+        ..FakeBackend::default()
+    });
+    let cancelled = AtomicBool::new(false);
+    runtime.cycle(outputs(), &cancelled).unwrap();
+    runtime.cycle(outputs(), &cancelled).unwrap();
+
+    // Move first to workspace 2 so it gets parked off-screen and omitted from observations.
+    runtime
+        .move_window(first.clone(), workspace(2), outputs(), &cancelled)
+        .unwrap();
+    let mut only_second = observation_for(BUNDLE, &second, frame(500));
+    if let crate::AppObservation::Complete { windows, .. } = &mut only_second.applications[0] {
+        windows[0].title = Some("Inbox (3) - Gmail".into());
+    }
+    runtime.backend.observation = Some(only_second);
+    runtime.cycle(outputs(), &cancelled).unwrap();
+    runtime.cycle(outputs(), &cancelled).unwrap();
+
+    // Case/whitespace-only title differences must not reset MEMORY_SETTLE.
+    for (_, since) in runtime.memory.pending.values_mut() {
+        *since -= crate::app::memory::MEMORY_SETTLE;
+    }
+    let mut same_normalized = observation_for(BUNDLE, &second, frame(500));
+    if let crate::AppObservation::Complete { windows, .. } = &mut same_normalized.applications[0] {
+        windows[0].title = Some("  inbox (3) - gmail  ".into());
+    }
+    runtime.backend.observation = Some(same_normalized);
+    runtime.cycle(outputs(), &cancelled).unwrap();
+
+    let remembered = runtime.memory.memory.get(BUNDLE).unwrap();
+    assert_eq!(remembered.windows.len(), 2);
+    // Parked window kept its observed document and title!
+    assert_eq!(remembered.windows[0].workspace, workspace(2));
+    assert_eq!(
+        remembered.windows[0].document.as_deref(),
+        Some("file:///Users/example/code/spaceman")
+    );
+    assert_eq!(
+        remembered.windows[0].title.as_deref(),
+        Some("spaceman — Cargo.toml")
+    );
+    assert_eq!(remembered.windows[1].workspace, WorkspaceId::ONE);
+    assert_eq!(remembered.windows[1].document, None);
+    assert_eq!(
+        remembered.windows[1].title.as_deref(),
+        Some("inbox (3) - gmail")
+    );
+
+    // A subsequent cycle with only a case difference must not mark memory dirty.
+    runtime.backend.window_memory = None;
+    let mut upper = observation_for(BUNDLE, &second, frame(500));
+    if let crate::AppObservation::Complete { windows, .. } = &mut upper.applications[0] {
+        windows[0].title = Some("INBOX (3) - GMAIL".into());
+    }
+    runtime.backend.observation = Some(upper);
+    runtime.cycle(outputs(), &cancelled).unwrap();
+    assert!(runtime.memory.pending.is_empty());
+    assert!(runtime.backend.window_memory.is_none());
 }

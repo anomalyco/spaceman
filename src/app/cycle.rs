@@ -289,7 +289,7 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
         {
             self.workspaces.remember_focus(workspace, focused);
         }
-        self.record_window_memory(server_frames);
+        self.record_window_memory(server_frames, &observation);
         // Creation can wake the worker before CG orders the window on screen.
         // Only a recent create/activation on the main thread enables retries.
         let missing_frontmost_window = frontmost.filter(|app| {

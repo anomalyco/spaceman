@@ -131,6 +131,7 @@ impl World {
                             id: window,
                             resizable: true,
                             title: None,
+                            document: None,
                         })
                         .into_iter()
                         .collect(),

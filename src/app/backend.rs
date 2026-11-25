@@ -146,11 +146,16 @@ impl MacWorkspaceBackend {
         path: Option<PathBuf>,
         value: &impl serde::Serialize,
         state: &'static str,
+        owner_only: bool,
     ) -> Result<(), String> {
         let path = path.ok_or("HOME is unavailable")?;
         let bytes = serde_json::to_vec(value)
             .map_err(|error| format!("failed to serialize {state} state: {error}"))?;
-        self.writer.write(path, bytes, state);
+        if owner_only {
+            self.writer.write_owner_only(path, bytes, state);
+        } else {
+            self.writer.write(path, bytes, state);
+        }
         Ok(())
     }
 }
@@ -301,14 +306,14 @@ impl WorkspaceBackend for MacWorkspaceBackend {
         &mut self,
         state: &crate::workspace::WorkspaceState,
     ) -> Result<(), String> {
-        self.write_later(workspace_state_path(), state, "workspace")
+        self.write_later(workspace_state_path(), state, "workspace", false)
     }
 
     fn persist_window_memory(
         &mut self,
         memory: &crate::window_memory::WindowMemory,
     ) -> Result<(), String> {
-        self.write_later(window_memory_path(), memory, "window memory")
+        self.write_later(window_memory_path(), memory, "window memory", true)
     }
 
     fn persist_workspace_monitor(

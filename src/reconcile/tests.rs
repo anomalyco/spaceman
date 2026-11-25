@@ -99,6 +99,7 @@ fn window(app: &AppInstanceId, window_id: u32, frame: Rect) -> ObservedWindow {
         frame,
         resizable: true,
         title: None,
+        document: None,
     }
 }
 

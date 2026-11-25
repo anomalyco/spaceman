@@ -111,11 +111,12 @@ fn journal_writes_a_snapshot_then_only_diffs() {
 }
 
 #[test]
-fn journal_lines_never_contain_window_titles() {
+fn journal_lines_never_contain_window_titles_or_documents() {
     let tiled = window(10);
     let mut observed = observation(&tiled, frame(50));
     if let crate::AppObservation::Complete { windows, .. } = &mut observed.applications[0] {
         windows[0].title = Some("Private document".into());
+        windows[0].document = Some("file:///Users/example/private/secret.rs".into());
     }
     let mut backend = FakeBackend {
         observation: Some(observed),
@@ -126,11 +127,21 @@ fn journal_lines_never_contain_window_titles() {
     runtime.journal_start(false);
     runtime.cycle(outputs(), &AtomicBool::new(false)).unwrap();
     runtime.check_arrangement(&outputs());
+    let mut lines = Vec::new();
     for event in &runtime.backend.journal {
         let json = serde_json::to_string(event).unwrap();
         assert!(!json.contains("Private document"), "{json}");
         assert!(!json.contains("title"), "{json}");
+        assert!(!json.contains("secret.rs"), "{json}");
+        assert!(!json.contains("document"), "{json}");
+        lines.push(crate::journal::JournalLine {
+            t: 1_000,
+            event: event.clone(),
+        });
     }
+    let doctor = crate::journal::summarize(&lines, 0, 2_000, 0);
+    assert!(!doctor.contains("Private document"), "{doctor}");
+    assert!(!doctor.contains("secret.rs"), "{doctor}");
 }
 
 #[test]

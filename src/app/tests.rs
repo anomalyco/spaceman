@@ -195,6 +195,7 @@ impl FakeBackend {
                     frame,
                     resizable: true,
                     title: None,
+                    document: None,
                 });
             }
         }
@@ -675,6 +676,7 @@ fn observation_for_windows(
                     frame: *frame,
                     resizable: true,
                     title: None,
+                    document: None,
                 })
                 .collect(),
         }],
@@ -705,6 +707,7 @@ fn benchmark_backend(window_count: u32) -> FakeBackend {
             frame,
             resizable: true,
             title: None,
+            document: None,
         });
     }
     FakeBackend {

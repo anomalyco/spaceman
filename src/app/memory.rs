@@ -2,7 +2,10 @@ use std::collections::BTreeMap;
 
 use crate::{
     journal::{CORRECTION_WINDOW, PlacementSource},
-    window_memory::{RememberedWindow, WindowMemory},
+    window_memory::{
+        RememberedWindow, WindowCandidate, WindowMemory, normalize_document, normalize_title,
+        same_window_list,
+    },
 };
 
 use super::*;
@@ -18,13 +21,29 @@ pub(super) const RELAUNCH_WINDOW: Duration = Duration::from_secs(30);
 /// process exits; those intermediate states must not overwrite the memory.
 pub(super) const MEMORY_SETTLE: Duration = Duration::from_secs(10);
 
+/// The placement fields a recalled window needs once it has claimed an entry.
+#[derive(Clone, Copy)]
+pub(super) struct RecalledPlacement {
+    pub(super) workspace: WorkspaceId,
+    pub(super) frame: crate::Rect,
+    pub(super) floating: bool,
+}
+
+/// Last observed local `AXDocument` and title for a live window, retained while
+/// the window is parked off-screen so inactive workspaces keep their identity.
+#[derive(Clone, Default)]
+pub(super) struct WindowIdentity {
+    document: Option<String>,
+    title: Option<String>,
+}
+
 /// One relaunched application instance claiming its remembered placements.
 pub(super) struct Recall {
     bundle_id: String,
     pub(super) opened: Instant,
     /// Remembered placements not yet claimed by a window.
     remaining: Vec<RememberedWindow>,
-    claimed: HashMap<crate::PhysicalWindowId, RememberedWindow>,
+    claimed: HashMap<crate::PhysicalWindowId, RecalledPlacement>,
 }
 
 /// Where and why Spaceman put a window it just saw, kept for
@@ -57,10 +76,12 @@ pub(super) struct MemoryState {
     pub(super) considered: HashSet<AppInstanceId>,
     /// Recent placements of newly seen windows.
     pub(super) placements: HashMap<crate::PhysicalWindowId, Placement>,
+    /// Last observed local `AXDocument` and title for managed windows.
+    pub(super) identities: HashMap<crate::PhysicalWindowId, WindowIdentity>,
 }
 
 impl MemoryState {
-    pub(super) fn recalled(&self, window: &crate::PhysicalWindowId) -> Option<RememberedWindow> {
+    pub(super) fn recalled(&self, window: &crate::PhysicalWindowId) -> Option<RecalledPlacement> {
         self.recalls
             .get(&window.app)
             .and_then(|recall| recall.claimed.get(window))
@@ -133,7 +154,12 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
                         !patch.is_ignored() && patch.home.is_none()
                     }
             })
-            .map(|window| (window.id.clone(), window.frame))
+            .map(|window| WindowCandidate {
+                id: window.id.clone(),
+                frame: window.frame,
+                document: window.document.as_deref(),
+                title: window.title.as_deref(),
+            })
             .collect();
         if candidates.is_empty() {
             return;
@@ -142,7 +168,12 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
         let mut claimed_indices = Vec::new();
         let mut events = Vec::new();
         for (window, index) in assignments {
-            let placement = recall.remaining[index];
+            let entry = &recall.remaining[index];
+            let placement = RecalledPlacement {
+                workspace: entry.workspace,
+                frame: entry.frame,
+                floating: entry.floating,
+            };
             log_event!(
                 "recall: {:?} ({}) -> workspace {}{}",
                 window,
@@ -328,7 +359,7 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
                     .windows
                     .iter()
                     .filter(|placement| self.can_recall_to(placement.workspace))
-                    .copied()
+                    .cloned()
                     .collect::<Vec<_>>()
             })
             .unwrap_or_default();
@@ -378,34 +409,60 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
 
     /// Fold settled ownership back into the memory once it has held for
     /// [`MEMORY_SETTLE`], then persist any change.
-    pub(super) fn record_window_memory(&mut self, server_frames: &HashMap<u32, crate::Rect>) {
+    pub(super) fn record_window_memory(
+        &mut self,
+        server_frames: &HashMap<u32, crate::Rect>,
+        observation: &crate::NativeObservation,
+    ) {
+        for app in &observation.applications {
+            let crate::AppObservation::Complete { windows, .. } = app else {
+                continue;
+            };
+            for window in windows {
+                self.memory.identities.insert(
+                    window.id.clone(),
+                    WindowIdentity {
+                        document: window.document.as_deref().and_then(normalize_document),
+                        title: window.title.as_deref().and_then(normalize_title),
+                    },
+                );
+            }
+        }
         let recalling: HashSet<_> = self
             .memory
             .recalls
             .values()
             .map(|recall| recall.bundle_id.clone())
             .collect();
+        let mut live_windows: HashSet<crate::PhysicalWindowId> =
+            self.parked.keys().cloned().collect();
         let mut current: BTreeMap<String, Vec<(u32, RememberedWindow)>> = BTreeMap::new();
+        let identities = &self.memory.identities;
+        let bundles = &self.memory.bundles;
+        let parked = &self.parked;
         let mut add = |window: &crate::PhysicalWindowId, workspace, floating| {
-            let Some(bundle_id) = self.memory.bundles.get(&window.app).filter(|bundle_id| {
+            live_windows.insert(window.clone());
+            let Some(bundle_id) = bundles.get(&window.app).filter(|bundle_id| {
                 is_rememberable_bundle_id(bundle_id) && !recalling.contains(*bundle_id)
             }) else {
                 return;
             };
-            let Some(frame) = self
-                .parked
+            let Some(frame) = parked
                 .get(window)
                 .or_else(|| server_frames.get(&window.window_id))
                 .copied()
             else {
                 return;
             };
+            let identity = identities.get(window);
             current.entry(bundle_id.clone()).or_default().push((
                 window.window_id,
                 RememberedWindow {
                     workspace,
                     frame,
                     floating,
+                    document: identity.and_then(|entry| entry.document.clone()),
+                    title: identity.and_then(|entry| entry.title.clone()),
                 },
             ));
         };
@@ -417,6 +474,9 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
         for (window, workspace) in self.workspaces.floating_entries() {
             add(window, workspace, true);
         }
+        self.memory
+            .identities
+            .retain(|window, _| live_windows.contains(window));
         let now = self.backend.now();
         self.memory
             .pending
@@ -433,13 +493,13 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
                 .memory
                 .memory
                 .get(&bundle_id)
-                .is_some_and(|remembered| remembered.windows == windows)
+                .is_some_and(|remembered| same_window_list(&remembered.windows, &windows))
             {
                 self.memory.pending.remove(&bundle_id);
                 continue;
             }
             match self.memory.pending.get(&bundle_id) {
-                Some((pending, since)) if *pending == windows => {
+                Some((pending, since)) if same_window_list(pending, &windows) => {
                     if now.duration_since(*since) >= MEMORY_SETTLE {
                         self.memory.pending.remove(&bundle_id);
                         let count = windows.len();

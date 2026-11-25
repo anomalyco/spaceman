@@ -480,7 +480,11 @@ on the same letter.
   `a_window_one_pixel_off_its_parking_spot_is_still_rescued`,
   `one_pixel_and_empty_windows_at_a_parking_spot_are_never_rescued`,
   `a_single_window_cold_launch_still_opens_on_the_active_workspace`, and
-  `reopened_notes_find_their_workspaces_by_size`; `src/window_memory.rs`:
+  `reopened_notes_find_their_workspaces_by_size`, and
+  `same_size_reopened_windows_match_by_document_and_fuzzy_title_in_reverse_order`;
+  `src/window_memory.rs`: `exact_document_wins_over_same_size_windows_in_reverse_order`,
+  `exact_normalized_title_wins_over_same_size_windows_in_reverse_order`,
+  `fuzzy_title_matches_unread_counters_and_project_segments_without_false_positives`, and
   `sizes_match_before_creation_order`. Whether AppKit restores a quit app's windows in creation
   order on real hardware is not covered.
 - Unit (FakeBackend), `src/app/tests/parking.rs`: parking without minimizing, re-parking windows that

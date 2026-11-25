@@ -27,6 +27,7 @@ fn observe(windows: &[(&crate::PhysicalWindowId, crate::Rect)]) -> crate::Native
                     frame: *rect,
                     resizable: true,
                     title: None,
+                    document: None,
                 }],
             })
             .collect(),

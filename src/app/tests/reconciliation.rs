@@ -27,6 +27,7 @@ fn closing_the_only_window_of_a_running_app_reflows_surviving_windows() {
                         frame: frame(50),
                         resizable: true,
                         title: None,
+                        document: None,
                     }],
                 },
                 crate::AppObservation::Complete {
@@ -40,6 +41,7 @@ fn closing_the_only_window_of_a_running_app_reflows_surviving_windows() {
                         frame: frame(500),
                         resizable: true,
                         title: None,
+                        document: None,
                     }],
                 },
             ],
@@ -313,6 +315,7 @@ pub(super) fn apps_observation(
                         frame: *frame,
                         resizable: true,
                         title: None,
+                        document: None,
                     }],
                 },
             )

@@ -75,6 +75,7 @@ fn configured_rig(
                     id: window(id),
                     frame: backend.frames[&window(id)],
                     title: None,
+                    document: None,
                     resizable: true,
                 })
                 .collect(),

@@ -721,6 +721,7 @@ fn observation_for_apps(
                     frame: *frame,
                     resizable: true,
                     title: None,
+                    document: None,
                 }],
             })
             .collect(),

@@ -673,11 +673,17 @@ fn observe_window(
         Ok(title) => Some(std::sync::Arc::from(title.to_string())),
         Err(_) => None,
     };
+    let document = attributes
+        .get::<CFString>(WindowAttribute::Document)
+        .ok()
+        .and_then(|document| crate::window_memory::normalize_document(&document.to_string()))
+        .map(std::sync::Arc::from);
     Ok(WindowObservation::Observed(ObservedWindow {
         id,
         frame,
         resizable,
         title,
+        document,
     }))
 }
 
