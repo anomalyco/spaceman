@@ -49,6 +49,7 @@ Back-and-forth                                             // ws.back-and-forth
 │   even when another selector for that display assigns the previous workspace)
 ├── A focus command still settling counts: a lagging Accessibility report of a window it left
 │   rewrites no history
+├── A focused pinned window counts as the workspace its display shows, never its hidden home
 ├── Target already on screen -> focus moves there, no display changes, nothing is parked
 │   └── Press again -> bounces back to the workspace the focus came from
 ├── Target on screen but empty -> only shows its HUD; focus history is left alone
@@ -393,7 +394,8 @@ on the same letter.
   (`hud_rows_after_move.rs`, plus `moving_an_empty_workspace_away_retires_its_slot_on_the_old_display`
   in `agent/src/hud/tests.rs`, issue 419); a deleted named workspace (`config_removed_named.rs`,
   issue 424); Option+Tab after lagging focus reports (`back_and_forth_stale_report.rs`,
-  `back_and_forth_fast_shortcuts.rs`, issue 399); a numbered move under a lagging report
+  `back_and_forth_fast_shortcuts.rs`, issue 399); Option+Tab from a focused pin
+  (`back_and_forth_pinned_focus.rs`, issue 526); a numbered move under a lagging report
   (`numbered_move_stale_report.rs`, issue 397); no follow after closing all of the frontmost
   app's windows (`close_all_frontmost.rs`,
   `frontmost_app_whose_windows_all_closed_does_not_pull_a_switch`, issue 516); and pointer
