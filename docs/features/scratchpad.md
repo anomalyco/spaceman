@@ -15,6 +15,7 @@ Send to the scratchpad (Option+Shift+\ / ctl scratchpad mark)      // scratchpad
 Summon / hide (Option+\ / ctl scratchpad toggle)                    // scratchpad.toggle
 ├── Empty scratchpad -> status "Scratchpad is empty", nothing moves
 ├── None shown on the focused workspace -> next window floats there, centred, focused
+│   ├── Focused display: a pinned float counts where it is, even dragged off its owner's display
 │   └── Size: as it last floated, else 3/4 of the display, never larger than the display
 ├── One shown there -> it parks again and focus returns to the tiles
 └── Several windows -> each summon takes the next one in turn
@@ -42,8 +43,10 @@ Unit (FakeBackend), `src/app/tests/scratchpad.rs`:
 `pause_restores_hidden_scratchpad_windows_without_leaks`,
 `a_crash_while_hidden_restores_the_window_on_the_next_start`,
 `turning_the_lab_off_brings_hidden_windows_back`,
-`the_scratchpad_does_nothing_while_the_lab_is_off`, and
-`an_empty_scratchpad_toggle_is_a_clean_no_op`. Toggle order and summon frame: `src/scratchpad.rs`; membership is the window's residency in
+`the_scratchpad_does_nothing_while_the_lab_is_off`,
+`an_empty_scratchpad_toggle_is_a_clean_no_op`, and
+`scratchpad_toggle_summons_onto_the_display_a_focused_pin_was_dragged_to`
+(`src/app/tests/three_display.rs`, #556). Toggle order and summon frame: `src/scratchpad.rs`; membership is the window's residency in
 `src/workspace/residency.rs`, so a scratchpad window is never also a float or a tile;
 shortcut gating: `scratchpad_shortcuts_register_only_while_the_lab_is_on` in `src/hotkeys.rs`.
 
