@@ -22,10 +22,12 @@ Spaceman is an experimental public preview, not a broadly qualified release.
 - Spaceman assumes one macOS Space per display. Windows on another Space are adopted into the active
   workspace when that Space is shown, and tiles whose windows are ordered out while it is shown may
   be released. Layout waits about 0.7 s after each Space slide so the two Spaces' windows are not
-  tiled together. During a trackpad swipe macOS can report the arriving Space's windows before
-  it reports the Space change, and a window picked up then can briefly be tiled beside the outgoing
-  Space's window (#431). Accessibility cannot reach a parked window on a Space that isn't showing, so
-  pausing or quitting there waits, with its recovery entry kept, until that Space is shown.
+  tiled together. A trackpad swipe shows the arriving Space's windows before macOS reports the
+  change, so layout also waits while three or four fingers are on the trackpad and for about 0.7 s
+  after they lift (#513); a three- or four-finger tap or Spaceman's own workspace swipe delays
+  layout the same way. A Space change made from the keyboard (Control+arrow) is held only from
+  when macOS reports it. Accessibility cannot reach a parked window on a Space that isn't showing,
+  so pausing or quitting there waits, with its recovery entry kept, until that Space is shown.
 - `secondary` selects the first non-main display; display ordering and duplicate names may surprise.
 - Global shortcuts may collide with other applications or fail on keyboard layouts that cannot
   produce required characters.

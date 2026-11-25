@@ -33,9 +33,10 @@ impl MainThreadAgent {
             }
         }
         if macos::take_active_space_changed() {
-            // A desktop or fullscreen slide: a background cycle under way
-            // would lay out both Spaces' windows together, so stop it, and
-            // retile once the slide settles (#334).
+            // A desktop or fullscreen slide, or fingers that may be swiping
+            // to another desktop (#513): a background cycle under way would
+            // lay out both Spaces' windows together, so stop it, and retile
+            // once the slide settles (#334).
             self.last_activity = Instant::now();
             if self.worker.is_interruptible_busy() {
                 self.cancelled.store(true, Ordering::Release);

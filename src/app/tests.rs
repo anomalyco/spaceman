@@ -140,6 +140,8 @@ struct FakeBackend {
     other_button_down: bool,
     /// When macOS last changed the active Space.
     space_changed_at: Option<Instant>,
+    /// When three or four fingers last touched the trackpad.
+    space_gesture_at: Option<Instant>,
     /// The next position write starts a Space slide (Cmd+Tab out of a
     /// native fullscreen app while a focus follow runs).
     space_change_on_position: bool,
@@ -372,6 +374,10 @@ impl WorkspaceBackend for FakeBackend {
 
     fn active_space_changed_at(&mut self) -> Option<Instant> {
         self.space_changed_at
+    }
+
+    fn space_gesture_at(&mut self) -> Option<Instant> {
+        self.space_gesture_at
     }
 
     fn raise_window(&mut self, window: &crate::PhysicalWindowId) -> bool {

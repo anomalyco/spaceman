@@ -1,8 +1,9 @@
 //! macOS Space slides: a parked window on another desktop keeps its recovery
 //! frame (#328), Cmd+Tab out of a native fullscreen app lands on the target
 //! workspace (#329), the outgoing desktop's tile keeps its size while the
-//! slide runs (#334), and a swipe never tiles both desktops' windows
-//! together once its slide settles (#431).
+//! slide runs (#334), a swipe never tiles both desktops' windows
+//! together once its slide settles (#431), and fingers on the trackpad hold
+//! layout before macOS reports the change (#513).
 
 use super::*;
 
@@ -475,6 +476,42 @@ fn the_first_cycle_after_a_swipe_releases_a_window_adopted_mid_swipe() {
     runtime.cycle(outputs(), &cancelled).unwrap();
     assert_eq!(runtime.workspaces.workspace_of(&left), None);
     assert_eq!(runtime.backend.frames[&other], full);
+}
+
+/// #513: while fingers swipe between desktops, macOS reports the arriving
+/// desktop's window before it posts any Space change, and a swipe reversed
+/// partway posts none. Layout holds while the fingers are down and until the
+/// slide settles after they lift, so the outgoing tile is never resized and
+/// the arriving window is never adopted beside it.
+#[test]
+fn fingers_swiping_between_desktops_hold_layout_before_any_space_change() {
+    let (mut runtime, left, other) = two_desktops();
+    let full = runtime.backend.frames[&left];
+    let cancelled = AtomicBool::new(false);
+    runtime.backend.advance(Duration::from_secs(5));
+    runtime.backend.calls.clear();
+
+    // Fingers down and moving: both desktops' windows are on screen.
+    runtime.backend.space_gesture_at = Some(runtime.backend.now());
+    runtime.backend.ordered_out.remove(&other.window_id);
+    runtime.backend.observation = Some(observe_apps(
+        Some(&left),
+        &[(left.clone(), full), (other.clone(), full)],
+    ));
+    runtime.cycle(outputs(), &cancelled).unwrap();
+    runtime.backend.advance(SPACE_TRANSITION_SETTLE / 2);
+    runtime.cycle(outputs(), &cancelled).unwrap();
+    assert_eq!(runtime.workspaces.workspace_of(&other), None);
+    assert!(writes_to(&runtime, &left).is_empty());
+
+    // The swipe is reversed: the other desktop slides away again.
+    runtime.backend.ordered_out.insert(other.window_id);
+    runtime.backend.observation = Some(observe_apps(Some(&left), &[(left.clone(), full)]));
+    runtime.backend.advance(SPACE_TRANSITION_SETTLE);
+    runtime.cycle(outputs(), &cancelled).unwrap();
+    assert_eq!(runtime.workspaces.workspace_of(&other), None);
+    assert_eq!(runtime.backend.frames[&left], full);
+    assert!(writes_to(&runtime, &left).iter().all(|frame| *frame == full));
 }
 
 /// A browser with `shown` tiled and focused on workspace 1 and `other`
