@@ -109,8 +109,7 @@ fn layout(rt: &WorkspaceRuntime<FakeBackend>) -> Vec<(u32, i32, i32, i32, i32)> 
         .collect()
 }
 
-const COLUMNS: [(u32, i32, i32, i32, i32); 2] =
-    [(10, 0, 25, 720, 2535), (20, 720, 25, 720, 2535)];
+const COLUMNS: [(u32, i32, i32, i32, i32); 2] = [(10, 0, 25, 720, 2535), (20, 720, 25, 720, 2535)];
 
 // `upper` in a full-width top row over `lower`.
 fn rows(upper: u32, lower: u32) -> [(u32, i32, i32, i32, i32); 2] {
@@ -121,7 +120,11 @@ fn rows(upper: u32, lower: u32) -> [(u32, i32, i32, i32, i32); 2] {
 fn either_column_dropped_at_the_top_or_bottom_edge_becomes_that_row() {
     for dragged in [10_u32, 20] {
         let other = 30 - dragged;
-        let start = if dragged == 10 { (360, 1200) } else { (1080, 1200) };
+        let start = if dragged == 10 {
+            (360, 1200)
+        } else {
+            (1080, 1200)
+        };
         // Every tenth point across the width between the side bands: in the menu bar, in the
         // top band, and in the bottom band.
         let mut x = DISPLAY_EDGE_DROP_BAND;
