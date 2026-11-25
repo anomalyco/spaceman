@@ -24,6 +24,7 @@ mod reproduce_exact_resize_tolerance;
 mod reproduce_refit_stops_before_last_minimum;
 mod reproduce_resize_gap_minimum;
 mod reproduce_resize_known_sibling_minimum;
+mod reproduce_resize_reveals_sibling_minimum;
 mod reproduce_resize_temporary_stack_minimum;
 mod restart_dual_selector;
 mod restored_cross_selector_history;

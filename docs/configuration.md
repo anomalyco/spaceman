@@ -340,8 +340,11 @@ Commands:
 moving its boundary at the nearest split that lays tiles out side by side; `resize height POINTS`
 does the same at the nearest split that stacks them. The split's other tiles give or take the
 difference in proportion to their sizes, and no tile goes below 50 points (nested splits keep room
-for each of their tiles), so a size that does not fit is clamped. A tile with no such split (a lone tile, which `settings.single_window_max_width` sizes,
-or the height of a tile in a single row) is left alone. Like `resize shrink|grow` and `balance`, it
+for each of their tiles), so a size that does not fit is clamped. A window that refuses the
+width or height it is given keeps that as its minimum, even when it first refuses during the
+resize, and the requested size still lands when it fits beside it. A tile with no such split (a
+lone tile, which `settings.single_window_max_width` sizes, or the height of a tile in a single
+row) is left alone. Like `resize shrink|grow` and `balance`, it
 asks you to leave Fullscreen Layout first. Neither `resize width|height` nor `balance` has a
 built-in chord; bind them here.
 
