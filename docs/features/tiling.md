@@ -15,7 +15,9 @@ Automatic tiling                                        // tile.auto
 │   ├── In dwindle -> auto-chosen splits inside the space that grew re-orient outermost first to their new longer side (order and weights kept; user-arranged splits and legacy splits without a recorded origin keep their direction)
 │   ├── Last app window closes but its surface lingers -> siblings reflow when the app confirms closure
 │   └── App keeps its ordered-out window alive -> slot settles for two seconds
-└── Ghostty native tab replaces its window -> same slot, order, weight, nesting
+└── Native tab replaces its window -> same slot, order, weight, nesting
+    ├── Any app (Finder, Safari, Terminal...) -> when the evidence is unambiguous (one window out, one in, focus moved to it, same frame)
+    └── Ghostty -> ambiguous evidence also holds the slot for a bounded settle
 
 Focus                                                   // tile.focus
 ├── Option+H/J/K/L / ctl focus <dir> -> nearest tile in that direction, crossing displays
@@ -173,6 +175,8 @@ pause, quit, or hotkey loss.
   included. `src/config.rs` and `src/cli/tests.rs` cover parsing, `outer`'s fallback and its
   explicit edges, range errors and `spaceman config`; `agent/src/rules/tests.rs` covers Settings ›
   Layout saves that keep comments, keep `outer` and its explicit zeros, and restore the file.
+- `src/reconcile/tests.rs` `finder_tab_replacement_keeps_its_slot_and_place_in_the_row`: a
+  non-Ghostty tab change keeps the tile's slot and order.
 - Fixture replay: `cargo run -- replay fixtures/ghostty-tab-replacement.json` (reconciliation of a
   native-tab replacement, without the runtime).
 - Live harness (not run): `scripts/live-ghostty-tabs.sh` for native-tab slot preservation.

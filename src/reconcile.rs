@@ -180,8 +180,10 @@ pub fn reconcile(
                     let stale: Vec<_> = existing.difference(&current).cloned().collect();
                     let new: Vec<_> = current.difference(&existing).cloned().collect();
 
-                    let replacement = app.bundle_id == "com.mitchellh.ghostty"
-                        && replacement_candidate(&next, &stale, &new, &context);
+                    // Any app's native tab (Finder, Safari, Terminal...) can
+                    // replace its window this way; only Ghostty also settles
+                    // ambiguous evidence before retiring the slot.
+                    let replacement = replacement_candidate(&next, &stale, &new, &context);
 
                     if replacement {
                         let previous = &stale[0];
