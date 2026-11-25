@@ -380,7 +380,7 @@ fn workspace_layout_image(layouts: &[WorkspaceLayout]) -> Retained<NSImage> {
             unsafe { label.sizeWithAttributes(None) }.width.ceil()
         })
         .collect::<Vec<_>>();
-    let width = label_widths.iter().sum::<f64>() + layouts.len() as f64 * 24.0 - 6.0;
+    let width = workspace_layout_image_width(&label_widths);
     let layouts = layouts.to_vec();
     let image = NSImage::imageWithSize_flipped_drawingHandler(
         NSSize::new(width, 16.0),
@@ -394,6 +394,25 @@ fn workspace_layout_image(layouts: &[WorkspaceLayout]) -> Retained<NSImage> {
     image
 }
 
+// Drawing offsets shared by the image size and `draw_workspace_layouts`.
+const LAYOUT_START_X: f64 = 0.5;
+const LABEL_OFFSET_X: f64 = 19.0;
+const LAYOUT_GAP: f64 = 5.0;
+const TRAILING_PADDING: f64 = 1.0;
+
+/// Width that holds every layout glyph and its label, ending one point past the last label.
+fn workspace_layout_image_width(label_widths: &[f64]) -> f64 {
+    if label_widths.is_empty() {
+        return 0.0;
+    }
+    let steps = label_widths.len() - 1;
+    LAYOUT_START_X
+        + label_widths.iter().sum::<f64>()
+        + steps as f64 * (LABEL_OFFSET_X + LAYOUT_GAP)
+        + LABEL_OFFSET_X
+        + TRAILING_PADDING
+}
+
 fn draw_workspace_layouts(
     layouts: &[WorkspaceLayout],
     labels: &[Retained<NSString>],
@@ -401,7 +420,7 @@ fn draw_workspace_layouts(
 ) {
     NSColor::blackColor().setStroke();
     NSColor::blackColor().setFill();
-    let mut x = 0.5;
+    let mut x = LAYOUT_START_X;
     for ((layout, label), label_width) in
         layouts.iter().zip(labels).zip(label_widths.iter().copied())
     {
@@ -435,8 +454,8 @@ fn draw_workspace_layouts(
             }
         }
         // SAFETY: Called inside `NSImage` drawing handler with a active graphics context.
-        unsafe { label.drawAtPoint_withAttributes(NSPoint::new(x + 19.0, 0.5), None) };
-        x += 24.0 + label_width;
+        unsafe { label.drawAtPoint_withAttributes(NSPoint::new(x + LABEL_OFFSET_X, 0.5), None) };
+        x += LABEL_OFFSET_X + LAYOUT_GAP + label_width;
     }
 }
 
@@ -471,4 +490,24 @@ fn action_item(
     // SAFETY: `target` is retained inside `Controller` for the lifetime of the menu.
     unsafe { item.setTarget(Some(target)) };
     item
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn image_width_covers_the_last_label() {
+        for widths in [vec![7.0], vec![7.0, 8.0], vec![7.0, 14.0, 8.0, 7.0]] {
+            let mut x = LAYOUT_START_X;
+            let mut label_end = 0.0;
+            for width in &widths {
+                label_end = x + LABEL_OFFSET_X + width;
+                x += LABEL_OFFSET_X + LAYOUT_GAP + width;
+            }
+            assert!(workspace_layout_image_width(&widths) >= label_end);
+        }
+        assert_eq!(workspace_layout_image_width(&[7.0]), 27.5);
+        assert_eq!(workspace_layout_image_width(&[]), 0.0);
+    }
 }
