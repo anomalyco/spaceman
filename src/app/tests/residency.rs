@@ -242,3 +242,52 @@ fn recalled_float_returns_to_remembered_display() {
         );
     }
 }
+
+/// #560: a float recalled onto a hidden workspace reveals at its remembered position, not at
+/// the place it reopened carried over to that workspace's display.
+#[test]
+fn recalled_float_on_hidden_workspace_reveals_at_remembered_frame() {
+    use crate::window_memory::{RememberedWindow, WindowMemory};
+    let remembered = crate::Rect {
+        x: RIGHT.x + 450,
+        y: RIGHT.y + 679,
+        width: 610,
+        height: 460,
+    };
+    let reopened_at = crate::Rect {
+        x: LEFT.x + 190,
+        y: LEFT.y + 173,
+        width: 670,
+        height: 520,
+    };
+    let mut rt = fixture("", &[(61, LEFT), (91, RIGHT)]);
+    act(&mut rt, WorkerAction::SwitchWorkspace(ws(10)));
+    let reopened = id(51);
+    let mut memory = WindowMemory::default();
+    assert!(memory.record(
+        "com.example.Fixture51",
+        vec![RememberedWindow {
+            workspace: ws(9),
+            frame: remembered,
+            floating: true,
+            document: None,
+            title: None,
+        }],
+        1
+    ));
+    rt.restore_window_memory(memory);
+    open(&mut rt, &reopened, reopened_at);
+    act(&mut rt, WorkerAction::Retile);
+    act(&mut rt, WorkerAction::Retile);
+    assert_eq!(rt.workspaces.floating_workspace_of(&reopened), Some(ws(9)));
+    assert!(rt.parked.contains_key(&reopened));
+    act(&mut rt, WorkerAction::SwitchWorkspace(ws(9)));
+    assert!(!rt.parked.contains_key(&reopened));
+    let revealed = rt.backend.frames[&reopened];
+    assert_eq!(
+        (revealed.x, revealed.y),
+        (remembered.x, remembered.y),
+        "revealed={revealed:?}"
+    );
+    assert_eq!(rt.workspaces.floating_workspace_of(&reopened), Some(ws(9)));
+}

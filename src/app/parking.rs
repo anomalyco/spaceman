@@ -15,6 +15,17 @@ pub(super) const RESTORE_CONFIRM_TOLERANCE: i32 = 64;
 /// honored (re-homed) instead of fought; repeated honors exempt it from parking.
 pub(super) const REPARK_ATTEMPT_LIMIT: u8 = 3;
 
+/// Where a parked window's recovery frame points.
+#[derive(Clone, Copy)]
+enum Relocate {
+    /// Where it is now (or its existing recovery frame).
+    Keep,
+    /// Moved from the first display onto the second, same place relative to it.
+    Across(crate::Rect, crate::Rect),
+    /// At this position, keeping the window's size.
+    At(crate::Rect),
+}
+
 /// Shared per-cycle context for parking decisions.
 struct ParkContext<'a> {
     displays: &'a [crate::Rect],
@@ -528,7 +539,7 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
         output: crate::Rect,
         outputs: &macos::DisplayOutputs,
     ) -> macos::ApplyOutcome {
-        self.park_window_toward(window, output, None, outputs)
+        self.park_window_toward(window, output, Relocate::Keep, outputs)
     }
 
     /// Park a window that is moving to a hidden workspace on another display.
@@ -545,14 +556,27 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
         to: crate::Rect,
         outputs: &macos::DisplayOutputs,
     ) -> macos::ApplyOutcome {
-        self.park_window_toward(window, from, Some((from, to)), outputs)
+        self.park_window_toward(window, from, Relocate::Across(from, to), outputs)
+    }
+
+    /// Park a window that is joining a hidden workspace with its recovery
+    /// frame at `position` (a remembered placement), keeping its current size,
+    /// so showing the workspace brings it back where it was remembered.
+    pub(super) fn park_window_at(
+        &mut self,
+        window: &crate::PhysicalWindowId,
+        from: crate::Rect,
+        position: crate::Rect,
+        outputs: &macos::DisplayOutputs,
+    ) -> macos::ApplyOutcome {
+        self.park_window_toward(window, from, Relocate::At(position), outputs)
     }
 
     fn park_window_toward(
         &mut self,
         window: &crate::PhysicalWindowId,
         output: crate::Rect,
-        relocate: Option<(crate::Rect, crate::Rect)>,
+        relocate: Relocate,
         outputs: &macos::DisplayOutputs,
     ) -> macos::ApplyOutcome {
         if self.stays_on_screen(window) {
@@ -579,7 +603,12 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
         }
         let original = self.parked.get(window).copied().unwrap_or(frame);
         let recovery = match relocate {
-            Some((from, to))
+            Relocate::At(position) => crate::Rect {
+                x: position.x,
+                y: position.y,
+                ..original
+            },
+            Relocate::Across(from, to)
                 if from != to
                     && (from.contains_center(original)
                         || Self::display_for_frame(original, &displays) == Some(from)) =>
