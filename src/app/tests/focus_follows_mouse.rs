@@ -117,3 +117,35 @@ fn a_window_that_refuses_focus_is_left_quietly() {
     );
     assert_eq!(rt.backend.focused, Some(window(10)));
 }
+
+#[test]
+fn the_last_warp_point_hovers_again_once_the_pointer_left_and_came_back() {
+    // #522: mouse follows focus warped the pointer into the side tile.
+    let warp = (1200, 200);
+    let mut rt = two_displays(LAB, warp);
+    rt.focus.note_warp(warp);
+    // Resting where the warp left it is not a hover.
+    hover(&mut rt, &window(60), warp);
+    assert_eq!(rt.backend.focused, Some(window(10)));
+    // The user moves onto the main tile and rests there, then comes back.
+    rt.backend.pointer = Some((300, 200));
+    hover(&mut rt, &window(10), (300, 200));
+    rt.backend.pointer = Some(warp);
+    hover(&mut rt, &window(60), warp);
+    assert_eq!(rt.backend.focused, Some(window(60)));
+}
+
+#[test]
+fn coming_straight_back_to_the_last_warp_point_hovers() {
+    // #522: the pointer left the warp point without resting on another tile
+    // (a quick move, or a rest over the desktop or the menu bar) and came back.
+    let warp = (1200, 200);
+    let mut rt = two_displays(LAB, warp);
+    rt.focus.note_warp(warp);
+    // The rest the warp itself caused is not a hover.
+    hover(&mut rt, &window(60), warp);
+    assert_eq!(rt.backend.focused, Some(window(10)));
+    // The main thread reports that point again only after the pointer moved.
+    hover(&mut rt, &window(60), warp);
+    assert_eq!(rt.backend.focused, Some(window(60)));
+}

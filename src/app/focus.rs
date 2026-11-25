@@ -142,9 +142,20 @@ impl FocusTracker {
         self.last_warp = Some(point);
     }
 
-    /// Whether the pointer resting at `point` is where Spaceman last warped it.
-    pub(super) fn warped_to(&self, point: (i32, i32)) -> bool {
-        self.last_warp == Some(point)
+    /// The pointer is at `point` now. Once it has left the last warp point, a
+    /// later return there is the user's own movement, not a warp (#522).
+    pub(super) fn note_pointer(&mut self, point: Option<(i32, i32)>) {
+        if point.is_some() && self.last_warp != point {
+            self.last_warp = None;
+        }
+    }
+
+    /// Whether the pointer resting at `point` is where Spaceman last warped it,
+    /// and if so forgets that warp. The main thread reports a rest only once
+    /// and only after the pointer moved, so the first hover at the warp point is
+    /// the warp's own and any later one there is the user coming back (#522).
+    pub(super) fn take_warp(&mut self, point: (i32, i32)) -> bool {
+        self.last_warp.take_if(|warp| *warp == point).is_some()
     }
 
     /// The request still settling at now.
