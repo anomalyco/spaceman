@@ -248,7 +248,9 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
             WorkerAction::MoveWorkspaceToDisplay(target) => {
                 self.move_workspace_to_display(target, outputs, cancelled)
             }
-            WorkerAction::Swipe(swipe, point) => self.swipe(swipe, point, outputs, cancelled),
+            WorkerAction::Swipe(swipe, fingers, point) => {
+                self.swipe(swipe, fingers, point, outputs, cancelled)
+            }
             WorkerAction::MoveFocused(workspace) => {
                 self.move_focused(workspace, outputs, cancelled)
             }

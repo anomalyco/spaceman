@@ -498,6 +498,17 @@ impl Config {
         !self.labs.swipe_switch || self.settings.trackpad_swipe
     }
 
+    /// How many fingers the workspace swipe takes: three, or four with
+    /// `[labs] four_finger_swipe` on. Swipes with the other count are left to macOS.
+    #[must_use]
+    pub const fn swipe_fingers(&self) -> crate::swipe::Fingers {
+        if self.labs.four_finger_swipe {
+            crate::swipe::Fingers::Four
+        } else {
+            crate::swipe::Fingers::Three
+        }
+    }
+
     /// `settings.workspace_order`: workspaces the HUD, menu bar and swipes list first, in order.
     #[must_use]
     pub fn workspace_order(&self) -> &[WorkspaceId] {

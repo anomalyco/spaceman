@@ -833,9 +833,9 @@ fn swipe_in_secondary_menu_bar_or_dock_targets_secondary_display() {
         }
         let mut tracker = crate::swipe::SwipeTracker::default();
         assert_eq!(tracker.frame(0.0, &[(0.6, 0.5); 3]), None);
-        let swipe = tracker.frame(0.1, &[(0.3, 0.5); 3]).unwrap();
+        let (swipe, fingers) = tracker.frame(0.1, &[(0.3, 0.5); 3]).unwrap();
         let result = rt.execute(
-            WorkerCommand::Action(WorkerAction::Swipe(swipe, point), displays.clone()),
+            WorkerCommand::Action(WorkerAction::Swipe(swipe, fingers, point), displays.clone()),
             &AtomicBool::new(false),
         );
         match result.unwrap() {

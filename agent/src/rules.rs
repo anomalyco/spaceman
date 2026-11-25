@@ -122,6 +122,7 @@ impl Doc {
             empty_workspace_focus: self.lab(LabFeature::EmptyWorkspaceFocus),
             float_follows_display: self.lab(LabFeature::FloatFollowsDisplay),
             workspace_steps: self.lab(LabFeature::WorkspaceSteps),
+            four_finger_swipe: self.lab(LabFeature::FourFingerSwipe),
         }
     }
 

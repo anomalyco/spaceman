@@ -210,12 +210,13 @@ impl MainThreadAgent {
                 }
                 Action::Worker(action) => {
                     if self.automatic
-                        && !(matches!(action, WorkerAction::Swipe(..))
-                            && crate::app::input::should_ignore_swipe(
+                        && crate::app::input::admits_action(&action, self.swipe_fingers, || {
+                            (
                                 macos::mouse_down(),
                                 self.mouse_was_down,
                                 self.gesture_tracker.is_active(),
-                            ))
+                            )
+                        })
                     {
                         self.queue_worker_input(QueuedInput::Action(action));
                     }

@@ -135,6 +135,9 @@ monitor = "main"
 # workspace_steps = true turns on "switch next|prev" and "move next|prev [--follow]",
 # which step through the focused display's workspaces (bind them under
 # [shortcuts.bindings]; none has a built-in chord).
+# four_finger_swipe = true makes the workspace swipe take four fingers instead of
+# three (for Accessibility "Three Finger Drag"), leaving three-finger swipes to
+# macOS.
 #
 # [labs]
 # scratchpad = false
@@ -146,3 +149,4 @@ monitor = "main"
 # empty_workspace_focus = false
 # float_follows_display = false
 # workspace_steps = false
+# four_finger_swipe = false

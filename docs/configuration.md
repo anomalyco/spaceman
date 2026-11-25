@@ -342,7 +342,7 @@ them off Spaceman behaves exactly as if Labs did not exist: no extra shortcuts r
 command changes behavior. Unknown keys are config errors. Settings › Labs lists every switch,
 grouped by what it changes (`Windows`: Scratchpad, Portrait edge rows, Recent focus and Dragged
 floats follow their display; `Workspaces`: Swipe switch, Focus empty workspaces on other
-displays and Workspace steps; `Menu bar & HUD`: Physical display order; `Settings`: Activity), and flipping one there
+displays, Workspace steps and Four-finger swipe; `Menu bar & HUD`: Physical display order; `Settings`: Activity), and flipping one there
 writes the same key.
 
 ```toml
@@ -356,6 +356,7 @@ swipe_switch = false                  # optional (default: false); lets trackpad
 empty_workspace_focus = false         # optional (default: false); see below
 float_follows_display = false         # optional (default: false); dragged floats join that display's workspace
 workspace_steps = false               # optional (default: false); switch/move next|prev
+four_finger_swipe = false             # optional (default: false); the workspace swipe takes four fingers
 ```
 
 `scratchpad = true` enables the Scratchpad (see [Controls › Scratchpad](controls.md#scratchpad-lab)) and
@@ -373,6 +374,13 @@ keep recording either way. Turning it off while the pane is open returns Setting
 swipe row in Settings › Shortcuts into the **Swipe to switch workspace** switch (see
 [Trackpad Swipe](#trackpad-swipe)). With it off, `trackpad_swipe` is ignored and swipes work as before.
 In Settings it is `Labs › Workspaces › Swipe switch`.
+
+`four_finger_swipe = true` makes the workspace swipe take four fingers instead of three, for anyone
+who uses Accessibility's "Three Finger Drag" (which moves macOS's own swipes to four fingers).
+Three-finger swipes are then left to macOS, and the swipe row in Settings › Shortcuts says
+`4-finger swipe`. `settings.trackpad_swipe` and `workspace_order` apply to it as before. macOS
+still acts on its own four-finger swipes, so turn "Swipe between full-screen applications" off in
+Trackpad settings. It applies live. In Settings it is `Labs › Workspaces › Four-finger swipe`.
 
 `float_follows_display = true` makes a floating window you drag to another display belong to the
 workspace showing there, as a dragged tile already does. When the drag ends with the window's center

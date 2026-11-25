@@ -4,7 +4,7 @@ use std::{
     time::{Duration, Instant, SystemTime},
 };
 
-use crate::{config::Config, login_item, shortcuts::Shortcuts};
+use crate::{config::Config, login_item, shortcuts::Shortcuts, swipe::Fingers};
 
 /// How long a Launch at Login reading stays fresh. Each reading is an XPC round
 /// trip to `smd`; Spaceman's own toggle reports its result directly, so the
@@ -25,6 +25,8 @@ pub(super) struct Probe {
     pub(super) hud: Option<bool>,
     /// `[shortcuts]` read for `config_stamp`, when that config loaded.
     pub(super) shortcuts: Option<Shortcuts>,
+    /// The workspace swipe's finger count read for `config_stamp`, when that config loaded.
+    pub(super) swipe_fingers: Option<Fingers>,
 }
 
 /// What the probe reads from a `config.toml` that loads.
@@ -32,6 +34,7 @@ pub(super) struct Probe {
 pub(super) struct ConfigRead {
     pub(super) hud: bool,
     pub(super) shortcuts: Shortcuts,
+    pub(super) swipe_fingers: Fingers,
 }
 
 impl ConfigRead {
@@ -39,6 +42,7 @@ impl ConfigRead {
         Config::load().ok().map(|config| Self {
             hud: config.hud(),
             shortcuts: config.shortcuts().clone(),
+            swipe_fingers: config.swipe_fingers(),
         })
     }
 }
@@ -81,6 +85,7 @@ impl ProbeState {
         };
         let hud = read.as_ref().map(|read| read.hud);
         let shortcuts = read.as_ref().map(|read| read.shortcuts.clone());
+        let swipe_fingers = read.as_ref().map(|read| read.swipe_fingers);
         self.config = Some((config_stamp, read));
         let login_due = forced
             || self.login.as_ref().is_none_or(|(read_at, _)| {
@@ -100,6 +105,7 @@ impl ProbeState {
             config_stamp,
             hud,
             shortcuts,
+            swipe_fingers,
         })
     }
 }
@@ -238,12 +244,14 @@ mod tests {
         assert_eq!(probe.launch_at_login, None);
         assert_eq!(probe.hud, Some(false));
         assert_eq!(probe.shortcuts, Some(Shortcuts::default()));
+        assert_eq!(probe.swipe_fingers, Some(Fingers::Three));
     }
 
     fn read(hud: bool) -> ConfigRead {
         ConfigRead {
             hud,
             shortcuts: Shortcuts::default(),
+            swipe_fingers: Fingers::Three,
         }
     }
 }

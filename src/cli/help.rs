@@ -187,6 +187,7 @@ pub(crate) fn config_help(executable: &str) -> String {
         "  labs.empty_workspace_focus  true | false  Empty workspace chosen on another display is focused",
         "  labs.float_follows_display  true | false  A float dragged to another display joins its workspace",
         "  labs.workspace_steps        true | false  switch next|prev and move next|prev on the focused display",
+        "  labs.four_finger_swipe      true | false  The workspace swipe takes four fingers instead of three",
         "",
         "Notes:",
         "  - Respects SPACEMAN_CONFIG and SPACEMAN_APPLICATION_SUPPORT.",

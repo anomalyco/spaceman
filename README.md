@@ -166,7 +166,9 @@ Core controls:
 
 The swipe shares three fingers with macOS's "Swipe between full-screen applications"; set that to
 four fingers or off in Trackpad settings so only one of them moves, or keep it: turn on **Swipe switch** in
-Settings › Labs, then turn off **Swipe to switch workspace** in Settings › Shortcuts.
+Settings › Labs, then turn off **Swipe to switch workspace** in Settings › Shortcuts. If you use
+Accessibility's three-finger drag, macOS moves its own swipes to four fingers; turn on **Four-finger
+swipe** in Settings › Labs to move Spaceman's swipe to four fingers too.
 
 Every shortcut can be rebound in `config.toml`'s `[shortcuts]` table, for example to match a Linux
 tiling setup; see [Configuration › Shortcuts](docs/configuration.md#shortcuts).

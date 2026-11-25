@@ -662,7 +662,13 @@ fn swipes_step_through_the_occupied_workspaces_of_the_display_under_the_pointer(
     let main_display = (500, 400);
     let swipe = |runtime: &mut WorkspaceRuntime<FakeBackend>, swipe, point| {
         runtime
-            .swipe(swipe, point, outputs(), &AtomicBool::new(false))
+            .swipe(
+                swipe,
+                Fingers::Three,
+                point,
+                outputs(),
+                &AtomicBool::new(false),
+            )
             .unwrap()
             .active
     };

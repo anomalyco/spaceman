@@ -1,7 +1,7 @@
-//! Three-finger horizontal trackpad swipes, as workspace steps.
+//! Three- and four-finger horizontal trackpad swipes, as workspace steps.
 
-/// Fingers that make a swipe. Four-finger swipes stay with macOS.
-const FINGERS: usize = 3;
+/// The most fingers a swipe may have; a fifth finger spends the gesture.
+const MAX_FINGERS: usize = 4;
 /// How far the fingers travel, as a fraction of the trackpad's width.
 const DISTANCE: f64 = 0.15;
 /// Horizontal travel must beat vertical travel by this much, so Mission Control's
@@ -9,6 +9,31 @@ const DISTANCE: f64 = 0.15;
 const DOMINANCE: f64 = 2.0;
 /// A gap this long between frames means the swipe's end was missed.
 const STALE_SECONDS: f64 = 0.5;
+
+/// How many fingers made a swipe. Spaceman steps workspaces on the count
+/// `Config::swipe_fingers` picks and leaves the other to macOS.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum Fingers {
+    Three,
+    Four,
+}
+
+impl Fingers {
+    const fn count(self) -> usize {
+        match self {
+            Self::Three => 3,
+            Self::Four => 4,
+        }
+    }
+
+    const fn of(count: usize) -> Option<Self> {
+        match count {
+            3 => Some(Self::Three),
+            4 => Some(Self::Four),
+            _ => None,
+        }
+    }
+}
 
 /// Which way the fingers moved. Like macOS Spaces, swiping left goes to the
 /// next workspace and swiping right to the previous one.
@@ -23,10 +48,12 @@ enum State {
     #[default]
     Ready,
     Tracking {
+        fingers: Fingers,
         x: f64,
         y: f64,
     },
-    /// Fired, or a fourth finger landed: nothing more until every finger lifts.
+    /// Fired, a fifth finger landed, or a finger lifted from four: nothing more
+    /// until every finger lifts.
     Spent,
 }
 
@@ -39,8 +66,9 @@ pub struct SwipeTracker {
 
 impl SwipeTracker {
     /// `at` is the frame's timestamp in seconds; `touches` are the fingers on the
-    /// trackpad, each `(x, y)` from 0 to 1.
-    pub fn frame(&mut self, at: f64, touches: &[(f64, f64)]) -> Option<Swipe> {
+    /// trackpad, each `(x, y)` from 0 to 1. Three fingers joined by a fourth
+    /// start over as a four-finger swipe; four dropping to three never fires.
+    pub fn frame(&mut self, at: f64, touches: &[(f64, f64)]) -> Option<(Swipe, Fingers)> {
         if self
             .last_frame
             .is_some_and(|last| at - last > STALE_SECONDS)
@@ -52,34 +80,45 @@ impl SwipeTracker {
             self.state = State::Ready;
             return None;
         }
-        if touches.len() > FINGERS {
+        if touches.len() > MAX_FINGERS {
             self.state = State::Spent;
             return None;
         }
         if self.state == State::Spent {
             return None;
         }
-        if touches.len() < FINGERS {
+        let Some(fingers) = Fingers::of(touches.len()) else {
             self.state = State::Ready;
             return None;
-        }
-        let count = FINGERS as f64;
+        };
+        let count = fingers.count() as f64;
         let x = touches.iter().map(|touch| touch.0).sum::<f64>() / count;
         let y = touches.iter().map(|touch| touch.1).sum::<f64>() / count;
-        let State::Tracking {
-            x: start_x,
-            y: start_y,
-        } = self.state
-        else {
-            self.state = State::Tracking { x, y };
-            return None;
+        let (start_x, start_y) = match self.state {
+            State::Tracking {
+                fingers: tracked,
+                x,
+                y,
+            } if tracked == fingers => (x, y),
+            State::Tracking {
+                fingers: Fingers::Four,
+                ..
+            } => {
+                self.state = State::Spent;
+                return None;
+            }
+            _ => {
+                self.state = State::Tracking { fingers, x, y };
+                return None;
+            }
         };
         let (dx, dy) = (x - start_x, y - start_y);
         if dx.abs() < DISTANCE || dx.abs() < DOMINANCE * dy.abs() {
             return None;
         }
         self.state = State::Spent;
-        Some(if dx < 0.0 { Swipe::Left } else { Swipe::Right })
+        let swipe = if dx < 0.0 { Swipe::Left } else { Swipe::Right };
+        Some((swipe, fingers))
     }
 }
 
@@ -100,7 +139,7 @@ mod tests {
         from: (f64, f64),
         to: (f64, f64),
         count: usize,
-    ) -> Vec<Swipe> {
+    ) -> Vec<(Swipe, Fingers)> {
         (0..=20)
             .filter_map(|step| {
                 let t = f64::from(step) / 20.0;
@@ -116,23 +155,41 @@ mod tests {
         let mut tracker = SwipeTracker::default();
         assert_eq!(
             drag(&mut tracker, 0.0, (0.6, 0.5), (0.2, 0.5), 3),
-            [Swipe::Left]
+            [(Swipe::Left, Fingers::Three)]
         );
         assert_eq!(tracker.frame(0.3, &[]), None);
         assert_eq!(
             drag(&mut tracker, 0.4, (0.2, 0.5), (0.6, 0.5), 3),
-            [Swipe::Right]
+            [(Swipe::Right, Fingers::Three)]
         );
     }
 
     #[test]
-    fn short_vertical_and_four_finger_swipes_do_nothing() {
+    fn four_finger_swipes_report_four_fingers() {
+        let mut tracker = SwipeTracker::default();
+        assert_eq!(
+            drag(&mut tracker, 0.0, (0.6, 0.5), (0.1, 0.5), 4),
+            [(Swipe::Left, Fingers::Four)]
+        );
+        tracker.frame(0.3, &[]);
+        // Three fingers land first, then the fourth: one four-finger swipe.
+        tracker.frame(0.4, &fingers(0.2, 0.5, 3));
+        assert_eq!(
+            drag(&mut tracker, 0.41, (0.2, 0.5), (0.6, 0.5), 4),
+            [(Swipe::Right, Fingers::Four)]
+        );
+    }
+
+    #[test]
+    fn short_vertical_and_five_finger_swipes_do_nothing() {
         let mut tracker = SwipeTracker::default();
         assert!(drag(&mut tracker, 0.0, (0.5, 0.5), (0.4, 0.5), 3).is_empty());
         tracker.frame(0.3, &[]);
         assert!(drag(&mut tracker, 0.4, (0.5, 0.2), (0.3, 0.8), 3).is_empty());
         tracker.frame(0.7, &[]);
-        assert!(drag(&mut tracker, 0.8, (0.6, 0.5), (0.1, 0.5), 4).is_empty());
+        assert!(drag(&mut tracker, 0.8, (0.5, 0.2), (0.3, 0.8), 4).is_empty());
+        tracker.frame(1.1, &[]);
+        assert!(drag(&mut tracker, 1.2, (0.6, 0.5), (0.1, 0.5), 5).is_empty());
     }
 
     #[test]
@@ -148,7 +205,7 @@ mod tests {
         assert_eq!(drag(&mut tracker, 0.0, (0.6, 0.5), (0.2, 0.5), 3).len(), 1);
         assert_eq!(
             drag(&mut tracker, 2.0, (0.6, 0.5), (0.2, 0.5), 3),
-            [Swipe::Left]
+            [(Swipe::Left, Fingers::Three)]
         );
     }
 }

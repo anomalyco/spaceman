@@ -494,7 +494,11 @@ fn workspace_switch_keeps_superseded_cross_display_focus_target_stale() {
     let entries = [
         WorkerAction::SwitchWorkspace(WorkspaceId::TWO),
         WorkerAction::SelectWorkspace(WorkspaceId::TWO),
-        WorkerAction::Swipe(crate::swipe::Swipe::Left, (500, 400)),
+        WorkerAction::Swipe(
+            crate::swipe::Swipe::Left,
+            crate::swipe::Fingers::Three,
+            (500, 400),
+        ),
     ];
     for entry in entries {
         for reported in [10, 30, 40] {

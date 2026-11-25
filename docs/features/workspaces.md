@@ -25,9 +25,11 @@ Swipe                                                      // ws.swipe
 │   under the pointer (visible + occupied, in workspace order), stops at either end
 ├── Suppressed while a pointer button is down or a window drag is active (including macOS
 │   Accessibility "Three Finger Drag")
-└── Labs › Swipe switch on ([labs] swipe_switch) + [settings] trackpad_swipe = false (Settings ›
-    Shortcuts › Swipe to switch workspace) -> swipes never switch; macOS keeps the gesture. Reloads
-    live. With the Lab off, trackpad_swipe is ignored and the Shortcuts row stays fixed
+├── Labs › Swipe switch on ([labs] swipe_switch) + [settings] trackpad_swipe = false (Settings ›
+│   Shortcuts › Swipe to switch workspace) -> swipes never switch; macOS keeps the gesture. Reloads
+│   live. With the Lab off, trackpad_swipe is ignored and the Shortcuts row stays fixed
+└── Labs › Four-finger swipe on ([labs] four_finger_swipe) -> the swipe takes four fingers and
+    three-finger swipes stay with macOS (for Accessibility "Three Finger Drag"). Reloads live
 
 Step to the next or previous workspace (Lab: [labs] workspace_steps)  // ws.step
 ├── ctl switch next|prev / a [shortcuts.bindings] chord (no built-in one) -> the swipe's stops
@@ -411,10 +413,14 @@ on the same letter.
   app order). The AppKit rows themselves (icons, tooltip of app names) are not covered.
 - Unit: `swipes_step_through_the_occupied_workspaces_of_the_display_under_the_pointer`
   (`src/app/tests/switching.rs`), the recognizer in `src/swipe.rs` (fires once per swipe; ignores
-  short, vertical and four-finger swipes), pointer-button / three-finger-drag suppression in
+  short, vertical and five-finger swipes; reports three or four fingers), pointer-button / three-finger-drag suppression in
   `src/macos/swipes.rs` and `src/app/input.rs` (issue 151), the Lab-gated off switch in
   `trackpad_swipe_off_stops_swipes_only_with_its_lab_on_and_reloads_live`
-  (`src/app/tests/workspace_order.rs`, issue 333) and the Shortcuts row in
+  (`src/app/tests/workspace_order.rs`, issue 333), the four-finger Lab in
+  `four_finger_swipe_lab_moves_the_swipe_to_four_fingers_and_reloads_live` (same file, issue 464;
+  the main-thread drop of the other finger count in
+  `only_swipes_with_the_configured_finger_count_are_admitted`, `src/app/input.rs`)
+  and the Shortcuts row in
   `agent/src/panes/shortcuts/tests.rs`, and visible stranded-window recovery
   after display disconnect in `src/app/tests/display_disconnect.rs` (issue 150). Live CGEventTap
   callback delivery in `src/macos/swipes.rs` is not covered.

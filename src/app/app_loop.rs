@@ -83,6 +83,8 @@ pub(super) struct AppLoopInit {
     /// `[shortcuts]` as loaded at startup; later changes apply live (`live_shortcuts`).
     pub(super) shortcuts: crate::shortcuts::Shortcuts,
     pub(super) hud: bool,
+    /// `Config::swipe_fingers` as loaded at startup; the config probe keeps it current.
+    pub(super) swipe_fingers: Fingers,
     pub(super) trusted: bool,
     /// A first-run setup tour is open and holds automatic tiling until it ends.
     pub(super) setup_tour_open: bool,
@@ -116,6 +118,8 @@ pub struct MainThreadAgent {
     accessibility: bool,
     automatic: bool,
     hud: bool,
+    /// The only finger count whose swipes are queued for the worker.
+    swipe_fingers: Fingers,
     awaiting_accessibility: bool,
     startup_tiling: TilingStartup,
     accessibility_requested: bool,
@@ -220,6 +224,7 @@ impl MainThreadAgent {
             accessibility: trusted,
             automatic,
             hud: init.hud,
+            swipe_fingers: init.swipe_fingers,
             awaiting_accessibility: !trusted,
             startup_tiling: TilingStartup::new(init.setup_tour_open),
             accessibility_requested: false,
@@ -269,8 +274,9 @@ impl MainThreadAgent {
     fn listen_for_input(&mut self) {
         if self.swipes.is_none() {
             let sender = self.actions_sender.clone();
-            match macos::SwipeMonitor::install(move |swipe, point| {
-                drop(sender.send(Action::Worker(WorkerAction::Swipe(swipe, point))));
+            match macos::SwipeMonitor::install(move |swipe, fingers, point| {
+                let swipe = WorkerAction::Swipe(swipe, fingers, point);
+                drop(sender.send(Action::Worker(swipe)));
             }) {
                 Ok(monitor) => self.swipes = Some(monitor),
                 Err(error) => log_event!("trackpad swipes unavailable: {error}"),
@@ -574,6 +580,9 @@ impl MainThreadAgent {
                     }
                     if let Some(shortcuts) = probe.shortcuts {
                         self.apply_shortcuts(shortcuts);
+                    }
+                    if let Some(fingers) = probe.swipe_fingers {
+                        self.swipe_fingers = fingers;
                     }
                 }
             }
