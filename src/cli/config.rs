@@ -678,18 +678,13 @@ fn run_check(args: &[&str], path_override: Option<&Path>) -> Result<String, Stri
 
 #[cfg(test)]
 mod tests {
-    use std::time::{SystemTime, UNIX_EPOCH};
-
-    use spaceman::config::Config;
+    use spaceman::config::{Config, now};
 
     use super::*;
 
     #[test]
     fn every_lab_feature_round_trips_through_cli_config() {
-        let nanos = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .unwrap()
-            .as_nanos();
+        let nanos = now().as_nanos();
         let dir = std::env::temp_dir().join(format!(
             "spaceman-cli-labs-round-trip-{}-{nanos}",
             std::process::id()

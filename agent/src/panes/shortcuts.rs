@@ -212,10 +212,9 @@ fn workspace_running_note(
 ) -> Option<String> {
     let (kind, rest) = if let Some(rest) = entry.key.strip_prefix("switch") {
         (workspaces::WorkspaceKind::Switch, rest)
-    } else if let Some(rest) = entry.key.strip_prefix("move") {
-        (workspaces::WorkspaceKind::Move, rest)
     } else {
-        return None;
+        let rest = entry.key.strip_prefix("move")?;
+        (workspaces::WorkspaceKind::Move, rest)
     };
     match rest {
         "" => range_running_note(

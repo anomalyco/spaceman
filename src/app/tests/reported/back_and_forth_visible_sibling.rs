@@ -122,7 +122,11 @@ fn back_and_forth_from_a_pin_reclaims_focus_from_a_visible_sibling() {
     report(&mut rt, 10);
     execute(&mut rt, &displays, WorkerAction::Retile);
     for workspace in [7, 1, 6] {
-        execute(&mut rt, &displays, WorkerAction::SwitchWorkspace(ws(workspace)));
+        execute(
+            &mut rt,
+            &displays,
+            WorkerAction::SwitchWorkspace(ws(workspace)),
+        );
     }
     assert_eq!(visible(&rt, &displays), [1, 6, 9]);
     report(&mut rt, 70);
