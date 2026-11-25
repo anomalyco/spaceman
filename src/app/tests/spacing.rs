@@ -106,6 +106,9 @@ impl WorkspaceBackend for ToleranceAwareBackend {
     fn now(&self) -> Instant {
         self.0.now()
     }
+    fn pause(&mut self, duration: Duration) {
+        self.0.pause(duration);
+    }
     fn snapshot(
         &mut self,
         cycle: u64,

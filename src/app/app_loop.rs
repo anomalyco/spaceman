@@ -11,7 +11,9 @@ mod live_shortcuts;
 mod probe;
 mod setup;
 
-pub(super) use dispatch::WorkerDispatch;
+#[cfg(test)]
+pub(super) use dispatch::{AfterCommand, WorkerLifecycle};
+pub(super) use dispatch::{RestoreKind, WorkerDispatch};
 
 /// Whether automatic tiling may start without the user asking for it.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -474,7 +476,7 @@ impl MainThreadAgent {
         }
     }
 
-    fn stop_automatic_and_restore(&mut self) {
+    fn stop_automatic_and_restore(&mut self, kind: RestoreKind) {
         self.automatic = false;
         self.cancelled.store(true, Ordering::Release);
         self.hotkeys = None;
@@ -483,7 +485,7 @@ impl MainThreadAgent {
         self.pending_inputs.clear();
         self.gesture_tracker.clear();
         self.ui_dirty = true;
-        self.worker.request_restore();
+        self.worker.request_restore(kind);
         status_item::set_automatic(false);
     }
 

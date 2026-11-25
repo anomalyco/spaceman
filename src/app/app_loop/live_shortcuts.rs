@@ -218,7 +218,7 @@ impl MainThreadAgent {
                 log_event!("hotkeys: could not restore the previous shortcuts: {error}");
                 let message = not_applied.as_deref().unwrap_or(&error);
                 self.shortcuts_not_applied(message);
-                self.stop_automatic_and_restore();
+                self.stop_automatic_and_restore(RestoreKind::Restore);
                 status_item::set_status(&format!("Hotkeys unavailable: {error}"));
             }
         }
@@ -271,7 +271,7 @@ impl MainThreadAgent {
                 let error = format!("Hotkeys unavailable: {error}");
                 log_event!("{error}");
                 self.last_error = Some(error.clone());
-                self.stop_automatic_and_restore();
+                self.stop_automatic_and_restore(RestoreKind::Restore);
                 status_item::set_status(&error);
             }
         }

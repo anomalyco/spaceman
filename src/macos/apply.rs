@@ -507,7 +507,12 @@ fn apply_element(
         };
     }
     let wrote = write_frame(|| set_size(window, target), || set_position(window, target));
-    let actual = window_frame(window);
+    let mut actual = window_frame(window);
+    if wrote && arrived_short(before, target, actual, settings) {
+        // By the readback the app has seen its new screen; size it again.
+        let _: AXError = set_size(window, target);
+        actual = window_frame(window);
+    }
     let outcome = match (wrote, actual) {
         (_, Some(actual)) if actual.approximately_equals(target, settings.frame_tolerance) => {
             ApplyOutcome::Applied
@@ -536,6 +541,25 @@ fn write_frame(
     let moved = set_position() == AXError::Success;
     let sized = set_size() == AXError::Success;
     moved && sized
+}
+
+/// Whether a window that came from another display landed at its target but
+/// short of its size. macOS fits the final size write to the display the
+/// window is leaving until the app sees its new screen, so a window moved onto
+/// a taller display stops at the old display's bottom edge (#428).
+fn arrived_short(
+    before: Option<Rect>,
+    target: Rect,
+    actual: Option<Rect>,
+    settings: &Settings,
+) -> bool {
+    let (Some(before), Some(actual)) = (before, actual) else {
+        return false;
+    };
+    let tolerance = settings.frame_tolerance;
+    !settings.output.contains_center(before)
+        && actual.position_approximately_equals(target, tolerance)
+        && (actual.height + tolerance < target.height || actual.width + tolerance < target.width)
 }
 
 fn without_window_animations<T>(app: &AppInstanceId, operation: impl FnOnce() -> T) -> T {
@@ -663,9 +687,65 @@ mod tests {
     use objc2_application_services::AXError;
 
     use super::{
-        FRONTMOST_POLL, FRONTMOST_REASSERTS, confirm_frontmost, focus_sequence, warp_sequence,
-        write_frame,
+        FRONTMOST_POLL, FRONTMOST_REASSERTS, arrived_short, confirm_frontmost, focus_sequence,
+        warp_sequence, write_frame,
     };
+    use crate::{Rect, Settings};
+
+    #[test]
+    fn a_window_from_another_display_that_lands_short_is_sized_again() {
+        // #428: center display above, a taller portrait display to its left.
+        let center = Rect {
+            x: 0,
+            y: 30,
+            width: 2560,
+            height: 1410,
+        };
+        let portrait = Rect {
+            x: -1440,
+            y: -583,
+            width: 1440,
+            height: 2530,
+        };
+        let settings = Settings {
+            output: portrait,
+            frame_tolerance: crate::reconcile::DEFAULT_FRAME_TOLERANCE,
+            spacing: crate::spacing::Spacing::default(),
+            layout: crate::config::LayoutMode::default(),
+        };
+        let clamped = Rect {
+            height: 2023,
+            ..portrait
+        };
+        assert!(arrived_short(
+            Some(center),
+            portrait,
+            Some(clamped),
+            &settings
+        ));
+        // Already on the display: a short frame is the app's own answer.
+        assert!(!arrived_short(
+            Some(portrait),
+            portrait,
+            Some(clamped),
+            &settings
+        ));
+        // A full-size landing, or one that did not reach its place, needs nothing.
+        assert!(!arrived_short(
+            Some(center),
+            portrait,
+            Some(portrait),
+            &settings
+        ));
+        let elsewhere = Rect { x: 0, ..clamped };
+        assert!(!arrived_short(
+            Some(center),
+            portrait,
+            Some(elsewhere),
+            &settings
+        ));
+        assert!(!arrived_short(None, portrait, Some(clamped), &settings));
+    }
 
     #[test]
     fn focus_raises_the_window_before_bringing_its_app_forward() {

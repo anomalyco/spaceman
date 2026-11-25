@@ -9,7 +9,7 @@ const REVEAL_POLL_INTERVAL: Duration = Duration::from_millis(3);
 /// How long a pending reveal waits before the restore write is re-issued.
 const REVEAL_REWRITE_INTERVAL: Duration = Duration::from_millis(100);
 
-use super::commands::{WarpContext, WorkspaceFocusOutcome};
+use super::commands::{CommandOrigin, WorkspaceFocusOutcome};
 
 mod moves;
 mod repeat;
@@ -17,13 +17,21 @@ mod repeat;
 pub(super) use repeat::RepeatSwitch;
 
 impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
+    /// A switch called directly, as unit tests do.
+    #[cfg(test)]
     pub(super) fn switch(
         &mut self,
         workspace: WorkspaceId,
         outputs: macos::DisplayOutputs,
         cancelled: &AtomicBool,
     ) -> Result<CycleStatus, String> {
-        self.switch_with(workspace, outputs, cancelled, RepeatSwitch::KeepFocus)
+        self.switch_with(
+            workspace,
+            outputs,
+            cancelled,
+            RepeatSwitch::KeepFocus,
+            CommandOrigin::Direct,
+        )
     }
 
     pub(super) fn switch_with(
@@ -32,6 +40,7 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
         outputs: macos::DisplayOutputs,
         cancelled: &AtomicBool,
         repeat: RepeatSwitch,
+        origin: CommandOrigin,
     ) -> Result<CycleStatus, String> {
         let selector = self.ensure_managed_workspace(workspace)?;
         let output = output_for(&self.workspaces, workspace, &outputs);
@@ -59,7 +68,7 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
                 && let Some(focused) = focused
                     .as_ref()
                     .filter(|focused| self.workspaces.workspace_of_any(focused) == Some(workspace))
-                && self.cycle_focus_on_repeat(workspace, focused, &outputs)?
+                && self.cycle_focus_on_repeat(workspace, focused, &outputs, origin)?
             {
                 let mut status = self.status(0, &outputs);
                 status.hud = Some(self.hud_for(workspace, UiHudKind::Workspace, None, &outputs));
@@ -75,7 +84,7 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
                 self.record_focused_workspace(workspace);
                 self.focus.settle_fullscreen(workspace);
                 let frame = self.focus_window_frame(focused, workspace, output);
-                self.follow_pointer_to(&display_id, output, frame, &outputs);
+                self.follow_pointer_to(origin, &display_id, output, frame, &outputs);
                 self.persist_workspace_state_if_changed()?;
                 let mut status = self.status(0, &outputs);
                 status.hud = Some(self.hud_for(workspace, UiHudKind::Workspace, None, &outputs));
@@ -85,7 +94,7 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
             // A tile of this workspace that already has focus keeps it; only
             // focus elsewhere moves to the remembered tile.
             let outcome = self.focus_workspace_entry(workspace, &windows, focused, frontmost, true);
-            self.follow_pointer_for_workspace(workspace, output, outcome, &outputs);
+            self.follow_pointer_for_workspace(origin, workspace, output, outcome, &outputs);
             // Selecting a workspace that is already up still moves focus there
             // when it lives on another display, so it belongs in the history.
             self.record_focused_workspace(workspace);
@@ -104,7 +113,7 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
         } else {
             reported_focused_before.clone()
         };
-        let switch_started = Instant::now();
+        let switch_started = self.backend.now();
         let mut outgoing = self.workspaces.windows(previous);
         self.order_back_to_front(&mut outgoing, |window| window.window_id);
         let incoming = self.workspaces.windows(workspace);
@@ -252,16 +261,19 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
             frontmost_before,
             true,
         );
-        if self.warp_context == WarpContext::Explicit
-            || (self.warp_context == WarpContext::Direct && !focus_already_in_workspace)
+        if origin == CommandOrigin::Explicit
+            || (origin == CommandOrigin::Direct && !focus_already_in_workspace)
         {
-            self.follow_pointer_for_workspace(workspace, output, outcome, &outputs);
+            self.follow_pointer_for_workspace(origin, workspace, output, outcome, &outputs);
         }
         self.persist_workspace_state_if_changed()?;
         log_event!(
             "switch complete: workspace {} in {}ms",
             workspace,
-            switch_started.elapsed().as_millis()
+            self.backend
+                .now()
+                .saturating_duration_since(switch_started)
+                .as_millis()
         );
         let mut status = self.status(layout.failed, &outputs);
         status.hud = Some(self.hud_for(workspace, UiHudKind::Workspace, Some(previous), &outputs));
@@ -361,7 +373,7 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
         incoming: &[crate::PhysicalWindowId],
         cancelled: &AtomicBool,
     ) -> bool {
-        let started = Instant::now();
+        let started = self.backend.now();
         let mut last_rewrite = started;
         loop {
             let pending: Vec<_> = incoming
@@ -372,7 +384,9 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
             if pending.is_empty() {
                 return !cancelled.load(Ordering::Acquire);
             }
-            if started.elapsed() >= REVEAL_SETTLE_LIMIT || cancelled.load(Ordering::Acquire) {
+            if self.backend.now().saturating_duration_since(started) >= REVEAL_SETTLE_LIMIT
+                || cancelled.load(Ordering::Acquire)
+            {
                 log_event!(
                     "reveal interrupted: {} window(s) still arriving; keeping outgoing workspace",
                     pending.len()
@@ -380,7 +394,7 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
                 return false;
             }
             let Some(frames) = self.reveal_frames(&pending) else {
-                thread::sleep(REVEAL_POLL_INTERVAL);
+                self.backend.pause(REVEAL_POLL_INTERVAL);
                 continue;
             };
             let mut removed = Vec::new();
@@ -394,8 +408,9 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
                     removed.extend(self.commit_unparked(window).map(|r| (window.clone(), r)));
                 }
             }
-            if last_rewrite.elapsed() >= REVEAL_REWRITE_INTERVAL {
-                last_rewrite = Instant::now();
+            let now = self.backend.now();
+            if now.saturating_duration_since(last_rewrite) >= REVEAL_REWRITE_INTERVAL {
+                last_rewrite = now;
                 for window in &pending {
                     let (Some(record), Some(target)) = (
                         self.parked.record(window).cloned(),
@@ -416,7 +431,7 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
                 .iter()
                 .any(|window| self.parked.contains_key(window))
             {
-                thread::sleep(REVEAL_POLL_INTERVAL);
+                self.backend.pause(REVEAL_POLL_INTERVAL);
             }
         }
     }
@@ -528,7 +543,13 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
         if self.is_visible(target, &outputs) {
             return self.focus_visible_workspace(target, current, &outputs);
         }
-        self.switch(target, outputs, cancelled)
+        self.switch_with(
+            target,
+            outputs,
+            cancelled,
+            RepeatSwitch::KeepFocus,
+            CommandOrigin::Explicit,
+        )
     }
 
     /// Focus a workspace that is already on screen instead of switching any
@@ -547,7 +568,13 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
             let frontmost = self.backend.frontmost_application();
             let outcome =
                 self.focus_workspace_entry(workspace, &windows, focused, frontmost, false);
-            self.follow_pointer_for_workspace(workspace, output, outcome, outputs);
+            self.follow_pointer_for_workspace(
+                CommandOrigin::Explicit,
+                workspace,
+                output,
+                outcome,
+                outputs,
+            );
             self.record_focused_workspace(workspace);
             log_event!(
                 "back-and-forth: focused visible workspace {} without switching",
@@ -558,7 +585,13 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
                 .resolve(self.workspaces.assignment(workspace))
                 .id
                 .as_str();
-            self.follow_pointer_to(target_display_id, output, None, outputs);
+            self.follow_pointer_to(
+                CommandOrigin::Explicit,
+                target_display_id,
+                output,
+                None,
+                outputs,
+            );
         }
         let mut status = self.status(0, outputs);
         status.hud = Some(self.hud_for(workspace, UiHudKind::Workspace, from, outputs));
@@ -589,9 +622,13 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
                 Swipe::Right => index.checked_sub(1).and_then(|index| listed.get(index)),
             });
         match target {
-            Some(&target) => self.with_warp_context(WarpContext::Suppressed, |rt| {
-                rt.switch(target, outputs, cancelled)
-            }),
+            Some(&target) => self.switch_with(
+                target,
+                outputs,
+                cancelled,
+                RepeatSwitch::KeepFocus,
+                CommandOrigin::Passive,
+            ),
             None => Ok(self.status(0, &outputs)),
         }
     }

@@ -4,7 +4,7 @@
 //! Fullscreen Layout stacks, a focused float, an empty workspace and a focus
 //! request still in flight all resolve the same way in both.
 
-use super::super::commands::{WarpContext, rect_center};
+use super::super::commands::{CommandOrigin, rect_center};
 use super::super::*;
 
 impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
@@ -20,16 +20,14 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
         {
             // A window reconciliation has not adopted yet may be a new tile.
             // A failed refresh only means navigating from where focus is now.
-            if let Err(error) = self.with_warp_context(WarpContext::Suppressed, |rt| {
-                rt.cycle(outputs.clone(), cancelled)
-            }) {
+            if let Err(error) = self.cycle(outputs.clone(), cancelled) {
                 log_event!("focus: refresh before navigating failed: {error}");
             }
         }
         let Some(target) = self.focus_target(origin.as_ref(), direction, &outputs) else {
             return Ok(self.status(0, &outputs));
         };
-        self.focus_tile(origin, &target, &outputs)?;
+        self.focus_tile(origin, &target, &outputs, CommandOrigin::Explicit)?;
         Ok(self.status(0, &outputs))
     }
 
@@ -158,6 +156,7 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
         origin: Option<crate::PhysicalWindowId>,
         target: &crate::PhysicalWindowId,
         outputs: &macos::DisplayOutputs,
+        command: CommandOrigin,
     ) -> Result<(), String> {
         if !self.request_focus(target, [origin]) {
             return Err("Target window could not be focused".into());
@@ -170,7 +169,7 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
             let display = outputs.resolve(self.workspaces.assignment(workspace));
             let output = display.frame;
             let frame = self.focus_window_frame(target, workspace, output);
-            self.follow_pointer_to(&display.id, output, frame, outputs);
+            self.follow_pointer_to(command, &display.id, output, frame, outputs);
         }
         Ok(())
     }

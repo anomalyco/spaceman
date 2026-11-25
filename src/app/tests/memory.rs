@@ -258,7 +258,7 @@ fn apps_launched_after_the_startup_recall_window_open_on_the_active_workspace() 
     let window = relaunched(10);
     let mut runtime = runtime(backend_with(&[(window.clone(), frame(50))]));
     runtime.restore_window_memory(memory(&[(3, frame(50))]));
-    runtime.memory.started_at = Some(Instant::now() - crate::app::memory::RECALL_WINDOW);
+    runtime.memory.started_at = Some(runtime.backend.now() - crate::app::memory::RECALL_WINDOW);
 
     runtime.cycle(outputs(), &AtomicBool::new(false)).unwrap();
 
@@ -285,7 +285,7 @@ fn second_instance(id: u32) -> crate::PhysicalWindowId {
 fn settled_on_three(first: &crate::PhysicalWindowId) -> WorkspaceRuntime<FakeBackend> {
     let mut runtime = runtime(backend_with(&[(first.clone(), frame(50))]));
     runtime.restore_window_memory(memory(&[(3, frame(50))]));
-    runtime.memory.started_at = Some(Instant::now() - crate::app::memory::RECALL_WINDOW);
+    runtime.memory.started_at = Some(runtime.backend.now() - crate::app::memory::RECALL_WINDOW);
     bind(&mut runtime, workspace(3), first);
     runtime.cycle(outputs(), &AtomicBool::new(false)).unwrap();
     assert_eq!(runtime.workspaces.workspace_of(first), Some(workspace(3)));
@@ -625,7 +625,7 @@ fn bare_executables_without_bundle_ids_do_not_share_placement_memory() {
     };
     let mut rt = runtime(backend);
     rt.restore_window_memory(crate::window_memory::WindowMemory::default());
-    rt.memory.started_at = Some(Instant::now() - crate::app::memory::RECALL_WINDOW);
+    rt.memory.started_at = Some(rt.backend.now() - crate::app::memory::RECALL_WINDOW);
     let cancel = AtomicBool::new(false);
     let three = WorkspaceId::new(3).unwrap();
     rt.switch(three, outputs(), &cancel).unwrap();

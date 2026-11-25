@@ -8,11 +8,25 @@
 use super::focus::FAILED_FOLLOW_RETRY_WINDOW;
 use super::*;
 
+/// How long after a Space slide settles the windows it brought on screen are
+/// taken as the display's whole desktop (#431).
+const SLIDE_ARRIVAL_WINDOW: Duration = Duration::from_secs(2);
+
 impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
     /// When the macOS Space slide under way settles, while one is.
     pub(super) fn space_transition_until(&mut self) -> Option<Instant> {
         let until = self.backend.active_space_changed_at()? + SPACE_TRANSITION_SETTLE;
-        (Instant::now() < until).then_some(until)
+        (self.backend.now() < until).then_some(until)
+    }
+
+    /// Whether a macOS Space slide settled moments ago. The first cycles after
+    /// it see the desktop it brought on screen; a window it ordered out is on
+    /// the desktop it left, not a flaky snapshot (#431).
+    pub(super) fn space_slide_just_settled(&mut self) -> bool {
+        let Some(changed) = self.backend.active_space_changed_at() else {
+            return false;
+        };
+        self.backend.now() < changed + SPACE_TRANSITION_SETTLE + SLIDE_ARRIVAL_WINDOW
     }
 
     /// The status of a background cycle held back by a Space slide. Nothing
@@ -24,7 +38,9 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
     ) -> CycleStatus {
         log_event!(
             "space transition: holding layout for {}ms",
-            until.saturating_duration_since(Instant::now()).as_millis()
+            until
+                .saturating_duration_since(self.backend.now())
+                .as_millis()
         );
         let mut status = self.status(0, outputs);
         status.close_recheck = Some(until);

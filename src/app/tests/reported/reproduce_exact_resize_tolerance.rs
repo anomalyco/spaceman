@@ -9,6 +9,9 @@ impl WorkspaceBackend for ToleranceAwareBackend {
     fn now(&self) -> std::time::Instant {
         self.0.now()
     }
+    fn pause(&mut self, duration: Duration) {
+        self.0.pause(duration);
+    }
     fn window_owners(&mut self, window_ids: &HashSet<u32>) -> HashMap<u32, AppInstanceId> {
         self.0.window_owners(window_ids)
     }

@@ -819,7 +819,13 @@ mod tests {
         .unwrap();
         let choices = choices(&displays::connected(&outputs));
         let nine = WorkspaceId::new(9).unwrap();
-        for saved in ["right-id", "left-id", "External Panel", "Main Panel", "main"] {
+        for saved in [
+            "right-id",
+            "left-id",
+            "External Panel",
+            "Main Panel",
+            "main",
+        ] {
             let doc = Doc::parse(&format!(
                 "version = 1\n[[workspaces]]\nworkspace = 9\nmonitor = '{saved}'\n"
             ));

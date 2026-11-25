@@ -32,7 +32,7 @@ impl MainThreadAgent {
                     let error = format!("Hotkeys unavailable: {error}");
                     self.last_error = Some(error.clone());
                     self.ui_dirty = true;
-                    self.worker.request_restore();
+                    self.worker.request_restore(RestoreKind::Restore);
                     status_item::set_status(&error);
                     return;
                 }
@@ -60,7 +60,7 @@ impl MainThreadAgent {
             match action {
                 Action::ToggleAutomatic if self.automatic => {
                     self.awaiting_accessibility = false;
-                    self.stop_automatic_and_restore();
+                    self.stop_automatic_and_restore(RestoreKind::Restore);
                     status_item::set_status(if self.worker.is_busy() {
                         "Paused"
                     } else {
@@ -192,7 +192,7 @@ impl MainThreadAgent {
                     permission_guide::close();
                     self.resume_after_update = intent == ExitIntent::Update && self.automatic;
                     self.exit_intent = Some(intent);
-                    self.stop_automatic_and_restore();
+                    self.stop_automatic_and_restore(RestoreKind::Restore);
                     if self.worker.is_busy() {
                         status_item::set_status(match intent {
                             ExitIntent::Quit => "Restoring windows...",

@@ -3,6 +3,8 @@
 //! the first time an observation sees it. A window with a single tab (or an
 //! app without native tabs) moves whole, like `move`.
 
+use super::commands::CommandOrigin;
+use super::switching::RepeatSwitch;
 use super::*;
 
 /// How long a pressed detach waits for its new window before it is dropped.
@@ -61,9 +63,7 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
         let source = if let Some(source) = self.workspaces.workspace_of_any(&window) {
             source
         } else {
-            self.with_warp_context(super::commands::WarpContext::Suppressed, |rt| {
-                rt.cycle(outputs.clone(), cancelled)
-            })?;
+            self.cycle(outputs.clone(), cancelled)?;
             self.workspaces
                 .workspace_of_any(&window)
                 .ok_or("Window is not managed by Spaceman")?
@@ -94,14 +94,12 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
                     source_workspace: source,
                     target_workspace: target,
                     follow,
-                    expires_at: Instant::now() + TAB_DETACH_TIMEOUT,
+                    expires_at: self.backend.now() + TAB_DETACH_TIMEOUT,
                     source_frame,
                     onscreen_before,
                     phase: DetachPhase::Awaiting,
                 });
-                self.with_warp_context(super::commands::WarpContext::Suppressed, |rt| {
-                    rt.cycle(outputs, cancelled)
-                })
+                self.cycle(outputs, cancelled)
             }
         }
     }
@@ -121,7 +119,7 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
         let pending = self.tab_detach.as_ref()?;
         if pending.app != app.id
             || pending.phase != DetachPhase::Awaiting
-            || Instant::now() >= pending.expires_at
+            || self.backend.now() >= pending.expires_at
         {
             return None;
         }
@@ -212,7 +210,7 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
                 detached,
                 remaining,
             } => (detached.clone(), remaining.clone()),
-            DetachPhase::Awaiting if Instant::now() >= pending.expires_at => {
+            DetachPhase::Awaiting if self.backend.now() >= pending.expires_at => {
                 log_event!(
                     "move tab: no window appeared for the tab detached from {:?}; dropped",
                     pending.source_window
@@ -220,7 +218,7 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
                 return Ok(status);
             }
             DetachPhase::Awaiting => {
-                let recheck = Instant::now() + TAB_DETACH_RECHECK;
+                let recheck = self.backend.now() + TAB_DETACH_RECHECK;
                 status.close_recheck =
                     Some(status.close_recheck.map_or(recheck, |at| at.min(recheck)));
                 self.tab_detach = Some(pending);
@@ -237,7 +235,13 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
         if pending.follow && !target_visible {
             self.workspaces.remember_focus(target, &detached);
             let failed = status.failed;
-            status = self.switch(target, outputs.clone(), cancelled)?;
+            status = self.switch_with(
+                target,
+                outputs.clone(),
+                cancelled,
+                RepeatSwitch::KeepFocus,
+                CommandOrigin::Explicit,
+            )?;
             status.failed += failed;
         } else {
             let focus = if pending.follow {
@@ -254,9 +258,13 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
                     let display = outputs.resolve(self.workspaces.assignment(target));
                     let (display_id, output) = (display.id.clone(), display.frame);
                     let frame = self.focus_window_frame(focus, target, output);
-                    self.with_warp_context(super::commands::WarpContext::Explicit, |rt| {
-                        rt.follow_pointer_to(&display_id, output, frame, outputs);
-                    });
+                    self.follow_pointer_to(
+                        CommandOrigin::Explicit,
+                        &display_id,
+                        output,
+                        frame,
+                        outputs,
+                    );
                 }
             } else {
                 log_event!("move tab: could not focus {focus:?}");

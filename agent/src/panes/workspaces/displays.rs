@@ -91,7 +91,10 @@ impl Choice {
 /// then the first display in discovery order whose UUID or name it is. Choices are sorted by
 /// position, so a name two screens share must not resolve to the leftmost one. Issue 420.
 pub(crate) fn index_of(choices: &[Choice], selector: &str) -> Option<usize> {
-    if let Some(index) = choices.iter().position(|choice| choice.selector == selector) {
+    if let Some(index) = choices
+        .iter()
+        .position(|choice| choice.selector == selector)
+    {
         return Some(index);
     }
     choices

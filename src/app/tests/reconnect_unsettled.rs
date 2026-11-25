@@ -127,7 +127,10 @@ fn a_display_change_disarms_readback_but_keeps_a_refusing_app_frozen() {
     rt.note_outputs(&outputs());
     rt.applied[one].insert(
         huddle.clone(),
-        super::super::cycle::AppliedFrame::now(target),
+        super::super::cycle::AppliedFrame {
+            target,
+            at: rt.backend.now(),
+        },
     );
     rt.constrained[one].insert(huddle.clone(), (target, frame(350)));
     rt.apply_attempts[one].insert(huddle.clone(), (target, limit));

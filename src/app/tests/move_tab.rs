@@ -254,7 +254,7 @@ fn a_late_window_is_claimed_by_a_prompt_re_observation() {
 
     assert!(rt.tab_detach.is_some(), "waiting for the window");
     let recheck = status.close_recheck.expect("a prompt re-observation");
-    assert!(recheck <= Instant::now() + TAB_DETACH_RECHECK);
+    assert!(recheck <= rt.backend.now() + TAB_DETACH_RECHECK);
 
     rt.backend.open_window(&tab, offset_frame(100, 100));
     rt.backend.focused = Some(tab.clone());
@@ -272,7 +272,7 @@ fn an_expired_detach_drops_cleanly_and_later_windows_open_normally() {
     let (mut rt, source) = tabbed_runtime(Some(FakeTabDetach::Silent), Config::default());
 
     move_tab(&mut rt, WorkspaceId::TWO, false).unwrap();
-    rt.tab_detach.as_mut().unwrap().expires_at = Instant::now();
+    rt.tab_detach.as_mut().unwrap().expires_at = rt.backend.now();
     let status = rt.cycle(outputs(), &AtomicBool::new(false)).unwrap();
 
     assert!(rt.tab_detach.is_none(), "dropped at expiry");

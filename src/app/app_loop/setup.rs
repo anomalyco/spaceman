@@ -69,8 +69,7 @@ impl MainThreadAgent {
     pub(super) fn undo_arrangement(&mut self) {
         self.setup.arrangement = None;
         self.awaiting_accessibility = false;
-        self.worker.undo_with_next_restore();
-        self.stop_automatic_and_restore();
+        self.stop_automatic_and_restore(RestoreKind::Undo);
         status_item::set_status(if self.worker.is_busy() {
             "Paused"
         } else {
