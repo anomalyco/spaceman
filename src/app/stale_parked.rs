@@ -25,6 +25,10 @@ pub(super) struct UnmovableStale {
     /// Display frames when the failures were recorded: a display change retries every window.
     displays: Vec<crate::Rect>,
     windows: HashMap<u32, RescueFailure>,
+    /// Windows an `ignore` rule matched, with their window-server frame then. Judging one reads
+    /// its title through Accessibility, which a hung app makes wait out the timeout, so each is
+    /// judged once until it moves, the displays change or the rules do (#562).
+    ignored: HashMap<u32, crate::Rect>,
 }
 
 struct RescueFailure {
@@ -35,15 +39,23 @@ struct RescueFailure {
 }
 
 impl UnmovableStale {
-    /// Forget failures for windows that closed or moved, and every failure when the displays
-    /// changed.
+    /// Forget failures and ignore verdicts for windows that closed or moved, and all of them
+    /// when the displays changed.
     fn refresh(&mut self, displays: &[crate::Rect], server_frames: &HashMap<u32, crate::Rect>) {
         if self.displays != displays {
             self.displays = displays.to_vec();
             self.windows.clear();
+            self.ignored.clear();
         }
         self.windows
             .retain(|id, failure| server_frames.get(id) == Some(&failure.frame));
+        self.ignored
+            .retain(|id, frame| server_frames.get(id) == Some(frame));
+    }
+
+    /// Judge every window again: the rules changed.
+    pub(super) fn forget_ignored(&mut self) {
+        self.ignored.clear();
     }
 
     fn waiting(&self, id: u32, now: Instant) -> bool {
@@ -94,6 +106,7 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
             .filter(|(id, frame)| {
                 !parked_ids.contains(id)
                     && !self.unmovable_stale.waiting(**id, now)
+                    && !self.unmovable_stale.ignored.contains_key(*id)
                     && frame.width > 1
                     && frame.height > 1
                     && !displays.iter().any(|d| d.contains_center(**frame))
@@ -143,11 +156,23 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
             };
             if self.workspaces.workspace_of_any(&window).is_some()
                 || self.workspaces.scratchpad().contains(&window)
-                || self
-                    .bundle_disposition(&window, frame)
-                    .is_some_and(crate::config::DispositionPatch::is_ignored)
             {
                 continue;
+            }
+            match self.stale_window_ignored(&window, frame) {
+                Some(false) => {}
+                Some(true) => {
+                    self.unmovable_stale.ignored.insert(id, frame);
+                    continue;
+                }
+                None => {
+                    log_event!(
+                        "stale parked window {:?}: title unreadable for its rules; retrying",
+                        window
+                    );
+                    self.unmovable_stale.failed(id, frame, now);
+                    continue;
+                }
             }
             let offset = cascade.entry((output.x, output.y)).or_insert(0);
             let target = crate::Rect {
@@ -174,5 +199,33 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
                 self.unmovable_stale.failed(id, frame, now);
             }
         }
+    }
+
+    /// Whether an `ignore` rule covers a stale parked window, judged by its app's bundle and
+    /// its title like any observed window (#562). No observation has listed a just-relaunched
+    /// app yet, so its bundle comes from the window's owner. `None` when a title rule could
+    /// decide but the title could not be read yet: recovery waits rather than move it.
+    fn stale_window_ignored(
+        &mut self,
+        window: &crate::PhysicalWindowId,
+        frame: crate::Rect,
+    ) -> Option<bool> {
+        let Some(probe) = self.backend.window_rule_probe(window) else {
+            return Some(
+                self.bundle_disposition(window, frame)
+                    .is_some_and(crate::config::DispositionPatch::is_ignored),
+            );
+        };
+        if !probe.resolved && self.config.has_title_rules(&probe.bundle_id) {
+            return None;
+        }
+        let observed = crate::ObservedWindow {
+            id: window.clone(),
+            frame,
+            resizable: true,
+            title: probe.title,
+            document: None,
+        };
+        Some(self.config.patch(&probe.bundle_id, &observed).is_ignored())
     }
 }

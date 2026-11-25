@@ -54,6 +54,13 @@ pub(super) trait WorkspaceBackend {
     /// The running application instance owning each of `window_ids`, per the window server.
     /// For the rare window no observation covers; windows it cannot attribute are left out.
     fn window_owners(&mut self, window_ids: &HashSet<u32>) -> HashMap<u32, AppInstanceId>;
+    /// The bundle ID and title rules match `window` by, for a window no observation lists.
+    fn window_rule_probe(
+        &mut self,
+        _window: &crate::PhysicalWindowId,
+    ) -> Option<macos::WindowRuleProbe> {
+        None
+    }
     fn set_position(
         &mut self,
         window: &crate::PhysicalWindowId,
@@ -229,6 +236,13 @@ impl WorkspaceBackend for MacWorkspaceBackend {
 
     fn window_owners(&mut self, window_ids: &HashSet<u32>) -> HashMap<u32, AppInstanceId> {
         macos::window_owners(window_ids)
+    }
+
+    fn window_rule_probe(
+        &mut self,
+        window: &crate::PhysicalWindowId,
+    ) -> Option<macos::WindowRuleProbe> {
+        macos::window_rule_probe(window)
     }
 
     fn set_position(
