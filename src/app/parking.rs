@@ -180,6 +180,18 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
             }
             let output = output_for(&self.workspaces, workspace, outputs);
             if let Some(original) = self.parked.get(&window).copied() {
+                // A parked window the window server stopped listing closed while its app kept
+                // running; forget it so its hidden workspace stops counting as occupied
+                // (#553). An empty snapshot means the server could not be read, and an app
+                // that quit is left to the exited-app path, which notes its departure for
+                // relaunch recall.
+                if !server_frames.is_empty()
+                    && !server_frames.contains_key(&window.window_id)
+                    && self.backend.is_process_running(&window.app)
+                    && self.retire_confirmed_gone_window(workspace, &window)
+                {
+                    continue;
+                }
                 if let Some(ws) = self.repark_drifted_window(&window, original, output, &context) {
                     fullscreen_hud = Some(ws);
                 }
