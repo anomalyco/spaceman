@@ -248,7 +248,7 @@ impl WorkspaceBackend for FakeBackend {
                         return false;
                     };
                     window.frame = frame;
-                    outputs.union().contains_center(frame)
+                    outputs.screen_union().contains_center(frame)
                 });
                 if focused
                     .as_ref()

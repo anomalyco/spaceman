@@ -221,6 +221,17 @@ impl DisplayOutputs {
         self.frames().fold(self.main().frame, union_rect)
     }
 
+    /// The smallest rectangle around every display's full bounds, menu bar and Dock strips
+    /// included: where observation looks for windows (#586).
+    #[must_use]
+    pub fn screen_union(&self) -> Rect {
+        let screens = self.screens();
+        screens
+            .iter()
+            .copied()
+            .fold(screens[self.main_index], union_rect)
+    }
+
     /// Physical display containing `point`, including its menu-bar and Dock strips.
     ///
     /// Uses full `NSScreen::frame()` bounds when available (with a 1-point tolerance
