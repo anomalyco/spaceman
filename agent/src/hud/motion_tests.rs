@@ -27,7 +27,7 @@ use super::{
 };
 
 const HZ: f64 = 120.0;
-/// The most a spring here moves opacity in one 120 Hz frame (EXIT 0.11 s peaks near 0.18/frame);
+/// The most a spring here moves opacity in one 120 Hz frame (ENTER 0.10 s peaks near 0.19/frame);
 /// a pop is several times this.
 const OPACITY_STEP: f32 = 0.20;
 /// One 8-bit step of alpha: below it nothing is drawn.

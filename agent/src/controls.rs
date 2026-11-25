@@ -321,23 +321,6 @@ pub fn toggle_row(
         .on_press(flip)
 }
 
-/// An [`icon_row`] whose whole row toggles a switch.
-pub fn icon_toggle_row(
-    p: Paint,
-    key: &str,
-    glyph: &'static Icon,
-    title: &str,
-    description: Option<(String, Color)>,
-    on: bool,
-    flip: impl Fn(&mut Ui) + 'static,
-) -> El {
-    let switch = Switch::new(on).build(p.k).key("switch").focusable(false);
-    icon_row(p, key, glyph, title, description, switch)
-        .role("toggle")
-        .focusable(true)
-        .on_press(flip)
-}
-
 /// `path` with the home directory shortened to `~`.
 pub fn home_relative(path: &std::path::Path) -> String {
     std::env::var_os("HOME")

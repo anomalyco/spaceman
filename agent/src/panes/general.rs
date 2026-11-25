@@ -180,7 +180,42 @@ pub fn pane(ui: &Ui, p: Paint) -> El {
         "Configuration",
         vec![config_file, setup_tour],
     ));
+    if let Some(agent) = &ui.agent {
+        sections.push(controls::card(
+            p,
+            "leave",
+            vec![leave_row(p, agent.automatic)],
+        ));
+    }
     scroll_body("general-body", controls::page("sections", sections))
+}
+
+/// The way out without the menu bar, which a notch can hide: pause tiling and get every
+/// window back, or quit, which restores them first.
+fn leave_row(p: Paint, tiling: bool) -> El {
+    let pause = tiling.then(|| {
+        controls::quiet_button(p, "pause", "Pause & restore windows", |ui: &mut Ui, _| {
+            ui.toggle_automatic();
+        })
+    });
+    controls::setting_row(
+        p,
+        "leave",
+        "Quit Spaceman",
+        Some(("Puts every window back first".to_owned(), p.muted())),
+        row()
+            .key("leave-controls")
+            .gap(8.0)
+            .center_y()
+            .children(pause)
+            .child(controls::button(
+                p,
+                "quit",
+                "Quit",
+                ButtonKind::Secondary,
+                |ui: &mut Ui, _| ui.quit(),
+            )),
+    )
 }
 
 /// The Workspace HUD in one row: its main choice on the control rail, and a quiet

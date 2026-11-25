@@ -17,6 +17,21 @@ pub use recorder::Capture;
 pub(crate) use recorder::enabled_named_workspaces;
 pub(crate) use workspaces::switch_keys;
 
+/// The first chord that switches to `workspace`, as the setup tour asks for it.
+pub(crate) fn switch_chord(shortcuts: &Shortcuts, workspace: WorkspaceId) -> Option<Chord> {
+    workspaces::active_chords(shortcuts, workspaces::WorkspaceKind::Switch, workspace)
+        .into_iter()
+        .next()
+}
+
+/// The first chord that toggles the focused window's floating.
+pub(crate) fn float_chord(shortcuts: &Shortcuts, named: &[WorkspaceId]) -> Option<Chord> {
+    catalog::find("float")?
+        .chords(shortcuts, named)
+        .into_iter()
+        .next()
+}
+
 use crate::{
     Ui,
     controls::{self, ButtonKind, KEYS, Paint, keycap, roll, tray},

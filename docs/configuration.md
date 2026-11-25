@@ -272,7 +272,7 @@ Commands:
 | Command | Action |
 | --- | --- |
 | `switch WORKSPACE` | Switch to workspace 1 through 10 or an enabled named workspace A through Z |
-| `move WORKSPACE` | Move the focused window there without switching |
+| `move WORKSPACE [--follow]` | Move the focused window there without switching; `--follow` also switches to that workspace and follows the window |
 | `move-tab WORKSPACE [--follow]` | Send the focused window's active tab there as its own window (and switch with `--follow`); a single-tab window moves whole ([Controls](controls.md#send-tab-to-workspace)) |
 | `back-and-forth` | Return to the previous workspace |
 | `move-workspace [next\|prev\|DISPLAY]` | Move the focused workspace to another display |
@@ -288,6 +288,8 @@ Commands:
 | `balance` | Equalize the focused tile's immediate split |
 | `retile` | Retile now |
 | `none` | Unbind the chord: no built-in shortcut claims it |
+
+`move WORKSPACE` leaves you on the current workspace; `move WORKSPACE --follow` switches to the destination so the moved window is in view. The CLI accepts `--follow` before or after the workspace.
 
 `resize width POINTS` resizes the focused window to that width (its own frame, gaps excluded) by
 moving its boundary at the nearest split that lays tiles out side by side; `resize height POINTS`

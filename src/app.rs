@@ -42,6 +42,7 @@ macro_rules! log_event {
 }
 
 mod app_loop;
+mod arrange;
 mod backend;
 mod bridge;
 mod commands;
@@ -211,6 +212,14 @@ pub(crate) enum Action {
     ToggleAutomatic,
     /// The first-run setup tour finished, so its hold on tiling ends.
     FinishSetup,
+    /// The first-run setup tour ended without starting tiling: its hold ends, paused.
+    SkipSetup,
+    /// The setup tour wants the open windows, title-free, to suggest an arrangement.
+    PlanSetup,
+    /// Start tiling with the open windows arranged as the setup tour's plan says.
+    Arrange(crate::onboarding_plan::Arrangement),
+    /// Pause tiling and put every window back where it was before the arrangement.
+    UndoArrangement,
     OpenSettings,
     OpenTarget(OpenTarget),
     OpenSetup,
@@ -266,6 +275,8 @@ pub(crate) enum WorkerAction {
     ToggleStrip,
     /// Kit noticed something wrong: mark the journal and snapshot it.
     MarkWrong,
+    /// Move the open windows onto the workspaces the setup tour's plan gives them.
+    Arrange(crate::onboarding_plan::Arrangement),
     /// The Scratchpad Lab: summon or hide, or send a window to or from it.
     Scratchpad(crate::scratchpad::ScratchpadCommand),
 }
@@ -305,6 +316,7 @@ impl WorkerAction {
             Self::ToggleFloat => "float toggle queued".into(),
             Self::ToggleStrip => "scrolling strip toggle queued".into(),
             Self::MarkWrong => "marking the journal".into(),
+            Self::Arrange(_) => "arrangement queued".into(),
             Self::Scratchpad(command) => format!("scratchpad {} queued", command.as_str()),
         }
     }
@@ -315,6 +327,10 @@ enum WorkerCommand {
     Gesture(FinalGesture, bool, macos::DisplayOutputs),
     /// Restore every parked window, onto these displays when they are known.
     RestoreAll(Option<macos::DisplayOutputs>),
+    /// Restore every parked window, then put back the frames the last arrangement changed.
+    UndoArrangement(Option<macos::DisplayOutputs>),
+    /// Read the open windows, title-free, for the setup tour's plan.
+    Inventory(macos::DisplayOutputs),
     Stop,
 }
 
@@ -329,6 +345,8 @@ impl WorkerCommand {
             Self::Action(..) => "action",
             Self::Gesture(..) => "gesture",
             Self::RestoreAll(_) => "restore all",
+            Self::UndoArrangement(_) => "undo arrangement",
+            Self::Inventory(_) => "inventory",
             Self::Stop => "stop",
         }
     }
@@ -391,6 +409,7 @@ enum WorkerResult {
     },
     /// A Scrolling Strip glide for the main thread to present, or to stop.
     Strip(strip::StripCommand),
+    Inventory(Box<crate::onboarding_plan::Inventory>),
 }
 
 /// Startup state initialized before the Rune event loop starts: single-agent

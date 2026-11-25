@@ -8,7 +8,8 @@ the on-screen Core Graphics window list, display topology, keyboard input source
 and mouse-button state needed for tiling and gestures. Two listen-only event taps watch three-finger
 trackpad swipes and Option key presses. The key tap reads only the virtual key code and modifier flags
 of presses with Option held, never characters, to notice a Spaceman shortcut macOS did not deliver;
-other presses are ignored and nothing is stored.
+other presses are ignored and nothing is stored. The setup tour's Try it step uses the same kind
+of tap, only while that step is on screen, to tick the three shortcuts it asks for.
 
 The permission is broad because macOS grants Accessibility at application scope. Spaceman limits its
 own writes to eligible standard, non-minimized, non-fullscreen windows whose position is settable.
@@ -43,6 +44,13 @@ Other runtime data stays on the Mac unless the user shares CLI output or files.
 The optional `Launch at Login` menu action registers or unregisters the signed main app through
 macOS Service Management. Registration is stored and enforced by macOS; Spaceman does not install a
 separate helper, daemon, or launch-agent plist.
+
+The setup tour suggests an arrangement from the windows open at that moment. The suggestion is
+computed on the Mac from each app's bundle ID, its `Info.plist` `LSApplicationCategoryType`, window
+sizes and resizability, and each display's width; window titles are never part of it, and nothing is
+sent anywhere. The tour's permission step reads two switches in the `com.apple.WindowManager`
+preferences (`GloballyEnabled` for Stage Manager, `EnableTilingByEdgeDrag` for macOS edge tiling)
+and writes one only when you press its `Turn off`, which System Settings › Desktop & Dock undoes.
 
 Spaceman can read a window title for exact config-rule matching. Titles remain in memory and are
 explicitly excluded from serialized observations, persisted state, the arrangement journal,

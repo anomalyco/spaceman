@@ -202,6 +202,11 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
                                 FrozenWindowAffinity::Floating
                             })
                     }
+                } else if let Some(target) = self.arranged_target(&window.id) {
+                    // The setup tour's plan placed this open window: a route for it alone.
+                    app_owns_window = true;
+                    app_owns_tiled = true;
+                    FrozenWindowAffinity::ExplicitRoute(target)
                 } else {
                     match disposition {
                         WindowDisposition::Route(target) => {

@@ -8,6 +8,8 @@ pub(in crate::app) struct WorkerDispatch {
     interruptible: bool,
     restore_pending: bool,
     restoring: bool,
+    /// The restore under way also undoes the setup tour's arrangement.
+    undo: bool,
 }
 
 impl WorkerDispatch {
@@ -18,6 +20,7 @@ impl WorkerDispatch {
             interruptible: false,
             restore_pending: false,
             restoring: false,
+            undo: false,
         }
     }
 
@@ -61,9 +64,20 @@ impl WorkerDispatch {
     }
 
     pub(in crate::app) fn send_restore(&mut self) -> bool {
-        self.busy = self.send(WorkerCommand::RestoreAll(macos::outputs().ok()));
+        let outputs = macos::outputs().ok();
+        self.busy = self.send(if self.undo {
+            WorkerCommand::UndoArrangement(outputs)
+        } else {
+            WorkerCommand::RestoreAll(outputs)
+        });
         self.restoring = self.busy;
         self.busy
+    }
+
+    /// The next restore, and its retries, also put back the frames the setup tour's
+    /// arrangement changed.
+    pub(in crate::app) fn undo_with_next_restore(&mut self) {
+        self.undo = true;
     }
 
     pub(in crate::app) fn request_restore(&mut self) {
@@ -81,6 +95,7 @@ impl WorkerDispatch {
     pub(in crate::app) fn finish_restore(&mut self) {
         self.busy = false;
         self.restoring = false;
+        self.undo = false;
     }
 
     pub(in crate::app) fn defer_restore_retry(&mut self) {
@@ -100,6 +115,7 @@ impl WorkerDispatch {
         self.busy = false;
         self.restore_pending = false;
         self.restoring = false;
+        self.undo = false;
     }
 
     pub(in crate::app) fn stop(&self) {

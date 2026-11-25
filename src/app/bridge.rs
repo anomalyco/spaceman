@@ -1,6 +1,9 @@
 use std::sync::{Arc, Mutex, mpsc::Sender};
 
-use crate::{Axis, Rect, WorkspaceId, login_item};
+use crate::{
+    Axis, Rect, WorkspaceId, login_item,
+    onboarding_plan::{Arrangement, Inventory},
+};
 
 use super::{Action, WorkerAction};
 
@@ -13,11 +16,21 @@ pub const HUD_PREVIEW_RECT: Rect = Rect {
 };
 
 /// Actions the in-process Rune window or HUD overlay can send to the agent loop.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub enum UiAction {
     ToggleAutomatic,
     /// The first-run setup tour finished: automatic tiling may start.
     FinishSetup,
+    /// The first-run setup tour ended without starting: windows stay where they are, paused.
+    SkipSetup,
+    /// The setup tour asks which windows are open, to suggest an arrangement.
+    PlanSetup,
+    /// Start tiling with the open windows arranged as the setup tour's plan says.
+    Arrange(Arrangement),
+    /// Pause tiling and put every window back where it was before the arrangement.
+    UndoArrangement,
+    /// Restore every window, then quit.
+    Quit,
     OpenSettings,
     OpenAccessibility,
     CheckForUpdates,
@@ -39,6 +52,11 @@ impl From<UiAction> for Action {
         match action {
             UiAction::ToggleAutomatic => Self::ToggleAutomatic,
             UiAction::FinishSetup => Self::FinishSetup,
+            UiAction::SkipSetup => Self::SkipSetup,
+            UiAction::PlanSetup => Self::PlanSetup,
+            UiAction::Arrange(arrangement) => Self::Arrange(arrangement),
+            UiAction::UndoArrangement => Self::UndoArrangement,
+            UiAction::Quit => Self::Quit,
             UiAction::OpenSettings => Self::OpenSettings,
             UiAction::OpenAccessibility => Self::OpenAccessibility,
             UiAction::CheckForUpdates => Self::CheckForUpdates,
@@ -267,6 +285,8 @@ impl UiAgentSnapshot {
 pub struct UiNews {
     pub snapshot: Option<UiAgentSnapshot>,
     pub hud: Option<UiHudEvent>,
+    /// The open windows the setup tour asked for, title-free.
+    pub inventory: Option<Inventory>,
     pub config_changed: bool,
 }
 
@@ -275,6 +295,7 @@ struct SharedState {
     last: Option<UiAgentSnapshot>,
     pending_snapshot: Option<UiAgentSnapshot>,
     pending_hud: Option<UiHudEvent>,
+    pending_inventory: Option<Inventory>,
     config_changed: bool,
     waker: Option<Arc<dyn Fn() + Send + Sync>>,
 }
@@ -304,6 +325,7 @@ impl UiBridge {
         }
         let has_news = shared.pending_snapshot.is_some()
             || shared.pending_hud.is_some()
+            || shared.pending_inventory.is_some()
             || shared.config_changed;
         shared.waker = Some(Arc::clone(&waker));
         drop(shared);
@@ -321,6 +343,7 @@ impl UiBridge {
         UiNews {
             snapshot: shared.pending_snapshot.take(),
             hud: shared.pending_hud.take(),
+            inventory: shared.pending_inventory.take(),
             config_changed: std::mem::take(&mut shared.config_changed),
         }
     }
@@ -336,6 +359,20 @@ impl UiBridge {
                 .lock()
                 .unwrap_or_else(std::sync::PoisonError::into_inner);
             shared.pending_hud = Some(event);
+            shared.waker.clone()
+        };
+        if let Some(waker) = waker {
+            waker();
+        }
+    }
+
+    pub(super) fn publish_inventory(&self, inventory: Inventory) {
+        let waker = {
+            let mut shared = self
+                .shared
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
+            shared.pending_inventory = Some(inventory);
             shared.waker.clone()
         };
         if let Some(waker) = waker {
@@ -402,6 +439,7 @@ mod tests {
             UiNews {
                 snapshot: Some(initial.clone()),
                 hud: None,
+                inventory: None,
                 config_changed: false,
             }
         );
@@ -418,6 +456,7 @@ mod tests {
             UiNews {
                 snapshot: None,
                 hud: None,
+                inventory: None,
                 config_changed: true,
             }
         );
@@ -434,6 +473,7 @@ mod tests {
             UiNews {
                 snapshot: None,
                 hud: Some(hud_event),
+                inventory: None,
                 config_changed: false,
             }
         );
@@ -454,6 +494,25 @@ mod tests {
             receiver.try_recv().ok(),
             Some(Action::Worker(WorkerAction::Retile))
         );
+
+        // The setup tour's plan crosses as its own actions, and its inventory comes back.
+        bridge.send(UiAction::PlanSetup);
+        assert_eq!(receiver.try_recv().ok(), Some(Action::PlanSetup));
+        bridge.send(UiAction::SkipSetup);
+        assert_eq!(receiver.try_recv().ok(), Some(Action::SkipSetup));
+        bridge.send(UiAction::Arrange(Arrangement::default()));
+        assert_eq!(
+            receiver.try_recv().ok(),
+            Some(Action::Arrange(Arrangement::default()))
+        );
+        bridge.send(UiAction::UndoArrangement);
+        assert_eq!(receiver.try_recv().ok(), Some(Action::UndoArrangement));
+        bridge.send(UiAction::Quit);
+        assert_eq!(receiver.try_recv().ok(), Some(Action::Quit));
+        bridge.publish_inventory(Inventory::default());
+        assert_eq!(wakes.load(Ordering::SeqCst), 4);
+        assert_eq!(bridge.take_news().inventory, Some(Inventory::default()));
+        assert_eq!(bridge.take_news().inventory, None);
     }
 
     #[test]

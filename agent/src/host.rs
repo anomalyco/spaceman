@@ -63,6 +63,28 @@ pub fn bring_window_forward(window: &rune::AppHandle<Ui>) {
     window.open();
 }
 
+/// Keeps the setup window above other apps' windows without activating it, so the Try it
+/// step stays in view while its shortcuts bring real windows forward. Off puts it back.
+pub fn float_setup_window(floating: bool) {
+    use objc2_app_kit::{NSFloatingWindowLevel, NSNormalWindowLevel};
+    let Some(mtm) = MainThreadMarker::new() else {
+        return;
+    };
+    let level = if floating {
+        NSFloatingWindowLevel
+    } else {
+        NSNormalWindowLevel
+    };
+    for window in NSApplication::sharedApplication(mtm).windows().iter() {
+        // The HUD's panels keep their own level; only the titled Settings window moves.
+        let ours = window.title().to_string() == "Spaceman";
+        if ours && window.level() != level && (floating || window.level() == NSFloatingWindowLevel)
+        {
+            window.setLevel(level);
+        }
+    }
+}
+
 fn launch_links() -> Vec<spaceman::deep_link::DeepLink> {
     std::env::args()
         .skip(1)

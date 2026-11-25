@@ -12,6 +12,7 @@ docs/features/
 ├── fullscreen-layout.md    // workspace-wide stacked "every window fills the display" mode
 ├── scrolling-strip.md      // Labs: wide columns on a horizontal strip, off-viewport ones parked
 ├── scratchpad.md           // Lab: windows hidden off-screen until summoned
+├── setup-tour.md           // first run: permission, the suggested arrangement, Try it
 └── restarts-and-recovery.md // what survives restarts/relaunches/reboots, restoration, doctor
 ```
 
@@ -25,7 +26,7 @@ secondary-display workspaces ships in the notarized preview at
 | --- | --- |
 | Workspaces, tiling, Fullscreen Layout, parking/restoration | Preview artifact and source builds |
 | Parking exemption, remembered placements (`window-memory.json`), arrangement journal, `spaceman doctor` | Preview artifact and source builds |
-| Single-process Rune Settings, three-step setup tour, non-activating Workspace HUD (`[settings] hud`) | Preview artifact and source builds |
+| Single-process Rune Settings, four-step [setup tour](setup-tour.md), non-activating Workspace HUD (`[settings] hud`) | Preview artifact and source builds |
 | Named workspaces A-Z | Opt-in: enabled by a `route` rule or `[[workspaces]]` entry |
 | Custom shortcuts (`[shortcuts]`) | Preview artifact and source builds; rebind, unbind, or replace the built-in keys in `config.toml` or by recording a chord in Settings › Shortcuts, with a base `modifier` for the built-ins, applied live without a restart. Covered by unit tests in `src/shortcuts.rs`, `src/hotkeys.rs`, `src/config.rs`, `src/app/app_loop/live_shortcuts.rs`, `agent/src/rules/shortcuts/tests.rs`, and `agent/src/panes/shortcuts/`; no live harness exercises a rebound chord or live re-registration yet |
 | Scratchpad (`[labs] scratchpad`) | Opt-in Lab in source builds; off by default, shortcuts register only when on |
