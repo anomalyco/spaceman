@@ -100,6 +100,8 @@ See [Recovery](../recovery.md) for the safe manual procedure; never delete `park
   `restore_all_after_unplugging_lands_windows_on_a_connected_display`,
   `display_disconnect.rs` `restore_all_sends_a_window_from_an_unplugged_display_to_main` (#406),
   `restore_all_command_moves_recovery_frames_onto_the_current_displays`;
+  `float.rs` `pause_reports_debug_without_the_restored_floats_recovery_frame` (paused `ctl debug`
+  drops a restored float's recovery frame, #548);
   `space_transitions.rs` `restore_keeps_recovery_for_a_parked_window_on_another_desktop` (kept
   past the Accessibility grace, restored once reachable; a closed window still lets exit finish).
 - Unit (FakeBackend), `memory.rs`: startup recall by frame then order, no recall for instances that

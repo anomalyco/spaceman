@@ -286,7 +286,7 @@ fn pause_restores_hidden_scratchpad_windows_without_leaks() {
         &AtomicBool::new(false),
     );
 
-    assert!(matches!(result, Some(WorkerResult::Restored { failed: 0 })));
+    assert!(matches!(result, Some(WorkerResult::Restored { failed: 0, .. })));
     assert!(runtime.parked.is_empty());
     assert!(runtime.backend.persisted.is_empty());
     assert!(pad(&runtime).is_empty());
@@ -927,7 +927,7 @@ fn settled_scratchpad_summon_confirms_translated_target_after_display_removal() 
     let restored = rt.execute(WorkerCommand::RestoreAll(Some(main_only)), &cancelled);
     assert!(matches!(
         restored,
-        Some(WorkerResult::Restored { failed: 0 })
+        Some(WorkerResult::Restored { failed: 0, .. })
     ));
     assert_eq!(rt.backend.frames[&w], dragged);
 }

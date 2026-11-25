@@ -42,6 +42,17 @@ struct DebugTargets {
 }
 
 impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
+    /// The result of a restore, carrying the debug state it leaves behind on
+    /// the last known displays.
+    pub(in crate::app) fn restored(&mut self, failed: usize) -> WorkerResult {
+        let debug = self
+            .displays
+            .known_outputs()
+            .cloned()
+            .map(|outputs| Box::new(self.debug_state(&outputs)));
+        WorkerResult::Restored { failed, debug }
+    }
+
     pub(in crate::app) fn debug_state(&mut self, outputs: &macos::DisplayOutputs) -> RuntimeDebug {
         let visible = self.visible_workspaces(outputs);
         let tiles = self.navigation_tiles_for(&visible);

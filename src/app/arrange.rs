@@ -260,6 +260,6 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
             }
         }
         self.flush_workspace_state();
-        WorkerResult::Restored { failed }
+        self.restored(failed)
     }
 }

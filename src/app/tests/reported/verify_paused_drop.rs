@@ -92,7 +92,7 @@ fn drop_pause(preview: bool) -> (crate::Rect, crate::Rect, bool) {
         assert_eq!(rt.backend.frames[&b], start);
     }
     tracker.clear();
-    let Some(WorkerResult::Restored { failed: 0 }) = rt.execute(
+    let Some(WorkerResult::Restored { failed: 0, .. }) = rt.execute(
         WorkerCommand::RestoreAll(Some(one_output())),
         &AtomicBool::new(false),
     ) else {

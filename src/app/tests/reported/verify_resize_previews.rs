@@ -104,7 +104,7 @@ fn resize_pause(preview: bool, release: bool) -> (i32, bool) {
     } else {
         tracker.clear();
     }
-    let Some(WorkerResult::Restored { failed: 0 }) = rt.execute(
+    let Some(WorkerResult::Restored { failed: 0, .. }) = rt.execute(
         WorkerCommand::RestoreAll(Some(one_output())),
         &AtomicBool::new(false),
     ) else {

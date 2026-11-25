@@ -90,6 +90,47 @@ fn a_floating_window_survives_later_cycles_without_being_retiled() {
     assert_eq!(runtime.backend.frames[&window(20)], outputs().main().frame);
 }
 
+fn debug_parked_frame(
+    debug: &RuntimeDebug,
+    floating: &crate::PhysicalWindowId,
+) -> serde_json::Value {
+    let debug = serde_json::to_value(debug).unwrap();
+    let id = serde_json::to_value(floating).unwrap();
+    debug["floating"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|entry| entry["window"] == id)
+        .expect("the float is listed")["parked_original_frame"]
+        .clone()
+}
+
+#[test]
+fn pause_reports_debug_without_the_restored_floats_recovery_frame() {
+    // #548: paused `debug` kept the last tiling snapshot, so a float Pause had
+    // put back still showed its parked recovery frame.
+    let mut runtime = two_tiled_windows();
+    let cancelled = AtomicBool::new(false);
+    let floated = window(10);
+    runtime.toggle_float(outputs(), &cancelled).unwrap();
+    runtime
+        .switch(WorkspaceId::TWO, outputs(), &cancelled)
+        .unwrap();
+    let parked = runtime.debug_state(&outputs());
+    assert!(!debug_parked_frame(&parked, &floated).is_null());
+
+    let Some(WorkerResult::Restored {
+        failed: 0,
+        debug: Some(debug),
+    }) = runtime.execute(WorkerCommand::RestoreAll(Some(outputs())), &cancelled)
+    else {
+        panic!("expected a restore carrying debug state");
+    };
+
+    assert!(runtime.parked.is_empty());
+    assert!(debug_parked_frame(&debug, &floated).is_null());
+}
+
 #[test]
 fn a_floating_window_parks_and_restores_with_its_workspace() {
     let mut runtime = two_tiled_windows();

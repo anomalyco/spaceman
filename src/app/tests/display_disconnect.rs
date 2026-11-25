@@ -584,7 +584,7 @@ fn restore_all_sends_a_window_from_an_unplugged_display_to_main() {
             remaining.frame = displays[1].frame;
         }
         let connected = macos::DisplayOutputs::new(vec![displays[0].clone(), remaining]).unwrap();
-        let Some(WorkerResult::Restored { failed }) = runtime.execute(
+        let Some(WorkerResult::Restored { failed, .. }) = runtime.execute(
             WorkerCommand::RestoreAll(Some(connected)),
             &AtomicBool::new(false),
         ) else {

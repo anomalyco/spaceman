@@ -291,7 +291,8 @@ writes a full arrangement snapshot, so `doctor` shows what the screen held then.
 from the same state, including Fullscreen Layout, a focused float, an empty workspace and a focus
 command still settling. It reports each display's Fullscreen Layout state and tiled
 geometry plus floating-window workspace, parked state, and original recovery frame so workspace leaks
-can be diagnosed safely. Its `parking_exempt` list names managed windows that repeatedly rejected
+can be diagnosed safely. While paused it shows the state the last restore left, so a window Pause
+put back no longer reports a recovery frame. Its `parking_exempt` list names managed windows that repeatedly rejected
 parking positions and are therefore left visible across workspace switches for the current session.
 
 `doctor` summarizes the arrangement journal (all of it, or the last N hours): agent starts and their
