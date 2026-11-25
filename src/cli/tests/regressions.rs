@@ -545,3 +545,89 @@ fn config_gets_sets_shows_and_resets_trackpad_swipe() {
     assert_eq!(reset.exit_code, 0, "{:?}", reset.stderr);
     assert!(!temp.read().contains("trackpad_swipe"));
 }
+
+#[test]
+fn config_edits_keep_every_comment_they_do_not_remove() {
+    const BEFORE: &str = r#"# My Spaceman config.
+version = 1
+
+[settings]
+# Columns on this Mac.
+layout = "columns"
+hud_position = "top"
+
+[settings.gaps]
+# Leave room at every edge.
+outer = 8
+
+# Terminals
+[[rules]]
+bundle_id = "com.apple.Terminal"
+action = "route"
+workspace = 2
+
+# Disabled for now:
+# [[rules]]
+# bundle_id = "com.apple.Safari"
+# action = "route"
+# workspace = 1
+"#;
+    let temp = TempConfig::new("keep-comments");
+    let comments = |source: &str| source.lines().filter(|line| line.starts_with('#')).count();
+
+    // Nothing to change leaves the file byte for byte.
+    for args in [
+        &["config", "reset", "hud_style"][..],
+        &["config", "set", "layout", "columns"][..],
+    ] {
+        temp.write(BEFORE);
+        let outcome = temp.run(args);
+        assert_eq!(outcome.exit_code, 0, "{args:?}: {:?}", outcome.stderr);
+        assert_eq!(temp.read(), BEFORE, "{args:?}");
+    }
+
+    temp.write(BEFORE);
+    let reset = temp.run(&["config", "reset", "hud_position"]);
+    assert_eq!(reset.exit_code, 0, "{:?}", reset.stderr);
+    assert_eq!(temp.read(), BEFORE.replace("hud_position = \"top\"\n", ""));
+
+    // The comment above `outer` goes with it and the table it empties; nothing else does.
+    temp.write(BEFORE);
+    let reset = temp.run(&["config", "reset", "gaps.outer"]);
+    assert_eq!(reset.exit_code, 0, "{:?}", reset.stderr);
+    assert_eq!(
+        temp.read(),
+        BEFORE.replace(
+            "[settings.gaps]\n# Leave room at every edge.\nouter = 8\n\n",
+            ""
+        )
+    );
+
+    temp.write(BEFORE);
+    let set = temp.run(&["config", "set", "layout", "dwindle"]);
+    assert_eq!(set.exit_code, 0, "{:?}", set.stderr);
+    assert_eq!(
+        temp.read(),
+        BEFORE.replace("layout = \"columns\"", "layout = \"dwindle\"")
+    );
+
+    for args in [
+        &["workspaces", "assign", "9", "main"][..],
+        &["rules", "add", "--app", "com.apple.Notes", "--float"][..],
+        &["rules", "remove", "1"][..],
+    ] {
+        temp.write(BEFORE);
+        let outcome = temp.run(args);
+        assert_eq!(outcome.exit_code, 0, "{args:?}: {:?}", outcome.stderr);
+        let source = temp.read();
+        assert!(Config::parse(&source).is_ok(), "{args:?}: {source}");
+        assert!(
+            source.contains("# Disabled for now:\n# [[rules]]\n# bundle_id = \"com.apple.Safari\""),
+            "{args:?}: {source}"
+        );
+        assert!(
+            comments(&source) >= comments(BEFORE) - 1,
+            "{args:?}: {source}"
+        );
+    }
+}

@@ -22,6 +22,11 @@ spaceman config-check "$HOME/Library/Application Support/Spaceman/config.toml"
 
 The complete example is [config.example.toml](../config.example.toml).
 
+`spaceman config set|reset`, `spaceman rules add|remove`, and `spaceman workspaces assign|clear`
+edit the file in place: they change only the key or entry they name (and remove a table they
+empty), and keep every other comment, key order, and formatting. A comment directly above a key or
+entry they remove goes with it. A command that changes nothing leaves the file untouched.
+
 ## Current Schema
 
 The parser rejects unknown fields. The root must contain `version = 1` and may contain an optional
