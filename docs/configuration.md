@@ -452,7 +452,8 @@ about 150 ms: passing over a tile on the way to the menu bar does not switch the
 belongs to, and a pointer left resting never takes focus back after a keyboard focus change or a
 workspace switch. Only tiles on a visible workspace take focus this way: a floating window, the
 Scratchpad, or an unmanaged window in front of the pointer keeps focus where it is, and hovering
-one does not focus it. Nothing changes while a mouse button is held, a menu is open, a drag or a
+one does not focus it. That includes a float that appears over the pointer after it came to rest,
+such as one a workspace switch shows while Spaceman is still busy. Nothing changes while a mouse button is held, a menu is open, a drag or a
 macOS Space slide is under way, or the pointer is over the menu bar, the Dock, the Workspace HUD or
 Settings. The pointer resting where `settings.mouse_follows_focus` put it is not a hover, so the
 two work together without feeding each other. That holds only until the pointer moves: once you

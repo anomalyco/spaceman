@@ -141,7 +141,8 @@ Focus follows mouse ([labs] focus_follows_mouse, off)      // ws.focus-follows-m
 ├── Worker (src/app/focus/hover.rs): a tile on a visible workspace -> focused, pointer untouched;
 │   floats, the Scratchpad and unmanaged windows -> nothing
 ├── Skipped when the pointer has moved on, rests where mouse follows focus warped it, a button is
-│   held, a drag or a Space slide is under way
+│   held, a drag or a Space slide is under way, or another window is in front of the point by the
+│   time the worker runs the hover (a float a queued workspace switch showed; #539)
 └── The warp point is skipped only until the pointer leaves it: moving away (resting elsewhere or
     not) and back to that exact point hovers again (#522; src/app/tests/focus_follows_mouse.rs)
 
