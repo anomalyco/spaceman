@@ -19,9 +19,13 @@ use crate::scratchpad::{Scratchpad, ScratchpadEntry};
 /// Why a float floats.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) enum FloatCause {
-    /// Toggle Float, the setup tour, or a restored or recalled float: it floats until the user
-    /// toggles it back, whatever its rules say.
+    /// Toggle Float, the setup tour, or a recalled float: it floats until the user toggles it
+    /// back, whatever its rules say.
     Manual,
+    /// A float restored from saved state, which does not say why it floated. It floats by hand
+    /// until its first observation settles it: [`FloatCause::Automatic`] if a float rule
+    /// matches (#160), [`FloatCause::Manual`] otherwise. Never persisted.
+    Restored,
     /// A rule, a built-in default, or the window's own traits (a fixed-size panel): it tiles
     /// again once none of them holds.
     Automatic,
@@ -210,17 +214,25 @@ impl Workspaces {
             self.residency.get(window),
             Some(
                 Residency::Floating {
-                    cause: FloatCause::Manual,
+                    cause: FloatCause::Manual | FloatCause::Restored,
                     ..
                 } | Residency::Scratchpad { .. }
             )
         )
     }
 
-    /// A float rule now floats `window`: removing the rule later tiles it again (#160).
-    pub(crate) fn hand_float_to_rule(&mut self, window: &PhysicalWindowId) {
-        if let Some(Residency::Floating { cause, .. }) = self.residency.records.get_mut(window) {
-            *cause = FloatCause::Automatic;
+    /// Settles why a restored float floats on its first observation: a matching float rule
+    /// takes it, so removing the rule later tiles it again (#160); otherwise it floats by hand.
+    /// A float the user set this session stays manual whatever its rules say (#493).
+    pub(crate) fn settle_restored_float(&mut self, window: &PhysicalWindowId, rule_floats: bool) {
+        if let Some(Residency::Floating { cause, .. }) = self.residency.records.get_mut(window)
+            && *cause == FloatCause::Restored
+        {
+            *cause = if rule_floats {
+                FloatCause::Automatic
+            } else {
+                FloatCause::Manual
+            };
         }
     }
 
