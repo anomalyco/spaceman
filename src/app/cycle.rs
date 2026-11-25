@@ -57,11 +57,11 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
             if !self.parked.contains_key(&window) {
                 continue;
             }
-            let retry_throttled = self
-                .recently_parked
-                .get(&window)
-                .is_some_and(|attempted_at| attempted_at.elapsed() < RESTORE_RETRY_INTERVAL);
-            if let Some(target) = self.scratchpad.pending_summon(&window) {
+            let now = self.backend.now();
+            let retry_throttled = self.parked.last_write(&window).is_some_and(|attempted_at| {
+                now.saturating_duration_since(attempted_at) < RESTORE_RETRY_INTERVAL
+            });
+            if let Some(target) = self.parked.summon_destination(&window) {
                 if !matches!(
                     self.finish_scratchpad_summon(&window, target, retry_throttled),
                     macos::ApplyOutcome::Applied | macos::ApplyOutcome::Gone

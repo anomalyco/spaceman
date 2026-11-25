@@ -42,19 +42,9 @@ pub(super) struct WorkspaceRuntime<B = MacWorkspaceBackend> {
     /// target frame; past `APPLY_ATTEMPT_LIMIT` the target is frozen.
     pub(super) apply_attempts:
         [HashMap<crate::PhysicalWindowId, (crate::Rect, u8)>; WorkspaceId::COUNT],
-    pub(super) parked: HashMap<crate::PhysicalWindowId, crate::Rect>,
-    /// When each window was last parked. Apps apply position writes
-    /// asynchronously, so a fresh park must settle before an on-screen
-    /// observation may be trusted as a genuine reappearance.
-    pub(super) recently_parked: HashMap<crate::PhysicalWindowId, Instant>,
-    /// When each window last un-parked itself (confirmed by the window server).
-    pub(super) recent_heals: HashMap<crate::PhysicalWindowId, Instant>,
-    /// Consecutive re-parks undone by the app; past the limit the window's
-    /// reappearance is honored instead of fought.
-    pub(super) repark_attempts: HashMap<crate::PhysicalWindowId, u8>,
-    /// Windows that repeatedly un-park themselves. They remain managed and
-    /// tiled, but are left visible across workspace switches for the session.
-    pub(super) parking_exempt: HashSet<crate::PhysicalWindowId>,
+    /// Parked windows' recovery frames and parking phases, and the windows
+    /// exempt from parking because they keep un-parking themselves.
+    pub(super) parked: ParkTable,
     /// Bound windows omitted from the AX snapshot but still listed by CG,
     /// with their settling and close-recheck state.
     pub(super) omitted_windows: HashMap<crate::PhysicalWindowId, cycle::Omission>,
@@ -187,7 +177,7 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
                 }
                 let requested = self.parked.len();
                 // Restored scratchpad windows are ordinary windows when tiling resumes.
-                self.scratchpad.clear();
+                self.clear_scratchpad();
                 let failed = self.restore_all();
                 self.journal_restore("restore all", requested, failed);
                 // Pause, quit and restart all restore first; the layout they
@@ -392,11 +382,7 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
             constrained: std::array::from_fn(|_| HashMap::new()),
             applied: std::array::from_fn(|_| HashMap::new()),
             apply_attempts: std::array::from_fn(|_| HashMap::new()),
-            parked,
-            recently_parked: HashMap::new(),
-            recent_heals: HashMap::new(),
-            repark_attempts: HashMap::new(),
-            parking_exempt: HashSet::new(),
+            parked: parked.into(),
             omitted_windows: HashMap::new(),
             inaccessible_since: HashMap::new(),
             minimum_sizes: HashMap::new(),
@@ -674,9 +660,7 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
         self.applied[workspace.index()].remove(window);
         self.apply_attempts[workspace.index()].remove(window);
         self.omitted_windows.remove(window);
-        self.recently_parked.remove(window);
-        self.recent_heals.remove(window);
-        self.repark_attempts.remove(window);
+        self.parked.forget_heals(window);
         self.inaccessible_since.remove(window);
         self.minimum_sizes.remove(window);
         self.manual_floating.remove(window);

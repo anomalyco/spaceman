@@ -17,7 +17,7 @@ fn age(rt: &mut WorkspaceRuntime<FakeBackend>, by: Duration) {
     for applied in &mut rt.applied {
         applied.values_mut().for_each(|frame| back(&mut frame.at));
     }
-    rt.recently_parked.values_mut().for_each(back);
+    rt.backend.advance(by);
 }
 
 fn tile_frame_after_reconnect(case: Case) -> crate::Rect {

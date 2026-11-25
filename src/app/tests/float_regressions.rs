@@ -51,7 +51,7 @@ fn restart(
     WorkspaceRuntime::with_backend_config_state(
         ManagementScope::Both,
         runtime.backend,
-        runtime.parked,
+        runtime.parked.recovery_frames(),
         config,
         Some(state),
     )

@@ -398,28 +398,29 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
             };
             let mut removed = Vec::new();
             for window in &pending {
-                let Some(original) = self.parked.get(window).copied() else {
+                let Some(target) = self.recovery_target(window) else {
                     continue;
                 };
-                let target = self.restore_target(original);
                 if frames.get(&window.window_id).is_some_and(|actual| {
                     actual.position_approximately_equals(target, RESTORE_CONFIRM_TOLERANCE)
                 }) {
-                    self.commit_unparked(window);
-                    removed.push((window.clone(), original));
+                    removed.extend(self.commit_unparked(window).map(|r| (window.clone(), r)));
                 }
             }
             if last_rewrite.elapsed() >= REVEAL_REWRITE_INTERVAL {
                 last_rewrite = Instant::now();
                 for window in &pending {
-                    let Some(frame) = self.parked.get(window).copied() else {
+                    let (Some(record), Some(target)) = (
+                        self.parked.record(window).cloned(),
+                        self.recovery_target(window),
+                    ) else {
                         continue;
                     };
                     if matches!(
-                        self.write_restore_position(window, frame),
+                        self.write_restore_position(window, target),
                         macos::ApplyOutcome::Gone
                     ) {
-                        removed.push((window.clone(), frame));
+                        removed.push((window.clone(), record));
                     }
                 }
             }
@@ -501,13 +502,11 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
             // A pending restore may land after rollback. Supersede that write
             // even when its recovery entry has not yet been retired.
             let _: macos::ApplyOutcome = self.park_window(window, output, outputs);
-            // Spaceman revealed this window itself. Even when the re-park write
-            // could not land (mid Space slide), seeing it on screen right
-            // after is not the app or the user summoning it, so heal must not
-            // re-home it during the settle grace (#329).
-            if self.parked.contains_key(window) {
-                self.recently_parked.insert(window.clone(), Instant::now());
-            }
+            // Spaceman revealed this window itself and issued its park. Even
+            // when that write could not land (mid Space slide), seeing it on
+            // screen right after is not the app or the user summoning it, so it
+            // settles like any park and heal leaves it alone (#329).
+            self.parked.park_issued(window, self.backend.now());
         }
     }
 

@@ -11,7 +11,7 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
     /// Whether `window` stays on screen through workspace switches: it is pinned, or its app
     /// keeps un-parking it.
     pub(super) fn stays_on_screen(&self, window: &crate::PhysicalWindowId) -> bool {
-        self.parking_exempt.contains(window) || self.workspaces.is_pinned(window)
+        self.parked.is_exempt(window) || self.workspaces.is_pinned(window)
     }
 
     /// The disposition rules and defaults give an unobserved window, judged by its app's bundle

@@ -103,6 +103,9 @@ fn a_config_without_spacing_tiles_edge_to_edge() {
 struct ToleranceAwareBackend(FakeBackend);
 
 impl WorkspaceBackend for ToleranceAwareBackend {
+    fn now(&self) -> Instant {
+        self.0.now()
+    }
     fn snapshot(
         &mut self,
         cycle: u64,

@@ -532,16 +532,70 @@ fn clamshell_display_change_does_not_adopt_hidden_windows_when_repark_is_transie
         "transient Gone during clamshell display change must not adopt hidden window into active workspace"
     );
     assert!(runtime.parked.contains_key(&hidden_win));
-    assert!(runtime.awaiting_display_repark(&hidden_win));
+    assert!(runtime.parked.awaits_display(&hidden_win));
 
     // Once AX recovers, follow_displays re-parks the window off the external display.
     runtime.backend.frames.insert(hidden_win.clone(), external);
     runtime.follow_displays(&after);
-    assert!(!runtime.awaiting_display_repark(&hidden_win));
+    assert!(!runtime.parked.awaits_display(&hidden_win));
     assert_eq!(
         runtime.workspaces.workspace_of(&hidden_win),
         Some(hidden_ws)
     );
     let expected = crate::geometry::parked_frame(external, &[external], external);
     assert_eq!(runtime.backend.frames[&hidden_win].x, expected.x);
+}
+
+/// #406: a parked window whose display was unplugged restores onto Main on
+/// pause or quit, even when another display now covers its old position.
+#[test]
+fn restore_all_sends_a_window_from_an_unplugged_display_to_main() {
+    let all = three_outputs();
+    let displays = all.displays();
+    let original = frame(displays[1].frame.x + 100);
+    let window = window(60);
+    for remaining_covers_it in [false, true] {
+        let backend = FakeBackend {
+            frames: HashMap::from([(window.clone(), original)]),
+            observation: Some(observation(&window, original)),
+            focused: Some(window.clone()),
+            frontmost: Some(window.app.clone()),
+            ..FakeBackend::default()
+        };
+        let mut runtime = runtime(backend);
+        for action in [
+            WorkerAction::Retile,
+            WorkerAction::ToggleFloat,
+            WorkerAction::SelectWorkspace(WorkspaceId::new(7).unwrap()),
+        ] {
+            runtime.backend.frames.insert(window.clone(), original);
+            let Some(WorkerResult::Status { result, .. }) = runtime.execute(
+                WorkerCommand::Action(action, all.clone()),
+                &AtomicBool::new(false),
+            ) else {
+                panic!("missing worker status");
+            };
+            assert_eq!(result.unwrap().failed, 0);
+        }
+        assert_eq!(runtime.parked.get(&window), Some(&original));
+
+        let mut remaining = displays[2].clone();
+        if remaining_covers_it {
+            remaining.frame = displays[1].frame;
+        }
+        let connected = macos::DisplayOutputs::new(vec![displays[0].clone(), remaining]).unwrap();
+        let Some(WorkerResult::Restored { failed }) = runtime.execute(
+            WorkerCommand::RestoreAll(Some(connected)),
+            &AtomicBool::new(false),
+        ) else {
+            panic!("missing restoration result");
+        };
+        assert_eq!(failed, 0);
+        assert!(!runtime.backend.persisted.contains_key(&window));
+        let restored = runtime.backend.frames[&window];
+        assert!(
+            all.main().frame.contains_center(restored),
+            "covered: {remaining_covers_it}, restored at {restored:?}"
+        );
+    }
 }

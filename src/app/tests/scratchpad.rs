@@ -474,12 +474,10 @@ fn delayed_scratchpad_summon_stays_centered_when_a_later_cycle_confirms_it() {
         runtime.parked.contains_key(&w),
         "recovery frame stays persisted until confirmed"
     );
-    assert_eq!(runtime.scratchpad.pending_summon(&w), Some(centered));
+    assert_eq!(runtime.parked.summon_destination(&w), Some(centered));
 
     // Expire the retry throttle and let the window server catch up to the centered frame.
-    runtime
-        .recently_parked
-        .insert(w.clone(), Instant::now() - Duration::from_secs(5));
+    runtime.backend.advance(Duration::from_secs(5));
     runtime.backend.server_frames.insert(w.clone(), centered);
     runtime.cycle(outputs(), &AtomicBool::new(false)).unwrap();
 
@@ -488,7 +486,7 @@ fn delayed_scratchpad_summon_stays_centered_when_a_later_cycle_confirms_it() {
         "later cycle must confirm the centered summon frame, not restore the old tile position"
     );
     assert!(!runtime.parked.contains_key(&w));
-    assert_eq!(runtime.scratchpad.pending_summon(&w), None);
+    assert_eq!(runtime.parked.summon_destination(&w), None);
 }
 
 #[test]
@@ -502,7 +500,7 @@ fn second_toggle_supersedes_an_unconfirmed_scratchpad_summon_with_a_park_write()
     rt.backend.server_frames.insert(w.clone(), parked);
     rt.backend.frozen_server_frames = true;
     scratchpad(&mut rt, ScratchpadCommand::Toggle).unwrap();
-    assert!(rt.scratchpad.pending_summon(&w).is_some());
+    assert!(rt.parked.summon_destination(&w).is_some());
 
     rt.backend.calls.clear();
     scratchpad(&mut rt, ScratchpadCommand::Toggle).unwrap();
@@ -515,7 +513,7 @@ fn second_toggle_supersedes_an_unconfirmed_scratchpad_summon_with_a_park_write()
         )),
         "hide must supersede the unconfirmed summon with an off-screen park write"
     );
-    assert_eq!(rt.scratchpad.pending_summon(&w), None);
+    assert_eq!(rt.parked.summon_destination(&w), None);
     assert_hidden(&rt, &w);
 }
 
@@ -547,8 +545,7 @@ fn background_bounds_reassertion_reparks_hidden_scratchpad_window_while_frontmos
     // while another app stays frontmost.
     rt.backend.focused = Some(other.clone());
     rt.backend.frontmost = Some(other.app.clone());
-    rt.recently_parked
-        .insert(target.clone(), Instant::now() - Duration::from_secs(5));
+    rt.backend.advance(Duration::from_secs(5));
     rt.backend.frames.insert(target.clone(), recovery);
     rt.backend.server_frames.insert(target.clone(), recovery);
 
@@ -571,8 +568,7 @@ fn background_bounds_reassertion_reparks_hidden_scratchpad_window_while_frontmos
 
     // Control: frontmost activation still honors the reappearance and adopts it.
     let recovery = rt.parked[&target];
-    rt.recently_parked
-        .insert(target.clone(), Instant::now() - Duration::from_secs(5));
+    rt.backend.advance(Duration::from_secs(5));
     rt.backend.frames.insert(target.clone(), recovery);
     rt.backend.server_frames.insert(target.clone(), recovery);
     rt.backend.focused = Some(target.clone());
@@ -598,7 +594,7 @@ fn tiling_an_unconfirmed_scratchpad_summon_keeps_tiles_separate_after_arrival() 
         .insert(w.clone(), rt.backend.frames[&w]);
     rt.backend.frozen_server_frames = true;
     scratchpad(&mut rt, ScratchpadCommand::Toggle).unwrap();
-    assert!(rt.scratchpad.pending_summon(&w).is_some());
+    assert!(rt.parked.summon_destination(&w).is_some());
 
     // Tile while the summon is still unconfirmed.
     run(&mut rt, WorkerAction::ToggleFloat).unwrap();
@@ -611,8 +607,7 @@ fn tiling_an_unconfirmed_scratchpad_summon_keeps_tiles_separate_after_arrival() 
     // overwrite the tile with its pre-summon recovery frame.
     rt.backend.server_frames.insert(w.clone(), tile_frame);
     rt.backend.frozen_server_frames = false;
-    rt.recently_parked
-        .insert(w.clone(), Instant::now() - Duration::from_secs(5));
+    rt.backend.advance(Duration::from_secs(5));
     run(&mut rt, WorkerAction::Retile).unwrap();
     assert_eq!(rt.backend.frames[&w], tile_frame);
     assert_ne!(rt.backend.frames[&w], rt.backend.frames[&sibling]);
@@ -632,7 +627,7 @@ fn switching_away_before_delayed_summon_confirmation_remembers_floated_size() {
     rt.backend.frozen_server_frames = true;
     scratchpad(&mut rt, ScratchpadCommand::Toggle).unwrap();
     assert_eq!(rt.backend.frames[&w], summoned());
-    assert!(rt.scratchpad.pending_summon(&w).is_some());
+    assert!(rt.parked.summon_destination(&w).is_some());
 
     // Summon arrives on the window server, then the user switches away before a cycle confirms it.
     rt.backend.frozen_server_frames = false;
@@ -646,7 +641,7 @@ fn switching_away_before_delayed_summon_confirmation_remembers_floated_size() {
     run(&mut rt, WorkerAction::Retile).unwrap();
     assert_eq!(rt.backend.frames[&w], summoned());
     assert_eq!(rt.backend.server_frames[&w], summoned());
-    assert_eq!(rt.scratchpad.pending_summon(&w), None);
+    assert_eq!(rt.parked.summon_destination(&w), None);
     assert!(!rt.parked.contains_key(&w));
 }
 
@@ -885,7 +880,7 @@ fn settled_scratchpad_summon_confirms_translated_target_after_display_removal() 
         WorkerAction::Scratchpad(ScratchpadCommand::Toggle),
         outputs(),
     );
-    let target = rt.scratchpad.pending_summon(&w).expect("delayed summon");
+    let target = rt.parked.summon_destination(&w).expect("delayed summon");
 
     // Secondary display disconnects and the window settles at the translated frame on main.
     rt.backend.frozen_server_frames = false;
@@ -897,10 +892,9 @@ fn settled_scratchpad_summon_confirms_translated_target_after_display_removal() 
     };
     rt.backend.frames.insert(w.clone(), settled);
     rt.backend.server_frames.insert(w.clone(), settled);
-    rt.recently_parked
-        .insert(w.clone(), Instant::now() - Duration::from_secs(5));
+    rt.backend.advance(Duration::from_secs(5));
     exec(&mut rt, WorkerAction::Retile, main_only.clone());
-    assert_eq!(rt.scratchpad.pending_summon(&w), None);
+    assert_eq!(rt.parked.summon_destination(&w), None);
     assert!(!rt.parked.contains_key(&w));
 
     // A subsequent drag and pause both preserve the dragged frame.
@@ -953,7 +947,7 @@ fn moving_unconfirmed_scratchpad_float_preserves_summoned_position() {
                 0
             );
             let summoned = rt.backend.frames[&w];
-            assert!(rt.scratchpad.pending_summon(&w).is_some());
+            assert!(rt.parked.summon_destination(&w).is_some());
             rt.backend.frozen_server_frames = false;
             if arrived {
                 rt.backend.server_frames.insert(w.clone(), summoned);
@@ -974,8 +968,7 @@ fn moving_unconfirmed_scratchpad_float_preserves_summoned_position() {
                     0
                 );
             }
-            rt.recently_parked
-                .insert(w.clone(), Instant::now() - Duration::from_secs(5));
+            rt.backend.advance(Duration::from_secs(5));
             for _ in 0..2 {
                 assert_eq!(run(&mut rt, WorkerAction::Retile).unwrap().failed, 0);
             }

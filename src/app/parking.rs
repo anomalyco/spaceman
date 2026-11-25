@@ -1,15 +1,12 @@
 use super::*;
 
-/// How long a fresh park must settle before an on-screen observation of that
-/// window is trusted as a genuine reappearance rather than in-flight movement.
-const PARK_SETTLE_GRACE: Duration = Duration::from_secs(2);
+mod table;
+pub(super) use table::{ParkRecord, ParkTable};
+
 /// Accessibility lookups fail transiently, notably right after Spaceman or an
 /// application launches. A window the window server still lists keeps its
 /// slot for this long before an Accessibility "gone" is believed.
 pub(super) const INACCESSIBLE_GRACE: Duration = Duration::from_secs(30);
-/// Two confirmed self-un-parks within this window exempt the window from parking:
-/// its application insists on managing it, and fighting back loses.
-const PARKING_EXEMPT_WINDOW: Duration = Duration::from_secs(300);
 /// A restore is confirmed when the window server reports the window near its
 /// target. Loose on purpose: apps may clamp the exact position, while a
 /// still-parked window sits a full display dimension away.
@@ -42,11 +39,8 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
         let Some(original) = self.parked.get(&window.id).copied() else {
             return;
         };
-        if self.awaiting_display_repark(&window.id)
-            || self
-                .recently_parked
-                .get(&window.id)
-                .is_some_and(|parked_at| parked_at.elapsed() < PARK_SETTLE_GRACE)
+        if self.parked.awaits_display(&window.id)
+            || self.parked.settling(&window.id, self.backend.now())
         {
             // The park write may still be applying inside the app; wait it out.
             return;
@@ -73,7 +67,7 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
 
     /// Honor a window that will not stay parked: drop the recovery frame and
     /// re-home it to the workspace it insists on appearing on. A second honor
-    /// within [`PARKING_EXEMPT_WINDOW`] exempts it from further parking.
+    /// within five minutes exempts it from further parking.
     fn honor_reappearance(
         &mut self,
         window: &crate::PhysicalWindowId,
@@ -81,23 +75,18 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
         original: crate::Rect,
         target: &ResolvedWorkspace,
     ) {
-        self.commit_unparked(window);
+        let record = self.commit_unparked(window);
         log_event!(
             "heal: {:?} reappeared at {:?}; dropping recovery frame {:?}",
             window,
             frame,
             original
         );
-        self.persist_removals_or_rollback(vec![(window.clone(), original)]);
+        self.persist_removals_or_rollback(record.map(|record| (window.clone(), record)));
         if self.parked.contains_key(window) {
             return;
         }
-        self.recent_heals
-            .retain(|_, healed_at| healed_at.elapsed() < PARKING_EXEMPT_WINDOW);
-        let repeatedly_unparked = self
-            .recent_heals
-            .insert(window.clone(), Instant::now())
-            .is_some();
+        let repeatedly_unparked = self.parked.note_heal(window, self.backend.now());
         let workspace = target.workspace;
         if self.workspaces.floating_workspace_of(window).is_some() {
             log_event!(
@@ -125,7 +114,6 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
                 "parking exemption: {:?} keeps un-parking itself; leaving it visible",
                 window
             );
-            self.parking_exempt.insert(window.clone());
         }
     }
 
@@ -220,9 +208,10 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
         }
         self.order_back_to_front(&mut candidates, |(_, window, ..)| window.window_id);
         for (_, window, frame, _) in &candidates {
-            self.parked.insert(window.clone(), *frame);
+            let display = self.recovery_display(*frame);
+            self.parked.insert(window.clone(), *frame, display);
         }
-        if let Err(error) = self.backend.persist_parked(&self.parked) {
+        if let Err(error) = self.persist_parked() {
             for (_, window, _, _) in &candidates {
                 self.parked.remove(window);
             }
@@ -233,6 +222,7 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
 
         let mut restored = Vec::new();
         for (workspace, window, frame, target) in candidates {
+            let record = self.parked.record(&window).cloned();
             log_event!(
                 "park inactive: {:?} (workspace {}) from {:?}",
                 window,
@@ -245,11 +235,10 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
             }
             match outcome {
                 macos::ApplyOutcome::Applied => {
-                    self.recently_parked.insert(window.clone(), Instant::now());
+                    self.parked.park_applied(&window, self.backend.now());
                 }
                 macos::ApplyOutcome::Gone => {
-                    self.parked.remove(&window);
-                    restored.push((window.clone(), frame));
+                    restored.extend(self.parked.remove(&window).map(|r| (window.clone(), r)));
                     self.forget_window(workspace, &window);
                 }
                 _ => {
@@ -257,7 +246,7 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
                     // Only an applied or gone restore retires the entry.
                     self.restore_window_uncommitted(&window);
                     if !self.parked.contains_key(&window) {
-                        restored.push((window, frame));
+                        restored.extend(record.map(|record| (window, record)));
                     }
                 }
             }
@@ -276,32 +265,20 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
         output: crate::Rect,
         context: &ParkContext<'_>,
     ) {
-        if self.awaiting_display_repark(window) {
+        if self.parked.awaits_display(window) {
             return;
         }
         let Some(server) = context.server_frames.get(&window.window_id).copied() else {
             return;
         };
+        let now = self.backend.now();
         if !crate::geometry::shows_on(server, context.displays) {
             // Only a window that STAYED parked past the settle grace ends a
             // fight; right after a re-park write the app may still undo it.
-            if self
-                .recently_parked
-                .get(window)
-                .is_none_or(|parked_at| parked_at.elapsed() >= PARK_SETTLE_GRACE)
-            {
-                self.repark_attempts.remove(window);
-            }
+            self.parked.stayed_parked(window, now);
             return;
         }
-        if context.frontmost.as_ref() == Some(&window.app) {
-            return;
-        }
-        if self
-            .recently_parked
-            .get(window)
-            .is_some_and(|parked_at| parked_at.elapsed() < PARK_SETTLE_GRACE)
-        {
+        if context.frontmost.as_ref() == Some(&window.app) || self.parked.settling(window, now) {
             return;
         }
         if server.width < original.width.saturating_sub(RESTORE_CONFIRM_TOLERANCE)
@@ -318,7 +295,7 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
             // position stays parked off-screen.
             return;
         }
-        if self.repark_attempts.get(window).copied().unwrap_or(0) >= REPARK_ATTEMPT_LIMIT {
+        if self.parked.reparks(window) >= REPARK_ATTEMPT_LIMIT {
             // The app undoes every park. Fighting on would flicker forever;
             // honor the reappearance instead (re-home, then exempt it from
             // parking if it keeps happening).
@@ -356,8 +333,7 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
             // Only a confirmed park write that the app later undoes proves the
             // app is fighting parking; transient Gone/Unavailable errors during
             // display reconfiguration must not escalate and adopt the window.
-            *self.repark_attempts.entry(window.clone()).or_insert(0) += 1;
-            self.recently_parked.insert(window.clone(), Instant::now());
+            self.parked.repark_applied(window, now);
         }
     }
 
@@ -376,11 +352,8 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
             window,
             workspace
         );
-        let frame = self.parked.get(window).copied();
-        self.commit_unparked(window);
-        if let Some(frame) = frame {
-            self.persist_removals_or_rollback(vec![(window.clone(), frame)]);
-        }
+        let record = self.commit_unparked(window);
+        self.persist_removals_or_rollback(record.map(|record| (window.clone(), record)));
         self.forget_window(workspace, window);
         true
     }
@@ -404,11 +377,12 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
                     "keeping recovery for {:?}: Accessibility cannot reach it but the window server lists it (another macOS desktop?); it restores once that desktop is shown",
                     window
                 );
-                self.inaccessible_since
-                    .insert(window.clone(), Instant::now());
+                let now = self.backend.now();
+                self.inaccessible_since.insert(window.clone(), now);
             }
             return false;
         }
+        let now = self.backend.now();
         let since = *self
             .inaccessible_since
             .entry(window.clone())
@@ -417,9 +391,9 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
                     "keeping {:?}: Accessibility cannot find it but the window server still lists it",
                     window
                 );
-                Instant::now()
+                now
             });
-        if since.elapsed() < INACCESSIBLE_GRACE {
+        if now.saturating_duration_since(since) < INACCESSIBLE_GRACE {
             return false;
         }
         log_event!(
@@ -439,12 +413,12 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
     pub(super) fn restore_windows(&mut self, windows: Vec<crate::PhysicalWindowId>) -> usize {
         let mut restored = Vec::new();
         for window in &windows {
-            let Some(frame) = self.parked.get(window).copied() else {
+            let Some(record) = self.parked.record(window).cloned() else {
                 continue;
             };
             self.restore_window_uncommitted(window);
             if !self.parked.contains_key(window) {
-                restored.push((window.clone(), frame));
+                restored.push((window.clone(), record));
             }
         }
         self.persist_removals_or_rollback(restored);
@@ -453,7 +427,7 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
         // removal have completed.
         windows
             .iter()
-            .filter(|window| self.parked.contains_key(*window))
+            .filter(|window| self.parked.contains_key(window))
             .count()
     }
 
@@ -475,15 +449,16 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
         window: &crate::PhysicalWindowId,
         frame: crate::Rect,
     ) -> bool {
-        let previous = self.parked.insert(window.clone(), frame);
-        if previous == Some(frame) {
+        if self.parked.get(window) == Some(&frame) {
             return true;
         }
-        if let Err(error) = self.backend.persist_parked(&self.parked) {
+        let display = self.recovery_display(frame);
+        let previous = self.parked.insert(window.clone(), frame, display);
+        if let Err(error) = self.persist_parked() {
             match previous {
-                Some(previous) => self.parked.insert(window.clone(), previous),
-                None => self.parked.remove(window),
-            };
+                Some(previous) => self.parked.put(window.clone(), previous),
+                None => drop(self.parked.remove(window)),
+            }
             log_event!("failed to persist parked window: {error}");
             return false;
         }
@@ -627,11 +602,12 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
         let outcome = self.backend.set_parked_position(window, parked);
         log_event!("park: {:?} from {:?} ({:?})", window, recovery, outcome);
         if matches!(outcome, macos::ApplyOutcome::Applied) {
-            self.recently_parked.insert(window.clone(), Instant::now());
+            self.parked.park_applied(window, self.backend.now());
         } else {
             // Undo onto the frame it had, not the display it was heading to.
             if recovery != original && !self.record_recovery(window, original) {
-                self.parked.insert(window.clone(), original);
+                let display = self.recovery_display(original);
+                self.parked.insert(window.clone(), original, display);
             }
             if !was_parked {
                 let _: macos::ApplyOutcome = self.restore_window(window);
@@ -644,12 +620,10 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
         &mut self,
         window: &crate::PhysicalWindowId,
     ) -> macos::ApplyOutcome {
-        let frame = self.parked.get(window).copied();
+        let record = self.parked.record(window).cloned();
         let outcome = self.restore_window_uncommitted(window);
-        if !self.parked.contains_key(window)
-            && let Some(frame) = frame
-        {
-            self.persist_removals_or_rollback(vec![(window.clone(), frame)]);
+        if !self.parked.contains_key(window) {
+            self.persist_removals_or_rollback(record.map(|record| (window.clone(), record)));
         }
         outcome
     }
@@ -658,16 +632,15 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
         &mut self,
         window: &crate::PhysicalWindowId,
     ) -> macos::ApplyOutcome {
-        let Some(frame) = self.parked.get(window).copied() else {
+        let Some(target) = self.recovery_target(window) else {
             return macos::ApplyOutcome::Applied;
         };
-        let outcome = self.write_restore_position(window, frame);
+        let outcome = self.write_restore_position(window, target);
         if let macos::ApplyOutcome::Applied = outcome {
             // Accessibility read-back is optimistic for apps that apply
             // moves asynchronously. Keep the recovery frame until the
             // window server confirms arrival; cycles retry until it does.
             // A window the window server cannot see is not confirmed.
-            let target = self.restore_target(frame);
             let confirmed = self
                 .backend
                 .window_server_frame(window)
@@ -680,22 +653,22 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
                 log_event!(
                     "restore pending: {:?} not yet at {:?} per the window server",
                     window,
-                    frame
+                    target
                 );
             }
         }
         outcome
     }
 
-    /// Apply a restore write and update transient parking state. Confirmation
-    /// and durable removal remain the caller's responsibility so bulk paths
-    /// can share one window-server snapshot and one persistence transaction.
+    /// Apply a restore write to `target` (already resolved onto the connected
+    /// displays) and update transient parking state. Confirmation and durable
+    /// removal remain the caller's responsibility so bulk paths can share one
+    /// window-server snapshot and one persistence transaction.
     pub(super) fn write_restore_position(
         &mut self,
         window: &crate::PhysicalWindowId,
-        frame: crate::Rect,
+        target: crate::Rect,
     ) -> macos::ApplyOutcome {
-        let target = self.restore_target(frame);
         let mut outcome = self.backend.set_position(window, target);
         log_event!("restore: {:?} to {:?} ({:?})", window, target, outcome);
         // Accessibility reports a window it cannot resolve as gone; only the
@@ -706,9 +679,9 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
         match outcome {
             macos::ApplyOutcome::Applied => {
                 // Also throttles the next retry and heal consideration.
-                self.recently_parked.insert(window.clone(), Instant::now());
+                self.parked.restore_written(window, self.backend.now());
             }
-            macos::ApplyOutcome::Gone => self.commit_unparked(window),
+            macos::ApplyOutcome::Gone => drop(self.commit_unparked(window)),
             _ => {}
         }
         outcome
@@ -723,32 +696,43 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
             if matches!(
                 result.outcome,
                 macos::ApplyOutcome::Applied | macos::ApplyOutcome::Constrained
-            ) && let Some(frame) = self.parked.get(&result.window).copied()
+            ) && let Some(record) = self.commit_unparked(&result.window)
             {
-                self.commit_unparked(&result.window);
-                retired.push((result.window.clone(), frame));
+                retired.push((result.window.clone(), record));
             }
         }
         self.persist_removals_or_rollback(retired);
     }
 
-    /// The window is confirmed no longer parked; retire all parking state.
-    pub(super) fn commit_unparked(&mut self, window: &crate::PhysicalWindowId) {
-        self.parked.remove(window);
-        self.recently_parked.remove(window);
-        self.repark_attempts.remove(window);
+    /// The window is confirmed no longer parked; retire all parking state and
+    /// return its record, which stays in memory until its removal persists.
+    pub(super) fn commit_unparked(
+        &mut self,
+        window: &crate::PhysicalWindowId,
+    ) -> Option<ParkRecord> {
         self.inaccessible_since.remove(window);
+        self.parked.remove(window)
     }
 
+    /// Durably write the recovery frames, in the `parked-windows.json` format.
+    pub(super) fn persist_parked(&mut self) -> Result<(), String> {
+        self.backend.persist_parked(&self.parked.recovery_frames())
+    }
+
+    /// Persist the removal of `restored`, or put their records back as plain
+    /// recovery data when that fails.
     pub(super) fn persist_removals_or_rollback(
         &mut self,
-        restored: Vec<(crate::PhysicalWindowId, crate::Rect)>,
+        restored: impl IntoIterator<Item = (crate::PhysicalWindowId, ParkRecord)>,
     ) {
+        let restored: Vec<_> = restored.into_iter().collect();
         if restored.is_empty() {
             return;
         }
-        if let Err(error) = self.backend.persist_parked(&self.parked) {
-            self.parked.extend(restored);
+        if let Err(error) = self.persist_parked() {
+            for (window, record) in restored {
+                self.parked.put(window, record.resting());
+            }
             log_event!("failed to persist restored windows: {error}");
         }
     }

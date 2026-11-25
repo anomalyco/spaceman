@@ -203,7 +203,7 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
             });
         };
         for (id, arranged) in windows {
-            let exempt = self.parking_exempt.contains(id);
+            let exempt = self.parked.is_exempt(id);
             if exempt {
                 report(AnomalyKind::ParkingExempt, arranged, None);
             }

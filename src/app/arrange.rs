@@ -219,7 +219,7 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
             }
         }
         let requested = self.parked.len();
-        self.scratchpad.clear();
+        self.clear_scratchpad();
         let failed = self.restore_all();
         self.journal_restore("undo arrangement", requested, failed);
         let mut windows: Vec<_> = originals.into_iter().collect();

@@ -84,6 +84,7 @@ use backend::*;
 use input::{GestureTracker, InputQueue, QueuedInput};
 use journal::JournalState;
 use memory::MemoryState;
+use parking::{ParkRecord, ParkTable};
 use runtime::*;
 use worker::spawn_worker;
 

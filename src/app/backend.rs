@@ -11,6 +11,9 @@ struct ParkedWindowsRef<'a>(
 );
 
 pub(super) trait WorkspaceBackend {
+    /// The worker's clock. Parking's settle, retry and exemption windows read
+    /// time only through it, so tests can step it instead of sleeping.
+    fn now(&self) -> Instant;
     fn snapshot(
         &mut self,
         cycle: u64,
@@ -144,6 +147,10 @@ impl MacWorkspaceBackend {
 }
 
 impl WorkspaceBackend for MacWorkspaceBackend {
+    fn now(&self) -> Instant {
+        Instant::now()
+    }
+
     fn snapshot(
         &mut self,
         cycle: u64,

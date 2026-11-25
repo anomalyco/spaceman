@@ -128,9 +128,24 @@ struct FakeBackend {
     space_change_on_position: bool,
     /// "Move Tab to New Window"; `None` when the window has one tab.
     tab_detach: Option<FakeTabDetach>,
+    /// Virtual time: it moves only when a test advances it.
+    clock: FakeClock,
+}
+
+struct FakeClock(Instant);
+
+impl Default for FakeClock {
+    fn default() -> Self {
+        Self(Instant::now())
+    }
 }
 
 impl FakeBackend {
+    /// Let `by` pass on the worker's clock.
+    fn advance(&mut self, by: Duration) {
+        self.clock.0 += by;
+    }
+
     /// A window the app opens: on screen at `frame` and in its next snapshot.
     fn open_window(&mut self, window: &crate::PhysicalWindowId, frame: crate::Rect) {
         self.frames.insert(window.clone(), frame);
@@ -153,6 +168,10 @@ impl FakeBackend {
 }
 
 impl WorkspaceBackend for FakeBackend {
+    fn now(&self) -> Instant {
+        self.clock.0
+    }
+
     fn confirms_no_windows(&mut self, app: &AppInstanceId) -> bool {
         self.close_probes.push(app.clone());
         self.apps_confirming_no_windows.contains(app)

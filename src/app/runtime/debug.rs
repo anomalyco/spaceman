@@ -94,7 +94,7 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
             tiles,
             floating,
             parking_exempt: {
-                let mut windows: Vec<_> = self.parking_exempt.iter().cloned().collect();
+                let mut windows: Vec<_> = self.parked.exempt_windows().cloned().collect();
                 windows.sort_by_key(|window| (window.app.pid, window.window_id));
                 windows
             },

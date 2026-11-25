@@ -207,7 +207,7 @@ fn a_pin_rule_added_while_a_note_is_parked_brings_it_back() {
     assert!(runtime.parked.contains_key(&window));
 
     // Some time later (past the restore retry throttle) the user adds a pin rule.
-    runtime.recently_parked.clear();
+    runtime.backend.advance(Duration::from_secs(3));
     runtime.replace_config(pin_config());
     runtime.cycle(outputs(), &cancelled).unwrap();
 

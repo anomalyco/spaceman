@@ -45,8 +45,11 @@ This file is the current engineering contract. README and `docs/` describe curre
 - `src/app/runtime.rs`, `src/app/cycle.rs`, `src/app/cycle/affinity.rs`, `src/app/switching.rs`,
   `src/app/parking.rs`, `src/app/commands.rs`, `src/app/backend.rs`: the worker-thread
   `WorkspaceRuntime` — observation cycles and affinity, workspace switches, durable
-  parking/restoration, focused-window commands, and the native/persistence backend seam. Tests live
-  in `src/app/tests.rs` and `src/app/tests/`.
+  parking/restoration, focused-window commands, and the native/persistence/clock backend seam.
+  `src/app/parking/table.rs` is the one record per parked window (recovery frame, its display,
+  settle/restore/summon phase, display re-park epoch) plus parking exemptions; parking reads time
+  only through `WorkspaceBackend::now`, which tests step. Tests live in `src/app/tests.rs` and
+  `src/app/tests/`.
 - `src/onboarding_plan.rs`, `src/app/arrange.rs`, `src/app/app_loop/setup.rs`: the setup tour's
   suggested arrangement — a pure, title-free classifier over the open windows (bundle ID, Launch
   Services category, size, resizability, display width), and the worker's one-shot move of those

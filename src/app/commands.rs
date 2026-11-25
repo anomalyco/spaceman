@@ -296,7 +296,7 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
         // workspace sits off a display corner (possibly another display's), so
         // never navigate from its off-screen frame (#355).
         let on_screen_origin = origin.filter(|window| {
-            !self.parked.contains_key(*window)
+            !self.parked.contains_key(window)
                 && self.suppressed_focus.as_ref() != Some(*window)
                 && self
                     .workspaces

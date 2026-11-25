@@ -555,8 +555,7 @@ fn moving_floating_window_back_before_cross_display_park_settles_restores_on_mai
     rt.backend.frozen_server_frames = false;
     rt.backend.server_frames.insert(w.clone(), park);
     rt.backend.server_frames.insert(w.clone(), newer);
-    rt.recently_parked
-        .insert(w.clone(), Instant::now() - Duration::from_secs(3));
+    rt.backend.advance(Duration::from_secs(3));
     rt.backend.observation = Some(observation(&w, newer));
     assert_eq!(
         rt.cycle(outputs(), &AtomicBool::new(false)).unwrap().failed,
@@ -629,8 +628,7 @@ fn moving_workspace_relocates_pending_parked_float_onto_target_display() {
             rt.workspaces.assignment(WorkspaceId::ONE),
             &DisplaySelector::Secondary
         );
-        rt.recently_parked
-            .insert(w.clone(), Instant::now() - Duration::from_secs(3));
+        rt.backend.advance(Duration::from_secs(3));
         for _ in 0..2 {
             rt.backend.observation = Some(observation(&w, rt.backend.frames[&w]));
             assert_eq!(act(&mut rt, WorkerAction::Retile).failed, 0);

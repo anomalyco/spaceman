@@ -403,25 +403,20 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
                 continue;
             };
             let current = self
-                .scratchpad
-                .pending_summon(window)
+                .parked
+                .summon_destination(window)
                 .map(|summon| self.restore_target(summon))
                 .unwrap_or(recovery);
             if source_output.contains_center(current) {
                 let relocated = translate_frame_to_output(current, source_output, target_output);
                 let _: bool = self.record_recovery(window, relocated);
-                if self.scratchpad.pending_summon(window).is_some() {
-                    self.scratchpad.set_pending_summon(window, Some(relocated));
-                }
+                self.parked.move_summon(window, relocated);
             }
             if !matches!(
                 self.restore_window(window),
                 macos::ApplyOutcome::Applied | macos::ApplyOutcome::Gone
             ) {
                 failed += 1;
-            }
-            if !self.parked.contains_key(window) {
-                self.scratchpad.set_pending_summon(window, None);
             }
         }
 
