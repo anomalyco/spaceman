@@ -675,3 +675,69 @@ fn run_check(args: &[&str], path_override: Option<&Path>) -> Result<String, Stri
         ))
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use std::time::{SystemTime, UNIX_EPOCH};
+
+    use spaceman::config::Config;
+
+    use super::*;
+
+    #[test]
+    fn every_lab_feature_round_trips_through_cli_config() {
+        let nanos = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let dir = std::env::temp_dir().join(format!(
+            "spaceman-cli-labs-round-trip-{}-{nanos}",
+            std::process::id()
+        ));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("config.toml");
+        let help = help::config_help("spaceman");
+
+        for feature in LabFeature::ALL {
+            let key = format!("labs.{}", feature.key());
+            assert_eq!(Key::parse(&key), Ok(Key::Lab(feature)));
+            assert_eq!(Key::Lab(feature).as_str(), key);
+            assert!(help.contains(&key), "config_help is missing {key}");
+
+            let set = run("spaceman", &["set", &key, "true"], Some(&path));
+            assert_eq!(set.exit_code, 0, "{key}: {set:?}");
+            assert_eq!(
+                set.stdout.as_deref(),
+                Some(format!("set {key} = true").as_str())
+            );
+
+            let get = run("spaceman", &["get", &key], Some(&path));
+            assert_eq!(get.exit_code, 0, "{key}: {get:?}");
+            assert_eq!(get.stdout.as_deref(), Some("true"));
+
+            let saved = std::fs::read_to_string(&path).unwrap();
+            let parsed = Config::parse(&saved).unwrap();
+            assert!(parsed.labs().enabled(feature), "{key} should be enabled");
+
+            let reset = run("spaceman", &["reset", &key], Some(&path));
+            assert_eq!(reset.exit_code, 0, "{key}: {reset:?}");
+            assert_eq!(
+                reset.stdout.as_deref(),
+                Some(format!("reset {key} = false").as_str())
+            );
+
+            let get_after = run("spaceman", &["get", &key], Some(&path));
+            assert_eq!(get_after.exit_code, 0, "{key}: {get_after:?}");
+            assert_eq!(get_after.stdout.as_deref(), Some("false"));
+
+            let saved_after = std::fs::read_to_string(&path).unwrap();
+            let parsed_after = Config::parse(&saved_after).unwrap();
+            assert!(
+                !parsed_after.labs().enabled(feature),
+                "{key} should be disabled after reset"
+            );
+        }
+
+        drop(std::fs::remove_dir_all(dir));
+    }
+}

@@ -134,9 +134,11 @@ return, a window not matched by a `route` or `ignore` rule (including one matche
 may return to a remembered workspace; see [Remembered Placements](#remembered-placements). Matching
 `route` and `ignore` rules always win over memory.
 
-Title matching (`title` and `title_contains`) occurs only in memory, against the live title of a
-newly observed window. Titles are not serialized into persisted state, snapshots, `ctl debug`, or
-the HUD; only the filter you write lives in `config.toml`.
+Title matching (`title` and `title_contains`) occurs live in memory against each newly observed
+window; only the filter you write lives in `config.toml`. Local mode-`0600` `window-memory.json`
+stores bounded window titles and `AXDocument` paths solely for relaunch recall (see
+[Security and Privacy](security-and-privacy.md)). Titles never enter `workspace-state.json`,
+`parked-windows.json`, snapshots, logs, `ctl debug`, `doctor`, or the HUD.
 
 ## Workspace HUD
 
@@ -341,7 +343,7 @@ Commands:
 | `layout` | Toggle the active layout's root split axis |
 | `fullscreen` | Toggle Fullscreen Layout |
 | `float` | Float the focused window, or tile it again |
-| `pin` | Pin the focused window on every workspace (floating it first), or unpin it |
+| `pin` | Pin the focused window on every workspace of its display (floating it first), or unpin it |
 | `resize shrink\|grow` | Shrink or grow the focused tile |
 | `resize width\|height POINTS` | Resize the focused window to that width or height (1 to 16384 points) |
 | `balance` | Equalize the focused tile's immediate split |
@@ -377,8 +379,8 @@ Shortcut changes apply live: saving `config.toml` registers the new chords withi
 seconds, without a restart. If the new table can't be registered, the previous shortcuts keep working
 and Settings shows `Shortcuts not applied` with the reason. Settings › Shortcuts keeps listing the
 saved table. While the previous shortcuts are still registered, the pane is marked **Previous
-shortcuts still run** and each action whose running chord differs says so (`Still runs ⌃⌥Y`, or
-`Not running yet`). Once tiling is paused, or the previous shortcuts could not be registered again
+shortcuts still run** and each modifier, workspace, or action row whose running shortcut differs
+says so (`Still runs ⌃⌥Y`, or `Not running yet`). Once tiling is paused, or the previous shortcuts could not be registered again
 either, only the reason stays. Workspaces enabled by a config edit still get their shortcuts on the
 next start. The menu-bar workspace list keeps showing the built-in
 `Option`+number/letter hints next to each workspace. Settings › Workspaces names workspace 10's
@@ -564,9 +566,11 @@ spaceman config reset labs.activity
 ## Remembered Placements
 
 Window identity in workspace state is tied to a running process, so it cannot survive a reboot or an
-application relaunch. Spaceman therefore also remembers, per application bundle identifier, which
-workspace each managed window lived on, whether it floated, and its last on-screen frame. It never
-records window titles.
+application relaunch. Spaceman therefore also remembers, per application bundle identifier in local
+mode-`0600` `window-memory.json`, which workspace each managed window lived on, whether it floated,
+its last on-screen frame, and its bounded window title and `AXDocument` path solely for relaunch
+recall. Titles never enter `workspace-state.json`, `parked-windows.json`, snapshots, logs,
+`ctl debug`, `doctor`, or the HUD.
 
 A new application process that owns no windows yet may claim its remembered placements in four
 cases:
@@ -590,9 +594,10 @@ bundle-level `route` rule does not open a recall, and per-window `route` and `ig
 recall). An ordinary later launch without a qualifying relaunch or returning mark opens on the
 active workspace instead of recalling historical placements.
 
-During a 60-second recall window, eligible windows claim remembered placements: first a window whose
-frame matches a remembered frame within 8 pixels, then one whose size alone matches within 8 pixels
-(a note reopened somewhere else), then the remaining windows in creation order. A
+During a 60-second recall window, eligible windows claim remembered placements: first by exact
+`AXDocument` path, then by exact or fuzzy normalized window title, then a window whose frame matches
+a remembered frame within 8 pixels, then one whose size alone matches within 8 pixels (a note
+reopened somewhere else), then the remaining windows in creation order. A
 claimed window joins its remembered workspace (hidden if that workspace is not visible, and floating
 again if it was saved floating). Windows beyond the remembered count, windows opened after the
 recall window closes, and placements on workspaces that are no longer enabled or managed are adopted
@@ -603,8 +608,9 @@ pixel inside a display corner. Spaceman brings back every such window it did not
 only the focused one), cascading them onto that display, so recall and tiling can adopt them.
 Always-on-top windows, which Spaceman ignores, stay where they are. A window an `ignore` rule
 matches, by its app or its title, stays where it opened; one whose title a rule needs but macOS
-cannot report yet waits until it can. Multi-window applications that restore
-windows with identical frames are matched by creation order, which is a best guess.
+cannot report yet waits until it can. Multi-window applications whose
+windows have no title or share the same title and identical frames are matched by creation order,
+which is a best guess.
 
 A changed arrangement replaces an application's memory only after it holds for 10 seconds while the
 application keeps running, so the windows closing one by one as an application quits do not erase

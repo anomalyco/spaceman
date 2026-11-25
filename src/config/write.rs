@@ -571,4 +571,34 @@ mod tests {
         assert!(saved.contains("title_contains = \"Work —\""));
         drop(std::fs::remove_dir_all(dir));
     }
+
+    #[test]
+    fn config_example_round_trips_keeping_every_comment_and_commented_rules() {
+        let example = include_str!("../../config.example.toml");
+        let saved = save(
+            "example-round-trip",
+            example,
+            &[
+                (WorkspaceId::ONE, DisplaySelector::Secondary),
+                (WorkspaceId::ONE, DisplaySelector::Main),
+            ],
+        );
+        for text in &saved {
+            assert!(lost_comments(example, text).is_empty(), "{text}");
+            assert!(text.contains("# [shortcuts]"), "{text}");
+            assert!(text.contains("# [labs]"), "{text}");
+            Config::parse(text).unwrap();
+        }
+        assert!(
+            saved[0].contains("workspace = 1\nmonitor = \"secondary\"\n"),
+            "{}",
+            saved[0]
+        );
+        assert!(
+            !saved[1].contains("workspace = 1\nmonitor = \"secondary\""),
+            "{}",
+            saved[1]
+        );
+        assert_eq!(saved[1], example);
+    }
 }

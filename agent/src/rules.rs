@@ -110,22 +110,7 @@ impl Doc {
 
     /// The `[labs]` switches as this document sets them.
     pub fn labs(&self) -> LabsConfig {
-        LabsConfig {
-            scratchpad: self.lab(LabFeature::Scratchpad),
-            activity: self.lab(LabFeature::Activity),
-            portrait_edge_rows: self.lab(LabFeature::PortraitEdgeRows),
-            physical_displays: self.lab(LabFeature::PhysicalDisplays),
-            recent_focus: self.lab(LabFeature::RecentFocus),
-            swipe_switch: self.lab(LabFeature::SwipeSwitch),
-            empty_workspace_focus: self.lab(LabFeature::EmptyWorkspaceFocus),
-            float_follows_display: self.lab(LabFeature::FloatFollowsDisplay),
-            workspace_steps: self.lab(LabFeature::WorkspaceSteps),
-            four_finger_swipe: self.lab(LabFeature::FourFingerSwipe),
-            single_window_height: self.lab(LabFeature::SingleWindowHeight),
-            route_all_windows: self.lab(LabFeature::RouteAllWindows),
-            menu_bar_icon_style: self.lab(LabFeature::MenuBarIconStyle),
-            focus_follows_mouse: self.lab(LabFeature::FocusFollowsMouse),
-        }
+        LabsConfig::from_fn(|feature| self.lab(feature))
     }
 
     /// Whether `feature`'s switch is on, read straight from the edited file so a toggle shows
