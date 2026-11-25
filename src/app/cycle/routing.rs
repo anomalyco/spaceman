@@ -40,11 +40,12 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
             .collect();
         routes.sort_by(|left, right| left.0.cmp(&right.0));
         for (window, target, affinity) in routes {
-            // Routed from the managed display it opened on, like any adoption.
+            // Routed from the managed display it opened on, like any adoption: its menu bar
+            // and Dock strips included, though outside the tiling area (#394, #498).
             let Some(source) = frames.get(&window).and_then(|frame| {
                 visible.iter().find(|resolved| {
                     self.scope.manages_selector(&resolved.selector)
-                        && resolved.output.contains_center(*frame)
+                        && resolved.screen.contains_center(*frame)
                 })
             }) else {
                 continue;
