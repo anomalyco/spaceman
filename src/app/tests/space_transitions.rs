@@ -2,8 +2,9 @@
 //! frame (#328), Cmd+Tab out of a native fullscreen app lands on the target
 //! workspace (#329), the outgoing desktop's tile keeps its size while the
 //! slide runs (#334), a swipe never tiles both desktops' windows
-//! together once its slide settles (#431), and fingers on the trackpad hold
-//! layout before macOS reports the change (#513).
+//! together once its slide settles (#431), fingers on the trackpad hold
+//! layout before macOS reports the change (#513), and that hold outlasts
+//! macOS's late Space-change report after a swipe (#572).
 
 use super::*;
 
@@ -507,11 +508,51 @@ fn fingers_swiping_between_desktops_hold_layout_before_any_space_change() {
     // The swipe is reversed: the other desktop slides away again.
     runtime.backend.ordered_out.insert(other.window_id);
     runtime.backend.observation = Some(observe_apps(Some(&left), &[(left.clone(), full)]));
-    runtime.backend.advance(SPACE_TRANSITION_SETTLE);
+    runtime.backend.advance(SPACE_GESTURE_SETTLE);
     runtime.cycle(outputs(), &cancelled).unwrap();
     assert_eq!(runtime.workspaces.workspace_of(&other), None);
     assert_eq!(runtime.backend.frames[&left], full);
     assert!(writes_to(&runtime, &left).iter().all(|frame| *frame == full));
+}
+
+/// #572: macOS reports the Space change a swipe makes about a second after
+/// the fingers lift, with both desktops' windows on screen until then. Layout
+/// holds through that gap, so the arriving window is never tiled beside the
+/// outgoing one and the outgoing tile is never resized.
+#[test]
+fn a_space_change_reported_a_second_after_the_fingers_lift_is_still_held() {
+    let (mut runtime, left, other) = two_desktops();
+    let full = runtime.backend.frames[&left];
+    let cancelled = AtomicBool::new(false);
+    runtime.backend.advance(Duration::from_secs(5));
+    runtime.backend.calls.clear();
+
+    // The fingers' last frame: both desktops' windows are on screen.
+    runtime.backend.space_gesture_at = Some(runtime.backend.now());
+    runtime.backend.ordered_out.remove(&other.window_id);
+    runtime.backend.observation = Some(observe_apps(
+        Some(&left),
+        &[(left.clone(), full), (other.clone(), full)],
+    ));
+    for _ in 0..20 {
+        runtime.backend.advance(Duration::from_millis(50));
+        runtime.cycle(outputs(), &cancelled).unwrap();
+    }
+    assert_eq!(runtime.workspaces.workspace_of(&other), None);
+    assert!(writes_to(&runtime, &left).is_empty());
+    assert!(writes_to(&runtime, &other).is_empty());
+
+    // macOS reports the change; only the arriving desktop is on screen.
+    swipe(&mut runtime, &left, &other);
+    runtime.cycle(outputs(), &cancelled).unwrap();
+    assert_eq!(runtime.workspaces.workspace_of(&left), None);
+    assert_eq!(
+        runtime.workspaces.workspace_of(&other),
+        Some(WorkspaceId::ONE)
+    );
+    assert_eq!(runtime.backend.frames[&other], full);
+    assert_eq!(runtime.backend.frames[&left], full);
+    assert!(writes_to(&runtime, &left).is_empty());
 }
 
 /// A browser with `shown` tiled and focused on workspace 1 and `other`

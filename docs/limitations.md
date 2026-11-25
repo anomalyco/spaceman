@@ -23,11 +23,12 @@ Spaceman is an experimental public preview, not a broadly qualified release.
   workspace when that Space is shown, and tiles whose windows are ordered out while it is shown may
   be released. Layout waits about 0.7 s after each Space slide so the two Spaces' windows are not
   tiled together. A trackpad swipe shows the arriving Space's windows before macOS reports the
-  change, so layout also waits while three or four fingers are on the trackpad and for about 0.7 s
-  after they lift (#513); a three- or four-finger tap or Spaceman's own workspace swipe delays
-  layout the same way. A Space change made from the keyboard (Control+arrow) is held only from
-  when macOS reports it. Accessibility cannot reach a parked window on a Space that isn't showing,
-  so pausing or quitting there waits, with its recovery entry kept, until that Space is shown.
+  change, which comes about a second after the fingers lift, so layout also waits while three or
+  four fingers are on the trackpad and for about 1.5 s after they lift (#513, #572); a three- or
+  four-finger tap or Spaceman's own workspace swipe delays layout the same way. A Space change
+  made from the keyboard (Control+arrow) is held only from when macOS reports it. Accessibility
+  cannot reach a parked window on a Space that isn't showing, so pausing or quitting there waits,
+  with its recovery entry kept, until that Space is shown.
 - Hidden workspaces' windows are parked just past a display's bottom corner. With Mission Control's
   **Group windows by application** off (the macOS default), Mission Control lays windows out by
   position, so parked windows can shrink every thumbnail in the overview (#555). Turn it on in

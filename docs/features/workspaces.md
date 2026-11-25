@@ -571,8 +571,11 @@ on the same letter.
   change and when a swipe is reversed, so the outgoing desktop's tile is not resized and the
   arriving window is not adopted beside it; `src/macos/swipes.rs`
   `three_or_four_touching_fingers_may_be_sliding_between_desktops` covers which touches count.
-  When macOS posts the Space change relative to the slide is not covered, nor is a desktop change
-  made without the trackpad reporting the arriving desktop's windows before the change.
+  `a_space_change_reported_a_second_after_the_fingers_lift_is_still_held` (#572): macOS reports a
+  swipe's Space change about a second after the fingers lift, and layout holds for about 1.5 s
+  after the last touch, so neither desktop's windows are written before the change. That delay is
+  covered only in the test backend; macOS's own timing is not, nor is a desktop change made
+  without the trackpad reporting the arriving desktop's windows before the change.
 - Unit (FakeBackend), `src/app/tests/state_machine.rs`: a seeded, virtual-time run of 3,000 random
   switches, moves, floats, pins, scratchpad commands, drags, resizes, display changes, Space
   slides, restorations, window opens and closes and outside focus changes, checking after every
