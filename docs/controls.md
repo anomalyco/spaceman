@@ -143,7 +143,9 @@ with no page reloading and no extra permission. The new window goes straight to 
 ahead of any `route` rule for the app, and focus stays on the window you were in. Add `--follow` to
 switch to the target with the tab. If the window has a single tab, or the app has no such command,
 `move-tab` moves the whole window, exactly like `move`. A tab whose window has not appeared within
-800 ms is left where the app put it. `move-tab` has no default shortcut; bind one in
+800 ms is left where the app put it. A second `move-tab` sent while an earlier tab's window is
+still on its way waits for that window first (up to the same 800 ms), so each tab reaches its own
+workspace. `move-tab` has no default shortcut; bind one in
 [`[shortcuts.bindings]`](configuration.md#shortcuts), such as `"ctrl+alt+shift+2" = "move-tab 2"`.
 
 ## Scratchpad (Lab)

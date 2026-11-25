@@ -335,3 +335,52 @@ fn other_apps_new_windows_are_not_claimed() {
     assert_eq!(rt.workspaces.workspace_of(&tab), Some(WorkspaceId::TWO));
     assert_eq!(rt.workspaces.workspace_of(&source), Some(WorkspaceId::ONE));
 }
+
+#[test]
+fn a_second_move_tab_lets_the_pending_detach_reach_its_own_target() {
+    let first = window(2);
+    let second = window(3);
+    let (mut rt, source) = tabbed_runtime(Some(FakeTabDetach::Silent), Config::default());
+
+    move_tab(&mut rt, WorkspaceId::TWO, false).unwrap();
+    assert!(rt.tab_detach.is_some(), "waiting for the window");
+
+    // The first tab's window is on screen but not yet observed when the
+    // second command arrives (#570).
+    rt.backend.open_window(&first, offset_frame(100, 100));
+    rt.backend.focused = Some(source.clone());
+    rt.backend.tab_detach = Some(FakeTabDetach::NewWindow(
+        second.clone(),
+        offset_frame(200, 200),
+    ));
+    move_tab(&mut rt, WorkspaceId::THREE, false).unwrap();
+
+    assert_eq!(rt.workspaces.workspace_of(&first), Some(WorkspaceId::TWO));
+    assert_eq!(
+        rt.workspaces.workspace_of(&second),
+        Some(WorkspaceId::THREE)
+    );
+    assert_eq!(rt.workspaces.workspace_of(&source), Some(WorkspaceId::ONE));
+    assert!(rt.tab_detach.is_none());
+}
+
+#[test]
+fn a_second_move_tab_waits_out_a_pending_detach_that_never_opens() {
+    let second = window(3);
+    let (mut rt, source) = tabbed_runtime(Some(FakeTabDetach::Silent), Config::default());
+
+    move_tab(&mut rt, WorkspaceId::TWO, false).unwrap();
+    rt.backend.tab_detach = Some(FakeTabDetach::NewWindow(
+        second.clone(),
+        offset_frame(200, 200),
+    ));
+    move_tab(&mut rt, WorkspaceId::THREE, false).unwrap();
+
+    assert!(rt.workspaces.windows(WorkspaceId::TWO).is_empty());
+    assert_eq!(
+        rt.workspaces.workspace_of(&second),
+        Some(WorkspaceId::THREE)
+    );
+    assert_eq!(rt.workspaces.workspace_of(&source), Some(WorkspaceId::ONE));
+    assert!(rt.tab_detach.is_none());
+}
