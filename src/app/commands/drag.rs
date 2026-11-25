@@ -167,7 +167,11 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
     }
 
     /// The drag's layout at its start, the pointer's extent so far, and the
-    /// target its last preview showed. A drag of another window starts over.
+    /// target its last preview showed. A drag of another window starts over,
+    /// and so does one whose workspace layout an earlier command already edited
+    /// (a layout toggle while the button was held): the drop applies to that
+    /// edited layout and is classified afresh instead of replaying a preview
+    /// shown against the old one (#524).
     fn drag_overlay(
         &mut self,
         window: &crate::PhysicalWindowId,
@@ -200,6 +204,10 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
                 // an edge band and back while the worker was busy) may have armed a
                 // different target, so the shown one no longer stands (#495).
                 let shown = shown.filter(|_| pointer_bounds == shown_with);
+                let current = self.workspaces.engine(source).layout();
+                if *current != layout {
+                    return (current.clone(), pointer_bounds, None);
+                }
                 (layout, pointer_bounds, shown)
             }
             _ => (
