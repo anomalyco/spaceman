@@ -59,11 +59,12 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
     }
 
     /// While Spaceman is focusing a window on a shown workspace, its app may
-    /// hand focus to another of its windows on a hidden workspace as it
-    /// activates (#534). That is the app's doing, not the user's: focus the
-    /// requested window again rather than follow the other one; the request
-    /// still settles at its original deadline, so an app that insists is
-    /// followed after that.
+    /// hand focus to another of its windows on a different workspace as it
+    /// activates: a hidden one focus follow would switch to (#534), or one
+    /// another display already shows, which would leave the keys there
+    /// (#591). That is the app's doing, not the user's: focus the requested
+    /// window again; the request still settles at its original deadline, so
+    /// an app that insists is followed after that.
     pub(in crate::app) fn reclaim_from_sibling(
         &mut self,
         reported: &crate::PhysicalWindowId,
@@ -71,21 +72,18 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
     ) {
         let is_shown =
             |workspace: WorkspaceId| visible.iter().any(|shown| shown.workspace == workspace);
-        // Only a window focus follow would chase: one on a hidden workspace
-        // that is not pinned. A new, unmanaged or scratchpad window keeps focus.
-        let hidden = !self.workspaces.is_pinned(reported)
-            && self
-                .workspaces
-                .workspace_of_any(reported)
-                .is_some_and(|workspace| !is_shown(workspace));
-        if !hidden {
+        // A pinned, new, unmanaged or scratchpad window keeps focus.
+        if self.workspaces.is_pinned(reported) {
             return;
         }
+        let Some(reported_workspace) = self.workspaces.workspace_of_any(reported) else {
+            return;
+        };
         let now = self.backend.now();
         let Some(target) = self.focus.sibling_target(now, reported).filter(|target| {
             self.workspaces
                 .workspace_of_any(target)
-                .is_some_and(is_shown)
+                .is_some_and(|workspace| workspace != reported_workspace && is_shown(workspace))
         }) else {
             return;
         };
