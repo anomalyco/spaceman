@@ -125,6 +125,9 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
                 .as_ref()
                 .is_none_or(|frontmost| &focused.app == frontmost)
         });
+        // One window-server snapshot serves every authoritative-frame check in
+        // this cycle; per-window queries would each copy the full window list.
+        let server_snapshot = self.backend.window_server_frames();
         // A pinned window shows on every workspace, so focusing it never switches.
         let focus_workspace = if focused_is_frontmost {
             focused
@@ -132,9 +135,16 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
                 .filter(|focused| !self.workspaces.is_pinned(focused))
                 .and_then(|focused| self.workspaces.workspace_of_any(focused))
         } else {
-            frontmost
-                .as_ref()
-                .and_then(|app| self.workspaces.workspace_for_app(app))
+            // Only windows the window server still lists count: an app whose
+            // windows all just closed has nothing on a hidden workspace to
+            // follow (#516). No snapshot proves nothing closed.
+            frontmost.as_ref().and_then(|app| {
+                self.workspaces.workspace_for_live_app(app, |window| {
+                    server_snapshot
+                        .as_ref()
+                        .is_none_or(|frames| frames.contains_key(&window.window_id))
+                })
+            })
         };
         // A guard lasts until Accessibility reports a different focus, and a
         // report a focus request in flight explains is no focus change at all:
@@ -201,9 +211,6 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
             self.workspaces
                 .seed_display_front(&resolved.display_id, &resolved.selector);
         }
-        // One window-server snapshot serves every authoritative-frame check in
-        // this cycle; per-window queries would each copy the full window list.
-        let server_snapshot = self.backend.window_server_frames();
         let empty_server_frames = HashMap::new();
         let server_frames = server_snapshot.as_ref().unwrap_or(&empty_server_frames);
         self.recover_stale_parked_windows(&outputs, server_frames);

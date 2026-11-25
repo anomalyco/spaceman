@@ -2,6 +2,7 @@
 
 mod back_and_forth_fast_shortcuts;
 mod back_and_forth_stale_report;
+mod close_all_frontmost;
 mod config_removed_named;
 mod config_same_display_alias;
 mod debug_targets;
