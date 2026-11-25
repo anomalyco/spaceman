@@ -416,6 +416,20 @@ impl Engine {
         true
     }
 
+    /// Nests `moved` with `target` in a split across `direction` (the Join Lab), editing
+    /// the requested layout, never a temporary fit.
+    pub(crate) fn join_windows(
+        &mut self,
+        moved: &PhysicalWindowId,
+        target: &PhysicalWindowId,
+        direction: crate::Direction,
+    ) -> bool {
+        let Some(target) = self.slot_for_window(target) else {
+            return false;
+        };
+        self.edit_requested(moved, |layout, moved| layout.join(moved, target, direction))
+    }
+
     #[cfg(test)]
     pub(crate) fn move_window_relative(
         &mut self,

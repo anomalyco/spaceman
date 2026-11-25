@@ -428,6 +428,7 @@ impl Config {
         }
         let mut shortcuts = raw.shortcuts.parse()?;
         shortcuts.scratchpad = raw.labs.scratchpad;
+        shortcuts.join = raw.labs.join;
         Ok(Self {
             settings: AppSettings {
                 hud: raw.settings.hud,
@@ -1223,6 +1224,19 @@ monitor = "main"
         assert!(!both.labs().enabled(LabFeature::PortraitEdgeRows));
         let rows = Config::parse("version = 1\n[labs]\nportrait_edge_rows = true\n").unwrap();
         assert!(rows.labs().portrait_edge_rows);
+    }
+
+    #[test]
+    fn parses_labs_with_join_off_by_default() {
+        for source in ["version = 1", "version = 1\n[labs]\n"] {
+            let config = Config::parse(source).unwrap();
+            assert!(!config.labs().enabled(LabFeature::Join));
+            assert!(!config.shortcuts().join);
+        }
+        let config = Config::parse("version = 1\n[labs]\njoin = true\n").unwrap();
+        assert!(config.labs().enabled(LabFeature::Join));
+        assert!(config.shortcuts().join, "join bindings follow the switch");
+        assert!(!config.labs().enabled(LabFeature::Scratchpad));
     }
 
     #[test]

@@ -19,6 +19,8 @@ pub struct Shortcuts {
     pub bindings: Vec<Binding>,
     /// Register the Scratchpad Lab's shortcuts. Set from `[labs] scratchpad`, not this table.
     pub scratchpad: bool,
+    /// Register bindings to `join DIR`. Set from `[labs] join`, not this table.
+    pub join: bool,
 }
 
 impl Default for Shortcuts {
@@ -28,6 +30,7 @@ impl Default for Shortcuts {
             modifier: Modifiers::OPTION,
             bindings: Vec::new(),
             scratchpad: false,
+            join: false,
         }
     }
 }
@@ -54,6 +57,7 @@ impl Shortcuts {
         self.defaults != other.defaults
             || self.modifier != other.modifier
             || self.scratchpad != other.scratchpad
+            || self.join != other.join
             || meaning(self) != meaning(other)
     }
 
@@ -280,6 +284,8 @@ pub enum Command {
     FocusNext,
     FocusPrev,
     MoveDirection(Direction),
+    /// Nest the focused tile with its neighbor in a split across the direction (`[labs] join`).
+    Join(Direction),
     Layout,
     Fullscreen,
     Float,
@@ -290,7 +296,7 @@ pub enum Command {
     Retile,
 }
 
-pub const COMMAND_USAGE: &str = "switch WORKSPACE|move WORKSPACE [--follow]|move-tab WORKSPACE [--follow]|back-and-forth|move-workspace [next|prev|DISPLAY]|focus DIR|focus next|focus prev|move-direction DIR|layout|fullscreen|float|resize shrink|resize grow|resize width|height POINTS|balance|retile|none";
+pub const COMMAND_USAGE: &str = "switch WORKSPACE|move WORKSPACE [--follow]|move-tab WORKSPACE [--follow]|back-and-forth|move-workspace [next|prev|DISPLAY]|focus DIR|focus next|focus prev|move-direction DIR|join DIR|layout|fullscreen|float|resize shrink|resize grow|resize width|height POINTS|balance|retile|none";
 
 /// `[shortcuts]` as written.
 #[derive(Deserialize)]
@@ -354,6 +360,7 @@ impl RawShortcuts {
             modifier,
             bindings,
             scratchpad: false,
+            join: false,
         })
     }
 }
@@ -478,6 +485,7 @@ pub fn parse_command(source: &str) -> Result<Option<Command>, String> {
         ["focus", "prev"] => Command::FocusPrev,
         ["focus", direction] => Command::Focus(direction.parse()?),
         ["move-direction", direction] => Command::MoveDirection(direction.parse()?),
+        ["join", direction] => Command::Join(direction.parse()?),
         ["layout"] => Command::Layout,
         ["fullscreen"] => Command::Fullscreen,
         ["float"] => Command::Float,
@@ -535,6 +543,7 @@ impl Command {
             Self::FocusNext => "cycle workspace windows".into(),
             Self::FocusPrev => "cycle workspace windows backward".into(),
             Self::MoveDirection(direction) => format!("move window {direction}"),
+            Self::Join(direction) => format!("join window {direction}"),
             Self::Layout => "toggle layout".into(),
             Self::Fullscreen => "toggle fullscreen layout".into(),
             Self::Float => "toggle floating window".into(),
@@ -639,6 +648,7 @@ mod tests {
                 "move-direction up",
                 Some(Command::MoveDirection(Direction::Up)),
             ),
+            ("join left", Some(Command::Join(Direction::Left))),
             ("layout", Some(Command::Layout)),
             ("float", Some(Command::Float)),
             ("balance", Some(Command::Balance)),
@@ -789,6 +799,11 @@ mod tests {
             ..base.clone()
         };
         assert!(base.differs_from(&scratchpad));
+        let join = Shortcuts {
+            join: true,
+            ..base.clone()
+        };
+        assert!(base.differs_from(&join));
     }
 
     #[test]

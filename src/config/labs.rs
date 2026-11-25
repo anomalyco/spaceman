@@ -32,6 +32,9 @@ pub struct LabsConfig {
     /// another window takes focus.
     #[serde(default)]
     pub empty_workspace_focus: bool,
+    /// `join DIR`: nest the focused tile with its neighbor in a split across that direction.
+    #[serde(default)]
+    pub join: bool,
 }
 
 impl LabsConfig {
@@ -46,6 +49,7 @@ impl LabsConfig {
             LabFeature::RecentFocus => self.recent_focus,
             LabFeature::SwipeSwitch => self.swipe_switch,
             LabFeature::EmptyWorkspaceFocus => self.empty_workspace_focus,
+            LabFeature::Join => self.join,
         }
     }
 }
@@ -68,11 +72,13 @@ pub enum LabFeature {
     /// An empty workspace chosen on another display is the focused one for commands until
     /// another window takes focus.
     EmptyWorkspaceFocus,
+    /// `join DIR`: nest the focused tile with its neighbor in a split across that direction.
+    Join,
 }
 
 impl LabFeature {
     /// Every switch, in the order `[labs]` lists them.
-    pub const ALL: [Self; 7] = [
+    pub const ALL: [Self; 8] = [
         Self::Scratchpad,
         Self::Activity,
         Self::PortraitEdgeRows,
@@ -80,6 +86,7 @@ impl LabFeature {
         Self::RecentFocus,
         Self::SwipeSwitch,
         Self::EmptyWorkspaceFocus,
+        Self::Join,
     ];
 
     /// The `[labs]` key that turns this feature on.
@@ -93,6 +100,7 @@ impl LabFeature {
             Self::RecentFocus => "recent_focus",
             Self::SwipeSwitch => "swipe_switch",
             Self::EmptyWorkspaceFocus => "empty_workspace_focus",
+            Self::Join => "join",
         }
     }
 

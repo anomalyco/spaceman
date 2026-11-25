@@ -285,6 +285,7 @@ Commands:
 | `focus next` | Focus the next window in the workspace: tiles in stable order, then floating windows |
 | `focus prev` | Focus the previous window in that same order |
 | `move-direction left\|down\|up\|right` | Move the focused tile in that direction |
+| `join left\|down\|up\|right` | Nest the focused tile with its neighbor in that direction; needs `[labs] join = true` ([Labs](#labs)) |
 | `layout` | Toggle the active layout's root split axis |
 | `fullscreen` | Toggle Fullscreen Layout |
 | `float` | Float the focused window, or tile it again |
@@ -338,7 +339,7 @@ in the file are kept.
 `[labs]` turns on experimental features one by one. Every switch is off by default, and with all of
 them off Spaceman behaves exactly as if Labs did not exist: no extra shortcuts register and no
 command changes behavior. Unknown keys are config errors. Settings › Labs lists every switch,
-grouped by what it changes (`Windows`: Scratchpad, Portrait edge rows and Recent focus;
+grouped by what it changes (`Windows`: Scratchpad, Portrait edge rows, Recent focus and Join;
 `Workspaces`: Swipe switch and Focus empty workspaces on other displays; `Menu bar & HUD`: Physical
 display order; `Settings`: Activity), and flipping one there writes the same key.
 
@@ -351,6 +352,7 @@ physical_displays = false             # optional (default: false); menu bar in p
 recent_focus = false                  # optional (default: false); Option+H/J/K/L returns where you were
 swipe_switch = false                  # optional (default: false); lets trackpad_swipe turn swipes off
 empty_workspace_focus = false         # optional (default: false); see below
+join = false                          # optional (default: false); spaceman ctl join DIR
 ```
 
 `scratchpad = true` enables the Scratchpad (see [Controls › Scratchpad](controls.md#scratchpad-lab)) and
@@ -368,6 +370,14 @@ keep recording either way. Turning it off while the pane is open returns Setting
 swipe row in Settings › Shortcuts into the **Swipe to switch workspace** switch (see
 [Trackpad Swipe](#trackpad-swipe)). With it off, `trackpad_swipe` is ignored and swipes work as before.
 In Settings it is `Labs › Workspaces › Swipe switch`.
+
+`join = true` (Settings › Labs › Windows › Join) enables `spaceman ctl join <left|down|up|right>`,
+which nests the focused tile with the tile `focus` would move to in that direction, in a split
+across it: in `| A | B | C |`, C joining left gives `| A | B/C |`, and joining a tile onto an
+existing stack adds it at the stack's end. Without a neighbor on the workspace nothing changes; it
+never crosses displays. Nothing is bound by default: bind `join DIR` in `[shortcuts.bindings]` (for
+example `"ctrl+alt+h" = "join left"`). Those bindings register only while the switch is on; with it
+off they keep their chord but do nothing, and `spaceman ctl join` reports `Join is off`.
 
 `portrait_edge_rows = true` adds drop bands along the top and bottom edges of a display whose tiled
 area is taller than it is wide: dragging a tiled window into one docks it into a full-width,
@@ -403,6 +413,7 @@ you chose, wherever it shows, until another window takes focus (see
 `Labs › Workspaces › Focus empty workspaces on other displays`.
 
 ```sh
+spaceman config set labs.join true
 spaceman config set labs.activity true
 spaceman config get labs.activity
 spaceman config reset labs.activity

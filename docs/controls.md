@@ -214,6 +214,7 @@ spaceman ctl focus left
 spaceman ctl focus next
 spaceman ctl focus prev
 spaceman ctl move-direction right
+spaceman ctl join left
 spaceman ctl layout
 spaceman ctl fullscreen
 spaceman ctl float
@@ -244,9 +245,13 @@ Directions are `left`, `down`, `up`, and `right`. `focus next` is Option-backtic
 toggles the focused window's floating, like `Option+Shift+Space`. `pin` floats the focused window
 and shows it on every workspace, or unpins it (no built-in shortcut). `scratchpad toggle` and
 `scratchpad mark` are `Option+\` and `Option+Shift+\`; while `[labs] scratchpad` is off they report
-`Scratchpad is off`. `resize width|height POINTS` resizes the focused window to that width or
-height (its own frame, gaps excluded) by moving its boundary at the nearest split along that axis;
-the split's other tiles give or take the difference in proportion, never below 50 points. `balance`
+`Scratchpad is off`. `join DIR` (the Join Lab, Settings › Labs › Windows › Join or
+`[labs] join = true`) nests the focused tile with its neighbor in that direction, in a split across
+it (`| A | B | C |`, C `join left`, gives `| A | B/C |`); it has no default shortcut, and while the
+Lab is off it reports `Join is off`. `resize width|height POINTS` resizes the focused window to
+that width or height (its own frame, gaps excluded) by moving its boundary at the nearest split
+along that axis; the split's other tiles give or take the difference in proportion, never below 50
+points. `balance`
 equalizes the focused tile's immediate split while respecting nested minimum sizes; it does not
 touch the workspace's other splits. Neither has a default shortcut (see
 [Configuration › Shortcuts](configuration.md#shortcuts)). `hud` repeatedly renders sanitized
@@ -291,7 +296,7 @@ Spaceman registers the `spaceman://` URL scheme (and clickable web bounce links 
 
 - `spaceman://settings` — open Settings
 - `spaceman://settings/<pane>` — open `general`, `rules`, `workspaces`, `shortcuts`, `labs`, `layout`, or `activity` (plus optional `/<focus>`); `activity` falls back to `general` while `[labs] activity` is off
-- `spaceman://labs` / `spaceman://labs/<slug>` — open Settings › Labs and highlight `<slug>`, a switch's key with `-` for `_` (`scratchpad`, `activity`, `portrait-edge-rows`, `physical-displays`, `recent-focus`, `swipe-switch`, `empty-workspace-focus`)
+- `spaceman://labs` / `spaceman://labs/<slug>` — open Settings › Labs and highlight `<slug>`, a switch's key with `-` for `_` (`scratchpad`, `activity`, `portrait-edge-rows`, `physical-displays`, `recent-focus`, `swipe-switch`, `empty-workspace-focus`, `join`); opening a link never turns a Lab on
 - `spaceman://features/<slug>` — open the Settings pane and highlight for a feature (e.g. `workspaces`, `rules`, `shortcuts`, `gaps`, `hud`)
 
 Deep links only open Settings and highlight the requested pane or card. They never modify

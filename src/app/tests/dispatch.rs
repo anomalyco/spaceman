@@ -37,6 +37,9 @@ fn actions() -> Vec<(WorkerAction, DirectAction)> {
         (WorkerAction::Reorder(Direction::Down), |r, o, c| {
             r.reorder_focused(Direction::Down, o, c)
         }),
+        (WorkerAction::Join(Direction::Left), |r, o, c| {
+            r.join_focused(Direction::Left, o, c)
+        }),
         (WorkerAction::ToggleLayout, |r, o, c| r.toggle_layout(o, c)),
         (WorkerAction::Resize(ResizeDirection::Grow), |r, o, c| {
             r.resize_focused(ResizeDirection::Grow, o, c)

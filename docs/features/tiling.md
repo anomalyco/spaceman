@@ -33,6 +33,10 @@ Reorder                                                 // tile.reorder
 ├── Option+Shift+H/J/K/L / ctl move-direction <dir> -> swap/move within the tree
 │   ├── At the workspace edge -> moves to the adjacent display's active workspace, even an empty one
 │   └── Perpendicular move    -> re-orients or creates a mixed split (falls through to the adjacent display if the saved split would not change)
+├── ctl join <dir> / a [shortcuts] `join DIR` binding (Settings › Labs › Windows › Join / [labs] join, off by default; no default key)
+│   ├── Nests the focused tile with the tile `focus <dir>` targets, in a split across <dir>: | A | B | C |, C join left -> | A | B/C |
+│   ├── Neighbor already in a stack the tile is not part of -> appended at the stack's end
+│   └── No neighbor on the workspace -> no change; never crosses displays; Fullscreen Layout and floats refused
 └── Pointer drag (non-destructive previews against drag-start layout; committed only on mouse-up)
     ├── Display left/right edge band -> full-height half-width column on that side (includes outer gap, armed once the pointer has been outside the band; lone tile unchanged; saved layout edited even while temporarily stacked)
     ├── Portrait display top/bottom edge band ([labs] portrait_edge_rows) -> full-width half-height row on that edge (same rules; includes the menu bar and Dock strips; side bands win in the corners)
@@ -66,9 +70,10 @@ Spacing                                                 // tile.spacing
 ```ts
 Keyboard: Option+H/J/K/L, Option+Shift+H/J/K/L, Option+`, Option+-, Option+=, Option+/
 Pointer:  drag a managed window (reorder/nest/move display), drag its edge (resize)
-CLI:      spaceman ctl focus | move-direction | resize shrink|grow|width|height | balance | layout | retile
+CLI:      spaceman ctl focus | move-direction | join (Lab) | resize shrink|grow|width|height | balance | layout | retile
 Shortcut: [shortcuts.bindings] can bind any of those, e.g. "ctrl+alt+w" = "resize width 1200"
 Settings: Settings › Layout -> New windows (Dwindle | Columns), Window gaps (Customize separately: Between windows, Screen edges, Top/Bottom/Left/Right edge), Single-window width
+Labs:     Settings › Labs › Windows › Join (or spaceman config set labs.join true) enables ctl join
 Config:   spaceman config set layout dwindle|columns; spaceman config set gaps.inner|gaps.outer|gaps.top|gaps.bottom|gaps.left|gaps.right|single_window_max_width <points>
 ```
 
@@ -88,6 +93,13 @@ pause, quit, or hotkey loss.
   `reorder_moves_to_an_empty_workspace_on_the_adjacent_display` (issue 119),
   `perpendicular_reorder_creates_a_mixed_split_for_three_windows`,
   `layout_toggle_repartitions_and_persists_the_focused_workspace`.
+- Join Lab: `src/layout_tree/join.rs` (`joining_left_stacks_the_tile_under_its_neighbor`,
+  `joining_onto_a_stack_adds_at_its_end`,
+  `joining_across_a_collapsed_stack_keeps_the_pair_in_the_targets_share`,
+  `joining_up_puts_the_pair_side_by_side`,
+  `join_refuses_itself_and_unknown_tiles_and_survives_a_round_trip`) and `src/app/tests/join.rs`
+  (`join_is_refused_while_the_lab_is_off`, `join_left_stacks_the_focused_tile_under_its_neighbor`);
+  `src/hotkeys.rs` `join_bindings_register_only_while_the_lab_is_on`. No live harness covers it yet.
 - Engine and layout tree: `dwindle_landscape_splits_one_through_four_windows`,
   `dwindle_portrait_splits_vertically_first_then_alternates`,
   `dwindle_splits_focused_anchor_and_collapses_on_close`,

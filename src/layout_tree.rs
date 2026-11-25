@@ -1,4 +1,5 @@
 mod fitting;
+mod join;
 mod retain;
 mod sizing;
 #[cfg(test)]

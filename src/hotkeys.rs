@@ -119,7 +119,7 @@ impl HotkeyPlan {
         // `[shortcuts]` bindings claim their chords first, so a built-in shortcut on the same
         // chord quietly gives way instead of colliding.
         for binding in &shortcuts.bindings {
-            plan.push_binding(binding, enabled);
+            plan.push_binding(binding, enabled, shortcuts.join);
         }
         if shortcuts.defaults {
             push_defaults(&mut plan, enabled, carbon_modifiers(shortcuts.modifier));
@@ -315,6 +315,7 @@ fn worker_action(command: &Command) -> WorkerAction {
         Command::FocusNext => WorkerAction::CycleFocus,
         Command::FocusPrev => WorkerAction::CycleFocusPrevious,
         Command::MoveDirection(direction) => WorkerAction::Reorder(*direction),
+        Command::Join(direction) => WorkerAction::Join(*direction),
         Command::Layout => WorkerAction::ToggleLayout,
         Command::Fullscreen => WorkerAction::ToggleFullscreenLayout,
         Command::Float => WorkerAction::ToggleFloat,
@@ -388,7 +389,9 @@ impl<'a> PlanBuilder<'a> {
 
     /// Claims a `[shortcuts]` binding's chord: registers its command, or for `none` only
     /// reserves the chord so no built-in shortcut takes it.
-    fn push_binding(&mut self, binding: &Binding, enabled: &[WorkspaceId]) {
+    /// `join_lab` is `[labs] join`: while it is off a `join DIR` binding keeps its chord but
+    /// registers nothing.
+    fn push_binding(&mut self, binding: &Binding, enabled: &[WorkspaceId], join_lab: bool) {
         let source = &binding.source;
         let candidates = match self.layout.candidates(logical_key(binding.chord.key)) {
             Ok(candidates) => candidates,
@@ -424,6 +427,13 @@ impl<'a> PlanBuilder<'a> {
                 .insert(chord, format!("{source} (unavailable)"));
             self.warnings.push(format!(
                 "skipped shortcut {source}: workspace {workspace} is not enabled on a managed display"
+            ));
+            return;
+        }
+        if matches!(command, Command::Join(_)) && !join_lab {
+            self.occupied.insert(chord, format!("{source} (Lab off)"));
+            self.warnings.push(format!(
+                "skipped shortcut {source}: join needs [labs] join = true"
             ));
             return;
         }
@@ -1024,6 +1034,23 @@ mod tests {
             .iter()
             .filter(|registration| registration.action == *action)
             .collect()
+    }
+
+    #[test]
+    fn join_bindings_register_only_while_the_lab_is_on() {
+        let enabled = WorkspaceId::numbered().collect::<Vec<_>>();
+        let binding = r#""ctrl+alt+h" = "join left""#;
+        let mut join = shortcuts(true, binding);
+        let off = HotkeyPlan::from_layout(&enabled, &join, &layout()).unwrap();
+        assert!(registration(&off, &WorkerAction::Join(Direction::Left)).is_empty());
+        assert!(off.warnings.iter().any(|warning| warning.contains("[labs] join")));
+
+        join.join = true;
+        let on = HotkeyPlan::from_layout(&enabled, &join, &layout()).unwrap();
+        let joins = registration(&on, &WorkerAction::Join(Direction::Left));
+        assert!(joins.iter().any(|registration| registration.key_code == 60
+            && registration.modifiers == OPTION_KEY | CONTROL_KEY));
+        assert!(on.warnings.is_empty(), "{:?}", on.warnings);
     }
 
     #[test]

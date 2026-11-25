@@ -47,6 +47,8 @@ pub(super) enum WorkspaceFocusOutcome {
     Failed,
 }
 
+const JOIN_LAB_OFF: &str = "Join is off (set [labs] join = true in config.toml)";
+
 pub(super) const fn rect_center(rect: crate::Rect) -> (i32, i32) {
     (rect.x + rect.width / 2, rect.y + rect.height / 2)
 }
@@ -185,6 +187,38 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
             return Ok(self.status(0, &outputs));
         };
         self.move_window(window, target.workspace, outputs, cancelled)
+    }
+
+    /// The Join Lab: nests the focused tile with the tile focus would move to in `direction`,
+    /// in a split across that direction. Without a neighbor on the workspace nothing changes;
+    /// it never crosses displays.
+    pub(super) fn join_focused(
+        &mut self,
+        direction: Direction,
+        outputs: macos::DisplayOutputs,
+        cancelled: &AtomicBool,
+    ) -> Result<CycleStatus, String> {
+        if !self.config.labs().join {
+            return Err(JOIN_LAB_OFF.into());
+        }
+        let (window, workspace) = self.focused_active_workspace(&outputs, cancelled, true)?;
+        self.workspaces.deck(workspace).require_split("joining")?;
+        let local_tiles = self
+            .navigation_tiles(&outputs)
+            .into_iter()
+            .filter(|tile| tile.workspace == workspace)
+            .collect::<Vec<_>>();
+        let Some(target) = crate::navigation::target(&local_tiles, &window, direction) else {
+            return Ok(self.status(0, &outputs));
+        };
+        if !self
+            .workspaces
+            .engine_mut(workspace)
+            .join_windows(&window, &target.window, direction)
+        {
+            return Ok(self.status(0, &outputs));
+        }
+        self.relayout_persist(workspace, &outputs, cancelled)
     }
 
     /// A display whose workspace has no tiles offers no window to move toward,

@@ -88,6 +88,7 @@ The bundled `spaceman` CLI communicates with the running agent over an owner-onl
 - `spaceman ctl status`: print the agent's mode, whether it is busy, its last error, and the active workspaces (no window counts; `spaceman ctl debug` lists the visible tiles and floating windows)
 - `spaceman ctl switch <workspace>` / `spaceman ctl move <workspace>`: switch workspaces or move the focused window
 - `spaceman ctl focus <left|down|up|right|next|prev>` / `spaceman ctl move-direction <left|down|up|right>`
+- `spaceman ctl join <left|down|up|right>` (Lab, `[labs] join = true`): nest the focused tile with its neighbor in that direction
 - `spaceman ctl layout` / `spaceman ctl fullscreen` / `spaceman ctl balance` / `spaceman ctl resize <shrink|grow>`
 - `spaceman ctl pause` / `spaceman ctl resume` / `spaceman ctl retile` / `spaceman ctl restart` / `spaceman ctl quit`
 - `spaceman ctl move-app <bundle-id> <workspace>`: move every current window of an app

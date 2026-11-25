@@ -120,6 +120,7 @@ impl Doc {
             recent_focus: self.lab(LabFeature::RecentFocus),
             swipe_switch: self.lab(LabFeature::SwipeSwitch),
             empty_workspace_focus: self.lab(LabFeature::EmptyWorkspaceFocus),
+            join: self.lab(LabFeature::Join),
         }
     }
 

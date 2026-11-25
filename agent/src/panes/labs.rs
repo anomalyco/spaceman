@@ -31,6 +31,11 @@ const GROUPS: [(&str, &str, &[Lab]); 4] = [
                 "Recent focus",
                 "⌥H/J/K/L goes to the bordering tile you used last",
             ),
+            (
+                LabFeature::Join,
+                "Join",
+                "spaceman ctl join <direction> nests a tile with its neighbor",
+            ),
         ],
     ),
     (

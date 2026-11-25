@@ -23,7 +23,7 @@ const REQUEST_READ_TIMEOUT: Duration = Duration::from_millis(250);
 const RESPONSE_TIMEOUT: Duration = Duration::from_secs(5);
 const CLIENT_TIMEOUT: Duration = Duration::from_secs(6);
 
-pub const COMMAND_USAGE: &str = "status|debug|settings|open TARGET|open-settings|open-accessibility|check-for-updates|toggle-launch-at-login|switch WORKSPACE|back-and-forth|move-workspace [next|prev|DISPLAY]|move WORKSPACE [--follow]|move-tab WORKSPACE [--follow]|move-app ID WORKSPACE|focus DIR|focus next|focus prev|move-direction DIR|layout|fullscreen|float|pin|resize shrink|resize grow|resize width|height POINTS|balance|scratchpad toggle|scratchpad mark|pause|resume|retile|wrong|restart|quit";
+pub const COMMAND_USAGE: &str = "status|debug|settings|open TARGET|open-settings|open-accessibility|check-for-updates|toggle-launch-at-login|switch WORKSPACE|back-and-forth|move-workspace [next|prev|DISPLAY]|move WORKSPACE [--follow]|move-tab WORKSPACE [--follow]|move-app ID WORKSPACE|focus DIR|focus next|focus prev|move-direction DIR|join DIR|layout|fullscreen|float|pin|resize shrink|resize grow|resize width|height POINTS|balance|scratchpad toggle|scratchpad mark|pause|resume|retile|wrong|restart|quit";
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub(crate) enum Command {
@@ -236,6 +236,7 @@ fn parse_line(line: &str) -> Result<Command, String> {
         ["focus", "prev"] => WorkerAction::CycleFocusPrevious,
         ["focus", direction] => WorkerAction::Focus(direction.parse()?),
         ["move-direction", direction] => WorkerAction::Reorder(direction.parse()?),
+        ["join", direction] => WorkerAction::Join(direction.parse()?),
         ["layout"] => WorkerAction::ToggleLayout,
         ["fullscreen"] => WorkerAction::ToggleFullscreenLayout,
         ["float"] => WorkerAction::ToggleFloat,
@@ -354,6 +355,8 @@ mod tests {
             queued("move-direction right"),
             WorkerAction::Reorder(Direction::Right)
         );
+        assert_eq!(queued("join down"), WorkerAction::Join(Direction::Down));
+        assert!(parse_line("join").is_err());
         assert_eq!(queued("layout"), WorkerAction::ToggleLayout);
         assert_eq!(
             queued("resize shrink"),
