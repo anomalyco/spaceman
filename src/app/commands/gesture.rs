@@ -128,6 +128,7 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
                 return Ok(self.status(0, &outputs));
             }
             self.forget_readback(workspace, &window);
+            self.exact_spacing_workspaces.insert(workspace);
             let layout = self.layout_workspace(workspace, output, cancelled);
             return Ok(self.status(layout.failed, &outputs));
         }
@@ -150,6 +151,9 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
         // Mouse-up: one edit against the saved layout, however the previews went (#387).
         self.gesture = None;
         self.forget_readback(workspace, &window);
+        // The user sized this window by hand, so it may sit a point or two off
+        // its tile; the next retile writes the workspace exactly (#506).
+        self.exact_spacing_workspaces.insert(workspace);
         let changed = self.workspaces.engine_mut(workspace).resize_window(
             &window,
             frame,
