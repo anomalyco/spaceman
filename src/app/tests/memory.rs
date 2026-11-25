@@ -741,3 +741,99 @@ fn memory_records_document_and_title_across_parking_and_ignores_case_only_title_
     assert!(runtime.memory.pending.is_empty());
     assert!(runtime.backend.window_memory.is_none());
 }
+
+#[test]
+fn continuous_title_churn_still_settles_and_unread_counter_ticks_do_not_rewrite_memory() {
+    let win = window(10);
+    let with_title = |title: &str| {
+        let mut obs = observation_for(BUNDLE, &win, frame(50));
+        if let crate::AppObservation::Complete { windows, .. } = &mut obs.applications[0] {
+            windows[0].title = Some(title.into());
+        }
+        obs
+    };
+    let mut rt = runtime(FakeBackend {
+        frames: HashMap::from([(win.clone(), frame(50))]),
+        observation: Some(with_title("Slack (1)")),
+        ..FakeBackend::default()
+    });
+    let cancelled = AtomicBool::new(false);
+    // First cycle tiles the window; second cycle seeds pending at the tiled frame.
+    rt.cycle(outputs(), &cancelled).unwrap();
+    rt.cycle(outputs(), &cancelled).unwrap();
+    assert!(rt.memory.memory.is_empty());
+    assert!(rt.memory.pending.contains_key(BUNDLE));
+
+    // Title churns on every single cycle (unread counter and arbitrary tab titles) across
+    // MEMORY_SETTLE: the original pending timestamp must survive and settle with the latest title.
+    let step = crate::app::memory::MEMORY_SETTLE / 5;
+    let titles = [
+        "Slack (2)",
+        "Slack — #general (3)",
+        "Slack — #dev (4)",
+        "Slack — #random (5)",
+        "Slack (6)",
+    ];
+    for title in titles {
+        rt.backend.advance(step);
+        rt.backend.observation = Some(with_title(title));
+        rt.cycle(outputs(), &cancelled).unwrap();
+    }
+
+    let remembered = rt.memory.memory.get(BUNDLE).expect("settled after churn");
+    assert_eq!(remembered.windows.len(), 1);
+    assert_eq!(remembered.windows[0].title.as_deref(), Some("Slack (6)"));
+    assert!(rt.backend.window_memory.is_some());
+    let remembered_events = |rt: &WorkspaceRuntime<FakeBackend>| {
+        rt.backend
+            .journal
+            .iter()
+            .filter(|event| matches!(event, crate::journal::JournalEvent::Remembered { .. }))
+            .count()
+    };
+    assert_eq!(remembered_events(&rt), 1);
+
+    // Subsequent unread-badge ticks must not re-dirty memory, queue pending, or rewrite disk.
+    rt.backend.window_memory = None;
+    for badge in ["Slack (7)", "Slack (8)", "Slack (99+)"] {
+        rt.backend.advance(crate::app::memory::MEMORY_SETTLE);
+        rt.backend.observation = Some(with_title(badge));
+        rt.cycle(outputs(), &cancelled).unwrap();
+        assert!(rt.memory.pending.is_empty(), "badge {badge} queued pending");
+        assert!(
+            rt.backend.window_memory.is_none(),
+            "badge {badge} rewrote window memory"
+        );
+    }
+    assert_eq!(remembered_events(&rt), 1);
+}
+
+#[test]
+fn missing_window_server_snapshot_does_not_overwrite_settled_memory() {
+    let first = window(10);
+    let second = window(11);
+    let mut rt = runtime(backend_with(&[
+        (first.clone(), frame(50)),
+        (second.clone(), frame(500)),
+    ]));
+    let cancelled = AtomicBool::new(false);
+    rt.cycle(outputs(), &cancelled).unwrap();
+    rt.move_window(first.clone(), workspace(2), outputs(), &cancelled)
+        .unwrap();
+    rt.backend.observation = Some(observation_for(BUNDLE, &second, frame(500)));
+    rt.cycle(outputs(), &cancelled).unwrap();
+    rt.cycle(outputs(), &cancelled).unwrap();
+    rt.backend.advance(crate::app::memory::MEMORY_SETTLE);
+    rt.cycle(outputs(), &cancelled).unwrap();
+    assert_eq!(rt.memory.memory.get(BUNDLE).unwrap().windows.len(), 2);
+
+    // If CGWindowList is temporarily unavailable (empty server_frames while apps were observed),
+    // record_window_memory must skip rather than persisting only the parked window.
+    rt.backend.window_memory = None;
+    rt.backend.server_snapshot_unavailable = true;
+    rt.cycle(outputs(), &cancelled).unwrap();
+    rt.backend.advance(crate::app::memory::MEMORY_SETTLE);
+    rt.cycle(outputs(), &cancelled).unwrap();
+    assert_eq!(rt.memory.memory.get(BUNDLE).unwrap().windows.len(), 2);
+    assert!(rt.backend.window_memory.is_none());
+}

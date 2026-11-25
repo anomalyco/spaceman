@@ -618,3 +618,83 @@ fn transient_status_toast_shows_even_when_workspace_hud_is_off_and_holds_for_toa
     );
     assert_eq!(flow.toast_view(false).unwrap().toast, &resumed);
 }
+
+#[test]
+fn secondary_click_is_inert_while_status_toast_is_shown_and_overlay_poll_uses_virtual_clock() {
+    use std::sync::{
+        Arc,
+        atomic::{AtomicU64, AtomicUsize, Ordering},
+    };
+
+    use rune::{Env, Runtime};
+    use spaceman::{
+        app::UiHudToast,
+        config::{HudPosition, HudStyle},
+    };
+
+    use super::{HudOverlay, HudSink, overlay_poll, overlay_view};
+
+    struct CountingSink {
+        app_place_calls: Arc<AtomicUsize>,
+    }
+
+    impl HudSink for CountingSink {
+        fn switch_workspace(&self, _workspace: WorkspaceId) {}
+
+        fn app_place(&self, _bundle_id: &str) -> Option<Place> {
+            self.app_place_calls.fetch_add(1, Ordering::Relaxed);
+            None
+        }
+
+        fn set_app_place(&self, _bundle_id: &str, _place: Option<Place>) -> Result<(), String> {
+            Ok(())
+        }
+    }
+
+    let app_place_calls = Arc::new(AtomicUsize::new(0));
+    let clock = Arc::new(AtomicU64::new(1_000));
+    let mut overlay = HudOverlay::new(
+        true,
+        HudStyle::Icons,
+        HudPosition::Bottom,
+        Arc::new(CountingSink {
+            app_place_calls: Arc::clone(&app_place_calls),
+        }),
+    );
+    overlay.virtual_clock = Some(Arc::clone(&clock));
+    overlay.flow.trigger(row(1, None), 1_000);
+    // Simulate stale hover left over from the workspace capsule before the toast replaced it.
+    overlay.set_hovered_workspace(id(2), true);
+    overlay.set_hovered_app(id(1), "com.example.App", true);
+    overlay.flow.trigger_toast(
+        UiHudToast::paused("Tiling paused — built-in display"),
+        1_000,
+    );
+
+    let mut rt = Runtime::new(overlay, overlay_view, OVERLAY_SIZE, Env::new(true, 2.0));
+    rt.update_if(|overlay, tx| {
+        overlay.secondary_click_at(100.0, 20.0, tx);
+        // Right-clicking a toast must not query the sink, open a menu, or hold the toast.
+        assert!(!overlay.flow.is_held());
+        assert!(!overlay.flow.set_menu_open(true, 1_100));
+        false
+    });
+    assert_eq!(app_place_calls.load(Ordering::Relaxed), 0);
+
+    // overlay_poll honors overlay.now_ms() (the virtual clock), so advancing virtual time
+    // transitions the toast through Leave and Gone deterministically.
+    clock.store(1_000 + TOAST_HOLD_MS, Ordering::Relaxed);
+    rt.update_if(|overlay, tx| {
+        assert!(overlay_poll(overlay, 0.0, tx));
+        assert!(overlay.flow.toast_view(false).is_some_and(|v| !v.shown));
+        false
+    });
+    clock.store(1_000 + TOAST_HOLD_MS + LEAVE_MS, Ordering::Relaxed);
+    rt.update_if(|overlay, tx| {
+        assert!(!overlay_poll(overlay, 0.0, tx));
+        assert!(!overlay.flow.is_up());
+        assert!(overlay.hovered_app.is_none());
+        assert!(overlay.hovered_workspace.is_none());
+        false
+    });
+}

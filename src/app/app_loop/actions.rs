@@ -1,11 +1,22 @@
 use super::*;
 
 impl MainThreadAgent {
-    /// Starts automatic tiling once Accessibility and the hotkeys are available.
+    /// Starts automatic tiling once the worker, Accessibility, and hotkeys are available.
+    ///
+    /// `manual` distinguishes an explicit user resume from internal starts (Accessibility
+    /// granted, setup tour finished, failed-update recovery, or auto-resume). An internal start
+    /// respects `pause_on_builtin_display` immediately instead of briefly tiling on an undocked
+    /// laptop or suppressing auto-pause for the session.
     ///
     /// Hotkeys may already be registered while a first-run setup tour holds
     /// tiling, so an installed set is kept rather than registered twice.
-    pub(super) fn start_automatic(&mut self) {
+    pub(super) fn start_automatic(&mut self, manual: bool) {
+        if self.worker.is_gone() {
+            self.awaiting_accessibility = false;
+            self.ui_dirty = true;
+            status_item::set_status("Paused · worker unavailable");
+            return;
+        }
         let trusted = macos::accessibility_trusted();
         self.accessibility = trusted;
         if !trusted {
@@ -16,6 +27,32 @@ impl MainThreadAgent {
             return;
         }
         self.awaiting_accessibility = false;
+        let topology = self
+            .pause_on_builtin_display
+            .then(macos::display_topology)
+            .flatten();
+        if self
+            .builtin_display
+            .on_start(manual, self.pause_on_builtin_display, topology)
+            == builtin_display::StartDecision::AutoPause
+        {
+            self.hotkeys = None;
+            self.release_hotkey_hold_on_stop();
+            self.hotkey_delivery.clear();
+            self.setup.clear_arrangement();
+            if !is_update_failed_error(self.last_error.as_deref())
+                && !is_shortcuts_not_applied_error(self.last_error.as_deref())
+            {
+                self.last_error = None;
+            }
+            self.ui_dirty = true;
+            status_item::set_automatic(false);
+            status_item::set_status(self.paused_status());
+            log_event!("auto-paused tiling: built-in display only");
+            self.bridge
+                .publish_toast(UiHudToast::paused(builtin_display::TOAST_PAUSED));
+            return;
+        }
         if self.hotkeys.is_none() {
             match HotkeyPlan::current(&self.hotkey_workspaces, &self.shortcuts)
                 .and_then(|plan| Hotkeys::install(self.actions_sender.clone(), plan))
@@ -74,9 +111,7 @@ impl MainThreadAgent {
                 Action::ToggleAutomatic => {
                     // An explicit start also ends a first-run tour's hold.
                     self.startup_tiling.setup_finished();
-                    self.builtin_display
-                        .on_manual_resume(self.pause_on_builtin_display, macos::display_topology());
-                    self.start_automatic();
+                    self.start_automatic(true);
                 }
                 Action::FinishSetup => {
                     self.startup_tiling.setup_finished();
@@ -86,7 +121,7 @@ impl MainThreadAgent {
                             self.awaiting_accessibility = true;
                             self.ui_dirty = true;
                         } else {
-                            self.start_automatic();
+                            self.start_automatic(false);
                         }
                     }
                     self.ui_dirty = true;
@@ -230,6 +265,13 @@ impl MainThreadAgent {
                     }
                 }
             }
+        }
+        if self.exit_intent.is_none()
+            && std::mem::take(&mut self.pending_automatic_start)
+            && !self.automatic
+            && !self.worker.is_restoring_or_pending()
+        {
+            self.start_automatic(false);
         }
     }
 }

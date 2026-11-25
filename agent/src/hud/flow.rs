@@ -188,7 +188,7 @@ impl HudFlow {
     /// Tracks an open per-app context menu so the capsule stays visible while the menu tracks
     /// (even when the pointer moves onto the menu) and resumes auto-dismiss once it closes.
     pub fn set_menu_open(&mut self, open: bool, now_ms: u64) -> bool {
-        if self.stage == Stage::Hidden {
+        if self.stage == Stage::Hidden || (open && self.current().is_none()) {
             self.menu_open = false;
             return false;
         }
