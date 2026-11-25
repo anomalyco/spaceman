@@ -41,7 +41,8 @@ Swipe                                                      // ws.swipe
 Step to the next or previous workspace (Lab: [labs] workspace_steps)  // ws.step
 ├── ctl switch next|prev / a [shortcuts.bindings] chord (no built-in one) -> the swipe's stops
 │   (visible + occupied, in workspace order) on the focused display, stopping at either end;
-│   with no visible window focused, the display move-workspace would use
+│   with no visible window focused, the display move-workspace would use. A focused pinned
+│   window counts as the display it is on, even after a drag away from its home's display
 ├── ctl move next|prev [--follow] -> the focused window to the next/previous enabled workspace of
 │   its display, empty ones included, exactly as move <ws> [--follow]; stops at either end
 └── Lab off -> bindings skipped at registration, ctl reports "Workspace steps are off"
@@ -349,7 +350,10 @@ on the same letter.
   `workspace_step_bindings_register_only_with_their_lab_on`; `src/shortcuts.rs`:
   `commands_use_the_ctl_vocabulary`; `src/control.rs`: `parses_control_commands`; `src/config.rs`:
   `parses_labs_with_workspace_steps_off_by_default`; agent, `agent/src/panes/shortcuts/catalog.rs`:
-  `workspace_steps_have_no_built_in_chord_and_name_their_bindings`.
+  `workspace_steps_have_no_built_in_chord_and_name_their_bindings`. Regression,
+  `src/app/tests/reported/step_dragged_pin.rs` (issue 561): `switch next` from a pin dragged to
+  another display steps that display, and from a pin on its home's display steps that one;
+  `move-workspace` from a dragged pin still moves the pin's home workspace.
 - Unit (FakeBackend), `src/app/tests/switch_repeat.rs`: a repeat `SwitchWorkspace` walks a
   3-tile workspace A -> B -> C -> A in split and Fullscreen Layout (remembered focus and HUD
   included), warps the pointer onto each next tile under `mouse_follows_focus`, steps on inside
