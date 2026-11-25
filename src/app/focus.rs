@@ -243,6 +243,36 @@ impl FocusTracker {
         };
     }
 
+    /// The in-flight target when `reported` is another window of the target's
+    /// app: activating an app can make its own last key window focused instead
+    /// of the one Spaceman raised (#534).
+    pub(super) fn sibling_target(
+        &self,
+        now: Instant,
+        reported: &PhysicalWindowId,
+    ) -> Option<PhysicalWindowId> {
+        self.in_flight(now)
+            .filter(|request| request.target != *reported && request.target.app == reported.app)
+            .map(|request| request.target.clone())
+    }
+
+    /// Lets `reported` stand for the in-flight target until the request
+    /// settles at its original deadline. Returns whether it is newly added.
+    pub(super) fn explain_as_target(&mut self, reported: &PhysicalWindowId) -> bool {
+        let FocusPhase::InFlight { request, .. } = &mut self.phase else {
+            return false;
+        };
+        if request
+            .stale
+            .iter()
+            .any(|entry| entry.as_ref() == Some(reported))
+        {
+            return false;
+        }
+        request.stale.push(Some(reported.clone()));
+        true
+    }
+
     /// Forgets the request, keeping any departure guard it carried.
     pub(super) fn end_request(&mut self) {
         self.phase = match std::mem::take(&mut self.phase) {

@@ -20,6 +20,7 @@ mod move_back_reveals_last_shown;
 mod move_tab_follow_pointer;
 mod new_window_dock_affinity;
 mod numbered_move_stale_report;
+mod parked_sibling_takes_focus;
 mod pointer_follows_accepted_frame;
 mod pointer_resize_release_seam;
 mod reconnect_carries_floats;

@@ -14,7 +14,9 @@ Switch workspace                                           // ws.switch
 │   └── Reveal not confirmed by the window server in time -> switch rolled back, old workspace stays
 ├── Focus -> last-focused tile of the incoming workspace, keyboard focus included
 │   (that window raised and made main, then its app brought forward with `AXFrontmost`), unless
-│   one of its windows already has focus (e.g. focus follow): that window keeps it
+│   one of its windows already has focus (e.g. focus follow): that window keeps it. If the app
+│   hands focus to another of its windows on a hidden workspace as it comes forward, that
+│   window's workspace is not revealed and the chosen window is focused again
 └── Already active -> stays and re-focuses its remembered tile (keeps current focus if it is there)
     ├── Pressed again (`Option+<ws>` / `ctl switch`) while focus is on that workspace -> the
     │   next tile takes focus, wrapping at the end of the tile order; the way to walk the shared
