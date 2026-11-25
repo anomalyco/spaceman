@@ -221,6 +221,24 @@ impl Workspaces {
         )
     }
 
+    /// Whether `app` already took its first-window route: it holds a tile, or a window it
+    /// floated or stashed by hand. A float its rules or traits made (a startup splash) does
+    /// not count, so it cannot use up the route for the app's main window (#252, #551).
+    #[must_use]
+    pub(crate) fn app_holds_route(&self, app: &crate::AppInstanceId) -> bool {
+        self.app_owns_tiled_windows(app)
+            || self.residency.records.iter().any(|(window, residency)| {
+                &window.app == app
+                    && matches!(
+                        residency,
+                        Residency::Floating {
+                            cause: FloatCause::Manual,
+                            ..
+                        } | Residency::Scratchpad { .. }
+                    )
+            })
+    }
+
     /// Settles why a restored float floats on its first observation: a matching float rule
     /// takes it, so removing the rule later tiles it again (#160); otherwise it floats by hand.
     /// A float the user set this session stays manual whatever its rules say (#493).

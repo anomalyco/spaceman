@@ -169,11 +169,13 @@ Where a new window goes (first match wins)                 // ws.adoption
 ├── route rule         -> that workspace (parked if hidden), joined before any display reconciles,
 │                         so a failed park leaves it unowned and the next cycle routes it again;
 │                         bundle-only route rules apply to the app's initial window while
-│                         secondary windows stay on the active workspace, unless the rule says
-│                         windows = "all" and [labs] route_all_windows is on (src/config.rs,
-│                         src/app/cycle/affinity.rs); in Columns it joins the destination
-│                         workspace's focused tile split as if it had opened there, or its root
-│                         when no focused tile is left (src/app/cycle/routing.rs)
+│                         secondary windows stay on the active workspace (a window floated by
+│                         hand or sent to the Scratchpad still counts as the initial one, #551),
+│                         unless the rule says windows = "all" and [labs] route_all_windows is
+│                         on (src/config.rs, src/app/cycle/affinity.rs); in Columns it joins
+│                         the destination workspace's focused tile split as if it had opened
+│                         there, or its root when no focused tile is left
+│                         (src/app/cycle/routing.rs)
 ├── remembered placement (startup window, first 60 s, the app relaunched within 30 s of
 │   quitting, a returning app, or a new process presenting 2+ windows at once whose memory spans
 │   2+ workspaces) -> remembered workspace, matched by frame, then size, then creation order
@@ -406,7 +408,9 @@ on the same letter.
   in `agent/src/hud/tests.rs`, issue 419); a deleted named workspace (`config_removed_named.rs`,
   issue 424); Option+Tab after lagging focus reports (`back_and_forth_stale_report.rs`,
   `back_and_forth_fast_shortcuts.rs`, issue 399); Option+Tab from a focused pin
-  (`back_and_forth_pinned_focus.rs`, issue 526); a numbered move under a lagging report
+  (`back_and_forth_pinned_focus.rs`, issue 526); a first-window route staying used after its
+  window is floated by hand, and still routing later windows with `[labs] route_all_windows`
+  (`route_after_manual_float.rs`, issue 551); a numbered move under a lagging report
   (`numbered_move_stale_report.rs`, issue 397); no follow after closing all of the frontmost
   app's windows (`close_all_frontmost.rs`,
   `frontmost_app_whose_windows_all_closed_does_not_pull_a_switch`, issue 516); and pointer

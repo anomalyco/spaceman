@@ -102,7 +102,7 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
             self.prepare_recall(app, windows);
             let detached_tab = self.claim_detached_tab(app, windows);
             let mut app_owns_window = self.workspaces.app_owns_windows(&app.id);
-            let mut app_owns_tiled = self.workspaces.app_owns_tiled_windows(&app.id);
+            let mut app_owns_tiled = self.workspaces.app_holds_route(&app.id);
             for window in windows {
                 if let Some(ws) = self.heal_reappeared_window(window, visible, server_frames) {
                     fullscreen_hud = Some(ws);
