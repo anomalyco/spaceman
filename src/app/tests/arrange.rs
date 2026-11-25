@@ -182,7 +182,7 @@ fn undoing_an_arrangement_puts_every_window_back_and_forgets_it() {
         WorkerCommand::UndoArrangement(Some(outputs())),
         &AtomicBool::new(false),
     );
-    assert!(matches!(result, Some(WorkerResult::Restored { failed: 0 })));
+    assert!(matches!(result, Some(WorkerResult::Restored { failed: 0, .. })));
 
     assert_eq!(runtime.backend.frames, originals);
     assert!(runtime.parked.is_empty());
@@ -205,7 +205,7 @@ fn undoing_an_arrangement_puts_every_window_back_and_forgets_it() {
         WorkerCommand::UndoArrangement(Some(outputs())),
         &AtomicBool::new(false),
     );
-    assert!(matches!(again, Some(WorkerResult::Restored { failed: 0 })));
+    assert!(matches!(again, Some(WorkerResult::Restored { failed: 0, .. })));
     assert_eq!(runtime.backend.frames, originals);
 }
 

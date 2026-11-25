@@ -187,7 +187,7 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
                 // Pause, quit and restart all restore first; the layout they
                 // resume from must be on disk before the process can exit.
                 self.flush_workspace_state();
-                return Some(WorkerResult::Restored { failed });
+                return Some(self.restored(failed));
             }
             WorkerCommand::UndoArrangement(outputs) => {
                 return Some(self.undo_arrangement(outputs.as_ref(), cancelled));

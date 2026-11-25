@@ -431,6 +431,10 @@ enum WorkerResult {
     },
     Restored {
         failed: usize,
+        /// The runtime after restoration, so paused `debug` never reports a
+        /// window as parked once its recovery record is gone (#548). `None`
+        /// only before any display has been seen.
+        debug: Option<Box<RuntimeDebug>>,
     },
     Inventory(Box<crate::onboarding_plan::Inventory>),
 }

@@ -285,7 +285,7 @@ impl MainThreadAgent {
 
     pub fn tick(&mut self) -> TickOutcome {
         loop {
-            let result = match self.results.try_recv() {
+            let mut result = match self.results.try_recv() {
                 Ok(result) => result,
                 Err(TryRecvError::Empty) => break,
                 Err(TryRecvError::Disconnected) => {
@@ -307,6 +307,13 @@ impl MainThreadAgent {
                     break;
                 }
             };
+            // A restore leaves nothing parked behind it; paused `debug` must
+            // show that rather than the last tiling snapshot (#548).
+            if let WorkerResult::Restored { debug, .. } = &mut result
+                && let Some(debug) = debug.take()
+            {
+                self.latest_debug = Some(*debug);
+            }
             match result {
                 WorkerResult::Status { result, debug } if self.automatic => {
                     self.worker.finish_command();
@@ -374,7 +381,7 @@ impl MainThreadAgent {
                 }
                 // Every parked window is back on screen: only now may the
                 // bundle be swapped and Spaceman relaunch into it.
-                WorkerResult::Restored { failed: 0 }
+                WorkerResult::Restored { failed: 0, .. }
                     if self.exit_intent == Some(ExitIntent::Update) =>
                 {
                     match self.updater.install() {
@@ -389,20 +396,20 @@ impl MainThreadAgent {
                 }
                 // Every parked window is back: a ready update may now be
                 // swapped in for the next launch.
-                WorkerResult::Restored { failed: 0 }
+                WorkerResult::Restored { failed: 0, .. }
                     if self.exit_intent == Some(ExitIntent::Terminate) =>
                 {
                     self.install_update_on_quit();
                     self.worker.stop();
                     return TickOutcome::TerminateAppKit;
                 }
-                WorkerResult::Restored { failed: 0 } if self.exit_intent.is_some() => {
+                WorkerResult::Restored { failed: 0, .. } if self.exit_intent.is_some() => {
                     self.install_update_on_quit();
                     self.worker.stop();
                     termination::allow_next();
                     return TickOutcome::Quit;
                 }
-                WorkerResult::Restored { failed: 0 } => {
+                WorkerResult::Restored { failed: 0, .. } => {
                     self.worker.finish_restore();
                     status_item::set_status(self.paused_status());
                 }
@@ -410,7 +417,7 @@ impl MainThreadAgent {
                     self.worker.finish_command();
                     self.bridge.publish_inventory(*inventory);
                 }
-                WorkerResult::Restored { failed } => {
+                WorkerResult::Restored { failed, .. } => {
                     self.worker.defer_restore_retry();
                     self.next_restore_retry = Some(Instant::now() + RESTORE_RETRY_INTERVAL);
                     status_item::set_status(&format!("Restoring windows · {failed} failed"));

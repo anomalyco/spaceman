@@ -271,7 +271,7 @@ fn restoration_and_stop_do_not_require_display_outputs() {
     let mut runtime = fixture();
     assert!(matches!(
         runtime.execute(WorkerCommand::RestoreAll(None), &AtomicBool::new(false)),
-        Some(WorkerResult::Restored { failed: 0 })
+        Some(WorkerResult::Restored { failed: 0, .. })
     ));
     assert!(
         runtime
