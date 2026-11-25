@@ -35,6 +35,7 @@ Focus                                                   // tile.focus
 Reorder                                                 // tile.reorder
 ├── Option+Shift+H/J/K/L / ctl move-direction <dir> -> swap/move within the tree
 │   ├── At the workspace edge -> moves to the adjacent display's active workspace, even an empty one
+│   │   └── Focus goes with it, and Mouse follows focus brings the pointer (drag drops never warp)
 │   └── Perpendicular move    -> re-orients or creates a mixed split (falls through to the adjacent display if the saved split would not change)
 └── Pointer drag (non-destructive previews against drag-start layout; committed only on mouse-up)
     ├── Display left/right edge band -> full-height half-width column on that side (includes outer gap, armed once the pointer has been outside the band; lone tile unchanged; saved layout edited even while temporarily stacked)

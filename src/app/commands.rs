@@ -190,7 +190,7 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
         let Some(target) = crate::navigation::target(&candidates, &window, direction) else {
             return Ok(self.status(0, &outputs));
         };
-        self.move_window(window, target.workspace, outputs, cancelled)
+        self.move_window_explicit(window, target.workspace, outputs, cancelled)
     }
 
     /// A display whose workspace has no tiles offers no window to move toward,

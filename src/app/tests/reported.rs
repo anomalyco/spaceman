@@ -22,6 +22,7 @@ mod pointer_follows_accepted_frame;
 mod pointer_resize_release_seam;
 mod reconnect_carries_floats;
 mod reconnect_dual_selector;
+mod reorder_edge_pointer;
 mod reproduce_dwindle_fitted_axis;
 mod reproduce_exact_resize_tolerance;
 mod reproduce_refit_stops_before_last_minimum;
