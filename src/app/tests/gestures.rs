@@ -399,3 +399,40 @@ fn releasing_a_previewed_swap_keeps_a_layout_toggle_made_while_held() {
     assert_eq!(bound, vec![first, second]);
     assert!(runtime.gesture.is_none());
 }
+
+/// #550: the display under a held cross-display drag switches workspaces;
+/// releasing where the preview was shown drops onto the one shown now.
+#[test]
+fn a_held_cross_display_drop_follows_a_destination_switch() {
+    let dragged = window(10);
+    let sibling = window(11);
+    let shown = window(20);
+    let mut backend = FakeBackend {
+        focused: Some(dragged.clone()),
+        ..FakeBackend::default()
+    };
+    backend.frames.insert(dragged.clone(), frame(50));
+    backend.frames.insert(sibling.clone(), frame(500));
+    backend.frames.insert(shown.clone(), frame(1050));
+    let mut runtime = runtime(backend);
+    bind(&mut runtime, WorkspaceId::ONE, &dragged);
+    bind(&mut runtime, WorkspaceId::ONE, &sibling);
+    bind(&mut runtime, WorkspaceId::SIX, &shown);
+    let cancelled = AtomicBool::new(false);
+    let point = (1500, 400);
+
+    runtime
+        .drop_window(dragged.clone(), point, true, outputs(), &cancelled)
+        .unwrap();
+    let seven = WorkspaceId::new(7).unwrap();
+    runtime.switch(seven, outputs(), &cancelled).unwrap();
+    assert!(runtime.is_visible(seven, &outputs()));
+    assert!(!runtime.is_visible(WorkspaceId::SIX, &outputs()));
+
+    runtime
+        .drop_window(dragged.clone(), point, false, outputs(), &cancelled)
+        .unwrap();
+
+    assert_eq!(runtime.workspaces.workspace_of(&dragged), Some(seven));
+    assert!(!runtime.parked.contains_key(&dragged));
+}

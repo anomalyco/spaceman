@@ -133,7 +133,8 @@ pause, quit, or hotkey loss.
   restoration), display outer left/right edge column drop bands (full edge sweep, outer gaps,
   band arming after leaving the band, temporary stacks, Fullscreen Layout), portrait top/bottom
   row drop bands in `src/app/tests/drag_rows.rs`, edge-nesting preview,
-  cross-display drop, a layout toggle while the button is held surviving the release (#524); `startup.rs` covers gesture classification and `src/app/input.rs` covers
+  cross-display drop, a layout toggle while the button is held surviving the release (#524), a held cross-display drop whose destination display switched
+  workspaces landing on the one shown at release (#550); `startup.rs` covers gesture classification and `src/app/input.rs` covers
   queued final gestures, pointer bounds tracking while busy, and edge drags grabbed from outside
   the window (in a gap or over the neighbor), which `src/macos/tests.rs` hit-tests by resize-border
   reach.
