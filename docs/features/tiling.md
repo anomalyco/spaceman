@@ -27,7 +27,9 @@ Focus                                                   // tile.focus
 │   │   recently focused (in-memory, per tile slot; floats don't count), else the nearest
 │   └── In Fullscreen Layout -> previous/next tile in stable order (see fullscreen-layout.md)
 ├── Option+` / ctl focus next        -> next window: tiles in stable order, then floats, wrapping
-│   └── Option+Shift+` / ctl focus prev -> the same ring, backward
+│   ├── Option+Shift+` / ctl focus prev -> the same ring, backward
+│   └── From a pin whose home is hidden -> the ring of the workspace its display shows, entered
+│       at its first window (prev: its last); the pin's home stays hidden (#592)
 ├── For 250 ms after a focus command, a report of a window it left (or of no window at all) still
 │   counts as its target: quick presses, numbered moves, Option+Tab, Dwindle's next split and focus
 │   follow all start from the window just focused
