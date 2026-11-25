@@ -186,7 +186,7 @@ mod macos {
     use objc2_app_kit::{NSEvent, NSEventMask, NSEventModifierFlags, NSEventType};
     use rune::OverlayHandle;
 
-    use super::super::{HudOverlay, OVERLAY_SIZE};
+    use super::super::{HudOverlay, overlay_size};
 
     struct Monitor {
         token: Retained<AnyObject>,
@@ -235,12 +235,11 @@ mod macos {
                 let loc = ev.locationInWindow();
                 let height = MainThreadMarker::new()
                     .and_then(|mtm| ev.window(mtm))
-                    .map_or(f64::from(OVERLAY_SIZE.1), |window| {
-                        window.frame().size.height
-                    });
+                    .map(|window| window.frame().size.height as f32);
                 let x = loc.x as f32;
-                let y = (height - loc.y) as f32;
+                let cocoa_y = loc.y as f32;
                 handle.update(move |overlay, tx| {
+                    let y = height.unwrap_or_else(|| overlay_size(overlay.size).1) - cocoa_y;
                     overlay.secondary_click_at(x, y, tx);
                 });
                 std::ptr::null_mut()

@@ -10,6 +10,8 @@ version = 1
 hud = true
 hud_style = "icons"
 hud_position = "bottom"
+# Size of the Workspace HUD: "small", "medium" (default), or "large".
+hud_size = "medium"
 # How new windows split the workspace: "dwindle" (default, binary space partition along each
 # tile's longer side) or "columns" (side-by-side siblings).
 layout = "dwindle"

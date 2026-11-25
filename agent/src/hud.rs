@@ -30,7 +30,7 @@ use rune::{
 use spaceman::{
     WorkspaceId,
     app::{UiHudDisplay, UiHudEvent},
-    config::{HudPosition, HudStyle},
+    config::{HudPosition, HudSize, HudStyle},
 };
 
 use flow::FRESH_MS;
@@ -59,8 +59,14 @@ const REVEAL_FADE: Duration = Duration::from_millis(40);
 /// Room on every side of the capsule for its shadow, which the panel's edge would cut, and
 /// for ten or so workspaces before the row scrolls.
 const OVERLAY_SIZE: (f32, f32) = (860.0, pill::PILL_HEIGHT + 2.0 * pill::SHADOW_REACH);
-/// Keeps the capsule 60 pt inside the display edge it sits on, above the bottom or below the top.
-pub const OVERLAY_MARGIN: f32 = pill::CAPSULE_INSET - pill::SHADOW_REACH;
+fn overlay_size(size: HudSize) -> (f32, f32) {
+    (OVERLAY_SIZE.0, OVERLAY_SIZE.1 * size.scale())
+}
+
+/// Keep the capsule 60 pt from the display edge, allowing for its scaled shadow.
+fn overlay_margin(size: HudSize) -> f32 {
+    pill::CAPSULE_INSET - pill::SHADOW_REACH * size.scale()
+}
 
 /// The edge of each display the capsule sits on.
 #[must_use]
@@ -83,6 +89,7 @@ pub(super) struct HudOverlay {
     style: HudStyle,
     /// Which edge of its display the capsule sits on.
     position: HudPosition,
+    size: HudSize,
     icons: Icons,
     names: HashMap<String, String>,
     sink: Arc<dyn HudSink>,
@@ -101,11 +108,18 @@ pub(super) struct HudOverlay {
 }
 
 impl HudOverlay {
-    fn new(enabled: bool, style: HudStyle, position: HudPosition, sink: Arc<dyn HudSink>) -> Self {
+    fn new(
+        enabled: bool,
+        style: HudStyle,
+        position: HudPosition,
+        size: HudSize,
+        sink: Arc<dyn HudSink>,
+    ) -> Self {
         Self {
             flow: HudFlow::new(enabled),
             style,
             position,
+            size,
             icons: Icons::new(),
             names: HashMap::new(),
             sink,
@@ -246,6 +260,7 @@ pub fn install<S: 'static>(
     enabled: bool,
     style: HudStyle,
     position: HudPosition,
+    size: HudSize,
     sink: Arc<dyn HudSink>,
 ) -> HudDriver {
     let panels: Vec<Panel> = PANEL_NAMES
@@ -253,9 +268,9 @@ pub fn install<S: 'static>(
         .map(|&name| {
             let spec = OverlaySpec {
                 name,
-                size: OVERLAY_SIZE,
+                size: overlay_size(size),
                 edge: panel_edge(position),
-                margin: OVERLAY_MARGIN,
+                margin: overlay_margin(size),
                 align: Align::Center,
                 inset: 0.0,
                 interactive: false,
@@ -272,7 +287,7 @@ pub fn install<S: 'static>(
             .poll(overlay_poll);
             let handle = app.overlay(
                 spec,
-                HudOverlay::new(enabled, style, position, Arc::clone(&sink)),
+                HudOverlay::new(enabled, style, position, size, Arc::clone(&sink)),
             );
             let inner = handle.clone();
             handle.update(move |overlay, _| {
@@ -380,6 +395,20 @@ impl HudDriver {
             let changed = overlay.style != style;
             overlay.style = style;
             changed
+        });
+    }
+
+    pub fn set_size(&self, size: HudSize) {
+        self.each(move |overlay, _| {
+            if overlay.size == size {
+                return false;
+            }
+            overlay.size = size;
+            if let Some(handle) = &overlay.handle {
+                handle.resize(overlay_size(size));
+                handle.place(panel_edge(overlay.position), overlay_margin(size));
+            }
+            true
         });
     }
 
@@ -530,14 +559,16 @@ fn overlay_view(overlay: &HudOverlay, cx: &mut Cx<HudOverlay>) -> El {
     overlay.flow.mark_drawn();
     row().key("hud-root").w_full().h_full().center().children(
         overlay.flow.view(cx.is_reduced_motion()).map(|view| {
-            pill::interactive_slot(
-                &view,
-                overlay.position,
-                overlay.style,
-                &overlay.icons,
-                OVERLAY_SIZE.0,
-                p,
-            )
+            pill::sized_slot(OVERLAY_SIZE.0, overlay.size, |width| {
+                pill::interactive_slot(
+                    &view,
+                    overlay.position,
+                    overlay.style,
+                    &overlay.icons,
+                    width,
+                    p,
+                )
+            })
         }),
     )
 }

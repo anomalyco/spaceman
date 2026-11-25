@@ -372,6 +372,7 @@ impl Ui {
             driver.set_enabled(self.doc.hud());
             driver.set_style(self.doc.hud_style());
             driver.set_position(self.doc.hud_position());
+            driver.set_size(self.doc.hud_size());
         }
     }
 
@@ -614,6 +615,7 @@ pub(crate) fn live_app(
     let initial_hud = doc.hud();
     let initial_style = doc.hud_style();
     let initial_position = doc.hud_position();
+    let initial_size = doc.hud_size();
     let hud_bridge = bridge.clone();
     let mut app = base_app()
         .init(move || Ui::load_live(doc, bridge, initial_tour, accessibility, initial_target))
@@ -625,6 +627,7 @@ pub(crate) fn live_app(
         initial_hud,
         initial_style,
         initial_position,
+        initial_size,
         hud_sink,
     );
     app.handle().update_if(move |ui, _| {

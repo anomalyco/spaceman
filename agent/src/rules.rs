@@ -7,7 +7,8 @@ use std::path::PathBuf;
 use spaceman::{
     WorkspaceId,
     config::{
-        HudPosition, HudStyle, LabFeature, LabsConfig, LayoutMode, MouseFollowsFocus, UpdateChannel,
+        HudPosition, HudSize, HudStyle, LabFeature, LabsConfig, LayoutMode, MouseFollowsFocus,
+        UpdateChannel,
     },
 };
 use toml_edit::{
@@ -276,6 +277,23 @@ impl Doc {
         self.set_setting(
             "hud_position",
             (position != HudPosition::default()).then(|| value(position.as_str())),
+        );
+    }
+
+    pub fn hud_size(&self) -> HudSize {
+        self.doc
+            .get("settings")
+            .and_then(Item::as_table_like)
+            .and_then(|table| table.get("hud_size"))
+            .and_then(Item::as_str)
+            .and_then(HudSize::parse)
+            .unwrap_or_default()
+    }
+
+    pub fn set_hud_size(&mut self, size: HudSize) {
+        self.set_setting(
+            "hud_size",
+            (size != HudSize::default()).then(|| value(size.as_str())),
         );
     }
 

@@ -115,6 +115,7 @@ Workspace HUD ([settings] hud, on by default)               // ws.hud
 │      display holding windows, plus the visible one, in workspace order; a marker on the visible one
 ├── hud_position = "bottom" (default) -> the capsule rests 60 pt above each display's bottom edge,
 │   clear of the Dock; "top" -> 60 pt below its top edge, clear of the menu bar
+├── hud_size = "small", "medium" (default), or "large" -> scales the live capsule and its Settings preview
 ├── hud_style = "icons" (default) -> each workspace as its number and its apps' icons (one per app,
 │   │  tile order); the visible group bright, the others dimmed; nothing changes size
 │   └── "layouts" -> each workspace as its layout with an app icon per tile, the visible one larger

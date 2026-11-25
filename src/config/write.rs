@@ -5,7 +5,8 @@ use std::path::{Path, PathBuf};
 use serde::{Deserialize, Serialize};
 
 use super::{
-    Config, HudPosition, HudStyle, LayoutMode, MouseFollowsFocus, UpdateChannel, parse_path,
+    Config, HudPosition, HudSize, HudStyle, LayoutMode, MouseFollowsFocus, UpdateChannel,
+    parse_path,
 };
 use crate::{DisplaySelector, WorkspaceId, Workspaces};
 
@@ -51,6 +52,8 @@ struct EditableSettings {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     hud_position: Option<HudPosition>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    hud_size: Option<HudSize>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     layout: Option<LayoutMode>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     update_channel: Option<UpdateChannel>,
@@ -69,6 +72,7 @@ impl EditableSettings {
         self.hud.is_none()
             && self.hud_style.is_none()
             && self.hud_position.is_none()
+            && self.hud_size.is_none()
             && self.layout.is_none()
             && self.update_channel.is_none()
             && self.mouse_follows_focus.is_none()

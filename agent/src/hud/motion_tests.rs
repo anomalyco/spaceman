@@ -16,14 +16,14 @@ use rune::{
 use spaceman::{
     Rect, WorkspaceId,
     app::{UiHudDisplay, UiHudTile, UiHudWorkspace},
-    config::{HudPosition, HudStyle},
+    config::{HudPosition, HudSize, HudStyle},
 };
 
 use crate::rules::{Doc, Place};
 
 use super::{
     HOLD_MS, HudOverlay, HudSink, HudTick, LEAVE_MS, NoopHudSink, OVERLAY_SIZE, RESUME_HOLD_MS,
-    grow, menu, overlay_view, pill,
+    grow, menu, overlay_margin, overlay_size, overlay_view, pill,
 };
 
 const HZ: f64 = 120.0;
@@ -74,12 +74,28 @@ impl Hud {
         reduce_motion: bool,
         sink: Arc<dyn HudSink>,
     ) -> Self {
+        Self::with_size(style, position, HudSize::Medium, row, reduce_motion, sink)
+    }
+
+    fn with_size(
+        style: HudStyle,
+        position: HudPosition,
+        size: HudSize,
+        row: UiHudDisplay,
+        reduce_motion: bool,
+        sink: Arc<dyn HudSink>,
+    ) -> Self {
         let clock = Arc::new(AtomicU64::new(0));
-        let mut overlay = HudOverlay::new(true, style, position, sink);
+        let mut overlay = HudOverlay::new(true, style, position, size, sink);
         overlay.reduce_motion = reduce_motion;
         overlay.virtual_clock = Some(Arc::clone(&clock));
         overlay.flow.trigger(row, 0);
-        let rt = Runtime::new(overlay, overlay_view, OVERLAY_SIZE, Env::new(true, 2.0));
+        let rt = Runtime::new(
+            overlay,
+            overlay_view,
+            overlay_size(size),
+            Env::new(true, 2.0),
+        );
         let mut run = Run::new(rt, HZ);
         run.step();
         Self {
@@ -761,22 +777,34 @@ fn the_widest_capsule_and_its_shadow_fit_the_panel() {
         .collect();
     let apps: Vec<&str> = apps.iter().map(String::as_str).collect();
     for style in STYLES {
-        for visible in [1, 5, 10] {
-            let workspaces = (1..=10).map(|number| workspace(number, &apps)).collect();
-            let hud = Hud::showing(style, display("main", visible, None, workspaces));
-            let [x, y, width, height] = hud.snaps("hud-pill", 0)[0].rect;
-            // The shadow's widest layer blurs 32 pt; its lowest reaches `SHADOW_REACH` below.
-            assert!(
-                x >= pill::SHADOW_SIDE && x + width <= OVERLAY_SIZE.0 - pill::SHADOW_SIDE,
-                "{x} + {width}"
-            );
-            assert!(y + height + pill::SHADOW_REACH <= OVERLAY_SIZE.1);
-            // A row that overflows still keeps your workspace in view.
-            let marker = hud.snaps("hud-marker", 0)[0].rect;
-            assert!(
-                marker[0] >= x && marker[0] + marker[2] <= x + width,
-                "{style:?} on {visible}: the marker at {marker:?} is outside {x} + {width}"
-            );
+        for size in [HudSize::Small, HudSize::Medium, HudSize::Large] {
+            for visible in [1, 5, 10] {
+                let workspaces = (1..=10).map(|number| workspace(number, &apps)).collect();
+                let hud = Hud::with_size(
+                    style,
+                    HudPosition::Bottom,
+                    size,
+                    display("main", visible, None, workspaces),
+                    false,
+                    Arc::new(NoopHudSink),
+                );
+                let [x, y, width, height] = hud.snaps("hud-pill", 0)[0].rect;
+                // The shadow's widest layer blurs 32 pt; its lowest reaches `SHADOW_REACH` below.
+                assert!(
+                    x >= pill::SHADOW_SIDE * size.scale() - 0.01
+                        && x + width <= OVERLAY_SIZE.0 - pill::SHADOW_SIDE * size.scale() + 0.01,
+                    "{x} + {width}"
+                );
+                assert!(
+                    y + height + pill::SHADOW_REACH * size.scale() <= overlay_size(size).1 + 0.01
+                );
+                // A row that overflows still keeps your workspace in view.
+                let marker = hud.snaps("hud-marker", 0)[0].rect;
+                assert!(
+                    marker[0] >= x && marker[0] + marker[2] <= x + width,
+                    "{style:?} on {visible}: the marker at {marker:?} is outside {x} + {width}"
+                );
+            }
         }
     }
     // Ten workspaces of layouts fit without scrolling.
@@ -850,6 +878,34 @@ fn hovering_the_pill_holds_it_open_and_leaving_resumes_a_clean_exit() {
         assert!(exit.last().unwrap().op < UNSEEN, "{style:?}: cut exit");
         hud.play(550);
         assert_eq!(hud.findings(), Vec::<String>::new(), "{style:?}");
+    }
+}
+
+#[test]
+fn each_size_scales_the_capsule_and_preserves_the_edge_inset_and_click_targets() {
+    for style in STYLES {
+        for position in [HudPosition::Top, HudPosition::Bottom] {
+            for size in [HudSize::Small, HudSize::Medium, HudSize::Large] {
+                let sink = Arc::new(RecordingSink::new());
+                let mut hud =
+                    Hud::with_size(style, position, size, row(1, None), true, sink.clone());
+                hud.play(200);
+                let [_, y, _, height] = hud.rect_of("hud-pill");
+                assert!((height - pill::PILL_HEIGHT * size.scale()).abs() < 1.0);
+                let edge_inset = match position {
+                    HudPosition::Top => y,
+                    HudPosition::Bottom => overlay_size(size).1 - y - height,
+                };
+                assert!((overlay_margin(size) + edge_inset - pill::CAPSULE_INSET).abs() < 1.0);
+                let (x, y) = hud.center_of("ws3");
+                hud.run.rt.pointer_move(x, y);
+                hud.step();
+                hud.run.rt.pointer_down(x, y);
+                hud.run.rt.pointer_up(x, y);
+                hud.step();
+                assert_eq!(*sink.switched.lock().unwrap(), vec![id(3)]);
+            }
+        }
     }
 }
 

@@ -8,11 +8,47 @@ use std::{
 use serde_json::Value;
 use spaceman::{
     WorkspaceId,
-    config::{Config, HudStyle, WindowDisposition},
+    config::{Config, HudSize, HudStyle, WindowDisposition},
     shortcuts::{Command, Key, Modifiers},
 };
 
 use super::{TempConfig, run_cli, sample_window};
+
+#[test]
+fn hud_size_round_trips_through_the_config_cli() {
+    let temp = TempConfig::new("config-hud-size");
+    temp.write("version = 1\n[settings]\nhud_style = \"layouts\"\n");
+    assert_eq!(Config::default().hud_size(), HudSize::Medium);
+    assert_eq!(
+        temp.run(&["config", "get", "hud_size"]).stdout.as_deref(),
+        Some("medium")
+    );
+    for (name, size) in [
+        ("small", HudSize::Small),
+        ("medium", HudSize::Medium),
+        ("large", HudSize::Large),
+    ] {
+        let set = temp.run(&["config", "set", "settings.hud_size", name]);
+        assert_eq!(set.exit_code, 0, "{:?}", set.stderr);
+        assert_eq!(Config::parse(&temp.read()).unwrap().hud_size(), size);
+        let show = temp.run(&["config", "show", "--json"]);
+        let json: Value = serde_json::from_str(show.stdout.as_deref().unwrap()).unwrap();
+        assert_eq!(json["settings"]["hud_size"], name);
+    }
+    let before = temp.read();
+    assert_eq!(
+        temp.run(&["config", "set", "hud_size", "huge"]).exit_code,
+        1
+    );
+    assert_eq!(temp.read(), before);
+    assert!(Config::parse("version = 1\n[settings]\nhud_size = \"huge\"").is_err());
+    assert_eq!(temp.run(&["config", "reset", "hud_size"]).exit_code, 0);
+    let saved = temp.read();
+    assert!(!saved.contains("hud_size"));
+    let config = Config::parse(&saved).unwrap();
+    assert_eq!(config.hud_size(), HudSize::Medium);
+    assert_eq!(config.hud_style(), HudStyle::Layouts);
+}
 
 #[test]
 fn concurrent_config_set_commands_preserve_both_edits() {

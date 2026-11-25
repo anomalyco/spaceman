@@ -183,6 +183,23 @@ fn hud_style_round_trips_and_leaves_the_default_out() {
 }
 
 #[test]
+fn hud_size_round_trips_and_leaves_medium_out() {
+    use spaceman::config::{Config, HudSize};
+    let mut doc = Doc::parse(SOURCE);
+    assert_eq!(doc.hud_size(), HudSize::Medium);
+    doc.set_hud_style(spaceman::config::HudStyle::Layouts);
+    for size in [HudSize::Small, HudSize::Large, HudSize::Medium] {
+        doc.set_hud_size(size);
+        let source = doc.source();
+        assert_eq!(doc.hud_size(), size);
+        assert_eq!(Config::parse(&source).unwrap().hud_size(), size);
+        assert_eq!(source.contains("hud_size"), size != HudSize::Medium);
+        assert!(source.contains("hud_style = \"layouts\""));
+        assert!(source.contains("# OpenCode Browser's agent window."));
+    }
+}
+
+#[test]
 fn hud_position_round_trips_and_leaves_bottom_out() {
     use spaceman::config::{Config, HudPosition};
     let mut doc = Doc::parse(SOURCE);

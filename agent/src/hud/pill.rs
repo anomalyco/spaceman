@@ -25,7 +25,7 @@ use rune::{Color, El, Pixels, Spring, Transition, el, row, text, tok::motion::pa
 use spaceman::{
     WorkspaceId,
     app::{UiHudDisplay, UiHudWorkspace},
-    config::{HudPosition, HudStyle},
+    config::{HudPosition, HudSize, HudStyle},
 };
 
 use super::{grow, icons};
@@ -138,6 +138,17 @@ pub const fn enter_offset(position: HudPosition, shown: bool, still: bool) -> f3
         HudPosition::Bottom => DROP,
         HudPosition::Top => -DROP,
     }
+}
+
+/// Lay the slot out in unscaled points so its shadow and scrollable row fit after scaling.
+pub fn sized_slot(width: f32, size: HudSize, slot: impl FnOnce(f32) -> El) -> El {
+    let scale = size.scale();
+    let logical_width = width / scale;
+    row().size(width, PILL_HEIGHT * scale).center().child(
+        el().size(logical_width, PILL_HEIGHT)
+            .scale(scale)
+            .child(slot(logical_width)),
+    )
 }
 
 /// Passive capsule used by Playground previews (no `HudOverlay` event handlers).

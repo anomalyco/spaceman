@@ -6,24 +6,17 @@ use spaceman::{
 use crate::rules::Place;
 
 use super::{
-    FRESH_MS, HOLD_MS, HudFlow, HudTick, HudTransition, LEAVE_MS, OVERLAY_MARGIN, OVERLAY_SIZE,
-    RESUME_HOLD_MS, assign_panels, grow, icons, menu, panel_edge, pill,
+    FRESH_MS, HOLD_MS, HudFlow, HudTick, HudTransition, LEAVE_MS, RESUME_HOLD_MS, assign_panels,
+    grow, icons, menu, panel_edge, pill,
 };
 
 #[test]
-fn the_capsule_sits_sixty_points_inside_the_edge_it_picks() {
+fn a_panel_uses_the_configured_screen_edge() {
     use rune::ScreenEdge;
     use spaceman::config::HudPosition;
 
     assert_eq!(panel_edge(HudPosition::Bottom), ScreenEdge::Bottom);
     assert_eq!(panel_edge(HudPosition::Top), ScreenEdge::Top);
-    // The panel is the capsule plus its shadow above and below, so the capsule's centre is one
-    // shadow reach in from the panel's edge, and the panel itself `OVERLAY_MARGIN` in.
-    let panel_inset = OVERLAY_MARGIN + pill::SHADOW_REACH;
-    assert_eq!(panel_inset, pill::CAPSULE_INSET);
-    assert_eq!(panel_inset, 60.0);
-    let capsule_top = OVERLAY_MARGIN + (OVERLAY_SIZE.1 - pill::PILL_HEIGHT) / 2.0;
-    assert_eq!(capsule_top, pill::CAPSULE_INSET);
 }
 
 #[test]

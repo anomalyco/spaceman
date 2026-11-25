@@ -5,7 +5,7 @@ use rune::{El, Tx, row};
 use rune_kit::SegmentedControl;
 use spaceman::{
     app::UiLaunchAtLogin,
-    config::{HudPosition, HudStyle, MouseFollowsFocus},
+    config::{HudPosition, HudSize, HudStyle, MouseFollowsFocus},
 };
 
 use crate::{
@@ -43,6 +43,12 @@ fn hud_position_index(position: HudPosition) -> usize {
         .position(|(_, candidate)| *candidate == position)
         .unwrap_or(0)
 }
+
+const HUD_SIZES: [(&str, HudSize); 3] = [
+    ("Small", HudSize::Small),
+    ("Medium", HudSize::Medium),
+    ("Large", HudSize::Large),
+];
 
 const MOUSE_FOLLOW_MODES: [(&str, MouseFollowsFocus, &str); 3] = [
     ("Off", MouseFollowsFocus::Off, "The pointer stays put"),
@@ -253,11 +259,13 @@ pub fn hud_sheet(
     layer: &mut Vec<El>,
 ) {
     let position = ui.doc.hud_position();
+    let size = ui.doc.hud_size();
     let width = ModalWidth::Medium;
     let miniature = hud::miniature(
         preview,
         position,
         ui.doc.hud_style(),
+        size,
         (width.px() - 2.0 * METRICS.card_edge(), HUD_PREVIEW_H),
         p,
         reduce_motion,
@@ -281,6 +289,27 @@ pub fn hud_sheet(
         .build(p.k)
         .key("hud-position-picker"),
     );
+    let size_row = controls::setting_row(
+        p,
+        "hud-size",
+        "Size",
+        None,
+        SegmentedControl::new(
+            &HUD_SIZES.map(|(label, _)| label.to_owned()),
+            HUD_SIZES
+                .iter()
+                .position(|(_, candidate)| *candidate == size),
+        )
+        .label("Size")
+        .fit()
+        .on_pick(|ui: &mut Ui, index, _: &mut Tx| {
+            if let Some((_, size)) = HUD_SIZES.get(index) {
+                ui.edit(|doc| doc.set_hud_size(*size));
+            }
+        })
+        .build(p.k)
+        .key("hud-size-picker"),
+    );
     let displays_row = controls::setting_row(
         p,
         "hud-displays",
@@ -300,7 +329,7 @@ pub fn hud_sheet(
         width,
         vec![
             miniature,
-            controls::card(p, "card", vec![position_row, displays_row]),
+            controls::card(p, "card", vec![position_row, size_row, displays_row]),
         ],
         vec![
             controls::button(
@@ -318,9 +347,13 @@ pub fn hud_sheet(
     controls::modal_sheet(p, "hud-sheet", panel, Ui::close_sheet, layer);
 }
 
-/// Playground: the Customize sheet open over General, with the capsule on `position`.
-pub(crate) fn fixture_hud_sheet(ui: &mut Ui, position: HudPosition) {
-    ui.edit(|doc| doc.set_hud_position(position));
+/// Playground scene for the HUD customization sheet.
+pub(crate) fn fixture_hud_sheet(ui: &mut Ui, position: HudPosition, size: HudSize) {
+    crate::playground::reset_fixture(ui, super::Pane::General);
+    ui.edit(|doc| {
+        doc.set_hud_position(position);
+        doc.set_hud_size(size);
+    });
     ui.sheet = Some(Sheet::Hud(hud::HudPreview::sample()));
 }
 

@@ -18,6 +18,7 @@ struct AppSettings {
     hud: bool,
     hud_style: HudStyle,
     hud_position: HudPosition,
+    hud_size: HudSize,
     layout: LayoutMode,
     update_channel: UpdateChannel,
     mouse_follows_focus: MouseFollowsFocus,
@@ -30,6 +31,7 @@ impl Default for AppSettings {
             hud: true,
             hud_style: HudStyle::default(),
             hud_position: HudPosition::default(),
+            hud_size: HudSize::default(),
             layout: LayoutMode::default(),
             update_channel: UpdateChannel::default(),
             mouse_follows_focus: MouseFollowsFocus::default(),
@@ -193,6 +195,46 @@ impl HudPosition {
     }
 }
 
+/// Size of the Workspace HUD: `settings.hud_size`.
+#[derive(Clone, Copy, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "lowercase")]
+pub enum HudSize {
+    Small,
+    #[default]
+    Medium,
+    Large,
+}
+
+impl HudSize {
+    #[must_use]
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Small => "small",
+            Self::Medium => "medium",
+            Self::Large => "large",
+        }
+    }
+
+    #[must_use]
+    pub fn parse(value: &str) -> Option<Self> {
+        match value {
+            "small" => Some(Self::Small),
+            "medium" => Some(Self::Medium),
+            "large" => Some(Self::Large),
+            _ => None,
+        }
+    }
+
+    #[must_use]
+    pub const fn scale(self) -> f32 {
+        match self {
+            Self::Small => 0.8,
+            Self::Medium => 1.0,
+            Self::Large => 1.25,
+        }
+    }
+}
+
 /// The `[labs]` table: experimental features, each behind its own switch and off by default.
 /// With every switch off Spaceman behaves exactly as if Labs did not exist.
 #[derive(Clone, Copy, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
@@ -306,6 +348,8 @@ struct RawSettings {
     #[serde(default)]
     hud_position: HudPosition,
     #[serde(default)]
+    hud_size: HudSize,
+    #[serde(default)]
     layout: LayoutMode,
     #[serde(default)]
     update_channel: UpdateChannel,
@@ -325,6 +369,7 @@ impl Default for RawSettings {
             hud: true,
             hud_style: HudStyle::default(),
             hud_position: HudPosition::default(),
+            hud_size: HudSize::default(),
             layout: LayoutMode::default(),
             update_channel: UpdateChannel::default(),
             mouse_follows_focus: MouseFollowsFocus::default(),
@@ -460,6 +505,7 @@ impl Config {
                 hud: raw.settings.hud,
                 hud_style: raw.settings.hud_style,
                 hud_position: raw.settings.hud_position,
+                hud_size: raw.settings.hud_size,
                 layout: raw.settings.layout,
                 update_channel: raw.settings.update_channel,
                 mouse_follows_focus: raw.settings.mouse_follows_focus,
@@ -498,6 +544,11 @@ impl Config {
     #[must_use]
     pub const fn hud_position(&self) -> HudPosition {
         self.settings.hud_position
+    }
+
+    #[must_use]
+    pub const fn hud_size(&self) -> HudSize {
+        self.settings.hud_size
     }
 
     #[must_use]
@@ -946,7 +997,7 @@ monitor = "main"
     }
 
     #[test]
-    fn saving_a_workspace_monitor_keeps_hud_position() {
+    fn saving_a_workspace_monitor_keeps_hud_settings() {
         let dir = std::env::temp_dir().join(format!(
             "spaceman-config-hud-position-{}-{}",
             std::process::id(),
@@ -954,10 +1005,15 @@ monitor = "main"
         ));
         std::fs::create_dir_all(&dir).unwrap();
         let path = dir.join("config.toml");
-        std::fs::write(&path, "version = 1\n[settings]\nhud_position = \"top\"\n").unwrap();
+        std::fs::write(
+            &path,
+            "version = 1\n[settings]\nhud_position = \"top\"\nhud_size = \"small\"\n",
+        )
+        .unwrap();
         let saved = save_workspace_monitor_at(&path, WorkspaceId::TWO, &DisplaySelector::Secondary)
             .unwrap();
         assert_eq!(saved.hud_position(), HudPosition::Top);
+        assert_eq!(saved.hud_size(), HudSize::Small);
         assert!(
             std::fs::read_to_string(&path)
                 .unwrap()

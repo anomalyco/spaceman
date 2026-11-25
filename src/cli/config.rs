@@ -3,7 +3,8 @@ use std::path::{Path, PathBuf};
 use serde::Serialize;
 use spaceman::{
     config::{
-        HudPosition, HudStyle, LabFeature, LayoutMode, MouseFollowsFocus, UpdateChannel, load_path,
+        HudPosition, HudSize, HudStyle, LabFeature, LayoutMode, MouseFollowsFocus, UpdateChannel,
+        load_path,
     },
     spacing::{self, SpacingKey},
 };
@@ -57,6 +58,7 @@ enum SettingKey {
     Hud,
     HudStyle,
     HudPosition,
+    HudSize,
     Layout,
     UpdateChannel,
     MouseFollowsFocus,
@@ -70,13 +72,14 @@ impl SettingKey {
             "hud" => Ok(Self::Hud),
             "hud_style" => Ok(Self::HudStyle),
             "hud_position" => Ok(Self::HudPosition),
+            "hud_size" => Ok(Self::HudSize),
             "layout" => Ok(Self::Layout),
             "update_channel" => Ok(Self::UpdateChannel),
             "mouse_follows_focus" => Ok(Self::MouseFollowsFocus),
             spacing::OUTER => Ok(Self::Outer),
             other => SpacingKey::parse(other).map(Self::Spacing).ok_or_else(|| {
                 format!(
-                    "unknown setting {raw:?}; valid keys: hud, hud_style, hud_position, layout, \
+                    "unknown setting {raw:?}; valid keys: hud, hud_style, hud_position, hud_size, layout, \
                      update_channel, mouse_follows_focus, gaps.inner, gaps.outer, gaps.top, \
                      gaps.bottom, gaps.left, gaps.right, single_window_max_width"
                 )
@@ -89,6 +92,7 @@ impl SettingKey {
             Self::Hud => "hud",
             Self::HudStyle => "hud_style",
             Self::HudPosition => "hud_position",
+            Self::HudSize => "hud_size",
             Self::Layout => "layout",
             Self::UpdateChannel => "update_channel",
             Self::MouseFollowsFocus => "mouse_follows_focus",
@@ -117,6 +121,10 @@ impl SettingKey {
                     position.to_owned(),
                     serde_json::Value::String(position.to_owned()),
                 )
+            }
+            Self::HudSize => {
+                let size = settings.effective_hud_size().as_str();
+                (size.to_owned(), serde_json::Value::String(size.to_owned()))
             }
             Self::Layout => {
                 let layout = settings.effective_layout().as_str();
@@ -153,6 +161,7 @@ impl SettingKey {
             Self::Hud => settings.hud.is_some(),
             Self::HudStyle => settings.hud_style.is_some(),
             Self::HudPosition => settings.hud_position.is_some(),
+            Self::HudSize => settings.hud_size.is_some(),
             Self::Layout => settings.layout.is_some(),
             Self::UpdateChannel => settings.update_channel.is_some(),
             Self::MouseFollowsFocus => settings.mouse_follows_focus.is_some(),
@@ -167,6 +176,7 @@ impl SettingKey {
             Self::Hud => settings.hud = None,
             Self::HudStyle => settings.hud_style = None,
             Self::HudPosition => settings.hud_position = None,
+            Self::HudSize => settings.hud_size = None,
             Self::Layout => settings.layout = None,
             Self::UpdateChannel => settings.update_channel = None,
             Self::MouseFollowsFocus => settings.mouse_follows_focus = None,
@@ -329,6 +339,7 @@ enum SettingValue {
     Hud(bool),
     HudStyle(HudStyle),
     HudPosition(HudPosition),
+    HudSize(HudSize),
     Layout(LayoutMode),
     UpdateChannel(UpdateChannel),
     MouseFollowsFocus(MouseFollowsFocus),
@@ -359,6 +370,13 @@ impl SettingValue {
                 .ok_or_else(|| {
                     format!(
                         "invalid value for hud_position: expected 'bottom' or 'top', got {raw_value:?}"
+                    )
+                }),
+            SettingKey::HudSize => HudSize::parse(raw_value)
+                .map(Self::HudSize)
+                .ok_or_else(|| {
+                    format!(
+                        "invalid value for hud_size: expected 'small', 'medium', or 'large', got {raw_value:?}"
                     )
                 }),
             SettingKey::Layout => LayoutMode::parse(raw_value)
@@ -428,6 +446,13 @@ fn run_set(args: &[&str], path_override: Option<&Path>) -> Result<String, String
                 doc.settings.hud_position = Some(parsed);
                 (
                     format!("set hud_position = {}", parsed.as_str()),
+                    serde_json::Value::String(parsed.as_str().to_owned()),
+                )
+            }
+            SettingValue::HudSize(parsed) => {
+                doc.settings.hud_size = Some(parsed);
+                (
+                    format!("set hud_size = {}", parsed.as_str()),
                     serde_json::Value::String(parsed.as_str().to_owned()),
                 )
             }

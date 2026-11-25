@@ -8,8 +8,8 @@ use serde::{Deserialize, Serialize};
 use spaceman::{
     DisplaySelector, WorkspaceId, Workspaces,
     config::{
-        Config, HudPosition, HudStyle, LabFeature, LayoutMode, MouseFollowsFocus, UpdateChannel,
-        config_path, lock_config, write_config_atomic,
+        Config, HudPosition, HudSize, HudStyle, LabFeature, LayoutMode, MouseFollowsFocus,
+        UpdateChannel, config_path, lock_config, write_config_atomic,
     },
     spacing::{Spacing, SpacingKey, check_outer},
 };
@@ -117,6 +117,8 @@ pub(crate) struct SettingsDoc {
         serialize_with = "serialize_optional_hud_position"
     )]
     pub hud_position: Option<HudPosition>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub hud_size: Option<HudSize>,
     #[serde(
         default,
         skip_serializing_if = "Option::is_none",
@@ -177,6 +179,7 @@ impl SettingsDoc {
         self.hud.is_none()
             && self.hud_style.is_none()
             && self.hud_position.is_none()
+            && self.hud_size.is_none()
             && self.layout.is_none()
             && self.update_channel.is_none()
             && self.mouse_follows_focus.is_none()
@@ -261,6 +264,10 @@ impl SettingsDoc {
 
     pub(crate) fn effective_hud_position(&self) -> HudPosition {
         self.hud_position.unwrap_or_default()
+    }
+
+    pub(crate) fn effective_hud_size(&self) -> HudSize {
+        self.hud_size.unwrap_or_default()
     }
 
     pub(crate) fn effective_layout(&self) -> LayoutMode {
@@ -350,6 +357,7 @@ pub(crate) struct EffectiveSettings {
     pub hud: bool,
     pub hud_style: &'static str,
     pub hud_position: &'static str,
+    pub hud_size: &'static str,
     pub layout: &'static str,
     pub update_channel: &'static str,
     pub mouse_follows_focus: &'static str,
@@ -440,6 +448,7 @@ impl ConfigDoc {
             hud: self.settings.effective_hud(),
             hud_style: self.settings.effective_hud_style().as_str(),
             hud_position: self.settings.effective_hud_position().as_str(),
+            hud_size: self.settings.effective_hud_size().as_str(),
             layout: self.settings.effective_layout().as_str(),
             update_channel: self.settings.effective_update_channel().as_str(),
             mouse_follows_focus: self.settings.effective_mouse_follows_focus().as_str(),

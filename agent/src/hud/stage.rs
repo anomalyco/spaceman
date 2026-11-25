@@ -6,7 +6,7 @@ use rune::{Cursor, El, Play, Playground, col, el};
 use spaceman::{
     Rect, WorkspaceId,
     app::{UiHudDisplay, UiHudTile, UiHudWorkspace},
-    config::{HudPosition, HudStyle},
+    config::{HudPosition, HudSize, HudStyle},
 };
 
 use super::{FRESH_MS, HudFlow, Icons, LEAVE_MS, grow, pill};
@@ -224,13 +224,14 @@ const MINIATURE_EDGE: f32 = 16.0;
 const MINIATURE_GAP: f32 = 2.0;
 
 /// The Customize sheet's miniature: a display `size` big showing the demo workspace's windows
-/// and the real capsule at full size, in `style`, resting `MINIATURE_EDGE` from the edge
+/// and the real capsule at its selected size and style, resting `MINIATURE_EDGE` from the edge
 /// `position` names. It is also the control: pressing its top or bottom half moves the capsule
 /// there, on the row's own spring.
 pub fn miniature(
     preview: &HudPreview,
     position: HudPosition,
     style: HudStyle,
+    size: HudSize,
     (width, height): (f32, f32),
     p: Paint,
     reduce_motion: bool,
@@ -288,7 +289,7 @@ pub fn miniature(
             .on_press(move |ui: &mut Ui| ui.set_hud_position(to))
     };
     let rest = match position {
-        HudPosition::Bottom => height - MINIATURE_EDGE - pill::PILL_HEIGHT,
+        HudPosition::Bottom => height - MINIATURE_EDGE - pill::PILL_HEIGHT * size.scale(),
         HudPosition::Top => MINIATURE_EDGE,
     };
     display
@@ -304,10 +305,11 @@ pub fn miniature(
                 .absolute(0.0, rest)
                 .w(width)
                 .motion(pill::ROW)
-                .children(
-                    view.as_ref()
-                        .map(|view| pill::slot(view, position, style, &preview.icons, width, p)),
-                ),
+                .children(view.as_ref().map(|view| {
+                    pill::sized_slot(width, size, |logical_width| {
+                        pill::slot(view, position, style, &preview.icons, logical_width, p)
+                    })
+                })),
         )
 }
 

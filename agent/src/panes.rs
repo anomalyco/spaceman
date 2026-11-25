@@ -8,7 +8,7 @@ pub(crate) mod workspaces;
 use rune::{El, Icon};
 use spaceman::{
     app::{UiLaunchAtLogin, UiUpdateStatus},
-    config::{LabFeature, LabsConfig},
+    config::{HudPosition, HudSize, LabFeature, LabsConfig},
 };
 
 use crate::{
@@ -172,14 +172,17 @@ pub(crate) const SCENES: &[Scene] = &[
         reset_fixture(ui, Pane::General);
         ui.set_hud(None);
     }),
-    // The Workspace HUD's Customize sheet, with the capsule on each edge.
     ("hud-customize", |ui| {
-        reset_fixture(ui, Pane::General);
-        general::fixture_hud_sheet(ui, spaceman::config::HudPosition::Bottom);
+        general::fixture_hud_sheet(ui, HudPosition::Bottom, HudSize::Medium);
+    }),
+    ("hud-customize-small", |ui| {
+        general::fixture_hud_sheet(ui, HudPosition::Bottom, HudSize::Small);
+    }),
+    ("hud-customize-large", |ui| {
+        general::fixture_hud_sheet(ui, HudPosition::Bottom, HudSize::Large);
     }),
     ("hud-customize-top", |ui| {
-        reset_fixture(ui, Pane::General);
-        general::fixture_hud_sheet(ui, spaceman::config::HudPosition::Top);
+        general::fixture_hud_sheet(ui, HudPosition::Top, HudSize::Medium);
     }),
     ("general-update-ready", |ui| {
         reset_fixture(ui, Pane::General);
