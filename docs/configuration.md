@@ -39,6 +39,7 @@ layout = "dwindle"                    # optional (default: "dwindle"); or "colum
 update_channel = "stable"             # optional (default: "stable"); or "dev", a build of every merge
 mouse_follows_focus = "off"           # optional (default: "off"); or "display", "window"
 trackpad_swipe = true                 # optional (default: true); read only with [labs] swipe_switch
+menu_bar_icon = "full"                # optional (default: "full"); or "compact", "off"; read only with [labs] menu_bar_icon_style
 single_window_max_width = 0           # optional (default: 0, off); or 320 through 16384 points
 single_window_max_height = 0          # optional (default: 0, off); or 320 through 16384 points; read only with [labs] single_window_height
 workspace_order = []                  # optional (default: []); workspaces listed first, in this order
@@ -354,7 +355,7 @@ them off Spaceman behaves exactly as if Labs did not exist: no extra shortcuts r
 command changes behavior. Unknown keys are config errors. Settings › Labs lists every switch,
 grouped by what it changes (`Windows`: Scratchpad, Portrait edge rows, Recent focus, Dragged
 floats follow their display, Single-window height and Route every window; `Workspaces`: Swipe switch, Focus empty workspaces on other
-displays, Workspace steps and Four-finger swipe; `Menu bar & HUD`: Physical display order; `Settings`: Activity), and flipping one there
+displays, Workspace steps and Four-finger swipe; `Menu bar & HUD`: Physical display order and Menu bar icon style; `Settings`: Activity), and flipping one there
 writes the same key.
 
 ```toml
@@ -371,6 +372,7 @@ workspace_steps = false               # optional (default: false); switch/move n
 four_finger_swipe = false             # optional (default: false); the workspace swipe takes four fingers
 single_window_height = false          # optional (default: false); reads settings.single_window_max_height
 route_all_windows = false             # optional (default: false); reads a route rule's windows = "all"
+menu_bar_icon_style = false           # optional (default: false); reads settings.menu_bar_icon
 ```
 
 `scratchpad = true` enables the Scratchpad (see [Controls › Scratchpad](controls.md#scratchpad-lab)) and
@@ -447,6 +449,22 @@ drawn tall; when displays share a product name, each section says which one it i
 glyph's workspace with its display. Rearranging, rotating, connecting or disconnecting a display
 updates them on the next refresh. With it off, or with one landscape display, the menu bar is
 unchanged. In Settings it is `Labs › Menu bar & HUD › Physical display order`.
+
+`menu_bar_icon_style = true` makes Spaceman read `settings.menu_bar_icon` and adds **Menu bar icon**
+to Settings › General, with `Full`, `Compact` and `Off`. `"full"` (the default) is today's icon: a
+layout glyph and workspace label for each display. `"compact"` draws one glyph and label, for the
+workspace you last focused (the first display's before anything has focus); the menu still lists
+every display. `"off"` hides the icon and its menu. Settings stays reachable: open Spaceman again
+(from Spotlight, Launchpad or Finder) or run `spaceman ctl open-settings`, and Settings › General
+keeps Automatic tiling, Pause & restore windows and Quit. With the Lab off, the key is ignored and
+the row is hidden, so turning the Lab off brings a hidden icon back. It applies live. In Settings it
+is `Labs › Menu bar & HUD › Menu bar icon style`.
+
+```sh
+spaceman config set labs.menu_bar_icon_style true
+spaceman config set menu_bar_icon compact
+spaceman config reset menu_bar_icon
+```
 
 `recent_focus = true` changes which tile `Option+H/J/K/L` and `spaceman ctl focus` pick when several
 tiles on the focused tile's workspace border it on the side pressed: those that share part of its

@@ -3,9 +3,11 @@ use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
 
+mod choices;
 mod disposition;
 mod labs;
 mod write;
+pub use choices::{MenuBarIcon, MouseFollowsFocus};
 pub use disposition::{DispositionPatch, Management};
 pub use labs::{LabFeature, LabsConfig};
 pub use write::{
@@ -27,6 +29,7 @@ struct AppSettings {
     update_channel: UpdateChannel,
     mouse_follows_focus: MouseFollowsFocus,
     trackpad_swipe: bool,
+    menu_bar_icon: MenuBarIcon,
     spacing: Spacing,
 }
 
@@ -40,6 +43,7 @@ impl Default for AppSettings {
             update_channel: UpdateChannel::default(),
             mouse_follows_focus: MouseFollowsFocus::default(),
             trackpad_swipe: true,
+            menu_bar_icon: MenuBarIcon::default(),
             spacing: Spacing::default(),
         }
     }
@@ -100,41 +104,6 @@ impl UpdateChannel {
         match value {
             "stable" => Some(Self::Stable),
             "dev" => Some(Self::Dev),
-            _ => None,
-        }
-    }
-}
-
-/// Whether Spaceman moves the pointer when an explicit focus action lands elsewhere:
-/// `settings.mouse_follows_focus`.
-#[derive(Clone, Copy, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
-#[serde(rename_all = "lowercase")]
-pub enum MouseFollowsFocus {
-    /// Leave the pointer where it is.
-    #[default]
-    Off,
-    /// Move the pointer to the focused window (or empty display) when it is on another display.
-    Display,
-    /// Move the pointer to the focused window (or empty display) whenever it is outside it.
-    Window,
-}
-
-impl MouseFollowsFocus {
-    #[must_use]
-    pub const fn as_str(self) -> &'static str {
-        match self {
-            Self::Off => "off",
-            Self::Display => "display",
-            Self::Window => "window",
-        }
-    }
-
-    #[must_use]
-    pub fn parse(value: &str) -> Option<Self> {
-        match value {
-            "off" => Some(Self::Off),
-            "display" => Some(Self::Display),
-            "window" => Some(Self::Window),
             _ => None,
         }
     }
@@ -305,6 +274,8 @@ struct RawSettings {
     #[serde(default = "default_trackpad_swipe")]
     trackpad_swipe: bool,
     #[serde(default)]
+    menu_bar_icon: MenuBarIcon,
+    #[serde(default)]
     single_window_max_width: i64,
     #[serde(default)]
     single_window_max_height: i64,
@@ -324,6 +295,7 @@ impl Default for RawSettings {
             update_channel: UpdateChannel::default(),
             mouse_follows_focus: MouseFollowsFocus::default(),
             trackpad_swipe: true,
+            menu_bar_icon: MenuBarIcon::default(),
             single_window_max_width: 0,
             single_window_max_height: 0,
             workspace_order: Vec::new(),
@@ -482,6 +454,7 @@ impl Config {
                 update_channel: raw.settings.update_channel,
                 mouse_follows_focus: raw.settings.mouse_follows_focus,
                 trackpad_swipe: raw.settings.trackpad_swipe,
+                menu_bar_icon: raw.settings.menu_bar_icon,
                 spacing: raw.settings.spacing()?,
             },
             labs: raw.labs,
@@ -540,6 +513,17 @@ impl Config {
     #[must_use]
     pub const fn trackpad_swipe(&self) -> bool {
         !self.labs.swipe_switch || self.settings.trackpad_swipe
+    }
+
+    /// How the menu bar icon looks: always [`MenuBarIcon::Full`] unless
+    /// `[labs] menu_bar_icon_style` is on, which hands the choice to `settings.menu_bar_icon`.
+    #[must_use]
+    pub const fn menu_bar_icon(&self) -> MenuBarIcon {
+        if self.labs.menu_bar_icon_style {
+            self.settings.menu_bar_icon
+        } else {
+            MenuBarIcon::Full
+        }
     }
 
     /// How many fingers the workspace swipe takes: three, or four with
@@ -1396,6 +1380,26 @@ monitor = "main"
         );
         assert!(Config::parse("version = 1\n[settings]\nmouse_follows_focus = true\n").is_err());
         assert_eq!(MouseFollowsFocus::parse("Display"), None);
+    }
+
+    #[test]
+    fn menu_bar_icon_waits_for_its_lab() {
+        assert_eq!(Config::default().menu_bar_icon(), MenuBarIcon::Full);
+        for icon in [MenuBarIcon::Full, MenuBarIcon::Compact, MenuBarIcon::Off] {
+            let source = format!(
+                "version = 1\n[settings]\nmenu_bar_icon = {:?}\n",
+                icon.as_str()
+            );
+            assert_eq!(
+                Config::parse(&source).unwrap().menu_bar_icon(),
+                MenuBarIcon::Full,
+                "the setting is ignored while the Lab is off"
+            );
+            let lab = format!("{source}[labs]\nmenu_bar_icon_style = true\n");
+            assert_eq!(Config::parse(&lab).unwrap().menu_bar_icon(), icon);
+            assert_eq!(MenuBarIcon::parse(icon.as_str()), Some(icon));
+        }
+        assert!(Config::parse("version = 1\n[settings]\nmenu_bar_icon = \"tiny\"\n").is_err());
     }
 
     #[test]

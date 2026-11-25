@@ -70,3 +70,23 @@ fn menu_bar_follows_the_physical_order_and_shape_with_the_lab_on() {
     let names: Vec<_> = status.menu.iter().map(|d| d.display.as_str()).collect();
     assert_eq!(names, ["DELL U2720Q (left)", "DELL U2720Q (right)"]);
 }
+
+#[test]
+fn a_compact_menu_bar_icon_shows_only_the_focused_display() {
+    let source = "version = 1\n[settings]\nmenu_bar_icon = \"compact\"\n";
+    // Without its Lab the setting is ignored: one glyph per display.
+    let ignored = runtime_with_config(FakeBackend::default(), Config::parse(source).unwrap());
+    assert_eq!(ignored.status(0, &portrait_left()).layouts.len(), 2);
+
+    let lab = format!("{source}[labs]\nmenu_bar_icon_style = true\n");
+    let mut runtime = runtime_with_config(FakeBackend::default(), Config::parse(&lab).unwrap());
+    assert_eq!(
+        shown(&runtime.status(0, &portrait_left())),
+        [("1".into(), false, None)]
+    );
+    runtime.record_focused_workspace(WorkspaceId::SIX);
+    let status = runtime.status(0, &portrait_left());
+    assert_eq!(shown(&status), [("6".into(), false, None)]);
+    // The menu still lists every display.
+    assert_eq!(status.menu.len(), 2);
+}

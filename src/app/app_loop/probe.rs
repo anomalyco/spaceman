@@ -4,7 +4,12 @@ use std::{
     time::{Duration, Instant, SystemTime},
 };
 
-use crate::{config::Config, login_item, shortcuts::Shortcuts, swipe::Fingers};
+use crate::{
+    config::{Config, MenuBarIcon},
+    login_item,
+    shortcuts::Shortcuts,
+    swipe::Fingers,
+};
 
 /// How long a Launch at Login reading stays fresh. Each reading is an XPC round
 /// trip to `smd`; Spaceman's own toggle reports its result directly, so the
@@ -27,6 +32,8 @@ pub(super) struct Probe {
     pub(super) shortcuts: Option<Shortcuts>,
     /// The workspace swipe's finger count read for `config_stamp`, when that config loaded.
     pub(super) swipe_fingers: Option<Fingers>,
+    /// `Config::menu_bar_icon` read for `config_stamp`, when that config loaded.
+    pub(super) menu_bar_icon: Option<MenuBarIcon>,
 }
 
 /// What the probe reads from a `config.toml` that loads.
@@ -35,6 +42,7 @@ pub(super) struct ConfigRead {
     pub(super) hud: bool,
     pub(super) shortcuts: Shortcuts,
     pub(super) swipe_fingers: Fingers,
+    pub(super) menu_bar_icon: MenuBarIcon,
 }
 
 impl ConfigRead {
@@ -43,6 +51,7 @@ impl ConfigRead {
             hud: config.hud(),
             shortcuts: config.shortcuts().clone(),
             swipe_fingers: config.swipe_fingers(),
+            menu_bar_icon: config.menu_bar_icon(),
         })
     }
 }
@@ -86,6 +95,7 @@ impl ProbeState {
         let hud = read.as_ref().map(|read| read.hud);
         let shortcuts = read.as_ref().map(|read| read.shortcuts.clone());
         let swipe_fingers = read.as_ref().map(|read| read.swipe_fingers);
+        let menu_bar_icon = read.as_ref().map(|read| read.menu_bar_icon);
         self.config = Some((config_stamp, read));
         let login_due = forced
             || self.login.as_ref().is_none_or(|(read_at, _)| {
@@ -106,6 +116,7 @@ impl ProbeState {
             hud,
             shortcuts,
             swipe_fingers,
+            menu_bar_icon,
         })
     }
 }
@@ -245,6 +256,7 @@ mod tests {
         assert_eq!(probe.hud, Some(false));
         assert_eq!(probe.shortcuts, Some(Shortcuts::default()));
         assert_eq!(probe.swipe_fingers, Some(Fingers::Three));
+        assert_eq!(probe.menu_bar_icon, Some(MenuBarIcon::Full));
     }
 
     fn read(hud: bool) -> ConfigRead {
@@ -252,6 +264,7 @@ mod tests {
             hud,
             shortcuts: Shortcuts::default(),
             swipe_fingers: Fingers::Three,
+            menu_bar_icon: MenuBarIcon::Full,
         }
     }
 }

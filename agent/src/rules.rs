@@ -7,7 +7,8 @@ use std::path::PathBuf;
 use spaceman::{
     WorkspaceId,
     config::{
-        HudPosition, HudStyle, LabFeature, LabsConfig, LayoutMode, MouseFollowsFocus, UpdateChannel,
+        HudPosition, HudStyle, LabFeature, LabsConfig, LayoutMode, MenuBarIcon, MouseFollowsFocus,
+        UpdateChannel,
     },
 };
 use toml_edit::{
@@ -125,6 +126,7 @@ impl Doc {
             four_finger_swipe: self.lab(LabFeature::FourFingerSwipe),
             single_window_height: self.lab(LabFeature::SingleWindowHeight),
             route_all_windows: self.lab(LabFeature::RouteAllWindows),
+            menu_bar_icon_style: self.lab(LabFeature::MenuBarIconStyle),
         }
     }
 
@@ -360,6 +362,24 @@ impl Doc {
         self.set_setting(
             "mouse_follows_focus",
             (mode != MouseFollowsFocus::default()).then(|| value(mode.as_str())),
+        );
+    }
+
+    /// How the menu bar icon looks, from `settings.menu_bar_icon` (defaults to full).
+    pub fn menu_bar_icon(&self) -> MenuBarIcon {
+        self.doc
+            .get("settings")
+            .and_then(Item::as_table_like)
+            .and_then(|table| table.get("menu_bar_icon"))
+            .and_then(Item::as_str)
+            .and_then(MenuBarIcon::parse)
+            .unwrap_or_default()
+    }
+
+    pub fn set_menu_bar_icon(&mut self, icon: MenuBarIcon) {
+        self.set_setting(
+            "menu_bar_icon",
+            (icon != MenuBarIcon::default()).then(|| value(icon.as_str())),
         );
     }
 

@@ -21,6 +21,10 @@ update_channel = "stable"
 # Whether a three-finger horizontal swipe steps through workspaces (default: true). Read only
 # with [labs] swipe_switch = true; then false makes Spaceman ignore the gesture for macOS.
 # trackpad_swipe = true
+# How the menu bar icon looks: "full" (default) draws a glyph for each display, "compact"
+# one glyph for the focused workspace, and "off" hides it (open Spaceman again for Settings).
+# Read only with [labs] menu_bar_icon_style = true.
+# menu_bar_icon = "full"
 # Center a window that is alone on its display (or in Fullscreen Layout) at this width;
 # 0 (the default) lets it fill the display. 320 through 16384 points.
 single_window_max_width = 0
@@ -147,6 +151,8 @@ monitor = "main"
 # window's height too, and adds its row to Settings › Layout › Wide displays.
 # route_all_windows = true makes a route rule with windows = "all" send every new
 # window of its app to its workspace, not only the first one.
+# menu_bar_icon_style = true makes Spaceman read settings.menu_bar_icon, and adds
+# its picker to Settings › General.
 #
 # [labs]
 # scratchpad = false
@@ -161,3 +167,4 @@ monitor = "main"
 # four_finger_swipe = false
 # single_window_height = false
 # route_all_windows = false
+# menu_bar_icon_style = false

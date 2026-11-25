@@ -584,6 +584,9 @@ impl MainThreadAgent {
                     if let Some(fingers) = probe.swipe_fingers {
                         self.swipe_fingers = fingers;
                     }
+                    if let Some(icon) = probe.menu_bar_icon {
+                        status_item::set_visible(icon != crate::config::MenuBarIcon::Off);
+                    }
                 }
             }
             // Approval happens in System Settings; watch for it closely until then.

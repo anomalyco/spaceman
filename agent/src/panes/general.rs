@@ -5,7 +5,7 @@ use rune::{El, Tx, row};
 use rune_kit::SegmentedControl;
 use spaceman::{
     app::UiLaunchAtLogin,
-    config::{HudPosition, HudStyle, MouseFollowsFocus},
+    config::{HudPosition, HudStyle, LabFeature, MenuBarIcon, MouseFollowsFocus},
 };
 
 use crate::{
@@ -62,6 +62,32 @@ fn mouse_follow_index(mode: MouseFollowsFocus) -> usize {
     MOUSE_FOLLOW_MODES
         .iter()
         .position(|(_, candidate, _)| *candidate == mode)
+        .unwrap_or(0)
+}
+
+/// The menu bar icon's choices (`[labs] menu_bar_icon_style`), each with what it shows.
+const MENU_BAR_ICONS: [(&str, MenuBarIcon, &str); 3] = [
+    (
+        "Full",
+        MenuBarIcon::Full,
+        "A layout and number for each display",
+    ),
+    (
+        "Compact",
+        MenuBarIcon::Compact,
+        "One layout and number: the focused display's",
+    ),
+    (
+        "Off",
+        MenuBarIcon::Off,
+        "Hidden; open Spaceman again to get here",
+    ),
+];
+
+fn menu_bar_icon_index(icon: MenuBarIcon) -> usize {
+    MENU_BAR_ICONS
+        .iter()
+        .position(|(_, candidate, _)| *candidate == icon)
         .unwrap_or(0)
 }
 
@@ -130,16 +156,18 @@ pub fn pane(ui: &Ui, p: Paint) -> El {
             }),
             "login",
         );
-        sections.push(controls::card(
-            p,
-            "agent",
-            vec![
-                tiling,
-                highlight(hud_row(ui, p), "hud"),
-                highlight(mouse_follows_focus_row(ui, p), "mouse-follows-focus"),
-                login,
-            ],
-        ));
+        let menu_bar_icon = ui
+            .doc
+            .lab(LabFeature::MenuBarIconStyle)
+            .then(|| highlight(menu_bar_icon_row(ui, p), "menu-bar-icon"));
+        let mut rows = vec![
+            tiling,
+            highlight(hud_row(ui, p), "hud"),
+            highlight(mouse_follows_focus_row(ui, p), "mouse-follows-focus"),
+        ];
+        rows.extend(menu_bar_icon);
+        rows.push(login);
+        sections.push(controls::card(p, "agent", rows));
     }
     sections.push(crate::updates::section(ui, p));
     let config_file = highlight(
@@ -278,6 +306,31 @@ fn mouse_follows_focus_row(ui: &Ui, p: Paint) -> El {
     )
 }
 
+/// The menu bar icon, shown with `[labs] menu_bar_icon_style` on: a glyph per display, one
+/// glyph, or none.
+fn menu_bar_icon_row(ui: &Ui, p: Paint) -> El {
+    let selected = menu_bar_icon_index(ui.doc.menu_bar_icon());
+    controls::setting_row(
+        p,
+        "menu-bar-icon",
+        "Menu bar icon",
+        Some((MENU_BAR_ICONS[selected].2.to_owned(), p.muted())),
+        SegmentedControl::new(
+            &MENU_BAR_ICONS.map(|(label, _, _)| label.to_owned()),
+            Some(selected),
+        )
+        .label("Menu bar icon")
+        .fit()
+        .on_pick(|ui: &mut Ui, index, _: &mut Tx| {
+            if let Some((_, icon, _)) = MENU_BAR_ICONS.get(index) {
+                ui.edit(|doc| doc.set_menu_bar_icon(*icon));
+            }
+        })
+        .build(p.k)
+        .key("menu-bar-icon-picker"),
+    )
+}
+
 /// The Workspace HUD's Customize sheet: a miniature display with the real capsule on the edge
 /// it is set to, over the rows that refine it. Changes apply at once; Done only closes.
 pub fn hud_sheet(
@@ -382,6 +435,13 @@ mod tests {
         assert_eq!(mouse_follow_index(MouseFollowsFocus::Off), 0);
         assert_eq!(mouse_follow_index(MouseFollowsFocus::Display), 1);
         assert_eq!(mouse_follow_index(MouseFollowsFocus::Window), 2);
+    }
+
+    #[test]
+    fn menu_bar_icon_picker_maps_full_compact_and_off() {
+        assert_eq!(menu_bar_icon_index(MenuBarIcon::Full), 0);
+        assert_eq!(menu_bar_icon_index(MenuBarIcon::Compact), 1);
+        assert_eq!(menu_bar_icon_index(MenuBarIcon::Off), 2);
     }
 
     #[test]
