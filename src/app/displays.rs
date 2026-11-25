@@ -70,6 +70,10 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
             .is_some_and(|known| !known.frames().eq(outputs.frames()))
         {
             log_event!("displays changed: re-parking hidden windows");
+            // An empty workspace chosen on another display stood for focus on
+            // that arrangement only; after a display change the reported focus
+            // decides again.
+            self.focus.set_empty_choice(None);
             // A window still due a re-park never reached its corner for the last
             // displays, so they are no baseline: every window is written again.
             self.displays.previous = if self.parked.displays_changed() {

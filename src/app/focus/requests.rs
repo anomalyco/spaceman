@@ -7,8 +7,14 @@ use super::DepartureGuard;
 impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
     /// The focused window, trusting a focus command still in flight over the
     /// lagging report Accessibility gives until the target app activates.
+    /// With `[labs] empty_workspace_focus`, the window left focused when an
+    /// empty workspace was chosen on another display counts as no focus, so
+    /// commands act on the chosen workspace.
     pub(in crate::app) fn current_focus(&mut self) -> Option<crate::PhysicalWindowId> {
         let reported = self.backend.focused_window();
+        if self.holds_empty_choice(reported.as_ref()) {
+            return None;
+        }
         self.resolve_focus(reported)
     }
 

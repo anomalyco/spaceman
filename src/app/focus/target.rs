@@ -14,6 +14,13 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
         outputs: macos::DisplayOutputs,
         cancelled: &AtomicBool,
     ) -> Result<CycleStatus, String> {
+        // While an empty workspace chosen on another display stands for focus,
+        // origin is None but Accessibility keeps reporting the window that kept
+        // focus; the request must treat that lagging report as stale too.
+        let left = self
+            .focus
+            .empty_choice()
+            .and_then(|choice| choice.left.clone());
         let origin = self.current_focus();
         if let Some(window) = &origin
             && self.workspaces.workspace_of(window).is_none()
@@ -27,7 +34,7 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
         let Some(target) = self.focus_target(origin.as_ref(), direction, &outputs) else {
             return Ok(self.status(0, &outputs));
         };
-        self.focus_tile(origin, &target, &outputs, CommandOrigin::Explicit)?;
+        self.focus_tile(origin.or(left), &target, &outputs, CommandOrigin::Explicit)?;
         Ok(self.status(0, &outputs))
     }
 
