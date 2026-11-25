@@ -23,8 +23,11 @@ Switch workspace                                           // ws.switch
 Swipe                                                      // ws.swipe
 ├── Three-finger swipe left/right -> next/previous workspace in the menu section of the display
 │   under the pointer (visible + occupied, in workspace order), stops at either end
-└── Suppressed while a pointer button is down or a window drag is active (including macOS
-    Accessibility "Three Finger Drag")
+├── Suppressed while a pointer button is down or a window drag is active (including macOS
+│   Accessibility "Three Finger Drag")
+└── Labs › Swipe switch on ([labs] swipe_switch) + [settings] trackpad_swipe = false (Settings ›
+    Shortcuts › Swipe to switch workspace) -> swipes never switch; macOS keeps the gesture. Reloads
+    live. With the Lab off, trackpad_swipe is ignored and the Shortcuts row stays fixed
 
 Back-and-forth                                             // ws.back-and-forth
 ├── Option+Tab / ctl back-and-forth -> the workspace focused before this one, on any display
@@ -361,7 +364,10 @@ on the same letter.
 - Unit: `swipes_step_through_the_occupied_workspaces_of_the_display_under_the_pointer`
   (`src/app/tests/switching.rs`), the recognizer in `src/swipe.rs` (fires once per swipe; ignores
   short, vertical and four-finger swipes), pointer-button / three-finger-drag suppression in
-  `src/macos/swipes.rs` and `src/app/input.rs` (issue 151), and visible stranded-window recovery
+  `src/macos/swipes.rs` and `src/app/input.rs` (issue 151), the Lab-gated off switch in
+  `trackpad_swipe_off_stops_swipes_only_with_its_lab_on_and_reloads_live`
+  (`src/app/tests/workspace_order.rs`, issue 333) and the Shortcuts row in
+  `agent/src/panes/shortcuts/tests.rs`, and visible stranded-window recovery
   after display disconnect in `src/app/tests/display_disconnect.rs` (issue 150). Live CGEventTap
   callback delivery in `src/macos/swipes.rs` is not covered.
 - Unit (FakeBackend), `src/app/tests/reconciliation.rs`: adoption order

@@ -4,12 +4,15 @@
 
 mod catalog;
 mod recorder;
+#[cfg(test)]
+mod tests;
 mod workspaces;
 
 use rune::{El, Shadow, col, row, text};
 use rune_kit::SegmentedControl;
 use spaceman::{
     WorkspaceId,
+    config::LabFeature,
     shortcuts::{Chord, Modifiers, Shortcuts},
 };
 
@@ -58,12 +61,7 @@ pub fn pane(ui: &Ui, p: Paint) -> El {
         &named,
         catalog::WORKSPACE_ACTIONS,
     ));
-    workspace_rows.push(fixed_row(
-        p,
-        "swipe",
-        "Switch adjacent workspace",
-        vec!["3-finger swipe".into()],
-    ));
+    workspace_rows.push(swipe_row(ui, p));
     scroll_body(
         "shortcuts-body",
         controls::page(
@@ -174,6 +172,56 @@ fn fixed_row(p: Paint, key: &str, title: &str, caps: Vec<String>) -> El {
         title,
         None,
         tray(p, "tray", &caps),
+    )
+}
+
+/// What the three-finger swipe's row shows.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum SwipeRow {
+    /// The fixed keycap tray, as always while `[labs] swipe_switch` is off.
+    Fixed,
+    /// With the Lab on, a switch for `settings.trackpad_swipe`.
+    Switch { on: bool },
+}
+
+impl SwipeRow {
+    fn of(doc: &crate::rules::Doc) -> Self {
+        if doc.lab(LabFeature::SwipeSwitch) {
+            Self::Switch {
+                on: doc.trackpad_swipe(),
+            }
+        } else {
+            Self::Fixed
+        }
+    }
+}
+
+/// The three-finger swipe's row: a fixed keycap tray, or with `[labs] swipe_switch` on, a
+/// switch for `settings.trackpad_swipe` (off leaves the gesture to macOS alone).
+fn swipe_row(ui: &Ui, p: Paint) -> El {
+    let on = match SwipeRow::of(&ui.doc) {
+        SwipeRow::Fixed => {
+            return fixed_row(
+                p,
+                "swipe",
+                "Switch adjacent workspace",
+                vec!["3-finger swipe".into()],
+            );
+        }
+        SwipeRow::Switch { on } => on,
+    };
+    let description = if on {
+        "3-finger swipe left or right"
+    } else {
+        "Off: 3-finger swipes are left to macOS"
+    };
+    controls::toggle_row(
+        p,
+        "swipe-row",
+        "Swipe to switch workspace",
+        Some((description.into(), p.muted())),
+        on,
+        move |ui| ui.edit(|doc| doc.set_trackpad_swipe(!on)),
     )
 }
 

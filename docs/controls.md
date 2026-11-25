@@ -28,7 +28,11 @@ A three-finger horizontal swipe steps through the workspaces that the display's 
 (the visible one and every one holding windows), stopping at either end. Swiping left goes to the
 next one, as with macOS Spaces. Spaceman only listens to the trackpad, so macOS still acts on the
 same swipe: set "Swipe between full-screen applications" to four fingers or off in Trackpad
-settings. Four-finger swipes and vertical swipes are left to macOS.
+settings. Four-finger swipes and vertical swipes are left to macOS. To keep the macOS gesture and
+drop Spaceman's instead, turn on **Swipe switch** in Settings › Labs (`[labs] swipe_switch = true`),
+then turn off **Swipe to switch workspace** in Settings › Shortcuts (`trackpad_swipe = false`); see
+[Configuration › Trackpad Swipe](configuration.md#trackpad-swipe). The switch exists only with that
+Lab on.
 
 Every shortcut above can be rebound, unbound, or replaced in the config file's `[shortcuts]` table;
 see [Configuration › Shortcuts](configuration.md#shortcuts). The table lists the built-in defaults.
@@ -287,7 +291,7 @@ Spaceman registers the `spaceman://` URL scheme (and clickable web bounce links 
 
 - `spaceman://settings` — open Settings
 - `spaceman://settings/<pane>` — open `general`, `rules`, `workspaces`, `shortcuts`, `labs`, `layout`, or `activity` (plus optional `/<focus>`); `activity` falls back to `general` while `[labs] activity` is off
-- `spaceman://labs` / `spaceman://labs/<slug>` — open Settings › Labs and highlight `<slug>`, a switch's key with `-` for `_` (`scratchpad`, `activity`, `portrait-edge-rows`, `physical-displays`, `recent-focus`)
+- `spaceman://labs` / `spaceman://labs/<slug>` — open Settings › Labs and highlight `<slug>`, a switch's key with `-` for `_` (`scratchpad`, `activity`, `portrait-edge-rows`, `physical-displays`, `recent-focus`, `swipe-switch`)
 - `spaceman://features/<slug>` — open the Settings pane and highlight for a feature (e.g. `workspaces`, `rules`, `shortcuts`, `gaps`, `hud`)
 
 Deep links only open Settings and highlight the requested pane or card. They never modify

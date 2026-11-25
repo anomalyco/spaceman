@@ -254,6 +254,14 @@ pub(crate) const SCENES: &[Scene] = &[
         ui.edit(|doc| doc.set_monitor(nine, Some(workspaces::THIRD_FIXTURE_ID)));
     }),
     ("shortcuts", |ui| reset_fixture(ui, Pane::Shortcuts)),
+    // With `[labs] swipe_switch` on, the swipe row becomes a switch, here turned off.
+    ("shortcuts-swipe-off", |ui| {
+        reset_fixture(ui, Pane::Shortcuts);
+        ui.edit(|doc| {
+            doc.set_lab(LabFeature::SwipeSwitch, true);
+            doc.set_trackpad_swipe(false);
+        });
+    }),
     ("labs", |ui| reset_fixture(ui, Pane::Labs)),
     // Physical display order on and highlighted, as `spaceman://labs/physical-displays` opens it.
     ("labs-physical-displays", |ui| {

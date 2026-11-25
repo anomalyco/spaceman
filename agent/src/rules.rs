@@ -118,6 +118,7 @@ impl Doc {
             portrait_edge_rows: self.lab(LabFeature::PortraitEdgeRows),
             physical_displays: self.lab(LabFeature::PhysicalDisplays),
             recent_focus: self.lab(LabFeature::RecentFocus),
+            swipe_switch: self.lab(LabFeature::SwipeSwitch),
         }
     }
 
@@ -354,6 +355,21 @@ impl Doc {
             "mouse_follows_focus",
             (mode != MouseFollowsFocus::default()).then(|| value(mode.as_str())),
         );
+    }
+
+    /// Whether a three-finger horizontal swipe steps through workspaces, from
+    /// `settings.trackpad_swipe` (defaults to on).
+    pub fn trackpad_swipe(&self) -> bool {
+        self.doc
+            .get("settings")
+            .and_then(Item::as_table_like)
+            .and_then(|table| table.get("trackpad_swipe"))
+            .and_then(Item::as_bool)
+            .unwrap_or(true)
+    }
+
+    pub fn set_trackpad_swipe(&mut self, enabled: bool) {
+        self.set_setting("trackpad_swipe", (!enabled).then(|| value(false)));
     }
 
     /// Sets `key` in `[settings]`, or removes it (and an emptied table) for `None`, the default.

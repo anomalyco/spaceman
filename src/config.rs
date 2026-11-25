@@ -4,8 +4,10 @@ use std::path::{Path, PathBuf};
 use serde::{Deserialize, Serialize};
 
 mod disposition;
+mod labs;
 mod write;
 pub use disposition::{DispositionPatch, Management};
+pub use labs::{LabFeature, LabsConfig};
 pub use write::{
     ConfigLock, lock_config, resolve_write_target, save_workspace_monitor_at, write_config_atomic,
 };
@@ -24,6 +26,7 @@ struct AppSettings {
     layout: LayoutMode,
     update_channel: UpdateChannel,
     mouse_follows_focus: MouseFollowsFocus,
+    trackpad_swipe: bool,
     spacing: Spacing,
 }
 
@@ -36,6 +39,7 @@ impl Default for AppSettings {
             layout: LayoutMode::default(),
             update_channel: UpdateChannel::default(),
             mouse_follows_focus: MouseFollowsFocus::default(),
+            trackpad_swipe: true,
             spacing: Spacing::default(),
         }
     }
@@ -196,88 +200,6 @@ impl HudPosition {
     }
 }
 
-/// The `[labs]` table: experimental features, each behind its own switch and off by default.
-/// With every switch off Spaceman behaves exactly as if Labs did not exist.
-#[derive(Clone, Copy, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
-#[serde(deny_unknown_fields)]
-pub struct LabsConfig {
-    /// The i3/sway-style Scratchpad ([`crate::scratchpad`]) and its `⌥\` / `⌥⇧\` shortcuts.
-    #[serde(default)]
-    pub scratchpad: bool,
-    /// Settings › Activity: the live arrangement log, doctor diagnostics, and process vitals.
-    #[serde(default)]
-    pub activity: bool,
-    /// Top and bottom display edge drop bands that make a half-height row on portrait displays.
-    #[serde(default)]
-    pub portrait_edge_rows: bool,
-    /// The menu bar, its menu and the HUD's Layouts style follow the displays' physical
-    /// arrangement: left to right, portrait displays drawn tall, same-named displays told apart.
-    #[serde(default)]
-    pub physical_displays: bool,
-    /// Directional focus prefers the most recently focused of the tiles that
-    /// border the focused one on the side pressed.
-    #[serde(default)]
-    pub recent_focus: bool,
-}
-
-impl LabsConfig {
-    /// Whether `feature`'s switch is on.
-    #[must_use]
-    pub const fn enabled(self, feature: LabFeature) -> bool {
-        match feature {
-            LabFeature::Scratchpad => self.scratchpad,
-            LabFeature::Activity => self.activity,
-            LabFeature::PortraitEdgeRows => self.portrait_edge_rows,
-            LabFeature::PhysicalDisplays => self.physical_displays,
-            LabFeature::RecentFocus => self.recent_focus,
-        }
-    }
-}
-
-/// Every `[labs]` switch, one per experimental feature.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum LabFeature {
-    /// The i3/sway-style Scratchpad ([`crate::scratchpad`]) and its `⌥\` / `⌥⇧\` shortcuts.
-    Scratchpad,
-    /// Settings › Activity: the live arrangement log, doctor diagnostics, and process vitals.
-    Activity,
-    /// Top and bottom display edge drop bands that make a half-height row on portrait displays.
-    PortraitEdgeRows,
-    /// The menu bar, its menu and the HUD's Layouts style in physical display order and shape.
-    PhysicalDisplays,
-    /// Directional focus prefers the most recently focused bordering tile.
-    RecentFocus,
-}
-
-impl LabFeature {
-    /// Every switch, in the order `[labs]` lists them.
-    pub const ALL: [Self; 5] = [
-        Self::Scratchpad,
-        Self::Activity,
-        Self::PortraitEdgeRows,
-        Self::PhysicalDisplays,
-        Self::RecentFocus,
-    ];
-
-    /// The `[labs]` key that turns this feature on.
-    #[must_use]
-    pub const fn key(self) -> &'static str {
-        match self {
-            Self::Scratchpad => "scratchpad",
-            Self::Activity => "activity",
-            Self::PortraitEdgeRows => "portrait_edge_rows",
-            Self::PhysicalDisplays => "physical_displays",
-            Self::RecentFocus => "recent_focus",
-        }
-    }
-
-    /// Parses a `[labs]` key such as `activity`.
-    #[must_use]
-    pub fn parse(key: &str) -> Option<Self> {
-        Self::ALL.into_iter().find(|feature| feature.key() == key)
-    }
-}
-
 #[derive(Clone, Debug, Default)]
 pub struct Config {
     settings: AppSettings,
@@ -348,6 +270,8 @@ struct RawSettings {
     update_channel: UpdateChannel,
     #[serde(default)]
     mouse_follows_focus: MouseFollowsFocus,
+    #[serde(default = "default_trackpad_swipe")]
+    trackpad_swipe: bool,
     #[serde(default)]
     single_window_max_width: i64,
     #[serde(default)]
@@ -365,6 +289,7 @@ impl Default for RawSettings {
             layout: LayoutMode::default(),
             update_channel: UpdateChannel::default(),
             mouse_follows_focus: MouseFollowsFocus::default(),
+            trackpad_swipe: true,
             single_window_max_width: 0,
             workspace_order: Vec::new(),
             gaps: RawGaps::default(),
@@ -411,6 +336,10 @@ impl RawSettings {
 }
 
 const fn default_hud() -> bool {
+    true
+}
+
+const fn default_trackpad_swipe() -> bool {
     true
 }
 
@@ -507,6 +436,7 @@ impl Config {
                 layout: raw.settings.layout,
                 update_channel: raw.settings.update_channel,
                 mouse_follows_focus: raw.settings.mouse_follows_focus,
+                trackpad_swipe: raw.settings.trackpad_swipe,
                 spacing: raw.settings.spacing()?,
             },
             labs: raw.labs,
@@ -557,6 +487,14 @@ impl Config {
     #[must_use]
     pub const fn mouse_follows_focus(&self) -> MouseFollowsFocus {
         self.settings.mouse_follows_focus
+    }
+
+    /// Whether a three-finger horizontal swipe steps through workspaces. Always on unless
+    /// `[labs] swipe_switch` is on, which hands the choice to `settings.trackpad_swipe`
+    /// (default: on); off leaves the gesture to macOS alone.
+    #[must_use]
+    pub const fn trackpad_swipe(&self) -> bool {
+        !self.labs.swipe_switch || self.settings.trackpad_swipe
     }
 
     /// `settings.workspace_order`: workspaces the HUD, menu bar and swipes list first, in order.
@@ -1052,6 +990,48 @@ monitor = "main"
     #[test]
     fn rejects_obsolete_keyboard_mapping_override() {
         assert!(Config::parse("version = 1\nkey_mapping = 'dvorak'").is_err());
+    }
+
+    #[test]
+    fn trackpad_swipe_turns_off_only_with_its_lab_on() {
+        let lab = "[labs]\nswipe_switch = true\n";
+        let off = "[settings]\ntrackpad_swipe = false\n";
+        assert!(Config::default().trackpad_swipe());
+        assert!(Config::parse("version = 1").unwrap().trackpad_swipe());
+        // Without the Lab, the setting is ignored and swipes behave as before.
+        assert!(
+            Config::parse(&format!("version = 1\n{off}"))
+                .unwrap()
+                .trackpad_swipe()
+        );
+        assert!(
+            Config::parse(&format!("version = 1\n{lab}"))
+                .unwrap()
+                .trackpad_swipe()
+        );
+        assert!(
+            !Config::parse(&format!("version = 1\n{off}{lab}"))
+                .unwrap()
+                .trackpad_swipe()
+        );
+        assert!(Config::parse("version = 1\n[settings]\ntrackpad_swipe = \"off\"\n").is_err());
+    }
+
+    #[test]
+    fn swipe_switch_lab_parses_and_round_trips_its_key() {
+        assert_eq!(
+            LabFeature::parse("swipe_switch"),
+            Some(LabFeature::SwipeSwitch)
+        );
+        assert_eq!(LabFeature::SwipeSwitch.key(), "swipe_switch");
+        for feature in LabFeature::ALL {
+            assert_eq!(LabFeature::parse(feature.key()), Some(feature));
+        }
+        assert!(!Config::default().labs().enabled(LabFeature::SwipeSwitch));
+        let on = Config::parse("version = 1\n[labs]\nswipe_switch = true\n").unwrap();
+        assert!(on.labs().enabled(LabFeature::SwipeSwitch));
+        assert!(!on.labs().enabled(LabFeature::Scratchpad));
+        assert!(Config::parse("version = 1\n[labs]\nswipe_switch = 1\n").is_err());
     }
 
     #[test]

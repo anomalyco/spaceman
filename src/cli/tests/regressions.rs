@@ -514,3 +514,34 @@ fn rules_add_writes_pin_and_title_contains_rules_and_lists_them_back() {
     let both = temp.run(&["rules", "add", "--app", "x", "--pin", "--float"]);
     assert_ne!(both.exit_code, 0);
 }
+
+#[test]
+fn config_gets_sets_shows_and_resets_trackpad_swipe() {
+    let temp = TempConfig::new("config-trackpad-swipe");
+    temp.write("version = 1\n");
+    assert_eq!(
+        temp.run(&["config", "get", "trackpad_swipe"])
+            .stdout
+            .as_deref(),
+        Some("true")
+    );
+
+    let bad = temp.run(&["config", "set", "trackpad_swipe", "off"]);
+    assert_eq!(bad.exit_code, 1);
+    assert!(bad.stderr.unwrap().contains("expected 'true' or 'false'"));
+
+    let set = temp.run(&["config", "set", "trackpad_swipe", "false"]);
+    assert_eq!(set.exit_code, 0, "{:?}", set.stderr);
+    // Read only with its Lab on.
+    assert!(Config::parse(&temp.read()).unwrap().trackpad_swipe());
+    let lab = temp.run(&["config", "set", "labs.swipe_switch", "true"]);
+    assert_eq!(lab.exit_code, 0, "{:?}", lab.stderr);
+    assert!(!Config::parse(&temp.read()).unwrap().trackpad_swipe());
+    let shown = temp.run(&["config", "show", "--json"]).stdout.unwrap();
+    let show: Value = serde_json::from_str(&shown).unwrap();
+    assert_eq!(show["settings"]["trackpad_swipe"], false);
+
+    let reset = temp.run(&["config", "reset", "trackpad_swipe"]);
+    assert_eq!(reset.exit_code, 0, "{:?}", reset.stderr);
+    assert!(!temp.read().contains("trackpad_swipe"));
+}

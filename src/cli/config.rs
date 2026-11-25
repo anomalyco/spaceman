@@ -60,6 +60,7 @@ enum SettingKey {
     Layout,
     UpdateChannel,
     MouseFollowsFocus,
+    TrackpadSwipe,
     Outer,
     Spacing(SpacingKey),
 }
@@ -73,12 +74,13 @@ impl SettingKey {
             "layout" => Ok(Self::Layout),
             "update_channel" => Ok(Self::UpdateChannel),
             "mouse_follows_focus" => Ok(Self::MouseFollowsFocus),
+            "trackpad_swipe" => Ok(Self::TrackpadSwipe),
             spacing::OUTER => Ok(Self::Outer),
             other => SpacingKey::parse(other).map(Self::Spacing).ok_or_else(|| {
                 format!(
                     "unknown setting {raw:?}; valid keys: hud, hud_style, hud_position, layout, \
-                     update_channel, mouse_follows_focus, gaps.inner, gaps.outer, gaps.top, \
-                     gaps.bottom, gaps.left, gaps.right, single_window_max_width"
+                     update_channel, mouse_follows_focus, trackpad_swipe, gaps.inner, gaps.outer, \
+                     gaps.top, gaps.bottom, gaps.left, gaps.right, single_window_max_width"
                 )
             }),
         }
@@ -92,6 +94,7 @@ impl SettingKey {
             Self::Layout => "layout",
             Self::UpdateChannel => "update_channel",
             Self::MouseFollowsFocus => "mouse_follows_focus",
+            Self::TrackpadSwipe => "trackpad_swipe",
             Self::Outer => spacing::OUTER,
             Self::Spacing(key) => key.path(),
         }
@@ -136,6 +139,10 @@ impl SettingKey {
                 let mode = settings.effective_mouse_follows_focus().as_str();
                 (mode.to_owned(), serde_json::Value::String(mode.to_owned()))
             }
+            Self::TrackpadSwipe => {
+                let on = settings.effective_trackpad_swipe();
+                (on.to_string(), serde_json::Value::Bool(on))
+            }
             Self::Outer => {
                 let value = settings.effective_outer();
                 (value.to_string(), serde_json::Value::from(value))
@@ -156,6 +163,7 @@ impl SettingKey {
             Self::Layout => settings.layout.is_some(),
             Self::UpdateChannel => settings.update_channel.is_some(),
             Self::MouseFollowsFocus => settings.mouse_follows_focus.is_some(),
+            Self::TrackpadSwipe => settings.trackpad_swipe.is_some(),
             Self::Outer => settings.gaps.outer.is_some(),
             Self::Spacing(key) => settings.has_spacing(key),
         }
@@ -170,6 +178,7 @@ impl SettingKey {
             Self::Layout => settings.layout = None,
             Self::UpdateChannel => settings.update_channel = None,
             Self::MouseFollowsFocus => settings.mouse_follows_focus = None,
+            Self::TrackpadSwipe => settings.trackpad_swipe = None,
             Self::Outer => settings.gaps.outer = None,
             Self::Spacing(key) => settings.clear_spacing(key),
         }
@@ -206,6 +215,7 @@ impl Key {
             Self::Lab(LabFeature::PortraitEdgeRows) => "labs.portrait_edge_rows",
             Self::Lab(LabFeature::PhysicalDisplays) => "labs.physical_displays",
             Self::Lab(LabFeature::RecentFocus) => "labs.recent_focus",
+            Self::Lab(LabFeature::SwipeSwitch) => "labs.swipe_switch",
         }
     }
 
@@ -340,6 +350,7 @@ enum SettingValue {
     Layout(LayoutMode),
     UpdateChannel(UpdateChannel),
     MouseFollowsFocus(MouseFollowsFocus),
+    TrackpadSwipe(bool),
     Outer(i64),
     Spacing(SpacingKey, i64),
     Lab(LabFeature, bool),
@@ -390,6 +401,13 @@ impl SettingValue {
                         "invalid value for mouse_follows_focus: expected 'off', 'display', or 'window', got {raw_value:?}"
                     )
                 }),
+            SettingKey::TrackpadSwipe => match raw_value {
+                "true" => Ok(Self::TrackpadSwipe(true)),
+                "false" => Ok(Self::TrackpadSwipe(false)),
+                _ => Err(format!(
+                    "invalid value for trackpad_swipe: expected 'true' or 'false', got {raw_value:?}"
+                )),
+            },
             SettingKey::Outer => {
                 let parsed = parse_points(key, raw_value)?;
                 spacing::check_outer(parsed)?;
@@ -458,6 +476,13 @@ fn run_set(args: &[&str], path_override: Option<&Path>) -> Result<String, String
                 (
                     format!("set mouse_follows_focus = {}", parsed.as_str()),
                     serde_json::Value::String(parsed.as_str().to_owned()),
+                )
+            }
+            SettingValue::TrackpadSwipe(parsed) => {
+                doc.settings.trackpad_swipe = Some(parsed);
+                (
+                    format!("set trackpad_swipe = {parsed}"),
+                    serde_json::Value::Bool(parsed),
                 )
             }
             SettingValue::Outer(parsed) => {
