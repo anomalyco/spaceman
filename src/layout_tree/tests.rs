@@ -938,3 +938,43 @@ fn columns_mode_preserves_flat_sibling_insertion() {
         ]
     );
 }
+
+#[test]
+fn dwindle_keeps_a_flipped_root_axis_when_one_tile_is_left_and_another_joins() {
+    let output = Rect {
+        x: 0,
+        y: 0,
+        width: 1080,
+        height: 1920,
+    };
+    let dwindle = crate::config::LayoutMode::Dwindle;
+    let (a, b, c) = (bound_slot(1), bound_slot(2), bound_slot(3));
+    let mut tree = LayoutTree::default();
+    assert!(tree.sync_near(Axis::Horizontal, &[a.clone(), b], None, dwindle, output));
+    assert_eq!(tree.root_axis(), Axis::Vertical);
+    tree.toggle_root_axis();
+
+    // B leaves: the flipped root keeps its direction with one tile (#507).
+    assert!(tree.sync_near(Axis::Horizontal, &[a.clone()], None, dwindle, output));
+    assert_eq!(tree.root_axis(), Axis::Horizontal);
+
+    // C joins: A and C finish side by side, not top and bottom.
+    assert!(tree.sync_near(Axis::Horizontal, &[a, c], Some(SlotId(1)), dwindle, output));
+    let half = |x| Rect {
+        x,
+        y: 0,
+        width: 540,
+        height: 1920,
+    };
+    assert_eq!(
+        tree.placements(output),
+        vec![(SlotId(1), half(0)), (SlotId(3), half(540))]
+    );
+
+    // A fresh portrait workspace still starts with rows.
+    let mut fresh = LayoutTree::default();
+    assert!(fresh.sync_near(Axis::Horizontal, &[bound_slot(1)], None, dwindle, output));
+    let pair = [bound_slot(1), bound_slot(2)];
+    assert!(fresh.sync_near(Axis::Horizontal, &pair, None, dwindle, output));
+    assert_eq!(fresh.root_axis(), Axis::Vertical);
+}

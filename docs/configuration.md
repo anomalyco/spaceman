@@ -202,8 +202,9 @@ Settings › General exposes the same toggle as **Pause on built-in display**.
   re-expand, and any auto-chosen splits inside the space that grew re-orient outermost first to
   match their new longer side while keeping tile order and weights. Splits arranged by the user
   (`Option+/`, pointer drops, or perpendicular moves) keep their direction across closes and
-  restarts; splits loaded from earlier saved state without a recorded origin are treated as
-  user-arranged and keep their direction.
+  restarts, and one left holding a single tile gives the next new tile that same direction;
+  splits loaded from earlier saved state without a recorded origin are treated as user-arranged and
+  keep their direction.
 - `"columns"`: each new window joins the focused tile's split as an equal sibling.
 
 ```sh

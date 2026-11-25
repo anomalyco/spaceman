@@ -268,6 +268,22 @@ impl LayoutTree {
             };
             return slot;
         };
+        // A user-arranged root left holding just this tile keeps its direction
+        // for the next tile (#507); only auto-chosen splits follow the shape.
+        if let Node::Split {
+            auto_axis: false,
+            children,
+            ..
+        } = &mut self.root
+            && children.len() == 1
+            && children[0].node == Node::Leaf(target)
+        {
+            children.push(Child {
+                weight: children[0].weight,
+                node: Node::Leaf(slot),
+            });
+            return slot;
+        }
         let frame = shown
             .and_then(|shown| tile_frame(&shown.root, target, output))
             .or_else(|| tile_frame(&self.root, target, output))
