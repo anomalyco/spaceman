@@ -384,3 +384,101 @@ fn a_second_move_tab_waits_out_a_pending_detach_that_never_opens() {
     assert_eq!(rt.workspaces.workspace_of(&source), Some(WorkspaceId::ONE));
     assert!(rt.tab_detach.is_none());
 }
+
+#[test]
+fn rapid_double_move_tab_follow_detaches_two_tabs_from_the_source() {
+    let first = window(2);
+    let second = window(3);
+    let (mut rt, source) = tabbed_runtime(Some(FakeTabDetach::Silent), Config::default());
+
+    move_tab(&mut rt, WorkspaceId::TWO, true).unwrap();
+    assert!(rt.tab_detach.is_some(), "waiting for first detached tab");
+
+    // The first tab's window appeared on screen, not yet observed; the user
+    // still has the source window focused and immediately presses move-tab 3 --follow.
+    rt.backend.open_window(&first, offset_frame(100, 100));
+    rt.backend.focused = Some(source.clone());
+    rt.backend.tab_detach = Some(FakeTabDetach::NewWindow(
+        second.clone(),
+        offset_frame(200, 200),
+    ));
+    move_tab(&mut rt, WorkspaceId::THREE, true).unwrap();
+
+    assert_eq!(rt.workspaces.workspace_of(&first), Some(WorkspaceId::TWO));
+    assert_eq!(
+        rt.workspaces.workspace_of(&second),
+        Some(WorkspaceId::THREE)
+    );
+    assert_eq!(rt.workspaces.workspace_of(&source), Some(WorkspaceId::ONE));
+    let detached_from: Vec<_> = rt
+        .backend
+        .calls
+        .iter()
+        .filter_map(|call| match call {
+            BackendCall::DetachTab(window) => Some(window.clone()),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(detached_from, vec![source.clone(), source]);
+    assert!(rt.tab_detach.is_none());
+}
+
+#[test]
+fn rapid_double_move_tab_follow_appkit_tab_group_follows_remaining() {
+    let remaining = window(2);
+    let third = window(3);
+    let (mut rt, source) = tabbed_runtime(Some(FakeTabDetach::Silent), Config::default());
+
+    // Send first tab to visible workspace 6 on secondary with --follow so
+    // workspace 1 stays on screen while focus jumps to the detached tab.
+    move_tab(&mut rt, WorkspaceId::SIX, true).unwrap();
+    assert!(rt.tab_detach.is_some());
+
+    // AppKit tab group: source moves out to a new position, and `remaining`
+    // takes over source's frame on workspace 1.
+    let source_frame = rt.backend.frames[&source];
+    rt.backend
+        .frames
+        .insert(source.clone(), offset_frame(120, 120));
+    rt.backend.open_window(&remaining, source_frame);
+    rt.backend.focused = Some(source.clone());
+    rt.backend.tab_detach = Some(FakeTabDetach::TabGroup {
+        next: third.clone(),
+        moved_to: offset_frame(240, 240),
+    });
+    move_tab(&mut rt, WorkspaceId::THREE, true).unwrap();
+
+    assert_eq!(rt.workspaces.workspace_of(&source), Some(WorkspaceId::SIX));
+    assert_eq!(
+        rt.workspaces.workspace_of(&remaining),
+        Some(WorkspaceId::THREE)
+    );
+    assert_eq!(rt.workspaces.workspace_of(&third), Some(WorkspaceId::ONE));
+    let detached_from: Vec<_> = rt
+        .backend
+        .calls
+        .iter()
+        .filter_map(|call| match call {
+            BackendCall::DetachTab(window) => Some(window.clone()),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(detached_from, vec![source, remaining]);
+}
+
+#[test]
+fn move_tab_does_not_claim_unowned_window_when_cg_snapshot_fails() {
+    let stray = window(2);
+    let (mut rt, source) = tabbed_runtime(Some(FakeTabDetach::Silent), Config::default());
+    rt.backend.server_snapshot_unavailable = true;
+
+    move_tab(&mut rt, WorkspaceId::TWO, false).unwrap();
+    rt.backend.server_snapshot_unavailable = false;
+    rt.backend.open_window(&stray, offset_frame(100, 100));
+    rt.cycle(outputs(), &AtomicBool::new(false)).unwrap();
+
+    // Without pre-press CG evidence, `stray` must not be routed to workspace 2.
+    assert_eq!(rt.workspaces.workspace_of(&stray), Some(WorkspaceId::ONE));
+    assert_eq!(rt.workspaces.workspace_of(&source), Some(WorkspaceId::ONE));
+    assert!(rt.workspaces.windows(WorkspaceId::TWO).is_empty());
+}

@@ -407,7 +407,8 @@ fn mouse_follows_focus_display_warps_across_displays_and_skips_same_display() {
         .unwrap();
     assert_eq!(warp_calls(&runtime), vec![(1250, 400), (250, 400)]);
 
-    // Option+Tab back to visible workspace 6 on secondary warps back to secondary.
+    // Option+Tab back to visible workspace 6 on secondary warps back to its
+    // remembered focused tile (sec_right at (1750, 400), #527).
     runtime
         .execute(
             WorkerCommand::Action(WorkerAction::WorkspaceBackAndForth, outputs()),
@@ -416,7 +417,7 @@ fn mouse_follows_focus_display_warps_across_displays_and_skips_same_display() {
         .unwrap();
     assert_eq!(
         warp_calls(&runtime),
-        vec![(1250, 400), (250, 400), (1250, 400)]
+        vec![(1250, 400), (250, 400), (1750, 400)]
     );
 }
 

@@ -717,7 +717,10 @@ mod tests {
         }
         // Splits that only meet at a corner, off by rounding, don't border.
         let corner = tiles(701);
-        assert_eq!(by_recency(&corner, 2, Direction::Right, &[2, 3, 4]), Some(4));
+        assert_eq!(
+            by_recency(&corner, 2, Direction::Right, &[2, 3, 4]),
+            Some(4)
+        );
         let apart = tiles(690);
         assert_eq!(by_recency(&apart, 2, Direction::Right, &[2, 3, 4]), Some(4));
     }

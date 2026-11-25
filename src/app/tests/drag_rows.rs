@@ -69,7 +69,11 @@ fn columns_on(
             crate::Direction::Right
         ));
     }
-    rt.layout_workspace(WorkspaceId::ONE, outputs.main().frame, &AtomicBool::new(false));
+    rt.layout_workspace(
+        WorkspaceId::ONE,
+        outputs.main().frame,
+        &AtomicBool::new(false),
+    );
     rt
 }
 
@@ -297,4 +301,49 @@ fn three_tiles_keep_their_nesting_below_a_top_row() {
             (20, 720, 1292, 720, 1268)
         ]
     );
+}
+
+#[test]
+fn toggling_split_mid_drag_after_starting_in_fullscreen_does_not_drop() {
+    let mut rt = columns(&[10, 20], labs_on());
+    let displays = displays();
+    let cancelled = AtomicBool::new(false);
+    rt.execute(
+        WorkerCommand::Action(WorkerAction::ToggleFullscreenLayout, displays.clone()),
+        &cancelled,
+    );
+    assert!(rt.workspaces.deck(WorkspaceId::ONE).is_monocle());
+
+    // Begin dragging window 10 while Fullscreen Layout is active (button held).
+    rt.backend.mouse_down = true;
+    rt.execute(
+        WorkerCommand::Gesture(
+            FinalGesture::drop(window(10), (1080, 1200)),
+            true,
+            displays.clone(),
+        ),
+        &cancelled,
+    );
+    // Toggle back to Split mid-drag, then release over window 20's slot.
+    rt.execute(
+        WorkerCommand::Action(WorkerAction::ToggleFullscreenLayout, displays.clone()),
+        &cancelled,
+    );
+    assert!(!rt.workspaces.deck(WorkspaceId::ONE).is_monocle());
+    rt.backend.mouse_down = false;
+    rt.execute(
+        WorkerCommand::Gesture(
+            FinalGesture::drop(window(10), (1080, 1200)),
+            false,
+            displays,
+        ),
+        &cancelled,
+    );
+
+    assert_eq!(
+        layout(&rt),
+        COLUMNS,
+        "releasing a drag that started in Fullscreen must not swap tiles"
+    );
+    assert!(rt.gesture.is_none());
 }

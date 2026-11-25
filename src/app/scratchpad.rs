@@ -133,9 +133,9 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
         self.summon_scratchpad(window, &target, outputs, cancelled)
     }
 
-    /// The visible workspace a toggle acts on: the focused window's, else the display it is on,
-    /// else the last focused workspace, else the main display's. A pinned float keeps its
-    /// owner when dragged to another display, so it is judged by where it is (#556).
+    /// The visible workspace a toggle acts on: the focused window's (or the
+    /// display a dragged pin or unmanaged window sits on, #556), else the last
+    /// focused workspace, else the main display's.
     fn scratchpad_target(
         &mut self,
         outputs: &macos::DisplayOutputs,
@@ -145,46 +145,8 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
             .into_iter()
             .filter(|resolved| self.scope.manages_selector(&resolved.selector))
             .collect();
-        let find = |workspace: Option<WorkspaceId>| {
-            workspace.and_then(|workspace| {
-                visible
-                    .iter()
-                    .find(|resolved| resolved.workspace == workspace)
-            })
-        };
-        let focused = self.current_focus();
-        let pinned = focused
-            .as_ref()
-            .is_some_and(|window| self.workspaces.is_pinned(window));
-        let frame = focused
-            .as_ref()
-            .and_then(|window| self.backend.window_server_frame(window));
-        let on_display = |frame: crate::Rect| {
-            visible
-                .iter()
-                .find(|resolved| resolved.output.contains_center(frame))
-        };
-        if pinned && let Some(resolved) = frame.and_then(on_display) {
-            return Ok(resolved.clone());
-        }
-        if let Some(resolved) = find(
-            focused
-                .as_ref()
-                .and_then(|window| self.workspaces.workspace_of_any(window)),
-        ) {
-            return Ok(resolved.clone());
-        }
-        frame
-            .and_then(on_display)
-            .or_else(|| find(self.focus.history().current))
-            .or_else(|| {
-                visible
-                    .iter()
-                    .find(|resolved| resolved.display_id == outputs.main().id)
-            })
-            .or_else(|| visible.first())
-            .cloned()
-            .ok_or_else(|| "No active workspace is available".into())
+        self.focused_visible_workspace(&visible, outputs)
+            .map(|(resolved, _)| resolved)
     }
 
     fn summon_scratchpad(
@@ -468,7 +430,11 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
                 None if !self.parked.contains_key(window) => self.leave_scratchpad(window),
                 None => {
                     if self.backend.is_process_running(&window.app)
-                        && self.backend.window_server_frame(window).is_some()
+                        && (self.backend.window_server_frame(window).is_some()
+                            || !matches!(
+                                self.backend.frame(window),
+                                Err(macos::WindowAccessError::Gone)
+                            ))
                     {
                         continue;
                     }

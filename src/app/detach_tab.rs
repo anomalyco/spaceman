@@ -26,7 +26,8 @@ pub(super) struct PendingTabDetach {
     /// Where `source_window` was before the press.
     source_frame: Option<crate::Rect>,
     /// Every window on screen before the press; none of them is the new one.
-    onscreen_before: HashSet<u32>,
+    /// `None` when the window server could not be read before the press.
+    onscreen_before: Option<HashSet<u32>>,
     phase: DetachPhase,
 }
 
@@ -51,9 +52,20 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
         cancelled: &AtomicBool,
     ) -> Result<CycleStatus, String> {
         self.ensure_managed_workspace(target)?;
-        self.finish_pending_tab_detach(&outputs, cancelled)?;
-        let window = self
-            .current_focus()
+        // Capture who had focus when the command arrived, before waiting for an
+        // earlier detach whose settlement may switch workspaces or focus the
+        // first detached tab.
+        let mut window = self.current_focus();
+        let handoff = self.finish_pending_tab_detach(&outputs, cancelled)?;
+        if let Some((detached, remaining)) = handoff
+            && window.as_ref() == Some(&detached)
+        {
+            // An AppKit tab group moved `source_window` out and handed the
+            // remaining tab group's slot to `remaining`.
+            window = Some(remaining);
+        }
+        let window = window
+            .or_else(|| self.current_focus())
             .ok_or("Focused window is unavailable")?;
         let source = if let Some(source) = self.workspaces.workspace_of_any(&window) {
             source
@@ -66,16 +78,40 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
         let onscreen_before = self
             .backend
             .onscreen_window_frames()
-            .map(|frames| frames.into_keys().collect())
-            .unwrap_or_default();
+            .map(|frames| frames.into_keys().collect());
         let source_frame = self.backend.frame(&window).ok();
         match self.backend.detach_tab(&window) {
             macos::TabDetachResult::SingleTabOrUnsupported => {
                 log_event!("move tab: {window:?} has no tab to detach; moving the window");
-                if follow {
-                    self.move_focused_follow(target, outputs, cancelled)
+                if self.current_focus().as_ref() == Some(&window) {
+                    if follow {
+                        self.move_focused_follow(target, outputs, cancelled)
+                    } else {
+                        self.move_focused(target, outputs, cancelled)
+                    }
+                } else if follow {
+                    let was_visible = self.is_visible(target, &outputs);
+                    let moved = self.move_window_explicit(
+                        window.clone(),
+                        target,
+                        outputs.clone(),
+                        cancelled,
+                    )?;
+                    if was_visible {
+                        return Ok(moved);
+                    }
+                    self.workspaces.remember_focus(target, &window);
+                    let mut switched = self.switch_with(
+                        target,
+                        outputs,
+                        cancelled,
+                        RepeatSwitch::KeepFocus,
+                        CommandOrigin::Explicit,
+                    )?;
+                    switched.failed += moved.failed;
+                    Ok(switched)
                 } else {
-                    self.move_focused(target, outputs, cancelled)
+                    self.move_window_explicit(window, target, outputs, cancelled)
                 }
             }
             macos::TabDetachResult::Error(error) => {
@@ -102,15 +138,19 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
     /// A newer `move-tab` lets an earlier detach still waiting for its window
     /// finish first: it observes until that window is claimed and sent to its
     /// own target, or the detach expires, so the earlier tab keeps its
-    /// destination (#570).
+    /// destination (#570). Returns `(detached, remaining)` if the pending
+    /// detach settled while waiting.
     fn finish_pending_tab_detach(
         &mut self,
         outputs: &macos::DisplayOutputs,
         cancelled: &AtomicBool,
-    ) -> Result<(), String> {
+    ) -> Result<Option<(crate::PhysicalWindowId, crate::PhysicalWindowId)>, String> {
+        self.last_tab_detach_handoff = None;
+        let mut was_cancelled = false;
         while let Some(pending) = self.tab_detach.as_ref() {
             let expires_at = pending.expires_at;
             if cancelled.load(Ordering::Acquire) {
+                was_cancelled = true;
                 break;
             }
             self.cycle(outputs.clone(), cancelled)?;
@@ -119,13 +159,18 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
             }
             self.backend.pause(TAB_DETACH_RECHECK);
         }
-        if let Some(superseded) = self.tab_detach.take() {
+        if let Some(dropped) = self.tab_detach.take() {
+            let reason = if was_cancelled || cancelled.load(Ordering::Acquire) {
+                "cancelled"
+            } else {
+                "a newer move tab began"
+            };
             log_event!(
-                "move tab: dropped the detach of {:?}: a newer move tab began",
-                superseded.source_window
+                "move tab: dropped the detach of {:?}: {reason}",
+                dropped.source_window
             );
         }
-        Ok(())
+        Ok(self.last_tab_detach_handoff.take())
     }
 
     /// Before `app`'s window affinities freeze: its first window that was not on
@@ -147,9 +192,10 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
         {
             return None;
         }
+        let onscreen_before = pending.onscreen_before.as_ref()?;
         let new = windows.iter().find(|window| {
             window.id != pending.source_window
-                && !pending.onscreen_before.contains(&window.id.window_id)
+                && !onscreen_before.contains(&window.id.window_id)
                 && self.workspaces.residency(&window.id).is_none()
                 && !self.parked.contains_key(&window.id)
                 && !self.config.patch(&app.bundle_id, window).is_ignored()
@@ -233,7 +279,10 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
             DetachPhase::Claimed {
                 detached,
                 remaining,
-            } => (detached.clone(), remaining.clone()),
+            } => {
+                self.last_tab_detach_handoff = Some((detached.clone(), remaining.clone()));
+                (detached.clone(), remaining.clone())
+            }
             DetachPhase::Awaiting if self.backend.now() >= pending.expires_at => {
                 log_event!(
                     "move tab: no window appeared for the tab detached from {:?}; dropped",

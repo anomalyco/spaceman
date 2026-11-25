@@ -7,6 +7,13 @@ const MINIMUM_TOLERANCE: i32 = 2;
 /// row settles within one round per tile; a bound keeps it finite (#413).
 const MIN_REFITS: usize = 3;
 
+/// Maximum minimum-learning rounds for a workspace with `tiles` bound windows:
+/// each round learns at least one window's minimum, so a row settles within one
+/// round per tile (#413, #492).
+pub(super) fn learning_rounds(tiles: usize) -> usize {
+    MIN_REFITS.max(tiles + 1)
+}
+
 impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
     /// Refit and re-apply while writes keep revealing refused sizes. Returns
     /// the status of the last re-apply, or `None` when nothing was refitted.
@@ -20,7 +27,7 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
         let mut results = results;
         let mut status = None;
         let tiles = self.workspaces.engine(workspace).bound_windows().len();
-        for _ in 0..MIN_REFITS.max(tiles + 1) {
+        for _ in 0..learning_rounds(tiles) {
             if !self.fit_minimum_sizes(workspace, output, &results) {
                 break;
             }

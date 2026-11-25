@@ -71,6 +71,9 @@ pub(super) struct WorkspaceRuntime<B = MacWorkspaceBackend> {
     pub(super) displays: super::displays::DisplayWatch,
     /// A pressed "Move Tab to New Window" awaiting its new window.
     pub(super) tab_detach: Option<super::detach_tab::PendingTabDetach>,
+    /// `(detached, remaining)` from the latest settled tab detach, read by
+    /// `move_tab` when an AppKit tab group swaps the source window's ID.
+    pub(super) last_tab_detach_handoff: Option<(crate::PhysicalWindowId, crate::PhysicalWindowId)>,
     /// The setup tour's arrangement: where it sends unowned windows, and how to undo it.
     pub(super) arranging: super::arrange::ArrangeState,
 }
@@ -387,6 +390,7 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
             journal: JournalState::default(),
             displays: super::displays::DisplayWatch::default(),
             tab_detach: None,
+            last_tab_detach_handoff: None,
             arranging: super::arrange::ArrangeState::default(),
         }
     }
@@ -574,8 +578,13 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
         if dragged.is_some() {
             return status;
         }
-        self.refit_minimum_sizes(workspace, output, results, cancelled)
-            .unwrap_or(status)
+        let status = self
+            .refit_minimum_sizes(workspace, output, results, cancelled)
+            .unwrap_or(status);
+        if !cancelled.load(Ordering::Acquire) {
+            self.exact_spacing_workspaces.remove(&workspace);
+        }
+        status
     }
 
     pub(super) fn apply_layout(
@@ -607,9 +616,6 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
                 .backend
                 .apply_managed(&placements, &settings, cancelled),
         };
-        if settings.frame_tolerance == 0 && !cancelled.load(Ordering::Acquire) {
-            self.exact_spacing_workspaces.remove(&workspace);
-        }
         // Managed layout runs without a fresh observation; the next cycle validates readback.
         self.record_results(workspace, &results);
         self.retire_laid_out(&results);

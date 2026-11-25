@@ -455,8 +455,14 @@ fn float_focused_beside_a_visible_workspace() -> (
     assert_eq!(runtime.backend.focused, Some(tile.clone()));
     // Seed the tile memory as an earlier hide/show of workspace 6 would.
     runtime.workspaces.remember_focus(WorkspaceId::SIX, &tile);
-    assert_eq!(runtime.workspaces.preferred_focus(WorkspaceId::SIX), Some(tile));
-    assert_eq!(runtime.workspaces.preferred_float_focus(WorkspaceId::SIX), None);
+    assert_eq!(
+        runtime.workspaces.preferred_focus(WorkspaceId::SIX),
+        Some(tile)
+    );
+    assert_eq!(
+        runtime.workspaces.preferred_float_focus(WorkspaceId::SIX),
+        None
+    );
     // Option+Backtick moved focus to the float.
     runtime.backend.focused = Some(floating.clone());
     (runtime, main, floating)

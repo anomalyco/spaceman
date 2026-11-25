@@ -138,7 +138,11 @@ fn dragged_pin(pin_frame: crate::Rect) -> (WorkspaceRuntime<FakeBackend>, macos:
     rt.backend.frontmost = Some(win(10).app);
     execute(&mut rt, &displays, WorkerAction::Retile);
     for workspace in [7, 4] {
-        execute(&mut rt, &displays, WorkerAction::SwitchWorkspace(ws(workspace)));
+        execute(
+            &mut rt,
+            &displays,
+            WorkerAction::SwitchWorkspace(ws(workspace)),
+        );
     }
     assert_eq!(visible(&rt, &displays), [1, 4, 7]);
 
