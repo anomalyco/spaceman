@@ -3,6 +3,7 @@
 mod back_and_forth_fast_shortcuts;
 mod back_and_forth_pinned_focus;
 mod back_and_forth_stale_report;
+mod back_and_forth_visible_sibling;
 mod close_all_frontmost;
 mod config_removed_named;
 mod config_same_display_alias;
