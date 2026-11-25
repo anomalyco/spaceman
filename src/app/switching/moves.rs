@@ -157,6 +157,26 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
         )
     }
 
+    /// A keyboard or `ctl` move of `window` (a directional move off the
+    /// workspace edge): focus follows it onto a workspace on screen elsewhere
+    /// and Mouse follows focus applies, unlike a drag or the setup tour (#517).
+    pub(in crate::app) fn move_window_explicit(
+        &mut self,
+        window: crate::PhysicalWindowId,
+        target: WorkspaceId,
+        outputs: macos::DisplayOutputs,
+        cancelled: &AtomicBool,
+    ) -> Result<CycleStatus, String> {
+        self.move_window_with_focus(
+            window,
+            target,
+            true,
+            outputs,
+            cancelled,
+            CommandOrigin::Explicit,
+        )
+    }
+
     fn move_window_with_focus(
         &mut self,
         window: crate::PhysicalWindowId,

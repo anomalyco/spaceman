@@ -116,7 +116,8 @@ Send tab to workspace                                      // ws.move-tab
 Mouse follows focus ([settings] mouse_follows_focus)       // ws.mouse-follows-focus
 ├── "off" (default) -> never moves the pointer
 ├── "display"       -> on explicit keyboard/ctl focus changes (switch, back-and-forth,
-│                      move-workspace, focus, move onto an active workspace), if the pointer is not
+│                      move-workspace, focus, move onto an active workspace, including
+│                      Option+Shift+H/J/K/L off the edge onto another display), if the pointer is not
 │                      already on the target display, warps to the center of the focused window (or
 │                      the target display when empty)
 ├── "window"        -> same explicit triggers, warping whenever the pointer is outside the newly
