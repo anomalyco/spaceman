@@ -80,8 +80,16 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
         let source_settings = self.layout_settings(source_output);
         // Released where the last preview was shown, with the pointer nowhere
         // new since, the drop is what that preview showed, even if settings
-        // changed in between (#390).
-        let target = match shown.filter(|(at, _)| *at == point) {
+        // changed in between (#390). A destination workspace that stopped
+        // being shown while the button was held no longer stands (#550).
+        let shown = shown.filter(|(at, target)| {
+            *at == point
+                && match target {
+                    DropTarget::OtherWorkspace(workspace) => self.is_visible(*workspace, &outputs),
+                    _ => true,
+                }
+        });
+        let target = match shown {
             Some((_, target)) => target,
             None => self.resolve_drop_target(
                 &window,
