@@ -37,17 +37,18 @@ impl Workspaces {
     }
 
     pub fn set_assignment(&mut self, workspace: WorkspaceId, display: DisplaySelector) {
-        self.set_assignment_with(workspace, display, |_, _| false);
+        self.set_assignment_with(workspace, display, |_, _, _| false);
     }
 
-    /// Assigns workspace to display. When same_display says the old and new
-    /// selectors name one physical display, a workspace that display shows
-    /// keeps showing there: its lane moves to the new selector (#423).
+    /// Assigns workspace to display. When keeps_front says the workspace is
+    /// shown and the old and new selectors name one physical display, it keeps
+    /// showing there: its lane moves to the new selector (#423). A hidden
+    /// workspace only changes its assignment (#542).
     pub(crate) fn set_assignment_with(
         &mut self,
         workspace: WorkspaceId,
         display: DisplaySelector,
-        same_display: impl Fn(&DisplaySelector, &DisplaySelector) -> bool,
+        keeps_front: impl Fn(WorkspaceId, &DisplaySelector, &DisplaySelector) -> bool,
     ) {
         self.enable(workspace);
         let previous = self.assignments[workspace.index()].clone();
@@ -56,7 +57,7 @@ impl Workspaces {
         }
         self.assignments[workspace.index()] = display.clone();
         let was_active = self.displays.lane(&previous) == Some(workspace);
-        if was_active && same_display(&previous, &display) {
+        if was_active && keeps_front(workspace, &previous, &display) {
             // The display's history moves with the lane: what it showed before
             // workspace, not the hidden workspace the new selector covered (#544).
             let shown_before = self
