@@ -32,8 +32,9 @@ Your workspaces                                                      // tour.arr
 └── One window or none -> "Nothing to arrange yet", primary reads Start tiling
 
 Try it                                                               // tour.try
-├── A miniature desktop: two workspaces of two windows, a menu bar, and a Workspace HUD capsule
-│   that shows for a moment after a switch
+├── A miniature desktop: two workspaces of two windows, a menu bar, and a Workspace HUD in its
+│   Layouts style that stays up: it shows each workspace's tiles and app icons, and follows every
+│   switch, float, Fullscreen Layout and cycle
 ├── Seven lessons, one prompt at a time, by key only: ⌥2 (workspace 2), ⌥1 (back), ⌥⇧Space
 │   (float), ⌥⇧Space (tile again), ⌥⇧F (Fullscreen Layout), ⌥1 again (cycle to the window
 │   behind, as a repeat press does in Spaceman), ⌥⇧F (back to tiles)
@@ -42,9 +43,9 @@ Try it                                                               // tour.try
 │   │   the workspace's own number focuses its next window (none while one floats)
 │   ├── The prompt, its title and its keys stay from lesson to lesson: the title rolls, ⇧ springs
 │   │   in or out beside ⌥, the last key's legend rolls, and each progress mark fills green
-│   ├── The prompt's keys sink while pressed; clicking the prompt does nothing
-│   ├── The four windows have small real contents (Safari, Terminal, Notes, Mail); the menu bar
-│   │   names the focused app
+│   ├── The prompt's keys sit flush right and sink while pressed; clicking the prompt does nothing
+│   ├── The four windows have small real contents (Safari on Hex's site, a Ghostty-style
+│   │   terminal, Notes, Mail); the menu bar names the focused app and shows its menus
 │   ├── The chords follow [shortcuts] (Base modifier, rebinds)
 │   └── Reduce Motion: workspaces and windows cross-fade instead of travelling
 ├── Modifier: ⌥ · ⌃⌥ · ⌃⌥⌘ saves [shortcuts] modifier; the prompt asks for the new keys at once
@@ -100,7 +101,7 @@ Unit, `agent/src/onboarding/demo/tests.rs` (the Try it miniature):
 Unit, `agent/src/onboarding/sound.rs`: `both_cues_are_quiet_system_sounds`.
 
 Motion (the real view at 120 Hz on a virtual clock, typed at), `agent/src/onboarding/motion_tests.rs`:
-`a_switch_slides_the_workspaces_and_the_hud_rises_with_its_marker_stretching`,
+`a_switch_slides_the_workspaces_and_the_hud_marker_stretches_across`,
 `only_the_keyboard_makes_a_move`,
 `arriving_from_the_arrangement_gives_the_stage_the_keyboard`,
 `a_learned_lesson_wears_its_tick_for_a_beat_and_then_the_next_is_asked_for`,

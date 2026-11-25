@@ -561,13 +561,7 @@ pub(crate) const SCENES: &[Scene] = &[
         board_scene(ui, Board::fixture_single())
     }),
     ("onboarding-try-it", |ui| play_scene(ui, &[])),
-    // Just switched: the Workspace HUD is still up.
-    ("onboarding-try-it-ws2", |ui| {
-        play_scene(ui, &[Move::There]);
-        if let Some(tour) = &mut ui.tour {
-            tour.play.show_hud();
-        }
-    }),
+    ("onboarding-try-it-ws2", |ui| play_scene(ui, &[Move::There])),
     ("onboarding-try-it-floated", |ui| {
         play_scene(ui, &[Move::There, Move::Back, Move::Float]);
     }),

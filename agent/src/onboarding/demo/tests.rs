@@ -446,7 +446,6 @@ fn a_learned_lesson_keeps_its_tick_for_a_beat_then_the_next_is_asked_for() {
             learned: true
         }
     );
-    assert!(play.hud(), "a switch brings the Workspace HUD up");
     play.settle(2.0 + try_it::KEY_BEAT);
     assert_eq!(
         play.card(),
@@ -459,10 +458,6 @@ fn a_learned_lesson_keeps_its_tick_for_a_beat_then_the_next_is_asked_for() {
     assert_eq!(play.due(), Some(2.0 + try_it::TICK_BEAT));
     assert!(play.settle(2.0 + try_it::TICK_BEAT));
     assert_eq!(play.card(), asking(1));
-    // The HUD leaves after its own beat, like the real one.
-    assert!(play.hud());
-    assert!(play.settle(2.0 + try_it::HUD_BEAT));
-    assert!(!play.hud());
     assert_eq!(play.due(), None);
 
     // A quick second press moves the tick on to its own lesson.
@@ -475,10 +470,8 @@ fn a_learned_lesson_keeps_its_tick_for_a_beat_then_the_next_is_asked_for() {
             learned: true
         }
     );
-    // Float and Fullscreen Layout leave the HUD alone.
-    play.settle(5.0 + try_it::HUD_BEAT);
+    play.settle(5.0 + try_it::TICK_BEAT);
     play.press(Move::Float, 9.0);
-    assert!(!play.hud());
 
     for mv in [Move::Fullscreen, Move::Back, Move::Fullscreen] {
         play.press(mv, 12.0);

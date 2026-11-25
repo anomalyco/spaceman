@@ -1,24 +1,30 @@
 //! The Try it step's miniature desktop, drawn: a small display holding a dark macOS desktop, with
-//! a menu bar, two workspaces of two windows each (`window.rs`) and the Workspace HUD, which
-//! shows for a moment after a switch as the real one does. It draws `Demo` and nothing else, so
-//! every state is one build of the same elements and each change springs from where it is drawn.
+//! a menu bar (`menu_bar.rs`), two workspaces of two windows each (`window.rs`) and the Workspace
+//! HUD (`hud.rs`), which stays up so every move shows in it too. It draws `Demo` and nothing
+//! else, so every state is one build of the same elements and each change springs from where it
+//! is drawn.
 //!
 //! | What changes      | What moves                                                          | Spring |
 //! | ----------------- | ------------------------------------------------------------------- | ------ |
 //! | Another workspace | both workspaces slide; the one arriving grows to full size          | .38 / .12 |
 //! |                   | the wallpaper's light drifts the same way, a little and later       | .60 / 0 |
-//! |                   | the HUD rises in; its marker's leading edge, then its trailing edge | .16 / 0, .20 / 0, .30 / 0 |
+//! |                   | the HUD's screens trade sizes; its marker's leading, trailing edge  | .30 / 0, .20 / 0, .30 / 0 |
 //! | Float             | the focused window lifts to the middle, the other goes wide         | .36 / .14 |
+//! |                   | in the HUD, its tile lifts over the other's                         | .36 / .14 |
 //! | Fullscreen Layout | the focused window fills the screen, the other tucks behind         | .36 / .14 |
+//! |                   | in the HUD, one stacked tile, the app in front large                | .36 / .14 |
 //! | Its number again  | the window behind comes forward over the one in front, which tucks | .36 / .14 |
+//! |                   | in the HUD, the two apps' icons trade places and sizes              | .36 / .14 |
 //!
 //! Under Reduce Motion nothing travels: the workspace and its windows cross-fade.
 
+mod glyphs;
+mod hud;
+mod menu_bar;
 mod window;
 
 use rune::{
-    Color, El, Shadow, Spring, TextStyle, Transition, el, oklch, row, text,
-    tok::motion::pair::SETTLE,
+    Color, El, Shadow, Spring, TextStyle, Transition, el, oklch, text, tok::motion::pair::SETTLE,
 };
 
 use super::demo::{self, APPS, Demo, Frame, Mode, Pose};
@@ -50,35 +56,14 @@ const WINDOW: Spring = Spring::new(0.36, 0.14);
 /// The wallpaper's light, which trails the workspaces it sits behind.
 const DRIFT: Spring = Spring::new(0.6, 0.0);
 const DRIFT_BY: f32 = 16.0;
-const MARKER: Spring = Spring::new(0.24, 0.0);
-const MARKER_LEAD: Spring = Spring::new(0.2, 0.0);
-const MARKER_TRAIL: Spring = Spring::new(0.3, 0.0);
-const HUD_IN: Spring = Spring::new(0.16, 0.0);
-const HUD_OUT: Spring = Spring::new(0.28, 0.0);
-const HUD_DROP: f32 = 5.0;
 /// The workspace out of view, a little smaller and dimmer, so the one arriving grows in.
 const AWAY_SCALE: f32 = 0.94;
 const AWAY_OPACITY: f32 = 0.35;
-
-const PILL_H: f32 = 24.0;
-const PILL_EDGE: f32 = 9.0;
-const PILL_REST: f32 = 10.0;
-const GROUP_GAP: f32 = 12.0;
-const NUMBER_W: f32 = 8.0;
-const HUD_ICON: f32 = 11.0;
-const HUD_GAP: f32 = 3.0;
-const GROUP_W: f32 = NUMBER_W + 2.0 * (HUD_GAP + HUD_ICON);
-const PILL_W: f32 = 2.0 * PILL_EDGE + 2.0 * GROUP_W + GROUP_GAP;
-const MARKER_PAD: f32 = 6.0;
-const MARKER_H: f32 = 18.0;
-const DIM: f32 = 0.42;
 
 /// What the stage shows.
 #[derive(Clone, Copy, Debug)]
 pub struct Scene {
     pub demo: Demo,
-    /// The Workspace HUD is up, as it is for a moment after a switch.
-    pub hud: bool,
     /// Reduce Motion: cross-fade instead of travelling.
     pub still: bool,
 }
@@ -106,10 +91,10 @@ pub fn rect(frame: Frame, mode: Mode) -> (f32, f32, f32, f32) {
 }
 
 pub fn stage(ui: &Ui, p: Paint, scene: Scene) -> El {
-    let Scene { demo, hud, still } = scene;
+    let Scene { demo, still } = scene;
     let desk = if still {
         // One workspace at a time, fading into the next.
-        workspace(ui, p, demo, demo.workspace(), still)
+        workspace(p, demo, demo.workspace(), still)
             .absolute(0.0, 0.0)
             .transition(Transition::opacity().springs(SETTLE))
     } else {
@@ -119,7 +104,7 @@ pub fn stage(ui: &Ui, p: Paint, scene: Scene) -> El {
             .motion(SLIDE)
             .children((0..APPS.len()).map(|index| {
                 let showing = index == demo.workspace();
-                workspace(ui, p, demo, index, still)
+                workspace(p, demo, index, still)
                     .absolute(index as f32 * SCREEN_W, 0.0)
                     .scale(if showing { 1.0 } else { AWAY_SCALE })
                     .scale_motion(SLIDE)
@@ -132,12 +117,12 @@ pub fn stage(ui: &Ui, p: Paint, scene: Scene) -> El {
         .size(SCREEN_W, SCREEN_H)
         .radius(SCREEN_RADIUS)
         .clip_rounded(SCREEN_RADIUS)
-        .fill(oklch(0.15, 0.03, 272.0))
-        .gradient(oklch(0.2, 0.04, 266.0), oklch(0.12, 0.03, 285.0))
+        .fill(oklch(0.13, 0.04, 272.0))
+        .gradient(oklch(0.17, 0.05, 266.0), oklch(0.09, 0.03, 290.0))
         .child(wallpaper(demo.workspace(), still))
         .child(desk)
-        .child(menu_bar(demo))
-        .child(hud_pill(ui, p, demo, hud, still));
+        .child(menu_bar::menu_bar(demo))
+        .child(hud::hud(ui, p, demo, still));
     let dark = Paint::new(true, 1.0 / p.hair);
     let mut display = el()
         .key(KEY)
@@ -164,8 +149,9 @@ pub fn stage(ui: &Ui, p: Paint, scene: Scene) -> El {
     display.child(screen)
 }
 
-/// The desktop picture: a deep slate night with an indigo light high on the left and a teal one
-/// low on the right. The lights drift a little with the workspaces, behind them.
+/// The desktop picture, after macOS's own dark ones: a deep night blue with one broad band of
+/// light swept across it, violet low on the left and an ember glow in the far corner. The
+/// lights drift a little with the workspaces, behind them.
 fn wallpaper(workspace: usize, still: bool) -> El {
     // Eased toward nothing, so a light has no edge.
     let glow = |color: Color, strength: f32| {
@@ -194,31 +180,38 @@ fn wallpaper(workspace: usize, still: bool) -> El {
         .offset_motion(DRIFT)
         .a11y_hidden()
         .child(light(
-            "indigo",
-            [0.2, 0.16],
-            [300.0, 210.0],
-            oklch(0.5, 0.19, 277.0),
-            0.62,
-        ))
-        .child(light(
-            "teal",
-            [0.86, 0.94],
-            [280.0, 190.0],
-            oklch(0.62, 0.12, 200.0),
-            0.44,
+            "band",
+            [0.36, 0.58],
+            [380.0, 110.0],
+            oklch(0.5, 0.17, 262.0),
+            0.6,
         ))
         .child(light(
             "violet",
-            [0.72, 0.08],
-            [170.0, 110.0],
-            oklch(0.56, 0.17, 320.0),
-            0.2,
+            [0.06, 0.95],
+            [240.0, 140.0],
+            oklch(0.5, 0.2, 305.0),
+            0.5,
+        ))
+        .child(light(
+            "ember",
+            [0.95, 1.02],
+            [230.0, 110.0],
+            oklch(0.66, 0.16, 42.0),
+            0.36,
+        ))
+        .child(light(
+            "haze",
+            [0.82, 0.1],
+            [210.0, 120.0],
+            oklch(0.6, 0.1, 232.0),
+            0.22,
         ))
 }
 
 /// One workspace's windows. The focused window comes last, so it draws over the other while
 /// it lifts off the grid and settles back, and comes forward when its number cycles to it.
-fn workspace(ui: &Ui, p: Paint, demo: Demo, index: usize, still: bool) -> El {
+fn workspace(p: Paint, demo: Demo, index: usize, still: bool) -> El {
     let desk = demo.desk(index);
     let frames = demo::frames(desk);
     let look = |slot: usize| Look {
@@ -226,14 +219,13 @@ fn workspace(ui: &Ui, p: Paint, demo: Demo, index: usize, still: bool) -> El {
         frame: frames[slot],
         mode: desk.mode,
         focused: slot == desk.focus,
-        first: slot == 0,
         still,
     };
     let behind = 1 - desk.focus;
     el().key(format!("ws{index}"))
         .size(SCREEN_W, SCREEN_H)
-        .child(window::window(p, ui, look(behind)))
-        .child(window::window(p, ui, look(desk.focus)))
+        .child(window::window(p, look(behind)))
+        .child(window::window(p, look(desk.focus)))
 }
 
 /// An app's icon, or its initial on a quiet tile when this Mac doesn't have the app.
@@ -257,139 +249,4 @@ fn app_badge(ui: &Ui, bundle: &str, size: f32) -> El {
                 .color(Color::WHITE.alpha(0.95)),
             ),
     }
-}
-
-/// The menu bar: the Apple menu, the focused app's name a touch brighter than its menus, and
-/// the status items and clock at the far end. It is nearly a quarter past two.
-fn menu_bar(demo: Demo) -> El {
-    let ws = demo.workspace();
-    let bundle = APPS[ws][demo.desk(ws).focus];
-    let word = |key: &str, label: &str, alpha: f32, weight: f32| {
-        text(label.to_owned())
-            .key(key)
-            .font(TextStyle::new(5.5, weight).lh(7.0))
-            .color(Color::WHITE.alpha(alpha))
-    };
-    let name = apps::fallback_name(bundle);
-    row()
-        .key("menu-bar")
-        .absolute(0.0, 0.0)
-        .w(SCREEN_W)
-        .h(MENU_H)
-        .px(9.0)
-        .gap(7.0)
-        .center_y()
-        .fill(Color::BLACK.alpha(0.26))
-        .a11y_hidden()
-        .child(
-            el().key("apple")
-                .size(6.0, 6.0)
-                .radius(2.2)
-                .fill(Color::WHITE.alpha(0.86)),
-        )
-        // The name cross-fades as focus moves to another app.
-        .child(
-            el().key("app-slot").child(
-                word(&format!("name-{bundle}"), &name, 0.86, 650.0)
-                    .transition(Transition::opacity().springs(SETTLE)),
-            ),
-        )
-        .child(word("menu0", "File", 0.5, 450.0))
-        .child(word("menu1", "Edit", 0.5, 450.0))
-        .child(word("menu2", "View", 0.5, 450.0))
-        .child(word("menu3", "Window", 0.5, 450.0))
-        .child(el().key("space").grow(1.0))
-        .child(
-            el().key("status0")
-                .size(5.0, 5.0)
-                .radius(2.5)
-                .fill(Color::WHITE.alpha(0.46)),
-        )
-        .child(
-            el().key("battery")
-                .size(10.0, 5.0)
-                .radius(1.8)
-                .border(1.0, Color::WHITE.alpha(0.46)),
-        )
-        .child(word("clock", "Tue 2:11 PM", 0.66, 500.0))
-}
-
-/// The Workspace HUD in miniature, in its Icons style: each workspace's number and apps, and a
-/// marker that stretches to the one showing. Like the real one it shows after a switch and
-/// leaves again.
-fn hud_pill(ui: &Ui, p: Paint, demo: Demo, shown: bool, still: bool) -> El {
-    let showing = demo.workspace();
-    let group_x = |index: usize| PILL_EDGE + index as f32 * (GROUP_W + GROUP_GAP);
-    let number = TextStyle {
-        features: "'tnum' 1",
-        ..TextStyle::new(10.0, 620.0).lh(12.0)
-    };
-    let mut marker = el()
-        .key(if still {
-            format!("marker{showing}")
-        } else {
-            "marker".to_owned()
-        })
-        .absolute(
-            group_x(showing) - MARKER_PAD,
-            (PILL_H - MARKER_H) / 2.0 - p.hair,
-        )
-        .size(GROUP_W + 2.0 * MARKER_PAD, MARKER_H)
-        .radius(MARKER_H / 2.0)
-        .fill(Color::WHITE.alpha(0.10))
-        .border(p.hair, Color::WHITE.alpha(0.16))
-        .transition(Transition::opacity().springs(SETTLE));
-    if !still {
-        marker = marker.motion(MARKER).lead(MARKER_LEAD, MARKER_TRAIL);
-    }
-    let coming = if shown { HUD_IN } else { HUD_OUT };
-    let mut pill = el()
-        .key("hud")
-        .absolute((SCREEN_W - PILL_W) / 2.0, SCREEN_H - PILL_REST - PILL_H)
-        .size(PILL_W, PILL_H)
-        .radius(PILL_H / 2.0)
-        .fill(oklch(0.2, 0.004, 285.0))
-        .border(p.hair, Color::WHITE.alpha(0.14))
-        .box_shadow(Shadow {
-            y: 1.0,
-            blur: 2.0,
-            color: Color::BLACK.alpha(0.5),
-            ..Shadow::default()
-        })
-        .box_shadow(Shadow {
-            y: 6.0,
-            blur: 16.0,
-            color: Color::BLACK.alpha(0.5),
-            ..Shadow::default()
-        })
-        .opacity(if shown { 1.0 } else { 0.0 })
-        .opacity_motion(coming)
-        .scale(if shown || still { 1.0 } else { 0.96 })
-        .scale_motion(coming)
-        .offset(0.0, if shown || still { 0.0 } else { HUD_DROP })
-        .offset_motion(coming)
-        .a11y_hidden()
-        .child(marker);
-    for (index, bundles) in APPS.iter().enumerate() {
-        let mut group = row()
-            .key(format!("group{index}"))
-            .absolute(group_x(index), -p.hair)
-            .size(GROUP_W, PILL_H)
-            .gap(HUD_GAP)
-            .center_y()
-            .opacity(if index == showing { 1.0 } else { DIM })
-            .opacity_motion(MARKER)
-            .child(
-                row().key("number").w(NUMBER_W).center().child(
-                    text((index + 1).to_string())
-                        .font(number)
-                        .color(Color::WHITE.alpha(0.92)),
-                ),
-            );
-        for bundle in bundles {
-            group = group.child(app_badge(ui, bundle, HUD_ICON).key(format!("app-{bundle}")));
-        }
-        pill = pill.child(group);
-    }
-    pill
 }
