@@ -185,6 +185,7 @@ pub(crate) fn config_help(executable: &str) -> String {
         "  labs.recent_focus           true | false  Option+H/J/K/L prefers the last-used bordering tile",
         "  labs.swipe_switch           true | false  An off switch for the three-finger swipe (trackpad_swipe)",
         "  labs.empty_workspace_focus  true | false  Empty workspace chosen on another display is focused",
+        "  labs.float_follows_display  true | false  A float dragged to another display joins its workspace",
         "",
         "Notes:",
         "  - Respects SPACEMAN_CONFIG and SPACEMAN_APPLICATION_SUPPORT.",

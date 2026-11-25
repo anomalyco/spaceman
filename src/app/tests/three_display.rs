@@ -73,17 +73,28 @@ fn seen(id: u32, frame: crate::Rect) -> crate::AppObservation {
 }
 
 fn rig(windows: &[(u32, u8, crate::Rect)]) -> WorkspaceRuntime<FakeBackend> {
-    let mut text = "version = 1
-[settings]
+    rig_with(windows, "", "right")
+}
+
+/// [`rig`] with `extra` config before `[settings]` and workspaces 9 and 10 on `nine_on`
+/// (`"left"` leaves the right display with no workspace).
+fn rig_with(
+    windows: &[(u32, u8, crate::Rect)],
+    extra: &str,
+    nine_on: &str,
+) -> WorkspaceRuntime<FakeBackend> {
+    let mut text = format!(
+        "version = 1
+{extra}[settings]
 layout = 'columns'
 "
-    .to_owned();
+    );
     for (n, id) in [
         (6, "left"),
         (7, "left"),
         (8, "left"),
-        (9, "right"),
-        (10, "right"),
+        (9, nine_on),
+        (10, nine_on),
     ] {
         text.push_str(&format!(
             "[[workspaces]]
@@ -113,8 +124,13 @@ monitor = '{id}'
     for (id, n, _) in windows {
         bind(&mut rt, ws(*n), &win(*id));
     }
-    for n in [6, 9, 1] {
-        rt.workspaces.switch(ws(n));
+    let shown: &[u8] = if nine_on == "right" {
+        &[6, 9, 1]
+    } else {
+        &[6, 1]
+    };
+    for n in shown {
+        rt.workspaces.switch(ws(*n));
     }
     act(&mut rt, WorkerAction::Retile);
     rt
@@ -310,4 +326,180 @@ fn a_window_short_of_its_tile_on_its_own_display_still_freezes() {
         rt.constrained[ws(1).index()].get(&win(10)),
         Some(&(CENTER, capped))
     );
+}
+
+/// The float of the #364 tests: window 10, owned by workspace 1 and released at `released`.
+fn float_rig(extra: &str, nine_on: &str, released: crate::Rect) -> WorkspaceRuntime<FakeBackend> {
+    let mut rt = rig_with(
+        &[(11, 1, CENTER), (60, 6, LEFT), (90, 9, RIGHT)],
+        extra,
+        nine_on,
+    );
+    rt.workspaces
+        .float(win(10), ws(1), crate::workspace::FloatCause::Manual);
+    open_float(&mut rt, released);
+    rt
+}
+
+/// Window 10 opens at `frame`, in the backend and its next snapshot.
+fn open_float(rt: &mut WorkspaceRuntime<FakeBackend>, frame: crate::Rect) {
+    if let Some(observation) = &mut rt.backend.observation {
+        observation.applications.push(seen(10, frame));
+    }
+    rt.backend.frames.insert(win(10), frame);
+}
+
+/// Releases window 10's drag at `released`, the pointer on its title bar.
+fn release_float(rt: &mut WorkspaceRuntime<FakeBackend>, released: crate::Rect) {
+    rt.backend.frames.insert(win(10), released);
+    let point = (released.x + 300, released.y + 12);
+    rt.drop_window(win(10), point, false, trio(), &AtomicBool::new(false))
+        .unwrap();
+}
+
+const FLOAT_START: crate::Rect = crate::Rect {
+    x: 800,
+    y: 300,
+    width: 600,
+    height: 400,
+};
+const FLOAT_ON_LEFT: crate::Rect = crate::Rect {
+    x: -1100,
+    y: 200,
+    width: 600,
+    height: 400,
+};
+const FLOAT_ON_CENTER: crate::Rect = crate::Rect {
+    x: 900,
+    y: 300,
+    width: 600,
+    height: 400,
+};
+const FLOAT_ON_RIGHT: crate::Rect = crate::Rect {
+    x: 3000,
+    y: 300,
+    width: 600,
+    height: 400,
+};
+const FLOAT_LAB: &str = "[labs]\nfloat_follows_display = true\n";
+
+/// #364: with `[labs] float_follows_display`, a floating window dragged from the center to the
+/// left display joins workspace 6 there, keeps its frame, and parks and returns with 6 while
+/// switching the center leaves it alone. Dragged back, it rejoins workspace 1.
+#[test]
+fn a_float_dragged_to_another_display_joins_its_workspace_with_the_lab_on() {
+    let mut rt = float_rig(FLOAT_LAB, "right", FLOAT_START);
+    release_float(&mut rt, FLOAT_ON_LEFT);
+    assert_eq!(rt.workspaces.floating_workspace_of(&win(10)), Some(ws(6)));
+    assert_eq!(rt.backend.frames[&win(10)], FLOAT_ON_LEFT);
+
+    act(&mut rt, WorkerAction::SwitchWorkspace(ws(2)));
+    assert!(!rt.parked.contains_key(&win(10)), "switching the center");
+    act(&mut rt, WorkerAction::SwitchWorkspace(ws(7)));
+    assert!(
+        rt.parked.contains_key(&win(10)),
+        "switching the left display"
+    );
+    act(&mut rt, WorkerAction::SwitchWorkspace(ws(6)));
+    assert!(!rt.parked.contains_key(&win(10)), "showing 6 again");
+    assert_eq!(rt.backend.frames[&win(10)], FLOAT_ON_LEFT, "same frame");
+
+    act(&mut rt, WorkerAction::SwitchWorkspace(ws(1)));
+    release_float(&mut rt, FLOAT_ON_CENTER);
+    assert_eq!(
+        rt.workspaces.floating_workspace_of(&win(10)),
+        Some(ws(1)),
+        "dragged back to the center"
+    );
+    assert_eq!(rt.backend.frames[&win(10)], FLOAT_ON_CENTER);
+}
+
+/// #364: the drops that keep a float's owner: the Lab off, a drop on its own display, a hand
+/// pin, a summoned Scratchpad window (which stays in the Scratchpad), and a display that shows
+/// no workspace.
+#[test]
+fn a_dragged_float_keeps_its_workspace_where_the_lab_does_not_apply() {
+    let scratchpad = "[labs]\nfloat_follows_display = true\nscratchpad = true\n";
+    for (case, extra, nine_on, released) in [
+        ("lab off", "", "right", FLOAT_ON_LEFT),
+        ("same display", FLOAT_LAB, "right", FLOAT_ON_CENTER),
+        ("pinned", FLOAT_LAB, "right", FLOAT_ON_LEFT),
+        ("scratchpad", scratchpad, "right", FLOAT_ON_LEFT),
+        ("no workspace there", FLOAT_LAB, "left", FLOAT_ON_RIGHT),
+    ] {
+        let mut rt = float_rig(extra, nine_on, FLOAT_START);
+        if case == "pinned" {
+            assert!(rt.workspaces.pin(win(10)));
+        }
+        if case == "scratchpad" {
+            rt.workspaces.forget_floating(&win(10));
+            assert!(rt.workspaces.stash(win(10), None));
+            rt.workspaces.show_scratchpad(&win(10), ws(1));
+        }
+        release_float(&mut rt, released);
+        assert_eq!(
+            rt.workspaces.floating_workspace_of(&win(10)),
+            Some(ws(1)),
+            "{case}"
+        );
+        match case {
+            "pinned" => assert!(rt.workspaces.is_pinned_by_hand(&win(10)), "{case}"),
+            "scratchpad" => assert!(
+                rt.workspaces
+                    .scratchpad()
+                    .entries()
+                    .iter()
+                    .any(|entry| entry.window == win(10)),
+                "{case}"
+            ),
+            "no workspace there" => {}
+            _ => assert_eq!(rt.backend.frames[&win(10)], released, "{case}"),
+        }
+    }
+}
+
+/// #364: a window a `float` rule floats follows the drag the same way, and the cycles after it
+/// neither tile it again nor send it back to workspace 1.
+#[test]
+fn a_rule_floated_window_dragged_to_another_display_stays_floating_on_its_new_workspace() {
+    let extra = format!("{FLOAT_LAB}[[rules]]\nbundle_id = 'com.example.A10'\naction = 'float'\n");
+    let mut rt = rig_with(
+        &[(11, 1, CENTER), (60, 6, LEFT), (90, 9, RIGHT)],
+        &extra,
+        "right",
+    );
+    open_float(&mut rt, FLOAT_START);
+    act(&mut rt, WorkerAction::Retile);
+    assert_eq!(rt.workspaces.floating_workspace_of(&win(10)), Some(ws(1)));
+    assert!(
+        !rt.workspaces.is_manual_float(&win(10)),
+        "floated by its rule"
+    );
+
+    release_float(&mut rt, FLOAT_ON_LEFT);
+    let floats_on_six = |rt: &WorkspaceRuntime<FakeBackend>, step: &str| {
+        assert_eq!(
+            rt.workspaces.workspace_of(&win(10)),
+            None,
+            "{step}: not tiled"
+        );
+        assert_eq!(
+            rt.workspaces.floating_workspace_of(&win(10)),
+            Some(ws(6)),
+            "{step}"
+        );
+    };
+    floats_on_six(&rt, "dropped");
+    assert_eq!(rt.backend.frames[&win(10)], FLOAT_ON_LEFT);
+    act(&mut rt, WorkerAction::Retile);
+    floats_on_six(&rt, "next cycle");
+    act(&mut rt, WorkerAction::SwitchWorkspace(ws(2)));
+    floats_on_six(&rt, "center switched");
+    assert!(!rt.parked.contains_key(&win(10)), "center switched");
+    act(&mut rt, WorkerAction::SwitchWorkspace(ws(7)));
+    floats_on_six(&rt, "left switched");
+    assert!(rt.parked.contains_key(&win(10)), "left switched");
+    act(&mut rt, WorkerAction::SwitchWorkspace(ws(6)));
+    floats_on_six(&rt, "6 shown again");
+    assert_eq!(rt.backend.frames[&win(10)], FLOAT_ON_LEFT, "6 shown again");
 }

@@ -2,7 +2,7 @@
 
 Keep a few windows (a terminal, notes, a chat) one key away: hide them off-screen and summon one
 floating, centred, on whichever display you are using, then hide it again. Opt-in with
-`[labs] scratchpad = true`; off by default.
+the `Scratchpad` toggle in Settings › Labs, or `[labs] scratchpad = true`; off by default.
 
 ## Sub-features
 
