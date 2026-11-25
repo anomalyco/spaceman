@@ -54,27 +54,11 @@ pub(super) struct WorkspaceRuntime<B = MacWorkspaceBackend> {
     /// Smallest width and height each window has refused to shrink below.
     pub(super) minimum_sizes: HashMap<crate::PhysicalWindowId, (i32, i32)>,
     pub(super) config: Config,
-    pub(super) foreground_lanes: HashMap<String, DisplaySelector>,
-    /// Global focus history across displays: the workspace focused now and the
-    /// one focused before it. `Option+Tab` reads it, so it bounces between the
-    /// last two workspaces wherever they live.
-    pub(super) last_focused_workspace: Option<WorkspaceId>,
-    pub(super) previous_focused_workspace: Option<WorkspaceId>,
-    /// Focus left behind by a workspace switch or move. Focus follow ignores
-    /// it until Accessibility reports a different focused window, so a hidden
-    /// window that keeps (or has not yet lost) focus cannot pull the display
-    /// back to its workspace.
-    pub(super) suppressed_focus: Option<crate::PhysicalWindowId>,
-    /// The frontmost application at that moment, for when Accessibility
-    /// reports no focused window for it (or one that is not frontmost).
-    pub(super) suppressed_app: Option<crate::AppInstanceId>,
-    /// The window a focus command just focused, until Accessibility reports it.
-    pub(super) pending_focus: Option<super::commands::PendingFocus>,
-    /// When the latest focus follow that failed (not cancelled) began.
-    pub(super) failed_follow_at: Option<Instant>,
+    /// Focus intent: a request in flight, focus left behind, and the
+    /// cross-display workspace history Option+Tab reads.
+    pub(super) focus: super::focus::FocusTracker,
     pub(super) drag_session: Option<super::commands::DragSession>,
     pub(super) warp_context: super::commands::WarpContext,
-    pub(super) pending_fullscreen_focus_restore: HashSet<WorkspaceId>,
     pub(super) exact_spacing_workspaces: HashSet<WorkspaceId>,
     pub(super) persisted_workspace_state: crate::workspace::WorkspaceState,
     /// Title-free placements that survive application relaunches and reboots.
@@ -106,7 +90,17 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
         if config.spacing() != self.config.spacing() {
             self.exact_spacing_workspaces.extend(WorkspaceId::all());
         }
-        config.configure_workspaces(&mut self.workspaces);
+        // An edit that only renames the selector a display is known by (its
+        // UUID instead of secondary) keeps that display's workspace in front.
+        let known = self.displays.known_outputs().cloned();
+        config.configure_workspaces_with(&mut self.workspaces, |a, b| {
+            known.as_ref().is_some_and(|outputs| {
+                match (outputs.resolve_exact(a), outputs.resolve_exact(b)) {
+                    (Some(a), Some(b)) => a.id == b.id,
+                    _ => false,
+                }
+            })
+        });
         self.config = config;
     }
 
@@ -117,7 +111,6 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
     ) -> Option<WorkerResult> {
         if let WorkerCommand::Action(_, outputs) | WorkerCommand::Gesture(_, _, outputs) = &command
         {
-            self.synchronize_foreground(outputs);
             self.follow_displays(outputs);
         }
         if !matches!(
@@ -206,30 +199,6 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
         outputs: macos::DisplayOutputs,
         cancelled: &AtomicBool,
     ) -> Result<CycleStatus, String> {
-        // Focus, switch, and workspace-move actions keep an in-flight focus
-        // command so they resolve against the just-focused window even when
-        // Accessibility has not caught up yet; other workspace/window actions
-        // start from whatever focus is reported now. Workspace-entry actions
-        // still carry unexpired stale targets into any new entry focus (#318).
-        let carried_stale = if matches!(
-            action,
-            WorkerAction::SelectWorkspace(_)
-                | WorkerAction::WorkspaceBackAndForth
-                | WorkerAction::Swipe(..)
-        ) {
-            self.take_pending_focus_stale()
-        } else {
-            if matches!(
-                action,
-                WorkerAction::MoveFocused(_)
-                    | WorkerAction::MoveFocusedFollow(_)
-                    | WorkerAction::MoveApp(..)
-                    | WorkerAction::MoveTab { .. }
-            ) {
-                self.pending_focus = None;
-            }
-            Vec::new()
-        };
         let warp_context = if matches!(
             action,
             WorkerAction::SwitchWorkspace(_)
@@ -246,7 +215,7 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
         } else {
             super::commands::WarpContext::Suppressed
         };
-        let result = self.with_warp_context(warp_context, |rt| match action {
+        self.with_warp_context(warp_context, |rt| match action {
             WorkerAction::Retile => {
                 let mut status = rt.cycle(outputs.clone(), cancelled)?;
                 if !rt.exact_spacing_workspaces.is_empty()
@@ -307,15 +276,7 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
                 Ok(rt.status(0, &outputs))
             }
             WorkerAction::Arrange(arrangement) => rt.arrange(&arrangement, outputs, cancelled),
-        });
-        if let Some(pending) = &mut self.pending_focus {
-            for entry in carried_stale {
-                if entry.as_ref() != Some(&pending.target) && !pending.stale.contains(&entry) {
-                    pending.stale.push(entry);
-                }
-            }
-        }
-        result
+        })
     }
 
     #[cfg(test)]
@@ -350,7 +311,7 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
         if let Some(state) = workspace_state {
             workspaces.restore(state);
         }
-        let pending_fullscreen_focus_restore = if restored_workspace_state {
+        let fullscreen_restore = if restored_workspace_state {
             WorkspaceId::all()
                 .filter(|workspace| {
                     workspaces.uses_fullscreen_layout(*workspace)
@@ -381,16 +342,9 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
             inaccessible_since: HashMap::new(),
             minimum_sizes: HashMap::new(),
             config,
-            foreground_lanes: HashMap::new(),
-            last_focused_workspace: None,
-            previous_focused_workspace: None,
-            suppressed_focus: None,
-            suppressed_app: None,
-            pending_focus: None,
-            failed_follow_at: None,
+            focus: super::focus::FocusTracker::with_fullscreen_restore(fullscreen_restore),
             drag_session: None,
             warp_context: super::commands::WarpContext::Direct,
-            pending_fullscreen_focus_restore,
             exact_spacing_workspaces: WorkspaceId::all().filter(|_| has_spacing).collect(),
             persisted_workspace_state,
             memory: MemoryState::default(),
@@ -409,25 +363,33 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
         };
     }
 
+    /// What each connected display shows: the lane its own record (or the
+    /// record of an unplugged display that falls back onto it) brought forward
+    /// last; with no record, the lowest-numbered lane assigned to it exactly.
     pub(super) fn visible_workspaces(
         &self,
         outputs: &macos::DisplayOutputs,
     ) -> Vec<ResolvedWorkspace> {
+        let connected = |id: &str| outputs.displays().iter().any(|display| display.id == id);
         outputs
             .displays()
             .iter()
             .filter_map(|display| {
+                let lands_here =
+                    |selector: &DisplaySelector| outputs.resolve(selector).id == display.id;
                 let candidates = || {
                     self.workspaces
                         .active_lanes()
-                        .filter(|(selector, _)| outputs.resolve(selector).id == display.id)
+                        .filter(|(selector, _)| lands_here(selector))
                 };
                 let selected = self
-                    .foreground_lanes
-                    .get(&display.id)
-                    .and_then(|foreground| {
-                        candidates().find(|(selector, _)| *selector == foreground)
+                    .workspaces
+                    .display_fronts()
+                    .filter(|(id, lane, _)| {
+                        (*id == display.id || !connected(id)) && lands_here(lane)
                     })
+                    .max_by_key(|(_, _, at)| *at)
+                    .and_then(|(_, lane, _)| candidates().find(|(selector, _)| *selector == lane))
                     .or_else(|| {
                         candidates()
                             .filter(|(selector, _)| selector_available(selector, outputs))
@@ -452,17 +414,6 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
         self.visible_workspaces(outputs)
             .iter()
             .any(|resolved| resolved.workspace == workspace)
-    }
-
-    pub(super) fn synchronize_foreground(&mut self, outputs: &macos::DisplayOutputs) {
-        let disconnected: Vec<_> = self
-            .foreground_lanes
-            .extract_if(|id, _| !outputs.displays().iter().any(|display| &display.id == id))
-            .collect();
-        for (_, selector) in disconnected {
-            self.foreground_lanes
-                .insert(outputs.resolve(&selector).id.clone(), selector);
-        }
     }
 
     pub(super) fn bundle_id(&self, app: &AppInstanceId) -> Option<&str> {
@@ -510,7 +461,7 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
         if bound_count > 1 {
             log_event!("workspace {workspace}: exited Fullscreen Layout ({bound_count} tiles)");
             self.workspaces.set_fullscreen_layout(workspace, false);
-            self.pending_fullscreen_focus_restore.remove(&workspace);
+            self.focus.settle_fullscreen(workspace);
         }
     }
 
@@ -659,7 +610,7 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
 
     pub(super) fn clear_fullscreen_restore_if_inactive(&mut self, workspace: WorkspaceId) {
         if !self.workspaces.uses_fullscreen_layout(workspace) {
-            self.pending_fullscreen_focus_restore.remove(&workspace);
+            self.focus.settle_fullscreen(workspace);
         }
     }
 

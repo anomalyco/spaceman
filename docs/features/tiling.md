@@ -20,8 +20,12 @@ Automatic tiling                                        // tile.auto
 Focus                                                   // tile.focus
 ├── Option+H/J/K/L / ctl focus <dir> -> nearest tile in that direction, crossing displays
 │   └── In Fullscreen Layout -> previous/next tile in stable order (see fullscreen-layout.md)
-└── Option+` / ctl focus next        -> next window: tiles in stable order, then floats, wrapping
-    └── Option+Shift+` / ctl focus prev -> the same ring, backward
+├── Option+` / ctl focus next        -> next window: tiles in stable order, then floats, wrapping
+│   └── Option+Shift+` / ctl focus prev -> the same ring, backward
+├── For 250 ms after a focus command, a report of a window it left (or of no window at all) still
+│   counts as its target: quick presses, numbered moves, Option+Tab, Dwindle's next split and focus
+│   follow all start from the window just focused
+└── ctl debug and spaceman hud print the targets these keys go to, from the same resolver
 
 Reorder                                                 // tile.reorder
 ├── Option+Shift+H/J/K/L / ctl move-direction <dir> -> swap/move within the tree

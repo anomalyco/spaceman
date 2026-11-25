@@ -230,7 +230,7 @@ fn a_focus_follow_a_space_slide_interrupts_is_retried() {
     assert!(held.close_recheck.is_some(), "no retile after the slide");
     assert_eq!(runtime.workspaces.workspace_of(&text_edit), Some(two));
     assert!(runtime.parked.contains_key(&text_edit));
-    assert_eq!(runtime.suppressed_focus, None);
+    assert_eq!(runtime.focus.guarded_window().cloned(), None);
 
     runtime.backend.space_changed_at = settled_space_change();
     runtime.backend.position_outcome = None;
@@ -250,5 +250,5 @@ fn a_failed_focus_follow_without_a_space_change_stays_suppressed() {
     runtime.backend.focused = Some(text_edit.clone());
     runtime.backend.frontmost = Some(text_edit.app.clone());
     assert!(runtime.cycle(outputs(), &cancelled).is_err());
-    assert_eq!(runtime.suppressed_focus, Some(text_edit));
+    assert_eq!(runtime.focus.guarded_window().cloned(), Some(text_edit));
 }

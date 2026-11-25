@@ -28,7 +28,10 @@ Swipe                                                      // ws.swipe
 
 Back-and-forth                                             // ws.back-and-forth
 ├── Option+Tab / ctl back-and-forth -> the workspace focused before this one, on any display
-│   (one global focus history; after a restart it starts from the focused display's lane history)
+│   (one global focus history; after a restart it starts from the focused display's lane history,
+│   even when another selector for that display assigns the previous workspace)
+├── A focus command still settling counts: a lagging Accessibility report of a window it left
+│   rewrites no history
 ├── Target already on screen -> focus moves there, no display changes, nothing is parked
 │   └── Press again -> bounces back to the workspace the focus came from
 ├── Target on screen but empty -> only shows its HUD; focus history is left alone
@@ -40,7 +43,9 @@ Move workspace to another display                          // ws.move-workspace
 ├── With no visible window focused (an empty workspace), moves the workspace switched to last
 ├── Reveals & lays out source display's previous workspace -> lays out moved workspace on target
 │   -> parks target's displaced workspace (which is only that display's lane history, even when
-│   another selector for the same display, such as a UUID, assigns it)
+│   another selector for the same display, such as a UUID, assigns it); the replacement is the
+│   workspace the source display showed last, whichever selector assigns it
+├── A float carried to a shorter display (its center off every display) still comes back
 └── Preserves Fullscreen Layout and focus on the moved workspace (focus history untouched); HUD on both displays
 
 Move window without switching                              // ws.move-window
@@ -75,8 +80,11 @@ Mouse follows focus ([settings] mouse_follows_focus)       // ws.mouse-follows-f
 │                      the target display when empty)
 ├── "window"        -> same explicit triggers, warping whenever the pointer is outside the newly
 │                      focused window (or empty display)
-└── Never warps on passive cycles, focus-follow, Cmd+Tab, mouse clicks, swipes, drags, or while a
-    mouse button is held; re-associates mouse movement immediately after warping
+├── Goes to the frame the window accepted when it refused its tile's size, and follows
+│   move-tab --follow onto the detached tab's display
+└── Never warps on passive cycles, focus-follow, Cmd+Tab, mouse clicks, swipes, drags, or while
+    any mouse button (left, right or middle) is held; re-associates mouse movement immediately
+    after warping
 
 Focus follows                                              // ws.focus-follow
 ├── Focusing a window that lives on a hidden workspace (Dock, Cmd+Tab, notification)
@@ -153,6 +161,11 @@ Displays                                                    // ws.displays
 │   UUID of the display that is also Secondary
 ├── Preferred display unplugged -> its workspaces fall back to main, return on reconnect; its
 │   saved assignment keeps a Disconnected displays card with the picker on Not connected
+├── Each display remembers, by its UUID, which selector's workspace it showed last, so two
+│   selectors naming one display (secondary and its UUID) never compete: a reconnect, a restart
+│   and a config edit that only changes the selector all keep the same workspace in front
+├── A workspace that moves display with a reconnect brings its floats from the display it left
+├── Deleting the last declaration of an unused named workspace makes it unavailable at once
 └── Display added or removed -> hidden windows re-parked against the new displays; visible owned
     windows left with their center off every remaining display keep their slots and snap back onto
     their workspace's display
@@ -294,6 +307,22 @@ on the same letter.
   `move_workspace_replaces_unplugged_assignment_and_rolls_back_on_error`;
   `src/app/tests/empty_workspace_move.rs` (an empty workspace on a non-main display, issue 201);
   `src/app/tests/dual_selector_move.rs` (a display with a UUID and a `secondary` selector, issue 202).
+- Unit (FakeBackend), `src/app/tests/reported/`, one file per report: two selectors naming one
+  display across a restart (`restart_dual_selector.rs`, issue 386), a reconnect
+  (`reconnect_dual_selector.rs`, issue 404) and a config edit (`config_same_display_alias.rs`,
+  issue 423); moving a workspace back after switches between those selectors
+  (`move_back_reveals_last_shown.rs`, issue 400); restored cross-selector history
+  (`restored_cross_selector_history.rs`, issue 401); a tall float's round trip
+  (`tall_float_round_trip.rs`, issue 403); floats returning on reconnect
+  (`reconnect_carries_floats.rs`, issue 405); HUD rows after moving an empty workspace
+  (`hud_rows_after_move.rs`, plus `moving_an_empty_workspace_away_retires_its_slot_on_the_old_display`
+  in `agent/src/hud/tests.rs`, issue 419); a deleted named workspace (`config_removed_named.rs`,
+  issue 424); Option+Tab after lagging focus reports (`back_and_forth_stale_report.rs`,
+  `back_and_forth_fast_shortcuts.rs`, issue 399); a numbered move under a lagging report
+  (`numbered_move_stale_report.rs`, issue 397); and pointer follow for `move-tab --follow`
+  (issue 417), an accepted frame (issue 418) and a held right button (issue 422). Unit,
+  `src/workspace/display_map.rs` and `src/app/focus/tests.rs`: the display records and the
+  focus automaton on their own.
 - Unit (FakeBackend), `src/app/tests/reconnect_unsettled.rs`: a tile whose display disconnects
   before its layout settles returns to its tile on reconnect, and a refusing app stays frozen (issue 203).
 - Unit (FakeBackend), `src/app/tests/tear_regressions.rs` (sequences found by model-based testing):

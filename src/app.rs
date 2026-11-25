@@ -49,6 +49,7 @@ mod commands;
 mod cycle;
 mod detach_tab;
 mod displays;
+mod focus;
 mod hud_event;
 mod input;
 mod journal;

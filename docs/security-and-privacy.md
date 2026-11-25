@@ -65,7 +65,8 @@ apps on the Mac. Nothing about the HUD is written to disk or logged.
 Local files live under `~/Library/Application Support/Spaceman/`:
 
 - `config.toml`: user-authored configuration;
-- `workspace-state.json`: active workspace selectors, previous-workspace history, logical slots,
+- `workspace-state.json`: active workspace selectors, previous-workspace history, the display
+  selector each connected display (by its display UUID) showed last, logical slots,
   last-focused tile intent, Fullscreen Layout state, floating-window ownership, hand-pinned floating
   windows, and layout trees;
 - `parked-windows.json`: physical process/window identifiers and original frames needed for recovery;

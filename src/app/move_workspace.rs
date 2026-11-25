@@ -18,7 +18,6 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
         outputs: macos::DisplayOutputs,
         cancelled: &AtomicBool,
     ) -> Result<CycleStatus, String> {
-        self.synchronize_foreground(&outputs);
         if outputs.displays().len() <= 1 {
             return Err("Only one display is connected".into());
         }
@@ -26,7 +25,6 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
         let reported_focused = self.backend.focused_window();
         let (source_resolved, focused_window) =
             self.focused_visible_workspace(&visible, &outputs)?;
-        let prior_stale = self.take_pending_focus_stale();
         let moved_ws = source_resolved.workspace;
         let source_display_id = source_resolved.display_id;
         let source_output = source_resolved.output;
@@ -228,6 +226,7 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
         }
         failed += moved_layout.failed;
 
+        let display_frames: Vec<_> = outputs.frames().collect();
         let mut moved_floating_originals = Vec::new();
         for window in &moved_floating {
             if self.parked.contains_key(window) {
@@ -268,7 +267,9 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
                     ));
                 }
             };
-            if !source_output.contains_center(frame) {
+            // A float taller than a display it was carried to has its center
+            // off every display; it is on the display it covers most (#403).
+            if Self::display_for_frame(frame, &display_frames) != Some(source_output) {
                 continue;
             }
             let target_frame = translate_frame_to_output(frame, source_output, target_output);
@@ -380,20 +381,17 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
         {
             self.workspaces.set_previous(target_selector.clone(), shown);
         }
-        self.foreground_lanes
-            .insert(target_display_id, target_selector);
+        self.workspaces
+            .bring_forward(&target_display_id, target_selector);
         if let Some(replacement) = source_replacement {
-            self.foreground_lanes.insert(
-                source_display_id,
-                self.workspaces.assignment(replacement).clone(),
-            );
+            self.workspaces.show_on(&source_display_id, replacement);
             if self.workspaces.uses_fullscreen_layout(replacement)
                 && let Some(front) = self.workspaces.preferred_focus(replacement)
             {
                 self.backend.raise_window(&front);
             }
         } else {
-            self.foreground_lanes.remove(&source_display_id);
+            self.workspaces.forget_display_front(&source_display_id);
         }
 
         // Translate any floating window still waiting on a pending recovery frame
@@ -407,7 +405,7 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
                 .summon_destination(window)
                 .map(|summon| self.restore_target(summon))
                 .unwrap_or(recovery);
-            if source_output.contains_center(current) {
+            if Self::display_for_frame(current, &display_frames) == Some(source_output) {
                 let relocated = translate_frame_to_output(current, source_output, target_output);
                 let _: bool = self.record_recovery(window, relocated);
                 self.parked.move_summon(window, relocated);
@@ -427,7 +425,6 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
             reported_focused,
             frontmost_before,
             false,
-            prior_stale,
         );
         self.follow_pointer_for_workspace(moved_ws, target_output, outcome, &outputs);
         self.persist_workspace_state_if_changed()?;
@@ -467,7 +464,7 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
         }
         // No visible window has focus, as on an empty workspace: the one
         // switched to last is the focused one, wherever it shows.
-        let last_focused = self.last_focused_workspace;
+        let last_focused = self.focus.history().current;
         visible
             .iter()
             .find(|entry| Some(entry.workspace) == last_focused)
@@ -523,8 +520,7 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
     }
 
     fn rollback_move_workspace(&mut self, state: MoveRollback<'_>) {
-        self.suppressed_focus = self.backend.focused_window();
-        self.suppressed_app = self.backend.frontmost_application();
+        self.guard_reported_focus();
         for window in state.parked_displaced {
             self.restore_window(&window);
         }

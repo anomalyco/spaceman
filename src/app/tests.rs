@@ -24,6 +24,7 @@ mod parking;
 mod reconciliation;
 mod reconnect_unsettled;
 mod reliability;
+mod reported;
 mod residency;
 mod restart_recall;
 mod rules;
@@ -122,6 +123,8 @@ struct FakeBackend {
     persisted_monitors: Vec<(WorkspaceId, DisplaySelector)>,
     pointer: Option<(i32, i32)>,
     mouse_down: bool,
+    /// The right or middle mouse button is held.
+    other_button_down: bool,
     /// When macOS last changed the active Space.
     space_changed_at: Option<Instant>,
     /// The next position write starts a Space slide (Cmd+Tab out of a
@@ -379,6 +382,10 @@ impl WorkspaceBackend for FakeBackend {
 
     fn mouse_down(&mut self) -> bool {
         self.mouse_down
+    }
+
+    fn any_mouse_button_down(&mut self) -> bool {
+        self.mouse_down || self.other_button_down
     }
 
     fn warp_pointer(&mut self, point: (i32, i32)) -> bool {

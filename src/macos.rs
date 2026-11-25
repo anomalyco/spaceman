@@ -282,6 +282,25 @@ pub fn mouse_down() -> bool {
     CGEventSource::button_state(CGEventSourceStateID::HIDSystemState, CGMouseButton::Left)
 }
 
+/// Whether any mouse button is held: left, right or middle. A pointer warp
+/// under a held button would yank a drag or a context menu away (#422).
+#[must_use]
+pub fn any_mouse_button_down() -> bool {
+    any_button_down(|button| {
+        CGEventSource::button_state(CGEventSourceStateID::HIDSystemState, button)
+    })
+}
+
+fn any_button_down(pressed: impl Fn(CGMouseButton) -> bool) -> bool {
+    [
+        CGMouseButton::Left,
+        CGMouseButton::Right,
+        CGMouseButton::Center,
+    ]
+    .into_iter()
+    .any(pressed)
+}
+
 /// How long ago the user last typed, clicked, or changed modifiers, and
 /// whether Command is held. Tells Command-Tab apart from an app activating
 /// itself in focus-follow logs, without recording which keys were pressed.

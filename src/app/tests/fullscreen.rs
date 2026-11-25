@@ -109,9 +109,7 @@ fn removing_the_last_window_exits_fullscreen_layout() {
     runtime
         .toggle_fullscreen_layout(outputs.clone(), &cancelled)
         .unwrap();
-    runtime
-        .pending_fullscreen_focus_restore
-        .insert(WorkspaceId::ONE);
+    runtime.focus.restore_fullscreen_on(WorkspaceId::ONE);
 
     runtime.backend.frames.remove(&window);
     runtime.backend.observation = Some(crate::NativeObservation {
@@ -122,7 +120,7 @@ fn removing_the_last_window_exits_fullscreen_layout() {
     let status = runtime.cycle(outputs, &cancelled).unwrap();
 
     assert!(!runtime.workspaces.uses_fullscreen_layout(WorkspaceId::ONE));
-    assert!(runtime.pending_fullscreen_focus_restore.is_empty());
+    assert!(!runtime.focus.restores_any_fullscreen());
     assert!(matches!(status.layouts[0].mode, UiHudLayout::Split(_)));
 }
 

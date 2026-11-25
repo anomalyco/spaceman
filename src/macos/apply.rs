@@ -287,7 +287,7 @@ unsafe extern "C" {
 pub fn warp_pointer(point: (i32, i32)) -> bool {
     let target = CGPoint::new(f64::from(point.0), f64::from(point.1));
     warp_sequence(
-        mouse_down,
+        super::any_mouse_button_down,
         || {
             // SAFETY: `CGWarpMouseCursorPosition` takes a plain `CGPoint` by
             // value and does not retain pointers or require AppKit main-thread state.

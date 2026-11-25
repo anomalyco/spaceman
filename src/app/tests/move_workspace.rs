@@ -157,7 +157,7 @@ fn option_tab_after_moving_the_focused_workspace_never_reveals_the_displaced_one
         Some(WorkspaceId::THREE)
     );
     assert_eq!(runtime.backend.focused, Some(c.clone()));
-    assert_eq!(runtime.previous_focused_workspace, Some(WorkspaceId::TWO));
+    assert_eq!(runtime.focus.history().previous, Some(WorkspaceId::TWO));
 
     // Option+Tab focuses B on Main and leaves C on screen: empty workspace 9
     // never appears and nothing is parked.
@@ -403,10 +403,9 @@ fn move_workspace_replaces_unplugged_assignment_and_rolls_back_on_error() {
     let nine = WorkspaceId::new(9).unwrap();
     bind(&mut runtime, WorkspaceId::ONE, &w1);
     bind(&mut runtime, nine, &w9);
-    runtime.foreground_lanes.insert(
-        "main-id".into(),
-        DisplaySelector::Preferred("unplugged-id".into()),
-    );
+    runtime
+        .workspaces
+        .bring_forward("main-id", DisplaySelector::Preferred("unplugged-id".into()));
     let cancelled = AtomicBool::new(false);
 
     runtime
@@ -503,8 +502,8 @@ fn cycle_records_a_click_on_another_display_for_option_tab() {
     // only watches the focus move.
     runtime.backend.focused = Some(clicked.clone());
     runtime.cycle(outputs(), &cancelled).unwrap();
-    assert_eq!(runtime.last_focused_workspace, Some(WorkspaceId::ONE));
-    assert_eq!(runtime.previous_focused_workspace, Some(WorkspaceId::SIX));
+    assert_eq!(runtime.focus.history().current, Some(WorkspaceId::ONE));
+    assert_eq!(runtime.focus.history().previous, Some(WorkspaceId::SIX));
 
     runtime
         .workspace_back_and_forth(outputs(), &cancelled)
@@ -551,7 +550,7 @@ fn workspace_back_and_forth_switches_a_hidden_workspace_on_another_display() {
     runtime
         .workspaces
         .move_to_display(WorkspaceId::THREE, DisplaySelector::Secondary, None);
-    assert_eq!(runtime.previous_focused_workspace, Some(WorkspaceId::SIX));
+    assert_eq!(runtime.focus.history().previous, Some(WorkspaceId::SIX));
 
     runtime
         .workspace_back_and_forth(outputs(), &cancelled)

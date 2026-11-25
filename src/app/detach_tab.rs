@@ -56,8 +56,7 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
             );
         }
         let window = self
-            .backend
-            .focused_window()
+            .current_focus()
             .ok_or("Focused window is unavailable")?;
         let source = if let Some(source) = self.workspaces.workspace_of_any(&window) {
             source
@@ -246,17 +245,25 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
             } else {
                 &remaining
             };
-            if self.backend.focus_window(focus) {
+            let reported = self.backend.focused_window();
+            if self.request_focus(focus, [reported]) {
                 if pending.follow {
                     self.record_focused_workspace(target);
+                    // The pointer follows the tab the command sent and
+                    // followed, onto its display (#417).
+                    let display = outputs.resolve(self.workspaces.assignment(target));
+                    let (display_id, output) = (display.id.clone(), display.frame);
+                    let frame = self.focus_window_frame(focus, target, output);
+                    self.with_warp_context(super::commands::WarpContext::Explicit, |rt| {
+                        rt.follow_pointer_to(&display_id, output, frame, outputs);
+                    });
                 }
             } else {
                 log_event!("move tab: could not focus {focus:?}");
             }
             if !target_visible {
                 // Focus follow must not chase the parked tab back to its workspace.
-                self.suppressed_app = Some(detached.app.clone());
-                self.suppressed_focus = Some(detached.clone());
+                self.guard_departure(Some(detached.clone()), Some(detached.app.clone()));
             }
         }
         self.persist_workspace_state_if_changed()?;

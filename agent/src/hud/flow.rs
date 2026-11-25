@@ -204,6 +204,14 @@ impl HudFlow {
                 self.from = self.from.or(row.from);
             }
         }
+        // The workspace this display showed left it without a switch here (it
+        // moved to another display), so it keeps no slot in this row (#419).
+        if let Some(left) = self.current.as_ref().and_then(|current| current.visible)
+            && row.visible != Some(left)
+            && row.from != Some(left)
+        {
+            self.visited_empty.remove(&left);
+        }
         if let Some(visible) = row.visible {
             let is_empty = row
                 .workspaces

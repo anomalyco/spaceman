@@ -63,10 +63,12 @@ fn move_focused_to_hidden_workspace_hands_focus_to_a_remaining_tile() {
             .contains(&BackendCall::Focus(first.clone()))
     );
     assert_eq!(
-        rt.pending_focus.as_ref().map(|pending| &pending.target),
+        rt.focus
+            .in_flight(rt.backend.now())
+            .map(|pending| &pending.target),
         Some(&first)
     );
-    assert_eq!(rt.suppressed_focus.as_ref(), Some(&second));
+    assert_eq!(rt.focus.guarded_window(), Some(&second));
 
     // A subsequent cycle while focus has settled on `first` stays on workspace 1.
     rt.cycle(outputs(), &cancelled).unwrap();
@@ -74,7 +76,7 @@ fn move_focused_to_hidden_workspace_hands_focus_to_a_remaining_tile() {
         rt.workspaces.active_for(&DisplaySelector::Main),
         Some(WorkspaceId::ONE)
     );
-    assert_eq!(rt.suppressed_focus, None);
+    assert_eq!(rt.focus.guarded_window().cloned(), None);
 }
 
 #[test]

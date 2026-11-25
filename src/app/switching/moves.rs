@@ -12,9 +12,10 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
         outputs: macos::DisplayOutputs,
         cancelled: &AtomicBool,
     ) -> Result<CycleStatus, String> {
+        // The window a focus command just targeted, though Accessibility may
+        // still report the one focus left (#397).
         let window = self
-            .backend
-            .focused_window()
+            .current_focus()
             .ok_or("Focused window is unavailable")?;
         self.move_window_with_focus(window, target, true, outputs, cancelled)
     }
@@ -25,9 +26,10 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
         outputs: macos::DisplayOutputs,
         cancelled: &AtomicBool,
     ) -> Result<CycleStatus, String> {
+        // The window a focus command just targeted, though Accessibility may
+        // still report the one focus left (#397).
         let window = self
-            .backend
-            .focused_window()
+            .current_focus()
             .ok_or("Focused window is unavailable")?;
         let was_visible = self.is_visible(target, &outputs);
         let moved =
@@ -157,7 +159,8 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
         if source == target {
             return Ok(MoveWindowOutcome::Moved(self.status(0, &outputs)));
         }
-        let was_focused = self.backend.focused_window().as_ref() == Some(&window);
+        let reported = self.backend.focused_window();
+        let was_focused = self.effective_focus(reported.clone()).as_ref() == Some(&window);
         let frontmost_before = self.backend.frontmost_application();
         let is_floating = self.workspaces.floating_workspace_of(&window).is_some();
         if is_floating {
@@ -222,8 +225,7 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
             if handoff_focus && was_focused && self.is_visible(source, &outputs) {
                 self.handoff_focus_after_park(source, &window, frontmost_before, &outputs);
             } else {
-                self.suppressed_app = Some(window.app.clone());
-                self.suppressed_focus = Some(window.clone());
+                self.guard_departure(Some(window.clone()), Some(window.app.clone()));
             }
         }
         if target_is_active {
@@ -258,7 +260,7 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
             {
                 failed += 1;
             }
-            if self.backend.focus_window(&window) {
+            if self.request_focus(&window, [reported]) {
                 // Focus followed the window to the workspace on screen
                 // elsewhere; Option+Tab goes back to where it came from.
                 self.record_focused_workspace(target);
@@ -291,8 +293,7 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
     ) {
         let remaining = self.workspaces.windows(source);
         if remaining.is_empty() {
-            self.suppressed_app = Some(moved.app.clone());
-            self.suppressed_focus = Some(moved.clone());
+            self.guard_departure(Some(moved.clone()), Some(moved.app.clone()));
             return;
         }
         let outcome = self.focus_workspace_entry(
@@ -301,7 +302,6 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
             Some(moved.clone()),
             frontmost_before.or_else(|| Some(moved.app.clone())),
             false,
-            Vec::new(),
         );
         if let WorkspaceFocusOutcome::Focused(ref next) = outcome {
             if self.workspaces.uses_fullscreen_layout(source) {

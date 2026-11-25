@@ -46,12 +46,10 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
         let visible = self.visible_workspaces(outputs);
         let tiles = self.navigation_tiles_for(&visible);
         let focused = self.backend.focused_window();
-        let target = |direction| {
-            focused.as_ref().and_then(|focused| {
-                crate::navigation::target(&tiles, focused, direction)
-                    .map(|tile| tile.window.clone())
-            })
-        };
+        // The same resolver the focus command runs, from the same effective
+        // focus, so these never drift from what the keys do (#382).
+        let origin = self.effective_focus(focused.clone());
+        let mut target = |direction| self.focus_target(origin.as_ref(), direction, outputs);
         let targets = DebugTargets {
             left: target(Direction::Left),
             down: target(Direction::Down),

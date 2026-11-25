@@ -82,6 +82,10 @@ pub(super) trait WorkspaceBackend {
     fn mouse_down(&mut self) -> bool {
         false
     }
+    /// Whether any mouse button (not only the left) is held; a pointer warp waits for none.
+    fn any_mouse_button_down(&mut self) -> bool {
+        self.mouse_down()
+    }
     fn warp_pointer(&mut self, _point: (i32, i32)) -> bool {
         false
     }
@@ -248,6 +252,10 @@ impl WorkspaceBackend for MacWorkspaceBackend {
 
     fn mouse_down(&mut self) -> bool {
         macos::mouse_down()
+    }
+
+    fn any_mouse_button_down(&mut self) -> bool {
+        macos::any_mouse_button_down()
     }
 
     fn warp_pointer(&mut self, point: (i32, i32)) -> bool {

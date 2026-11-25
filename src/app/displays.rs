@@ -13,6 +13,13 @@ pub(super) struct DisplayWatch {
     previous: Option<macos::DisplayOutputs>,
 }
 
+impl DisplayWatch {
+    /// The displays the runtime last saw.
+    pub(super) const fn known_outputs(&self) -> Option<&macos::DisplayOutputs> {
+        self.known.as_ref()
+    }
+}
+
 impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
     /// How tiles fill `output`: its frame with the configured gaps, padding, width cap and layout.
     pub(super) fn layout_settings(&self, output: crate::Rect) -> Settings {
@@ -75,8 +82,63 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
             // the change says nothing about what the app accepts, so it must
             // not freeze the tile as refused.
             self.applied.iter_mut().for_each(HashMap::clear);
+            if let Some(before) = self.displays.known.clone() {
+                self.carry_floats_with_workspaces(&before, outputs);
+            }
         }
         self.displays.known = Some(outputs.clone());
+    }
+
+    /// A display change can move a visible workspace to another display (its
+    /// own display reconnected, or unplugged). Its tiles follow the layout;
+    /// its floats still on the display it left go with it, keeping their size
+    /// and place on the display, as when the workspace is moved by hand (#405).
+    fn carry_floats_with_workspaces(
+        &mut self,
+        before: &macos::DisplayOutputs,
+        after: &macos::DisplayOutputs,
+    ) {
+        let shown_before = self.visible_workspaces(before);
+        let old_frames: Vec<_> = before.frames().collect();
+        for resolved in self.visible_workspaces(after) {
+            let Some(from) = shown_before
+                .iter()
+                .find(|old| old.workspace == resolved.workspace)
+                .map(|old| old.output)
+                .filter(|from| *from != resolved.output)
+            else {
+                continue;
+            };
+            let floats: Vec<_> = self
+                .workspaces
+                .floating_entries()
+                .filter(|(window, owner)| {
+                    *owner == resolved.workspace
+                        && !self.workspaces.is_pinned(window)
+                        && !self.parked.contains_key(window)
+                })
+                .map(|(window, _)| window.clone())
+                .collect();
+            for window in floats {
+                let Some(frame) = self
+                    .backend
+                    .window_server_frame(&window)
+                    .or_else(|| self.backend.frame(&window).ok())
+                else {
+                    continue;
+                };
+                if Self::display_for_frame(frame, &old_frames) != Some(from) {
+                    continue;
+                }
+                let target =
+                    super::move_workspace::translate_frame_to_output(frame, from, resolved.output);
+                let outcome = self.backend.set_position(&window, target);
+                log_event!(
+                    "displays changed: carry floating {window:?} with workspace {} to {target:?} ({outcome:?})",
+                    resolved.workspace
+                );
+            }
+        }
     }
 
     /// Note the displays, then re-park each hidden window still due one. Runs

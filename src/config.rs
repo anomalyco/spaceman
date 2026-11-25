@@ -1,3 +1,4 @@
+use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
@@ -609,7 +610,20 @@ impl Config {
     }
 
     pub fn configure_workspaces(&self, workspaces: &mut Workspaces) {
-        for workspace in self.named_workspaces() {
+        self.configure_workspaces_with(workspaces, |_, _| false);
+    }
+
+    /// Applies the named workspaces and display assignments. same_display says
+    /// whether two selectors name one connected display, so a workspace that
+    /// display shows stays in front when only its selector changes.
+    pub(crate) fn configure_workspaces_with(
+        &self,
+        workspaces: &mut Workspaces,
+        same_display: impl Fn(&DisplaySelector, &DisplaySelector) -> bool,
+    ) {
+        let named: HashSet<_> = self.named_workspaces().collect();
+        workspaces.retain_named(|workspace| named.contains(&workspace));
+        for workspace in named {
             workspaces.enable(workspace);
         }
         for workspace in WorkspaceId::all() {
@@ -624,7 +638,7 @@ impl Config {
                     || Workspaces::default_assignment(workspace),
                     |(_, selector)| selector.clone(),
                 );
-            workspaces.set_assignment(workspace, target);
+            workspaces.set_assignment_with(workspace, target, &same_display);
         }
     }
 

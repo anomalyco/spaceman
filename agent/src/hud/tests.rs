@@ -520,3 +520,55 @@ fn app_context_menu_respects_the_built_in_float_defaults() {
     assert!(!doc.source().contains("workspace"), "{}", doc.source());
     spaceman::config::Config::parse(&doc.source()).unwrap();
 }
+
+// #419: an empty workspace moved to another display leaves this display's row.
+fn empty_display(id_: &str, visible: u8, from: Option<u8>) -> UiHudDisplay {
+    UiHudDisplay {
+        id: id_.into(),
+        visible: Some(id(visible)),
+        from: from.map(id),
+        workspaces: vec![workspace(visible, &[])],
+        order: WorkspaceId::all().collect(),
+    }
+}
+
+fn rows(flows: &[HudFlow; 3]) -> [Vec<WorkspaceId>; 3] {
+    flows.each_ref().map(|flow| {
+        flow.view(false)
+            .unwrap()
+            .entries()
+            .iter()
+            .map(|entry| entry.workspace)
+            .collect()
+    })
+}
+
+#[test]
+fn moving_an_empty_workspace_away_retires_its_slot_on_the_old_display() {
+    let mut flows = [HudFlow::new(true), HudFlow::new(true), HudFlow::new(true)];
+    for (flow, row) in flows.iter_mut().zip([
+        empty_display("main-id", 2, Some(1)),
+        empty_display("secondary-id", 6, None),
+        empty_display("third-id", 9, None),
+    ]) {
+        arrived(flow, row, 0);
+    }
+
+    let mut control = flows.clone();
+    control[0].trigger(empty_display("main-id", 1, Some(2)), 100);
+    assert_eq!(
+        rows(&control),
+        [vec![id(1), id(2)], vec![id(6)], vec![id(9)]]
+    );
+
+    for (flow, row) in flows.iter_mut().zip([
+        empty_display("main-id", 1, None),
+        empty_display("secondary-id", 2, Some(6)),
+        empty_display("third-id", 9, None),
+    ]) {
+        assert_eq!(flow.trigger(row, 100), HudTransition::Update);
+    }
+    let observed = rows(&flows);
+    println!("rows after moving workspace 2: {observed:?}");
+    assert_eq!(observed, [vec![id(1)], vec![id(2), id(6)], vec![id(9)]]);
+}

@@ -239,7 +239,9 @@ touch the workspace's other splits. Neither has a default shortcut (see
 runtime geometry in the terminal until interrupted. `ctl wrong` marks the journal the moment something looks wrong and
 writes a full arrangement snapshot, so `doctor` shows what the screen held then.
 
-`ctl debug` excludes window titles. It reports each display's Fullscreen Layout state and tiled
+`ctl debug` excludes window titles. Its directional `targets` are the tiles `ctl focus` would focus
+from the same state, including Fullscreen Layout, a focused float, an empty workspace and a focus
+command still settling. It reports each display's Fullscreen Layout state and tiled
 geometry plus floating-window workspace, parked state, and original recovery frame so workspace leaks
 can be diagnosed safely. Its `parking_exempt` list names managed windows that repeatedly rejected
 parking positions and are therefore left visible across workspace switches for the current session.

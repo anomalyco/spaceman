@@ -34,8 +34,8 @@ fn moving_a_window_to_the_workspace_on_screen_on_another_display_tiles_it_there(
     assert!(!runtime.parked.contains_key(&window));
     assert_eq!(runtime.backend.focused, Some(window));
     // Focus followed the window to Main, so Option+Tab goes back to Secondary.
-    assert_eq!(runtime.last_focused_workspace, Some(WorkspaceId::ONE));
-    assert_eq!(runtime.previous_focused_workspace, Some(WorkspaceId::SIX));
+    assert_eq!(runtime.focus.history().current, Some(WorkspaceId::ONE));
+    assert_eq!(runtime.focus.history().previous, Some(WorkspaceId::SIX));
 }
 
 #[test]

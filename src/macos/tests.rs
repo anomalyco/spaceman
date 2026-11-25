@@ -3,7 +3,7 @@ use std::thread;
 use crate::{AppInstanceId, DisplaySelector, PhysicalWindowId, Rect};
 
 use super::{
-    DisplayOutput, DisplayOutputs,
+    DisplayOutput, DisplayOutputs, any_button_down,
     apply::{group_placements_by_app, position_matches},
     ax::{WindowServerWindow, should_ignore_missing_window_id, windows_reaching_point},
     classify::{TitleBar, TitleButton, is_dialog, is_ignored},
@@ -298,4 +298,18 @@ fn missing_window_id_skips_non_standard_elements_like_finders_desktop() {
     ));
     assert!(!should_ignore_missing_window_id(Some("AXWindow"), None));
     assert!(!should_ignore_missing_window_id(None, None));
+}
+
+#[test]
+fn any_held_mouse_button_counts_as_down() {
+    use objc2_core_graphics::CGMouseButton;
+    // #422: the right (or middle) button held blocks a pointer warp like the left.
+    assert!(!any_button_down(|_| false));
+    for held in [
+        CGMouseButton::Left,
+        CGMouseButton::Right,
+        CGMouseButton::Center,
+    ] {
+        assert!(any_button_down(|button| button == held));
+    }
 }

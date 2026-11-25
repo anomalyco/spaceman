@@ -581,7 +581,10 @@ fn switch_rollback_preserves_original_recovery_frames_and_suppresses_focus_loop(
     );
     assert_eq!(runtime.parked.get(&incoming_first), Some(&first_original));
     assert_eq!(runtime.parked.get(&incoming_second), Some(&second_original));
-    assert_eq!(runtime.suppressed_focus, Some(incoming_first));
+    assert_eq!(
+        runtime.focus.guarded_window().cloned(),
+        Some(incoming_first)
+    );
 
     // Next cycle does not loop into another focus-follow switch while focus is unchanged.
     runtime.backend.managed_outcome = None;
@@ -848,8 +851,8 @@ fn switching_with_async_focus_lag_does_not_snap_back_to_previous_workspace() {
     runtime.backend.frontmost = Some(on_four.app.clone());
     runtime.cycle(outputs(), &cancelled).unwrap();
     assert_eq!(main_workspace(&runtime), Some(four));
-    assert_eq!(runtime.suppressed_focus, None);
-    assert_eq!(runtime.suppressed_app, None);
+    assert_eq!(runtime.focus.guarded_window().cloned(), None);
+    assert_eq!(runtime.focus.guarded_app().cloned(), None);
 
     // Activating an app on workspace 2 is intentional and still followed.
     runtime.backend.focused = Some(on_two.clone());

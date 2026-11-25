@@ -4,8 +4,11 @@ use serde::{Deserialize, Serialize};
 
 use crate::{Engine, PhysicalWindowId};
 
+mod display_map;
 mod id;
+mod lanes;
 mod residency;
+pub(crate) use display_map::DisplayMap;
 pub use id::WorkspaceId;
 pub(crate) use residency::{FloatCause, Residency};
 
@@ -28,6 +31,10 @@ pub(crate) struct WorkspaceState {
     active: Vec<(DisplaySelector, WorkspaceId)>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     previous: Vec<(DisplaySelector, WorkspaceId)>,
+    /// Per physical display ID, the lane it showed last, oldest first: which of
+    /// two selectors naming one display is in front, across restarts (#386).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    fronts: Vec<(String, DisplaySelector)>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     axes: Vec<crate::Axis>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
@@ -180,8 +187,8 @@ impl DisplaySelector {
 pub struct Workspaces {
     engines: [Engine; WorkspaceId::COUNT],
     assignments: [DisplaySelector; WorkspaceId::COUNT],
-    active: HashMap<DisplaySelector, WorkspaceId>,
-    previous: HashMap<DisplaySelector, WorkspaceId>,
+    /// What each display lane and each physical display shows.
+    displays: DisplayMap,
     /// Every managed window that holds no tile: floats (pinned or not) and the Scratchpad.
     residency: residency::WindowTable,
     enabled: HashSet<WorkspaceId>,
@@ -197,11 +204,10 @@ impl Default for Workspaces {
             assignments: std::array::from_fn(|index| {
                 Self::default_assignment(WorkspaceId::from_index(index))
             }),
-            active: HashMap::from([
+            displays: DisplayMap::new([
                 (DisplaySelector::Main, WorkspaceId::ONE),
                 (DisplaySelector::Secondary, WorkspaceId::SIX),
             ]),
-            previous: HashMap::new(),
             residency: residency::WindowTable::default(),
             enabled: WorkspaceId::numbered().collect(),
             last_focused: std::array::from_fn(|_| None),
@@ -221,8 +227,13 @@ impl Workspaces {
             .map_or(WorkspaceId::NUMBERED_COUNT, |index| index + 1)
             .max(WorkspaceId::NUMBERED_COUNT);
         WorkspaceState {
-            active: sorted(self.active.clone()),
-            previous: sorted(self.previous.clone()),
+            active: sorted(self.displays.lanes().map(|(lane, ws)| (lane.clone(), ws))),
+            previous: sorted(
+                self.displays
+                    .previous_lanes()
+                    .map(|(lane, ws)| (lane.clone(), ws)),
+            ),
+            fronts: self.displays.fronts_in_order(),
             axes: Vec::new(),
             layouts: self
                 .engines
@@ -252,6 +263,7 @@ impl Workspaces {
         let WorkspaceState {
             active,
             previous,
+            fronts,
             axes,
             layouts,
             slots,
@@ -281,16 +293,17 @@ impl Workspaces {
         }
         for (selector, workspace) in active {
             if self.assignment(workspace) == &selector {
-                self.active.insert(selector, workspace);
+                self.displays.set_lane(selector, workspace);
             }
         }
+        // A lane's previous workspace is what its display showed before, which
+        // another selector naming the same display may assign (#401).
         for (selector, workspace) in previous {
-            if self.assignment(workspace) == &selector
-                && self.active_for(&selector) != Some(workspace)
-            {
-                self.previous.insert(selector, workspace);
+            if self.is_enabled(workspace) && self.active_for(&selector) != Some(workspace) {
+                self.displays.set_previous(selector, workspace);
             }
         }
+        self.displays.restore_fronts(fronts);
         // The saved state does not say why a window floated, so every restored float floats
         // by hand until its first observation hands it back to a float rule.
         for (window, workspace) in floating {
@@ -333,135 +346,22 @@ impl Workspaces {
         &self.assignments[workspace.index()]
     }
 
-    #[must_use]
-    pub fn active_for(&self, display: &DisplaySelector) -> Option<WorkspaceId> {
-        self.active.get(display).copied()
-    }
-
-    pub fn active_lanes(&self) -> impl Iterator<Item = (&DisplaySelector, WorkspaceId)> {
-        self.active
-            .iter()
-            .map(|(display, workspace)| (display, *workspace))
-    }
-
-    pub fn set_assignment(&mut self, workspace: WorkspaceId, display: DisplaySelector) {
-        self.enable(workspace);
-        let previous = self.assignments[workspace.index()].clone();
-        if previous == display {
-            return;
-        }
-        self.assignments[workspace.index()] = display.clone();
-        self.active.entry(display).or_insert(workspace);
-        if self.active.get(&previous) == Some(&workspace) {
-            if let Some(replacement) = WorkspaceId::all().find(|candidate| {
-                self.is_enabled(*candidate) && self.assignment(*candidate) == &previous
-            }) {
-                self.active.insert(previous.clone(), replacement);
-            } else {
-                self.active.remove(&previous);
-            }
-        }
-        if self.previous.get(&previous).is_some_and(|candidate| {
-            *candidate == workspace || self.active.get(&previous) == Some(candidate)
-        }) {
-            self.previous.remove(&previous);
-        }
-    }
-
-    /// Moves `workspace` to `target`, making it active there (recording any
-    /// displaced active workspace on `target` as that display's previous
-    /// workspace) and promoting `source_replacement` on the lane `workspace`
-    /// left.
-    pub fn move_to_display(
-        &mut self,
-        workspace: WorkspaceId,
-        target: DisplaySelector,
-        source_replacement: Option<WorkspaceId>,
-    ) {
-        self.enable(workspace);
-        let source = self.assignments[workspace.index()].clone();
-        if source == target {
-            return;
-        }
-        self.assignments[workspace.index()] = target.clone();
-
-        let displaced = self.active.insert(target.clone(), workspace);
-        match displaced {
-            Some(previous) if previous != workspace => {
-                self.previous.insert(target, previous);
-            }
-            _ => {
-                if self.previous.get(&target) == Some(&workspace) {
-                    self.previous.remove(&target);
-                }
-            }
-        }
-
-        if self.active.get(&source) == Some(&workspace) {
-            let replacement = source_replacement
-                .filter(|candidate| {
-                    *candidate != workspace
-                        && self.is_enabled(*candidate)
-                        && self.assignment(*candidate) == &source
-                })
-                .or_else(|| {
-                    self.previous.get(&source).copied().filter(|candidate| {
-                        *candidate != workspace
-                            && self.is_enabled(*candidate)
-                            && self.assignment(*candidate) == &source
-                    })
-                })
-                .or_else(|| {
-                    WorkspaceId::all().find(|candidate| {
-                        self.is_enabled(*candidate) && self.assignment(*candidate) == &source
-                    })
-                });
-            match replacement {
-                Some(replacement) => {
-                    self.active.insert(source.clone(), replacement);
-                }
-                None => {
-                    self.active.remove(&source);
-                }
-            }
-        }
-        if self.previous.get(&source).is_some_and(|candidate| {
-            *candidate == workspace
-                || Some(*candidate) == source_replacement
-                || self.active.get(&source) == Some(candidate)
-        }) {
-            self.previous.remove(&source);
-        }
-    }
-
     pub fn enable(&mut self, workspace: WorkspaceId) {
         self.enabled.insert(workspace);
+    }
+
+    /// Disables every named workspace keep rejects that nothing refers to any
+    /// more: no window, no display history, no Fullscreen Layout (#424).
+    pub(crate) fn retain_named(&mut self, keep: impl Fn(WorkspaceId) -> bool) {
+        let in_use = self.state().named_workspaces_in_use();
+        self.enabled.retain(|workspace| {
+            workspace.letter().is_none() || keep(*workspace) || in_use.contains(workspace)
+        });
     }
 
     #[must_use]
     pub fn is_enabled(&self, workspace: WorkspaceId) -> bool {
         self.enabled.contains(&workspace)
-    }
-
-    pub fn switch(&mut self, workspace: WorkspaceId) -> WorkspaceId {
-        let display = self.assignment(workspace).clone();
-        let active = self.active_for(&display).unwrap_or(workspace);
-        if active != workspace {
-            self.previous.insert(display.clone(), active);
-            self.active.insert(display, workspace);
-        }
-        active
-    }
-
-    /// Records `shown` as `display`'s previous workspace: a move covered it
-    /// there though another selector naming the same display assigns it.
-    pub fn set_previous(&mut self, display: DisplaySelector, shown: WorkspaceId) {
-        self.previous.insert(display, shown);
-    }
-
-    #[must_use]
-    pub fn previous_for(&self, display: &DisplaySelector) -> Option<WorkspaceId> {
-        self.previous.get(display).copied()
     }
 
     #[must_use]

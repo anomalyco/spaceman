@@ -5,10 +5,8 @@
 //! of both Spaces (#334) or rolling back a focus follow and re-homing the
 //! window it revealed (#329).
 
+use super::focus::FAILED_FOLLOW_RETRY_WINDOW;
 use super::*;
-
-/// How long after a failed focus follow a Space change may still explain it.
-const FAILED_FOLLOW_RETRY_WINDOW: Duration = Duration::from_secs(3);
 
 impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
     /// When the macOS Space slide under way settles, while one is.
@@ -39,11 +37,11 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
     /// next cycle follows again, instead of leaving the revealed window for
     /// heal to re-home onto the workspace on screen. Returns whether it did.
     pub(super) fn retry_follow_after_space_change(&mut self) -> bool {
-        let Some(started) = self.failed_follow_at else {
+        let Some(started) = self.focus.failed_follow_at() else {
             return false;
         };
-        if started.elapsed() >= FAILED_FOLLOW_RETRY_WINDOW {
-            self.failed_follow_at = None;
+        if self.backend.now().saturating_duration_since(started) >= FAILED_FOLLOW_RETRY_WINDOW {
+            self.focus.forget_failed_follow();
             return false;
         }
         let Some(changed) = self.backend.active_space_changed_at() else {
@@ -53,7 +51,7 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
             // That slide had settled before the follow began.
             return false;
         }
-        self.failed_follow_at = None;
+        self.focus.forget_failed_follow();
         log_event!("focus follow: retrying after a macOS Space change interrupted it");
         self.clear_suppressed_focus();
         true

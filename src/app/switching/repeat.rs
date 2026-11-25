@@ -45,7 +45,7 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
         }
         self.workspaces.remember_focus(workspace, &target);
         self.record_focused_workspace(workspace);
-        self.pending_fullscreen_focus_restore.remove(&workspace);
+        self.focus.settle_fullscreen(workspace);
         self.persist_workspace_state_if_changed()?;
         log_event!(
             "repeat switch cycled: workspace {workspace} window {:?}",

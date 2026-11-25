@@ -128,9 +128,7 @@ fn act(rt: &mut WorkspaceRuntime<FakeBackend>, action: WorkerAction) {
         panic!("expected status");
     };
     result.unwrap();
-    if let Some(pending) = rt.pending_focus.as_mut() {
-        pending.at -= super::super::commands::FOCUS_SETTLE;
-    }
+    rt.focus.age_request(super::super::focus::FOCUS_SETTLE);
 }
 
 fn focused(rt: &WorkspaceRuntime<FakeBackend>) -> Option<u32> {

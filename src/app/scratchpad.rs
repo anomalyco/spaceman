@@ -168,7 +168,7 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
                     .iter()
                     .find(|resolved| resolved.output.contains_center(frame))
             })
-            .or_else(|| find(self.last_focused_workspace))
+            .or_else(|| find(self.focus.history().current))
             .or_else(|| {
                 visible
                     .iter()
@@ -393,11 +393,11 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
                 log_event!("scratchpad: could not focus {target:?} on workspace {workspace}");
             }
         } else {
-            self.pending_focus = None;
+            self.focus.end_request();
         }
     }
 
-    /// Requests focus on `target` and records it in `pending_focus` so immediate
+    /// Requests focus on `target` and records the request so immediate
     /// follow-up commands address `target` while Accessibility still reports the
     /// previous or just-hidden window.
     fn focus_scratchpad_target(
@@ -406,26 +406,8 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
         extra_stale: &[crate::PhysicalWindowId],
     ) -> bool {
         let reported = self.backend.focused_window();
-        let mut stale = self.take_pending_focus_stale();
-        stale.retain(|window| window.as_ref() != Some(target));
-        if reported.as_ref() != Some(target) && !stale.contains(&reported) {
-            stale.push(reported);
-        }
-        for hidden in extra_stale {
-            let entry = Some(hidden.clone());
-            if hidden != target && !stale.contains(&entry) {
-                stale.push(entry);
-            }
-        }
-        if !self.backend.focus_window(target) {
-            return false;
-        }
-        self.pending_focus = Some(super::commands::PendingFocus {
-            target: target.clone(),
-            stale,
-            at: Instant::now(),
-        });
-        true
+        let hidden = extra_stale.iter().cloned().map(Some);
+        self.request_focus(target, std::iter::once(reported).chain(hidden))
     }
 
     /// After every worker command: hide windows whose workspace was switched away (i3 keeps them

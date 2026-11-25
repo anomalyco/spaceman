@@ -1,4 +1,4 @@
-use super::super::commands::FOCUS_SETTLE;
+use super::super::focus::FOCUS_SETTLE;
 use super::*;
 
 /// Three tiles side by side on the main display, the first one focused.
@@ -58,7 +58,7 @@ fn a_settled_or_different_focus_report_wins_over_the_pending_target() {
 
     focus(&mut runtime, Direction::Right);
     runtime.backend.focused = Some(first.clone());
-    runtime.pending_focus.as_mut().unwrap().at -= FOCUS_SETTLE;
+    runtime.focus.age_request(FOCUS_SETTLE);
     focus(&mut runtime, Direction::Right);
     assert_eq!(focus_calls(&runtime), vec![20, 20]);
 
@@ -132,7 +132,7 @@ fn switch_to_second_workspace(focus_outcome: bool) -> WorkspaceRuntime<FakeBacke
     let target = WorkspaceId::new(2).unwrap();
     bind(&mut runtime, WorkspaceId::ONE, &shown);
     bind(&mut runtime, target, &incoming);
-    runtime.pending_fullscreen_focus_restore.insert(target);
+    runtime.focus.restore_fullscreen_on(target);
 
     runtime
         .switch(target, outputs(), &AtomicBool::new(false))
@@ -147,8 +147,8 @@ fn a_workspace_switch_that_cannot_focus_keeps_the_focus_restore_pending() {
 
     assert!(
         runtime
-            .pending_fullscreen_focus_restore
-            .contains(&WorkspaceId::new(2).unwrap())
+            .focus
+            .restores_fullscreen(WorkspaceId::new(2).unwrap())
     );
 }
 
@@ -156,7 +156,7 @@ fn a_workspace_switch_that_cannot_focus_keeps_the_focus_restore_pending() {
 fn a_workspace_switch_that_focuses_settles_the_focus_restore() {
     let runtime = switch_to_second_workspace(true);
 
-    assert!(runtime.pending_fullscreen_focus_restore.is_empty());
+    assert!(!runtime.focus.restores_any_fullscreen());
 }
 
 #[test]
@@ -252,7 +252,7 @@ fn a_follow_cancelled_by_the_activation_it_answers_follows_on_the_next_cycle() {
         Some(WorkspaceId::ONE)
     );
     assert_eq!(runtime.parked.get(&notified), Some(&frame(500)));
-    assert_eq!(runtime.suppressed_focus, None);
+    assert_eq!(runtime.focus.guarded_window().cloned(), None);
 
     let status = runtime.cycle(outputs(), &AtomicBool::new(false)).unwrap();
     assert_eq!(status.active, vec![target, WorkspaceId::SIX]);
@@ -292,7 +292,7 @@ fn a_follow_that_fails_while_an_activation_cancels_stays_suppressed() {
 
     assert!(!error.ends_with("cancelled"), "{error}");
     assert!(cancelled.load(Ordering::Acquire));
-    assert_eq!(runtime.suppressed_focus, Some(notified));
+    assert_eq!(runtime.focus.guarded_window().cloned(), Some(notified));
 }
 
 fn config_with_mouse_follows_focus(mode: &str) -> Config {

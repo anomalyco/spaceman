@@ -115,7 +115,6 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
                 "Recovery pending for {pending} unowned parked window(s)"
             ));
         }
-        self.synchronize_foreground(&outputs);
         self.follow_displays(&outputs);
         let visible = self.visible_workspaces(&outputs);
         let frontmost = self.backend.frontmost_application();
@@ -136,17 +135,16 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
                 .as_ref()
                 .and_then(|app| self.workspaces.workspace_for_app(app))
         };
-        // Suppression lasts until Accessibility reports a different focus. When
-        // the focused window is missing or lags the frontmost app, the app is
-        // the evidence; with neither reported nothing has changed.
+        // A guard lasts until Accessibility reports a different focus, and a
+        // report a focus request in flight explains is no focus change at all:
+        // it must neither switch a display nor rewrite history (#399).
         self.retry_follow_after_space_change();
-        let suppressed = if focused_is_frontmost {
-            focused.as_ref() == self.suppressed_focus.as_ref()
-        } else if let Some(frontmost) = frontmost.as_ref() {
-            self.suppressed_app.as_ref() == Some(frontmost)
-        } else {
-            true
-        };
+        let suppressed = self.focus.holds_back(
+            self.backend.now(),
+            focused.as_ref(),
+            frontmost.as_ref(),
+            focused_is_frontmost,
+        );
         if !suppressed {
             self.clear_suppressed_focus();
             if let Some(workspace) = focus_workspace {
@@ -165,7 +163,7 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
                         workspace,
                         input
                     );
-                    let follow_started = Instant::now();
+                    let follow_started = self.backend.now();
                     let followed = self.switch(workspace, outputs.clone(), cancelled);
                     // An activation (or a finished drag) cancels background
                     // cycles, often the very one this follow answers (a
@@ -176,7 +174,7 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
                     if matches!(&followed, Err(error) if error.ends_with("cancelled")) {
                         self.clear_suppressed_focus();
                     } else if followed.is_err() {
-                        self.failed_follow_at = Some(follow_started);
+                        self.focus.follow_failed(follow_started);
                         if self.retry_follow_after_space_change() {
                             let until = self
                                 .space_transition_until()
@@ -192,8 +190,8 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
             }
         }
         for resolved in &visible {
-            self.foreground_lanes
-                .insert(resolved.display_id.clone(), resolved.selector.clone());
+            self.workspaces
+                .seed_display_front(&resolved.display_id, &resolved.selector);
         }
         // One window-server snapshot serves every authoritative-frame check in
         // this cycle; per-window queries would each copy the full window list.
@@ -244,16 +242,12 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
         }
         let mut attempted_focus_restore = HashSet::new();
         for resolved in &visible {
-            if !self
-                .pending_fullscreen_focus_restore
-                .contains(&resolved.workspace)
-            {
+            if !self.focus.restores_fullscreen(resolved.workspace) {
                 continue;
             }
             attempted_focus_restore.insert(resolved.workspace);
             let Some(window) = self.workspaces.preferred_focus(resolved.workspace) else {
-                self.pending_fullscreen_focus_restore
-                    .remove(&resolved.workspace);
+                self.focus.settle_fullscreen(resolved.workspace);
                 continue;
             };
             let restored = if focus_workspace == Some(resolved.workspace) {
@@ -261,21 +255,22 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
             } else {
                 self.backend.raise_window(&window)
             };
-            self.pending_fullscreen_focus_restore
-                .remove(&resolved.workspace);
+            self.focus.settle_fullscreen(resolved.workspace);
             if !restored {
                 failed += 1;
             }
         }
+        // New tiles split the effectively focused tile: a report that lags a
+        // focus command must not move the split back to the tile it left (#411).
+        let remembered_focus = self.resolve_focus(focused.clone());
         if focused_is_frontmost
-            && let Some(focused) = focused.as_ref()
+            && let Some(focused) = remembered_focus.as_ref()
             && let Some(workspace) = self.workspaces.workspace_of(focused)
         {
             self.workspaces
                 .engine_mut(workspace)
                 .remember_insertion_focus(focused);
         }
-        let remembered_focus = self.resolve_focus(focused.clone());
         if focused_is_frontmost
             && let Some(focused) = remembered_focus.as_ref()
             && let Some(workspace) = self.workspaces.workspace_of(focused)

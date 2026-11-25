@@ -96,7 +96,7 @@ fn detached_tab_goes_straight_to_a_hidden_workspace_and_focus_stays_on_the_sourc
     );
     assert_eq!(focus_calls(&rt), vec![source.clone()]);
     assert_eq!(rt.backend.focused.as_ref(), Some(&source));
-    assert_eq!(rt.suppressed_focus.as_ref(), Some(&tab));
+    assert_eq!(rt.focus.guarded_window(), Some(&tab));
     assert_eq!(
         rt.workspaces.active_for(&DisplaySelector::Main),
         Some(WorkspaceId::ONE)
@@ -180,7 +180,7 @@ fn detached_tab_tiles_on_a_target_visible_on_another_display() {
         "tiled on the secondary display: {tab_frame:?}"
     );
     assert_eq!(focus_calls(&rt), vec![source.clone()]);
-    assert_eq!(rt.suppressed_focus, None);
+    assert_eq!(rt.focus.guarded_window().cloned(), None);
 }
 
 #[test]
