@@ -59,6 +59,11 @@ impl NavigationTile {
 /// it, absorbing rounding in computed splits.
 const EDGE_TOLERANCE: i64 = 8;
 
+/// Tiles sharing no more than this much of a row or column only touch at a
+/// corner (rounding in computed splits), so they don't border for recency;
+/// a short real shared edge still does (#525).
+const CORNER_TOLERANCE: i64 = 2;
+
 /// The tile a directional key moves to from the focused tile.
 ///
 /// Within the focused tile's workspace, neighbors whose perpendicular band
@@ -245,8 +250,9 @@ fn neighbor<'a>(
     pick_best_rect(candidates.map(|tile| (tile, tile.frame)), from, direction)
 }
 
-/// The tiles the first rank of [`pick_best_rect`] ties on before its center
-/// offset decides: those sharing part of `from`'s band with the nearest edge.
+/// The tiles sharing part of `from`'s band with the nearest edge: the first
+/// rank [`pick_best_rect`] ties on before its center offset decides, plus
+/// those sharing only a short stretch of it.
 fn bordering<'a>(
     candidates: impl Iterator<Item = &'a NavigationTile>,
     from: Rect,
@@ -255,7 +261,7 @@ fn bordering<'a>(
     let ahead = candidates
         .map(|tile| (Reach::new(from, tile.frame, direction), tile))
         .filter(|(reach, _)| {
-            reach.gap >= -EDGE_TOLERANCE && reach.travel > 0 && reach.overlap > EDGE_TOLERANCE
+            reach.gap >= -EDGE_TOLERANCE && reach.travel > 0 && reach.overlap > CORNER_TOLERANCE
         })
         .collect::<Vec<_>>();
     let Some(nearest) = ahead.iter().map(|(reach, _)| reach.gap.max(0)).min() else {
@@ -690,6 +696,30 @@ mod tests {
         let mut displays = tiles.clone();
         displays.push(sized(5, 6, 1280, 0, 640, 800));
         assert_eq!(by_recency(&displays, 2, Direction::Right, &[5, 4]), Some(5));
+    }
+
+    #[test]
+    fn a_short_shared_edge_still_borders() {
+        // Two columns of two rows on a 1440 by 2530 portrait display; the
+        // right column's split sits just below the left one's (#525).
+        let tiles = |upper: i32| {
+            vec![
+                sized(1, 1, 2560, -539, 720, 700),
+                sized(2, 1, 2560, 161, 720, 1830),
+                sized(3, 1, 3280, -539, 720, upper),
+                sized(4, 1, 3280, -539 + upper, 720, 2530 - upper),
+            ]
+        };
+        for upper in [706, 712] {
+            let tiles = tiles(upper);
+            assert_eq!(id(&tiles, 2, Direction::Right), Some(4));
+            assert_eq!(by_recency(&tiles, 2, Direction::Right, &[2, 3, 4]), Some(3));
+        }
+        // Splits that only meet at a corner, off by rounding, don't border.
+        let corner = tiles(701);
+        assert_eq!(by_recency(&corner, 2, Direction::Right, &[2, 3, 4]), Some(4));
+        let apart = tiles(690);
+        assert_eq!(by_recency(&apart, 2, Direction::Right, &[2, 3, 4]), Some(4));
     }
 
     #[test]

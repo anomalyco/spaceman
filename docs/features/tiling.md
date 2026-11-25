@@ -120,9 +120,10 @@ pause, quit, or hotkey loss.
   write; the live clamp itself is not covered.
 - Unit, `src/navigation.rs` and `src/runtime.rs`: `[labs] recent_focus` picks the most recently
   focused bordering tile and never a further one (`the_most_recent_bordering_tile_wins`,
-  `recency_never_reaches_past_a_nearer_tile`), and the per-slot order ignores floats
-  (`focus_recency_orders_tiles_and_ignores_floats`) and drops closed tiles, so a reused slot ID
-  starts unranked (`a_reused_slot_id_starts_unranked`).
+  `recency_never_reaches_past_a_nearer_tile`), a short shared edge of a few points still borders
+  while a 1-point corner miss does not (`a_short_shared_edge_still_borders`, #525), and the
+  per-slot order ignores floats (`focus_recency_orders_tiles_and_ignores_floats`) and drops closed
+  tiles, so a reused slot ID starts unranked (`a_reused_slot_id_starts_unranked`).
 - Unit (FakeBackend), `src/app/tests/recent_focus.rs`: with `1 | (2 / 3)`, left and back from 3
   returns to 3 with the Lab on (also when the second press comes before the new focus is
   reported) and lands on 2 with it off; the `ctl debug` targets match the keys. No live test
