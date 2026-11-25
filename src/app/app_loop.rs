@@ -657,6 +657,9 @@ impl MainThreadAgent {
             update: self.updater.status(),
             active_workspaces: self.active_workspaces.clone(),
             last_error: self.last_error.clone(),
+            running_shortcuts: self
+                .previous_shortcuts_run()
+                .then(|| self.shortcuts.clone()),
         }
     }
 }

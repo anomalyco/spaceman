@@ -313,6 +313,9 @@ pub struct UiAgentSnapshot {
     pub update: UiUpdateStatus,
     pub active_workspaces: Vec<WorkspaceId>,
     pub last_error: Option<String>,
+    /// The previous `[shortcuts]` table while it is still registered because the saved one was
+    /// rejected; `None` otherwise, including once tiling stops and no shortcut is registered.
+    pub running_shortcuts: Option<crate::shortcuts::Shortcuts>,
 }
 
 impl UiAgentSnapshot {
@@ -494,6 +497,7 @@ mod tests {
             update: UiUpdateStatus::Idle,
             active_workspaces: vec![WorkspaceId::ONE],
             last_error: None,
+            running_shortcuts: None,
         };
         bridge.publish(initial.clone(), false);
 
@@ -609,6 +613,7 @@ mod tests {
             update: UiUpdateStatus::Checking,
             active_workspaces: vec![WorkspaceId::THREE, WorkspaceId::named('M').unwrap()],
             last_error: Some("Hotkeys unavailable".into()),
+            running_shortcuts: None,
         };
         let value = snapshot.to_settings_json();
         assert_eq!(value["accessibility"], true);

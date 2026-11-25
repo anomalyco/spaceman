@@ -364,8 +364,12 @@ skipped and logged in `agent.log` while the other shortcuts register.
 
 Shortcut changes apply live: saving `config.toml` registers the new chords within a couple of
 seconds, without a restart. If the new table can't be registered, the previous shortcuts keep working
-and Settings shows `Shortcuts not applied` with the reason. Workspaces enabled by a config edit still
-get their shortcuts on the next start. The menu-bar workspace list keeps showing the built-in
+and Settings shows `Shortcuts not applied` with the reason. Settings › Shortcuts keeps listing the
+saved table. While the previous shortcuts are still registered, the pane is marked **Previous
+shortcuts still run** and each action whose running chord differs says so (`Still runs ⌃⌥Y`, or
+`Not running yet`). Once tiling is paused, or the previous shortcuts could not be registered again
+either, only the reason stays. Workspaces enabled by a config edit still get their shortcuts on the
+next start. The menu-bar workspace list keeps showing the built-in
 `Option`+number/letter hints next to each workspace. Settings › Workspaces names workspace 10's
 keys from `[shortcuts]` (`Workspace 10 (⌃⌥0)` with a `ctrl+alt` base), and none when no shortcut
 switches to it.

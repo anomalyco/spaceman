@@ -161,6 +161,16 @@ impl MainThreadAgent {
         }
     }
 
+    /// Whether the previous table still runs after the saved one was rejected: tiling is on and
+    /// its shortcuts are registered, or only held off for a recording.
+    pub(super) fn previous_shortcuts_run(&self) -> bool {
+        rejected_table_keeps_previous(
+            self.automatic,
+            self.hotkeys.is_some() || self.hotkey_hold.is_held(),
+            self.is_shortcuts_not_applied_error(),
+        )
+    }
+
     pub(super) fn is_shortcuts_not_applied_error(&self) -> bool {
         self.last_error
             .as_deref()
@@ -292,6 +302,12 @@ fn hold_reason(recording_for: Option<Duration>, practicing: bool) -> Option<&'st
 
 pub(super) const NOT_APPLIED: &str = "Shortcuts not applied";
 
+/// A rejected table leaves the previous one running only while tiling is on and the hotkeys are
+/// registered (or held for a recording). A failed rollback or a pause leaves none registered.
+fn rejected_table_keeps_previous(automatic: bool, registered: bool, rejected: bool) -> bool {
+    automatic && registered && rejected
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -314,6 +330,21 @@ mod tests {
         .unwrap()
         .shortcuts()
         .clone()
+    }
+
+    #[test]
+    fn only_a_rollback_that_kept_its_shortcuts_says_they_still_run() {
+        // Reverted: tiling on, the previous table registered, the rejection reported.
+        assert!(rejected_table_keeps_previous(true, true, true));
+        // The rollback failed too, or tiling was paused after the rejection: the reason stays,
+        // but tiling is off and no shortcut is registered.
+        assert!(!rejected_table_keeps_previous(false, false, true));
+        // Never while tiling is off, whatever is left registered.
+        assert!(!rejected_table_keeps_previous(false, true, true));
+        // Tiling on but the shortcuts gone.
+        assert!(!rejected_table_keeps_previous(true, false, true));
+        // Applied: no rejection to report.
+        assert!(!rejected_table_keeps_previous(true, true, false));
     }
 
     #[test]
