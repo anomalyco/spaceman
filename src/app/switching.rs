@@ -472,7 +472,7 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
                         continue;
                     };
                     if matches!(
-                        self.write_restore_position(window, target),
+                        self.write_recovery_frame(window, target),
                         macos::ApplyOutcome::Gone
                     ) {
                         removed.push((window.clone(), record));

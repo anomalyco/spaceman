@@ -59,6 +59,15 @@ pub(super) trait WorkspaceBackend {
         window: &crate::PhysicalWindowId,
         target: crate::Rect,
     ) -> macos::ApplyOutcome;
+    /// Move a parked `window` back to its recovery frame, size included; see
+    /// [`macos::set_restore_frame`].
+    fn set_restore_frame(
+        &mut self,
+        window: &crate::PhysicalWindowId,
+        target: crate::Rect,
+    ) -> macos::ApplyOutcome {
+        self.set_position(window, target)
+    }
     /// Move `window` to a parked position; see [`macos::set_parked_position`].
     fn set_parked_position(
         &mut self,
@@ -228,6 +237,14 @@ impl WorkspaceBackend for MacWorkspaceBackend {
         target: crate::Rect,
     ) -> macos::ApplyOutcome {
         macos::set_position_only(window, target)
+    }
+
+    fn set_restore_frame(
+        &mut self,
+        window: &crate::PhysicalWindowId,
+        target: crate::Rect,
+    ) -> macos::ApplyOutcome {
+        macos::set_restore_frame(window, target)
     }
 
     fn set_parked_position(

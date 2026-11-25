@@ -11,6 +11,8 @@ Spaceman restarts, apps keep running                       // recover.resume
 
 Pause / auto-pause on built-in display / quit / update / macOS termination   // recover.restore-on-exit
 ├── Every parked window moved back to its original frame
+│   ├── an app resized it while parked -> its recorded size is put back too (best effort;
+│   │   arrival is confirmed by position, so an app that clamps its size still restores)
 │   └── that frame's display unplugged -> moved onto the main display instead
 ├── Recovery entry removed only after the window server confirms arrival
 │   └── Accessibility says "gone" but the window server still lists it -> entry kept, retried
@@ -91,6 +93,7 @@ See [Recovery](../recovery.md) for the safe manual procedure; never delete `park
   transient HUD toast display even when Workspace HUD is off.
 
 - Unit (FakeBackend): `parking.rs` `restore_all_repositions_windows_at_their_original_frames`,
+  `restore_all_restores_the_size_an_app_changed_while_parked` (#554),
   `restore_keeps_recovery_frame_until_the_window_server_confirms_arrival`,
   `persisted_frames_recover_after_a_simulated_crash`; `reliability.rs`
   `startup_recovers_parked_window_missing_from_valid_workspace_state`;

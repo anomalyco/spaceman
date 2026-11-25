@@ -643,7 +643,7 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
         let Some(target) = self.recovery_target(window) else {
             return macos::ApplyOutcome::Applied;
         };
-        let outcome = self.write_restore_position(window, target);
+        let outcome = self.write_recovery_frame(window, target);
         if let macos::ApplyOutcome::Applied = outcome {
             // Accessibility read-back is optimistic for apps that apply
             // moves asynchronously. Keep the recovery frame until the
@@ -677,7 +677,28 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
         window: &crate::PhysicalWindowId,
         target: crate::Rect,
     ) -> macos::ApplyOutcome {
-        let mut outcome = self.backend.set_position(window, target);
+        let outcome = self.backend.set_position(window, target);
+        self.settle_restore_write(window, target, outcome)
+    }
+
+    /// [`Self::write_restore_position`] for a recovery frame: the window also
+    /// gets back the size it had when parked, should its app have changed it
+    /// meanwhile (#554).
+    pub(super) fn write_recovery_frame(
+        &mut self,
+        window: &crate::PhysicalWindowId,
+        target: crate::Rect,
+    ) -> macos::ApplyOutcome {
+        let outcome = self.backend.set_restore_frame(window, target);
+        self.settle_restore_write(window, target, outcome)
+    }
+
+    fn settle_restore_write(
+        &mut self,
+        window: &crate::PhysicalWindowId,
+        target: crate::Rect,
+        mut outcome: macos::ApplyOutcome,
+    ) -> macos::ApplyOutcome {
         log_event!("restore: {:?} to {:?} ({:?})", window, target, outcome);
         // Accessibility reports a window it cannot resolve as gone; only the
         // window server or the process exiting may retire its recovery frame.

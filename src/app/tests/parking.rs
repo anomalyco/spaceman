@@ -566,6 +566,36 @@ fn restore_all_repositions_windows_at_their_original_frames() {
 }
 
 #[test]
+fn restore_all_restores_the_size_an_app_changed_while_parked() {
+    // #554: an app resized its window while parked; Pause must bring back
+    // the recorded size too, not just the position.
+    let window = window(10);
+    let normal = frame(50);
+    let mut backend = FakeBackend::default();
+    backend.frames.insert(window.clone(), normal);
+    let mut runtime = runtime(backend);
+    bind(&mut runtime, WorkspaceId::new(2).unwrap(), &window);
+    let outputs = outputs();
+    let visible = runtime.visible_workspaces(&outputs);
+    let server_frames = runtime.backend.window_server_frames().unwrap();
+    runtime.park_inactive(
+        &outputs,
+        &visible,
+        &server_frames,
+        &AtomicBool::new(false),
+        &mut 0,
+    );
+    assert_eq!(runtime.parked[&window], normal);
+    let resized = runtime.backend.frames.get_mut(&window).unwrap();
+    resized.width = 490;
+    resized.height = 380;
+
+    assert_eq!(runtime.restore_all(), 0);
+    assert_eq!(runtime.backend.frames[&window], normal);
+    assert!(runtime.backend.persisted.is_empty());
+}
+
+#[test]
 fn restore_persistence_failure_keeps_retry_state() {
     let window = window(10);
     let normal = frame(50);

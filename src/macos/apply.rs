@@ -238,6 +238,26 @@ pub fn set_position_only(id: &PhysicalWindowId, target: Rect) -> ApplyOutcome {
     write_position(id, target, position_matches)
 }
 
+/// Move a parked window back to its recovery frame `target`: position first,
+/// then the recorded size if an app changed it while parked. The size write is
+/// best effort (apps may clamp it); arrival is confirmed by position alone.
+pub fn set_restore_frame(id: &PhysicalWindowId, target: Rect) -> ApplyOutcome {
+    write_window(
+        id,
+        target,
+        |window| {
+            let result = set_position(window, target);
+            if window_frame(window).is_some_and(|actual| {
+                actual.width != target.width || actual.height != target.height
+            }) {
+                let _: AXError = set_size(window, target);
+            }
+            result
+        },
+        position_matches,
+    )
+}
+
 /// Park a window at `target`, a [`crate::geometry::parked_frame`] position.
 /// macOS may hold it above the requested corner to keep its title bar on
 /// screen, which still parks it.
@@ -252,8 +272,17 @@ fn write_position(
     target: Rect,
     confirmed: impl Fn(Rect, Rect) -> bool,
 ) -> ApplyOutcome {
+    write_window(id, target, |window| set_position(window, target), confirmed)
+}
+
+fn write_window(
+    id: &PhysicalWindowId,
+    target: Rect,
+    write: impl Fn(&AXUIElement) -> AXError,
+    confirmed: impl Fn(Rect, Rect) -> bool,
+) -> ApplyOutcome {
     match with_managed_window_result(id, |window| {
-        let result = without_window_animations(&id.app, || set_position(window, target));
+        let result = without_window_animations(&id.app, || write(window));
         if window_frame(window).is_some_and(|actual| confirmed(actual, target)) {
             Ok(())
         } else if matches!(result, AXError::InvalidUIElement) {
