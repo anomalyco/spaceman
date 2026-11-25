@@ -13,6 +13,7 @@ use objc2_core_graphics::{
     CGEvent, CGEventSource, CGEventSourceStateID, CGEventTapLocation, CGEventTapOptions,
     CGEventTapPlacement, CGEventTapProxy, CGEventType, CGMouseButton,
 };
+use objc2_foundation::{NSString, NSUserDefaults};
 
 use crate::swipe::{Fingers, Swipe, SwipeTracker};
 
@@ -91,6 +92,17 @@ fn pointer_button_down() -> bool {
             CGMouseButton::Left,
         )
         || CGEventSource::button_state(CGEventSourceStateID::HIDSystemState, CGMouseButton::Left)
+}
+
+/// Whether macOS Natural scrolling is on (`com.apple.swipescrolldirection` in the
+/// global domain). A missing value is the macOS default, on. Read on every swipe,
+/// so toggling the setting applies to the next one.
+fn natural_scrolling() -> bool {
+    let defaults = NSUserDefaults::standardUserDefaults();
+    let key = NSString::from_str("com.apple.swipescrolldirection");
+    defaults
+        .objectForKey(&key)
+        .is_none_or(|_| defaults.boolForKey(&key))
 }
 
 /// Listens for three- and four-finger trackpad swipes and reports each with the pointer's
@@ -222,7 +234,7 @@ unsafe extern "C-unwind" fn tap_callback(
         if let Some((swipe, fingers)) = swipe {
             let point = CGEvent::location(Some(cg_event));
             let point = (point.x.round() as i32, point.y.round() as i32);
-            (context.report)(swipe, fingers, point);
+            (context.report)(swipe.for_scroll_direction(natural_scrolling()), fingers, point);
         }
     });
     event.as_ptr()

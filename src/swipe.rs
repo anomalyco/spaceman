@@ -35,12 +35,28 @@ impl Fingers {
     }
 }
 
-/// Which way the fingers moved. Like macOS Spaces, swiping left goes to the
-/// next workspace and swiping right to the previous one.
+/// Which way a swipe steps: `Left` goes to the next workspace and `Right` to the
+/// previous one. The tracker reports the fingers' direction; see
+/// [`Swipe::for_scroll_direction`] for how that becomes a step.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum Swipe {
     Left,
     Right,
+}
+
+impl Swipe {
+    /// Maps the fingers' direction to a workspace step the way macOS Spaces does.
+    /// With Natural scrolling on the fingers drag the desktop strip, so swiping
+    /// left goes to the next workspace; with it off they move the view, so
+    /// swiping right does.
+    #[must_use]
+    pub const fn for_scroll_direction(self, natural: bool) -> Self {
+        match (self, natural) {
+            (swipe, true) => swipe,
+            (Self::Left, false) => Self::Right,
+            (Self::Right, false) => Self::Left,
+        }
+    }
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
@@ -207,5 +223,13 @@ mod tests {
             drag(&mut tracker, 2.0, (0.6, 0.5), (0.2, 0.5), 3),
             [(Swipe::Left, Fingers::Three)]
         );
+    }
+
+    #[test]
+    fn swipes_follow_the_natural_scrolling_setting() {
+        assert_eq!(Swipe::Left.for_scroll_direction(true), Swipe::Left);
+        assert_eq!(Swipe::Right.for_scroll_direction(true), Swipe::Right);
+        assert_eq!(Swipe::Left.for_scroll_direction(false), Swipe::Right);
+        assert_eq!(Swipe::Right.for_scroll_direction(false), Swipe::Left);
     }
 }

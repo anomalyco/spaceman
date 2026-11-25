@@ -23,6 +23,8 @@ Switch workspace                                           // ws.switch
 Swipe                                                      // ws.swipe
 ├── Three-finger swipe left/right -> next/previous workspace in the menu section of the display
 │   under the pointer (visible + occupied, in workspace order), stops at either end
+├── Natural scrolling off (Trackpad settings) -> the directions flip, as with macOS Spaces: swipe
+│   right -> next, left -> previous. Read on every swipe
 ├── Suppressed while a pointer button is down or a window drag is active (including macOS
 │   Accessibility "Three Finger Drag")
 ├── Labs › Swipe switch on ([labs] swipe_switch) + [settings] trackpad_swipe = false (Settings ›
