@@ -291,6 +291,21 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
                 continue;
             }
             let Some(onscreen_frames) = onscreen_frames.filter(|_| settles) else {
+                // ⌘M or ⌘H sets a window aside even when nothing else on the
+                // display is observed, as when it was the workspace's only
+                // window; keeping its slot would bring it back on the next
+                // switch to this workspace (#496).
+                if settles
+                    && !self.parked.contains_key(&window)
+                    && self.backend.confirms_set_aside(&window)
+                {
+                    log_event!(
+                        "observation omitted {:?}: minimized or hidden; releasing its slot",
+                        window
+                    );
+                    self.omitted_windows.remove(&window);
+                    continue;
+                }
                 // Off-screen time spent on another Space must not count
                 // toward the settle once the display shows this workspace.
                 self.omitted_windows.remove(&window);

@@ -252,3 +252,99 @@ fn a_parked_window_keeps_its_tile_through_the_settle() {
     );
     assert_eq!(runtime.backend.frames[&kept], column(0, 1280));
 }
+
+#[test]
+fn a_minimized_only_window_releases_its_tile_with_nothing_else_observed() {
+    let only = app_window(20, 1, 200);
+    let full = column(0, 2560);
+    let mut runtime = runtime(FakeBackend {
+        frames: [(only.clone(), full)].into(),
+        observation: Some(apps_observation(&[("com.example.Only", &only, full)])),
+        ..FakeBackend::default()
+    });
+    bind(&mut runtime, WorkspaceId::ONE, &only);
+    let cancelled = AtomicBool::new(false);
+    runtime.cycle(studio_display(), &cancelled).unwrap();
+
+    runtime.backend.observation = Some(apps_observation(&[]));
+    runtime.backend.frames.remove(&only);
+    runtime.backend.server_frames.insert(only.clone(), full);
+    runtime.backend.ordered_out.insert(only.window_id);
+    // Nothing on the display is observed, as on another macOS Space: kept.
+    runtime.cycle(studio_display(), &cancelled).unwrap();
+    assert_eq!(
+        runtime.workspaces.workspace_of(&only),
+        Some(WorkspaceId::ONE)
+    );
+
+    // ⌘M confirms it left the layout (#496).
+    runtime.backend.set_aside.insert(only.clone());
+    runtime.cycle(studio_display(), &cancelled).unwrap();
+    assert_eq!(runtime.workspaces.workspace_of(&only), None);
+}
+
+#[test]
+fn returning_to_a_workspace_leaves_a_window_minimized_while_away_alone() {
+    let minimized = window(10);
+    let ordinary = window(11);
+    let (minimized_frame, ordinary_frame) = (frame(50), frame(500));
+    let mut backend = FakeBackend {
+        observation: Some(observation_for_windows(
+            "com.example.Test",
+            &minimized,
+            &[
+                (minimized.clone(), minimized_frame),
+                (ordinary.clone(), ordinary_frame),
+            ],
+        )),
+        ..FakeBackend::default()
+    };
+    backend.frames.insert(minimized.clone(), minimized_frame);
+    backend.frames.insert(ordinary.clone(), ordinary_frame);
+    let mut runtime = runtime(backend);
+    bind(&mut runtime, WorkspaceId::ONE, &minimized);
+    bind(&mut runtime, WorkspaceId::ONE, &ordinary);
+    runtime
+        .workspaces
+        .remember_focus(WorkspaceId::ONE, &minimized);
+    let cancelled = AtomicBool::new(false);
+    runtime
+        .switch(WorkspaceId::new(2).unwrap(), outputs(), &cancelled)
+        .unwrap();
+    assert!(runtime.parked.contains_key(&minimized));
+    assert!(runtime.parked.contains_key(&ordinary));
+
+    // Minimized from the Dock while its workspace is away.
+    runtime.backend.set_aside.insert(minimized.clone());
+    runtime.backend.ordered_out.insert(minimized.window_id);
+    runtime.backend.calls.clear();
+    runtime
+        .switch(WorkspaceId::ONE, outputs(), &cancelled)
+        .unwrap();
+
+    assert!(!runtime.parked.contains_key(&minimized));
+    assert!(!runtime.parked.contains_key(&ordinary));
+    assert_eq!(runtime.workspaces.workspace_of(&minimized), None);
+    assert_eq!(
+        runtime.workspaces.workspace_of(&ordinary),
+        Some(WorkspaceId::ONE)
+    );
+    assert_eq!(
+        (
+            runtime.backend.frames[&minimized].x,
+            runtime.backend.frames[&minimized].y
+        ),
+        (minimized_frame.x, minimized_frame.y)
+    );
+    assert!(runtime.backend.calls.iter().all(|call| !matches!(
+        call,
+        BackendCall::Focus(window) | BackendCall::Raise(window) | BackendCall::Apply(window, _)
+            if window == &minimized
+    )));
+    assert!(
+        runtime
+            .backend
+            .calls
+            .contains(&BackendCall::Focus(ordinary.clone()))
+    );
+}

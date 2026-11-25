@@ -9,6 +9,8 @@ instantly, and send windows or whole apps to a workspace, without using macOS Sp
 Switch workspace                                           // ws.switch
 ├── Option+1..0 / Option+A..Z / spaceman ctl switch <ws> / a workspace in the menu bar menu
 ├── Incoming parked windows revealed -> laid out -> outgoing windows parked off-screen
+│   ├── A window minimized (⌘M) or hidden (⌘H) while away -> back at its frame but left minimized
+│   │   or hidden and never focused; a tile leaves the layout and rejoins as a new tile
 │   └── Reveal not confirmed by the window server in time -> switch rolled back, old workspace stays
 ├── Focus -> last-focused tile of the incoming workspace, keyboard focus included
 │   (that window raised and made main, then its app brought forward with `AXFrontmost`), unless
