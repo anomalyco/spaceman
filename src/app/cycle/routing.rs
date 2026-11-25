@@ -85,7 +85,11 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
                 }
                 _ => {}
             }
-            self.exit_fullscreen_if_split(target);
+            if policy.visible_workspaces.contains(&target)
+                && self.workspaces.deck(target).is_monocle()
+            {
+                policy.fullscreen_hud = Some(target);
+            }
             self.clear_fullscreen_restore_if_inactive(target);
             policy
                 .windows

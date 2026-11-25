@@ -454,7 +454,7 @@ fn directional_focus_steps_through_a_fullscreen_stack_then_crosses_displays() {
 }
 
 #[test]
-fn opening_a_new_tiled_window_exits_fullscreen_layout_and_splits_side_by_side() {
+fn opening_a_new_tiled_window_keeps_fullscreen_layout_and_emits_hud() {
     let first = window(10);
     let second = window(20);
     let outputs = outputs();
@@ -483,13 +483,37 @@ fn opening_a_new_tiled_window_exits_fullscreen_layout_and_splits_side_by_side() 
             (second.clone(), frame(400)),
         ],
     ));
-    let status = runtime.cycle(outputs, &cancelled).unwrap();
+    let status = runtime.cycle(outputs.clone(), &cancelled).unwrap();
 
-    assert!(!runtime.workspaces.deck(WorkspaceId::ONE).is_monocle());
-    assert!(matches!(status.layouts[0].mode, UiHudLayout::Split(_)));
-    assert_eq!(runtime.backend.frames[&first].width, 500);
-    assert_eq!(runtime.backend.frames[&second].x, 500);
-    assert_eq!(runtime.backend.frames[&second].width, 500);
+    assert!(runtime.workspaces.deck(WorkspaceId::ONE).is_monocle());
+    assert!(matches!(status.layouts[0].mode, UiHudLayout::Fullscreen));
+    assert_eq!(runtime.backend.frames[&first], outputs.main().frame);
+    assert_eq!(runtime.backend.frames[&second], outputs.main().frame);
+    assert_eq!(
+        runtime.workspaces.preferred_focus(WorkspaceId::ONE),
+        Some(second.clone())
+    );
+    let hud = status.hud.expect("joining Fullscreen Layout emits HUD cue");
+    assert_eq!(hud.workspace, WorkspaceId::ONE);
+    assert_eq!(hud.kind, UiHudKind::Fullscreen { enabled: true });
+    let ws_hud = hud.displays[0]
+        .workspaces
+        .iter()
+        .find(|entry| entry.workspace == WorkspaceId::ONE)
+        .unwrap();
+    assert!(ws_hud.fullscreen);
+    assert_eq!(ws_hud.tiles.len(), 2);
+
+    // Steady-state cycles do not spam the HUD.
+    runtime.backend.observation = Some(observation_for_windows(
+        "com.example.Test",
+        &second,
+        &[
+            (first, outputs.main().frame),
+            (second.clone(), outputs.main().frame),
+        ],
+    ));
+    assert_eq!(runtime.cycle(outputs, &cancelled).unwrap().hud, None);
 }
 
 #[test]
@@ -540,9 +564,10 @@ fn opening_a_floating_window_preserves_fullscreen_layout() {
 }
 
 /// #153: a parked tiled window that its frontmost app brings back onto a
-/// visible Fullscreen Layout workspace exits Fullscreen Layout and splits.
+/// visible Fullscreen Layout workspace re-homes into the stack without exiting
+/// Fullscreen Layout, and cues the Workspace HUD.
 #[test]
-fn reappearing_parked_tile_exits_fullscreen_layout_and_splits_side_by_side() {
+fn reappearing_parked_tile_keeps_fullscreen_layout_and_emits_hud() {
     let first = window(10);
     let second = window(20);
     let returning = window(30);
@@ -582,7 +607,7 @@ fn reappearing_parked_tile_exits_fullscreen_layout_and_splits_side_by_side() {
         &first,
         &returned,
     ));
-    rt.cycle(outputs(), &cancelled).unwrap();
+    let status = rt.cycle(outputs(), &cancelled).unwrap();
 
     assert_eq!(
         rt.workspaces.workspace_of(&returning),
@@ -593,11 +618,14 @@ fn reappearing_parked_tile_exits_fullscreen_layout_and_splits_side_by_side() {
         rt.workspaces.engine(WorkspaceId::ONE).bound_windows().len(),
         3
     );
-    assert!(!rt.workspaces.deck(WorkspaceId::ONE).is_monocle());
-    let frames = [&first, &second, &returning].map(|id| rt.backend.frames[id]);
-    assert_ne!(frames[0], frames[1]);
-    assert_ne!(frames[0], frames[2]);
-    assert_ne!(frames[1], frames[2]);
+    assert!(rt.workspaces.deck(WorkspaceId::ONE).is_monocle());
+    for id in [&first, &second, &returning] {
+        assert_eq!(rt.backend.frames[id], outputs().main().frame);
+    }
+    let hud = status.hud.expect("reappearing tile cues Fullscreen HUD");
+    assert_eq!(hud.workspace, WorkspaceId::ONE);
+    assert_eq!(hud.kind, UiHudKind::Fullscreen { enabled: true });
+    assert_eq!(rt.cycle(outputs(), &cancelled).unwrap().hud, None);
 }
 
 /// #153 control: a parked floating window that reappears on a Fullscreen
@@ -660,4 +688,207 @@ fn reappearing_parked_floating_window_preserves_fullscreen_layout() {
     assert!(rt.workspaces.deck(WorkspaceId::ONE).is_monocle());
     assert_eq!(rt.backend.frames[&first], outputs().main().frame);
     assert_eq!(rt.backend.frames[&second], outputs().main().frame);
+}
+
+#[test]
+fn routing_moving_and_unfloating_preserve_fullscreen_layout() {
+    let existing = window(10);
+    let routed = crate::PhysicalWindowId {
+        app: AppInstanceId {
+            pid: 2,
+            launched_at: 2,
+        },
+        window_id: 20,
+    };
+    let moved = crate::PhysicalWindowId {
+        app: AppInstanceId {
+            pid: 3,
+            launched_at: 3,
+        },
+        window_id: 30,
+    };
+    let unfloated = crate::PhysicalWindowId {
+        app: AppInstanceId {
+            pid: 4,
+            launched_at: 4,
+        },
+        window_id: 40,
+    };
+    let outputs = outputs();
+    let secondary_frame = outputs.displays()[1].frame;
+    let cancelled = AtomicBool::new(false);
+    // Route `com.example.Routed` directly onto workspace 6 (visible on secondary).
+    let config = Config::parse(
+        "version = 1\n[[rules]]\nbundle_id = 'com.example.Routed'\naction = 'route'\nworkspace = 6",
+    )
+    .unwrap();
+    let mut backend = FakeBackend {
+        focused: Some(existing.clone()),
+        frontmost: Some(existing.app.clone()),
+        ..FakeBackend::default()
+    };
+    backend.frames.insert(existing.clone(), secondary_frame);
+    backend.frames.insert(routed.clone(), frame(50));
+    backend.frames.insert(moved.clone(), frame(100));
+    backend.frames.insert(unfloated.clone(), secondary_frame);
+    let mut rt = runtime_with_config(backend, config);
+    bind(&mut rt, WorkspaceId::SIX, &existing);
+    bind(&mut rt, WorkspaceId::ONE, &moved);
+    rt.workspaces.float(
+        unfloated.clone(),
+        WorkspaceId::SIX,
+        crate::workspace::FloatCause::Manual,
+    );
+    rt.workspaces
+        .set_deck(WorkspaceId::SIX, crate::workspace::DeckMode::Monocle);
+    rt.workspaces.remember_focus(WorkspaceId::SIX, &existing);
+
+    // 1. Routing a new window from display 1 onto visible Fullscreen Layout workspace 6
+    // keeps Monocle, preserves the front tile, and emits the Fullscreen HUD cue.
+    rt.backend.observation = Some(crate::NativeObservation {
+        cycle: 0,
+        mouse_down: false,
+        applications: vec![
+            crate::AppObservation::Complete {
+                app: crate::ObservedApplication {
+                    id: existing.app.clone(),
+                    bundle_id: "com.example.Existing".into(),
+                },
+                focused: Some(existing.clone()),
+                windows: vec![crate::ObservedWindow {
+                    id: existing.clone(),
+                    frame: secondary_frame,
+                    resizable: true,
+                    title: None,
+                    document: None,
+                }],
+            },
+            crate::AppObservation::Complete {
+                app: crate::ObservedApplication {
+                    id: routed.app.clone(),
+                    bundle_id: "com.example.Routed".into(),
+                },
+                focused: None,
+                windows: vec![crate::ObservedWindow {
+                    id: routed.clone(),
+                    frame: frame(50),
+                    resizable: true,
+                    title: None,
+                    document: None,
+                }],
+            },
+            crate::AppObservation::Complete {
+                app: crate::ObservedApplication {
+                    id: moved.app.clone(),
+                    bundle_id: "com.example.Moved".into(),
+                },
+                focused: None,
+                windows: vec![crate::ObservedWindow {
+                    id: moved.clone(),
+                    frame: frame(100),
+                    resizable: true,
+                    title: None,
+                    document: None,
+                }],
+            },
+            crate::AppObservation::Complete {
+                app: crate::ObservedApplication {
+                    id: unfloated.app.clone(),
+                    bundle_id: "com.example.Unfloated".into(),
+                },
+                focused: None,
+                windows: vec![crate::ObservedWindow {
+                    id: unfloated.clone(),
+                    frame: secondary_frame,
+                    resizable: true,
+                    title: None,
+                    document: None,
+                }],
+            },
+        ],
+    });
+    let status = rt.cycle(outputs.clone(), &cancelled).unwrap();
+    assert!(rt.workspaces.deck(WorkspaceId::SIX).is_monocle());
+    assert_eq!(rt.workspaces.workspace_of(&routed), Some(WorkspaceId::SIX));
+    assert_eq!(rt.backend.frames[&routed], secondary_frame);
+    assert_eq!(
+        rt.workspaces.preferred_focus(WorkspaceId::SIX),
+        Some(existing.clone())
+    );
+    let hud = status
+        .hud
+        .expect("routing to visible Fullscreen workspace cues HUD");
+    assert_eq!(hud.workspace, WorkspaceId::SIX);
+    assert_eq!(hud.kind, UiHudKind::Fullscreen { enabled: true });
+
+    // 2. Moving a tiled window onto Fullscreen Layout workspace 6 keeps Monocle.
+    rt.backend.focused = Some(moved.clone());
+    rt.backend.frontmost = Some(moved.app.clone());
+    let status = rt
+        .move_focused(WorkspaceId::SIX, outputs.clone(), &cancelled)
+        .unwrap();
+    assert!(rt.workspaces.deck(WorkspaceId::SIX).is_monocle());
+    assert_eq!(rt.workspaces.workspace_of(&moved), Some(WorkspaceId::SIX));
+    assert_eq!(rt.backend.frames[&moved], secondary_frame);
+    assert_eq!(status.hud.unwrap().kind, UiHudKind::Moved);
+
+    // 3. Unfloating a window onto Fullscreen Layout workspace 6 keeps Monocle
+    // and cues the Fullscreen HUD.
+    rt.backend.focused = Some(unfloated.clone());
+    rt.backend.frontmost = Some(unfloated.app.clone());
+    let status = rt.toggle_float(outputs, &cancelled).unwrap();
+    assert!(rt.workspaces.deck(WorkspaceId::SIX).is_monocle());
+    assert_eq!(
+        rt.workspaces.workspace_of(&unfloated),
+        Some(WorkspaceId::SIX)
+    );
+    assert_eq!(rt.backend.frames[&unfloated], secondary_frame);
+    assert_eq!(
+        rt.workspaces.preferred_focus(WorkspaceId::SIX),
+        Some(unfloated)
+    );
+    let hud = status
+        .hud
+        .expect("unfloating into Fullscreen workspace cues HUD");
+    assert_eq!(hud.workspace, WorkspaceId::SIX);
+    assert_eq!(hud.kind, UiHudKind::Fullscreen { enabled: true });
+}
+
+#[test]
+fn routing_onto_a_hidden_fullscreen_workspace_preserves_mode_without_hud() {
+    let existing = window(10);
+    let routed = crate::PhysicalWindowId {
+        app: AppInstanceId {
+            pid: 2,
+            launched_at: 2,
+        },
+        window_id: 20,
+    };
+    let two = WorkspaceId::new(2).unwrap();
+    let config = Config::parse(
+        "version = 1\n[[rules]]\nbundle_id = 'com.example.Routed'\naction = 'route'\nworkspace = 2",
+    )
+    .unwrap();
+    let mut backend = FakeBackend {
+        focused: Some(routed.clone()),
+        frontmost: Some(routed.app.clone()),
+        observation: Some(observation_for("com.example.Routed", &routed, frame(50))),
+        ..FakeBackend::default()
+    };
+    backend
+        .frames
+        .insert(existing.clone(), main_parked_frame(frame(100)));
+    backend.frames.insert(routed.clone(), frame(50));
+    let mut rt = runtime_with_config(backend, config);
+    bind(&mut rt, two, &existing);
+    rt.parked
+        .insert(existing.clone(), frame(100), Some("main-id".into()));
+    rt.workspaces
+        .set_deck(two, crate::workspace::DeckMode::Monocle);
+
+    let status = rt.cycle(outputs(), &AtomicBool::new(false)).unwrap();
+
+    assert!(rt.workspaces.deck(two).is_monocle());
+    assert_eq!(rt.workspaces.workspace_of(&routed), Some(two));
+    assert_eq!(status.hud, None);
 }

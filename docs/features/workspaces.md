@@ -231,7 +231,8 @@ Workspace order ([settings] workspace_order)                // ws.order
 └── Applies on config reload; removing it brings back the default order
 
 Workspace HUD ([settings] hud, on by default)               // ws.hud
-├── A switch, a window moved to another workspace, a split-axis or Fullscreen Layout toggle
+├── A switch, a window moved to another workspace, a split-axis or Fullscreen Layout toggle, or a
+│   tiled window joining a visible Fullscreen Layout workspace
 │   -> a capsule on every display, each with its own row: every workspace on that
 │      display holding windows, plus the visible one, in workspace order; a marker on the visible one
 ├── hud_position = "bottom" (default) -> the capsule rests 60 pt above each display's bottom edge,

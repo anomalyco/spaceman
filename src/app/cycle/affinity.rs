@@ -36,6 +36,9 @@ pub(super) struct FrozenAffinityPolicy {
     /// brings each onto its workspace's display before reconciliation.
     pub(super) float_homes: Vec<FloatHome>,
     pub(super) visible_workspaces: HashSet<WorkspaceId>,
+    /// A visible Fullscreen Layout workspace that gained a tiled window during
+    /// affinity healing or pre-reconcile routing.
+    pub(super) fullscreen_hud: Option<WorkspaceId>,
 }
 
 impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
@@ -70,6 +73,7 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
         self.note_absent_departures(observation);
         let mut affinities = HashMap::new();
         let mut float_homes = Vec::new();
+        let mut fullscreen_hud = None;
         // Read once, and only if a Complete snapshot omits an owned float.
         let mut onscreen_frames = None;
         for application in &observation.applications {
@@ -95,7 +99,9 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
             let mut app_owns_window = self.workspaces.app_owns_windows(&app.id);
             let mut app_owns_tiled = self.workspaces.app_owns_tiled_windows(&app.id);
             for window in windows {
-                self.heal_reappeared_window(window, visible, server_frames);
+                if let Some(ws) = self.heal_reappeared_window(window, visible, server_frames) {
+                    fullscreen_hud = Some(ws);
+                }
                 if self.parked.contains_key(&window.id)
                     && matches!(
                         self.workspaces.residency(&window.id),
@@ -262,6 +268,7 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
             windows: affinities,
             float_homes,
             visible_workspaces: visible.iter().map(|resolved| resolved.workspace).collect(),
+            fullscreen_hud,
         })
     }
 

@@ -9,7 +9,9 @@ use super::{
         StackedWindow, WindowServerWindow, hover_target, should_ignore_missing_window_id,
         windows_reaching_point,
     },
-    classify::{TitleBar, TitleButton, is_dialog, is_ignored},
+    classify::{
+        DialogHint, TitleBar, TitleButton, is_dialog, is_file_panel_identifier, is_ignored,
+    },
     events::running_application_instances,
     frontmost_application, is_process_incarnation_running, process_start_time,
 };
@@ -27,36 +29,135 @@ fn bar(fullscreen: TitleButton, zoom: TitleButton, close: bool) -> TitleBar {
 #[test]
 fn primary_windows_without_a_working_fullscreen_button_still_tile() {
     use TitleButton::{Absent, Disabled, Enabled};
+    let none = DialogHint::default();
     // FaceTime (16:10 landscape), Phone, News, Podcasts, Games, Shortcuts and
     // System Settings: no fullscreen button, an enabled zoom button.
-    assert!(!is_dialog(false, false, bar(Absent, Enabled, true)));
+    assert!(!is_dialog(false, false, bar(Absent, Enabled, true), none));
     // FaceTime (2:3 portrait), or any window while it shows a sheet: both
     // buttons disabled, but the fullscreen button is there.
-    assert!(!is_dialog(false, false, bar(Disabled, Disabled, true)));
+    assert!(!is_dialog(
+        false,
+        false,
+        bar(Disabled, Disabled, true),
+        none
+    ));
     // An ordinary document window.
-    assert!(!is_dialog(false, false, bar(Enabled, Enabled, true)));
+    assert!(!is_dialog(false, false, bar(Enabled, Enabled, true), none));
     // Borderless regular-app windows (Ghostty without decorations).
-    assert!(!is_dialog(false, false, bar(Absent, Absent, false)));
+    assert!(!is_dialog(false, false, bar(Absent, Absent, false), none));
+    // A primary window that happens to expose a default Return button still tiles.
+    let default_only = DialogHint {
+        default_button: true,
+        ..none
+    };
+    assert!(!is_dialog(
+        false,
+        false,
+        bar(Enabled, Enabled, true),
+        default_only
+    ));
+    assert!(!is_dialog(
+        false,
+        false,
+        bar(Absent, Enabled, true),
+        default_only
+    ));
 }
 
 #[test]
 fn settings_windows_modals_and_accessory_panels_still_float() {
     use TitleButton::{Absent, Disabled, Enabled};
+    let none = DialogHint::default();
     // TextEdit Settings and Calculator: no fullscreen button, zoom disabled.
-    assert!(is_dialog(false, false, bar(Absent, Disabled, true)));
+    assert!(is_dialog(false, false, bar(Absent, Disabled, true), none));
     // A closable window with neither button.
-    assert!(is_dialog(false, false, bar(Absent, Absent, true)));
+    assert!(is_dialog(false, false, bar(Absent, Absent, true), none));
     // Modal windows always float.
-    assert!(is_dialog(false, true, bar(Enabled, Enabled, true)));
+    assert!(is_dialog(false, true, bar(Enabled, Enabled, true), none));
     // Accessory apps' windows tile only with an enabled fullscreen button; an
     // enabled zoom button is not enough.
-    assert!(is_dialog(true, false, bar(Absent, Enabled, true)));
-    assert!(is_dialog(true, false, bar(Disabled, Disabled, true)));
-    assert!(!is_dialog(true, false, bar(Enabled, Enabled, true)));
+    assert!(is_dialog(true, false, bar(Absent, Enabled, true), none));
+    assert!(is_dialog(true, false, bar(Disabled, Disabled, true), none));
+    assert!(!is_dialog(true, false, bar(Enabled, Enabled, true), none));
     // Their buttonless windows are ignored outright.
     assert!(is_ignored(true, bar(Absent, Absent, false)));
     assert!(!is_ignored(true, bar(Absent, Absent, true)));
     assert!(!is_ignored(false, bar(Absent, Absent, false)));
+}
+
+#[test]
+fn open_save_panels_and_button_bar_dialogs_float() {
+    use TitleButton::{Absent, Enabled};
+    let none = DialogHint::default();
+
+    assert!(is_file_panel_identifier("open-panel"));
+    assert!(is_file_panel_identifier("save-panel"));
+    assert!(is_file_panel_identifier("OPEN-PANEL"));
+    assert!(is_file_panel_identifier("NSOpenPanel"));
+    assert!(is_file_panel_identifier("NSSavePanel"));
+    assert!(!is_file_panel_identifier(""));
+    assert!(!is_file_panel_identifier("main-window"));
+
+    let buttonless = bar(Absent, Absent, false);
+    let primary = bar(Enabled, Enabled, true);
+
+    // Standalone NSOpenPanel / NSSavePanel (no traffic lights, non-modal):
+    // floats on AXIdentifier, AXCancelButton, or buttonless AXDefaultButton.
+    assert!(is_dialog(
+        false,
+        false,
+        buttonless,
+        DialogHint {
+            file_panel: true,
+            ..none
+        }
+    ));
+    assert!(is_dialog(
+        false,
+        false,
+        buttonless,
+        DialogHint {
+            cancel_button: true,
+            ..none
+        }
+    ));
+    assert!(is_dialog(
+        false,
+        false,
+        buttonless,
+        DialogHint {
+            default_button: true,
+            ..none
+        }
+    ));
+    // Even if a file panel or cancel-button dialog exposes traffic lights, it floats.
+    assert!(is_dialog(
+        false,
+        false,
+        primary,
+        DialogHint {
+            file_panel: true,
+            ..none
+        }
+    ));
+    assert!(is_dialog(
+        false,
+        false,
+        primary,
+        DialogHint {
+            cancel_button: true,
+            ..none
+        }
+    ));
+    assert!(is_dialog(
+        true,
+        false,
+        primary,
+        DialogHint {
+            file_panel: true,
+            ..none
+        }
+    ));
 }
 
 #[test]

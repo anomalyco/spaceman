@@ -58,7 +58,9 @@ use ax::{
     onscreen_windows, optional_bool_attribute, physical_window_id, set_ax_timeout,
     window_server_windows,
 };
-use classify::{TitleBar, TitleButton, is_dialog, is_ignored};
+use classify::{
+    DialogHint, TitleBar, TitleButton, is_dialog, is_file_panel_identifier, is_ignored,
+};
 use displays::main_output;
 use window_attributes::{WindowAttribute, WindowAttributes};
 
@@ -663,12 +665,30 @@ fn observe_window(
     let modal = attributes
         .optional_bool(WindowAttribute::Modal)
         .unwrap_or(false);
+    let hint = DialogHint {
+        file_panel: attributes
+            .get::<CFString>(WindowAttribute::Identifier)
+            .is_ok_and(|id| is_file_panel_identifier(&id.to_string())),
+        cancel_button: attributes
+            .get::<AXUIElement>(WindowAttribute::CancelButton)
+            .is_ok(),
+        default_button: attributes
+            .get::<AXUIElement>(WindowAttribute::DefaultButton)
+            .is_ok(),
+    };
     // The zoom button's state costs its own round trip, and only decides a
-    // regular application's closable window without a fullscreen button.
-    if !accessory && !modal && close && bar.fullscreen == TitleButton::Absent {
+    // regular application's closable (or default-button) window without a
+    // fullscreen button.
+    if !accessory
+        && !modal
+        && !hint.file_panel
+        && !hint.cancel_button
+        && bar.fullscreen == TitleButton::Absent
+        && (close || hint.default_button)
+    {
         bar.zoom = title_button(&attributes, WindowAttribute::ZoomButton);
     }
-    let dialog = is_dialog(accessory, modal, bar);
+    let dialog = is_dialog(accessory, modal, bar, hint);
     let resizable = !dialog
         && is_settable(window, "AXSize").map_err(|error| format!("AXSize settable: {error:?}"))?;
     let title = match attributes.get::<CFString>(WindowAttribute::Title) {

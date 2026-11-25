@@ -130,8 +130,18 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
             canvas,
             anchor,
         );
-        self.exit_fullscreen_if_split(workspace);
-        let status = self.relayout_persist(workspace, outputs, cancelled)?;
+        if self.workspaces.deck(workspace).is_monocle() {
+            self.workspaces.remember_focus(workspace, &window);
+        }
+        let mut status = self.relayout_persist(workspace, outputs, cancelled)?;
+        if self.is_visible(workspace, outputs) && self.is_stacked_fullscreen(workspace) {
+            status.hud = Some(self.hud_for(
+                workspace,
+                UiHudKind::Fullscreen { enabled: true },
+                None,
+                outputs,
+            ));
+        }
         // A restore still awaiting confirmation (a summon that has not landed) keeps its
         // recovery frame: make that the tile, not the frame it floated at.
         if self.parked.contains_key(&window)
