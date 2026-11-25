@@ -47,6 +47,10 @@ pub struct LabsConfig {
     /// Settings › Layout shows its row.
     #[serde(default)]
     pub single_window_height: bool,
+    /// A `route` rule with `windows = "all"` routes every new window of its app, not only
+    /// the first one.
+    #[serde(default)]
+    pub route_all_windows: bool,
 }
 
 impl LabsConfig {
@@ -65,6 +69,7 @@ impl LabsConfig {
             LabFeature::WorkspaceSteps => self.workspace_steps,
             LabFeature::FourFingerSwipe => self.four_finger_swipe,
             LabFeature::SingleWindowHeight => self.single_window_height,
+            LabFeature::RouteAllWindows => self.route_all_windows,
         }
     }
 }
@@ -95,11 +100,13 @@ pub enum LabFeature {
     FourFingerSwipe,
     /// A lone tile's height cap, `settings.single_window_max_height`.
     SingleWindowHeight,
+    /// `windows = "all"` on a `route` rule routes every new window of its app.
+    RouteAllWindows,
 }
 
 impl LabFeature {
     /// Every switch, in the order `[labs]` lists them.
-    pub const ALL: [Self; 11] = [
+    pub const ALL: [Self; 12] = [
         Self::Scratchpad,
         Self::Activity,
         Self::PortraitEdgeRows,
@@ -111,6 +118,7 @@ impl LabFeature {
         Self::WorkspaceSteps,
         Self::FourFingerSwipe,
         Self::SingleWindowHeight,
+        Self::RouteAllWindows,
     ];
 
     /// The `[labs]` key that turns this feature on.
@@ -128,6 +136,7 @@ impl LabFeature {
             Self::WorkspaceSteps => "workspace_steps",
             Self::FourFingerSwipe => "four_finger_swipe",
             Self::SingleWindowHeight => "single_window_height",
+            Self::RouteAllWindows => "route_all_windows",
         }
     }
 

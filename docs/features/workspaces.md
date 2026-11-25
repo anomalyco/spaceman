@@ -145,7 +145,9 @@ Where a new window goes (first match wins)                 // ws.adoption
 ├── route rule         -> that workspace (parked if hidden), joined before any display reconciles,
 │                         so a failed park leaves it unowned and the next cycle routes it again;
 │                         bundle-only route rules apply to the app's initial window while
-│                         secondary windows stay on the active workspace
+│                         secondary windows stay on the active workspace, unless the rule says
+│                         windows = "all" and [labs] route_all_windows is on (src/config.rs,
+│                         src/app/cycle/affinity.rs)
 ├── remembered placement (startup window, first 60 s, the app relaunched within 30 s of
 │   quitting, a returning app, or a new process presenting 2+ windows at once whose memory spans
 │   2+ workspaces) -> remembered workspace, matched by frame, then size, then creation order
@@ -427,6 +429,8 @@ on the same letter.
 - Unit (FakeBackend), `src/app/tests/reconciliation.rs`: adoption order
   (`bundle_route_applies_to_initial_window_while_secondary_windows_stay_on_active_workspace`,
   `title_route_rule_routes_matching_secondary_window`,
+  `windows_all_sends_a_later_window_to_the_route_once_its_lab_is_on` (in
+  `src/app/tests/rules.rs`, issue 472),
   `ignore_rule_releases_the_window_and_never_adopts_it`,
   `floating_rule_owns_window_without_adding_it_to_layout`,
   `new_window_opens_on_active_workspace_even_when_app_has_window_on_inactive_workspace`), display fallback

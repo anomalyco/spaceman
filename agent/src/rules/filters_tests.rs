@@ -243,3 +243,18 @@ fn a_filter_with_quotes_and_unicode_round_trips() {
     assert!(reloaded.error.is_none(), "{:?}", reloaded.error);
     assert_eq!(reloaded.rules()[0].title_contains.as_deref(), Some(filter));
 }
+
+#[test]
+fn windows_key_stays_while_a_rule_routes_and_goes_when_it_stops() {
+    let mut doc = Doc::parse(
+        "version = 1\n[[rules]]\nbundle_id = \"com.google.Chrome\"\naction = \"route\"\nworkspace = 4\nwindows = \"all\"\n",
+    );
+    doc.place(0, Place::Workspace(ws(2)));
+    let source = doc.source();
+    assert!(source.contains("windows = \"all\""), "{source}");
+    assert!(Config::parse(&source).is_ok());
+    doc.place(0, Place::Float);
+    let source = doc.source();
+    assert!(!source.contains("windows"), "{source}");
+    assert!(Config::parse(&source).is_ok(), "{source}");
+}

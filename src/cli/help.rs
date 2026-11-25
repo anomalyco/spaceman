@@ -191,6 +191,7 @@ pub(crate) fn config_help(executable: &str) -> String {
         "  labs.workspace_steps        true | false  switch next|prev and move next|prev on the focused display",
         "  labs.four_finger_swipe      true | false  The workspace swipe takes four fingers instead of three",
         "  labs.single_window_height   true | false  single_window_max_height caps a lone window's height",
+        "  labs.route_all_windows      true | false  windows = \"all\" on a route rule routes every new window",
         "",
         "Notes:",
         "  - Respects SPACEMAN_CONFIG and SPACEMAN_APPLICATION_SUPPORT.",
@@ -209,7 +210,8 @@ pub(crate) fn rules_help(executable: &str) -> String {
         &format!(
             "  {executable} rules add --app <bundle-id> (--workspace <ws> | --float | --pin | --tile | --ignore)"
         ),
-        "                         [--title <title> | --title-contains <text>] [--position <index>] [--json]",
+        "                         [--title <title> | --title-contains <text>] [--windows first|all]",
+        "                         [--position <index>] [--json]",
         &format!("  {executable} rules remove <index-or-bundle-id> [--json]"),
         &format!("  {executable} rules remove --app <bundle-id> [--json]"),
         "",
@@ -218,6 +220,8 @@ pub(crate) fn rules_help(executable: &str) -> String {
         "  --title <title>            Require an exact window title match",
         "  --title-contains <text>    Require the window title to contain <text>, ignoring case",
         "  --workspace <ws>           Route matching windows to workspace 1-10 or A-Z",
+        "  --windows first|all        Which new windows a --workspace rule takes: the app's first (default)",
+        "                             or all of them; \"all\" counts only with labs.route_all_windows on",
         "  --float                    Float matching windows without tiling",
         "  --pin                      Float matching windows and show them on every workspace",
         "  --tile                     Tile matching windows even if they look like dialogs",

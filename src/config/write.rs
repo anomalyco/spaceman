@@ -5,7 +5,8 @@ use std::path::{Path, PathBuf};
 use serde::{Deserialize, Serialize};
 
 use super::{
-    Config, HudPosition, HudStyle, LayoutMode, MouseFollowsFocus, UpdateChannel, parse_path,
+    Config, HudPosition, HudStyle, LayoutMode, MouseFollowsFocus, RouteWindows, UpdateChannel,
+    parse_path,
 };
 use crate::{DisplaySelector, WorkspaceId, Workspaces};
 
@@ -94,6 +95,8 @@ struct EditableRule {
     action: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     workspace: Option<WorkspaceId>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    windows: Option<RouteWindows>,
 }
 
 #[derive(Deserialize, Serialize)]

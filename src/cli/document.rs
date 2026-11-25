@@ -8,8 +8,8 @@ use serde::{Deserialize, Serialize};
 use spaceman::{
     DisplaySelector, WorkspaceId, Workspaces,
     config::{
-        Config, HudPosition, HudStyle, LabFeature, LayoutMode, MouseFollowsFocus, UpdateChannel,
-        config_path, lock_config, write_config_atomic,
+        Config, HudPosition, HudStyle, LabFeature, LayoutMode, MouseFollowsFocus, RouteWindows,
+        UpdateChannel, config_path, lock_config, write_config_atomic,
     },
     spacing::{Spacing, SpacingKey, check_outer},
 };
@@ -57,6 +57,8 @@ pub(crate) struct LabsDoc {
     pub four_finger_swipe: Option<bool>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub single_window_height: Option<bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub route_all_windows: Option<bool>,
 }
 
 impl LabsDoc {
@@ -72,6 +74,7 @@ impl LabsDoc {
             && self.workspace_steps.is_none()
             && self.four_finger_swipe.is_none()
             && self.single_window_height.is_none()
+            && self.route_all_windows.is_none()
     }
 
     /// The switch as the file asks for it: off while unset.
@@ -102,6 +105,7 @@ impl LabsDoc {
             LabFeature::WorkspaceSteps => self.workspace_steps,
             LabFeature::FourFingerSwipe => self.four_finger_swipe,
             LabFeature::SingleWindowHeight => self.single_window_height,
+            LabFeature::RouteAllWindows => self.route_all_windows,
         }
     }
 
@@ -118,6 +122,7 @@ impl LabsDoc {
             LabFeature::WorkspaceSteps => &mut self.workspace_steps,
             LabFeature::FourFingerSwipe => &mut self.four_finger_swipe,
             LabFeature::SingleWindowHeight => &mut self.single_window_height,
+            LabFeature::RouteAllWindows => &mut self.route_all_windows,
         }
     }
 }
@@ -398,6 +403,9 @@ pub(crate) struct RuleDoc {
     pub action: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub workspace: Option<WorkspaceId>,
+    /// Which of the app's new windows a route takes, as the file writes it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub windows: Option<RouteWindows>,
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
@@ -443,6 +451,8 @@ pub(crate) struct RuleView {
     pub action: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub workspace: Option<WorkspaceId>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub windows: Option<RouteWindows>,
 }
 
 impl RuleView {
@@ -454,6 +464,7 @@ impl RuleView {
             title_contains: rule.title_contains.clone(),
             action: rule.action.clone(),
             workspace: rule.workspace,
+            windows: rule.windows,
         }
     }
 }
@@ -635,6 +646,9 @@ pub(crate) fn format_rule_summary(rule: &RuleDoc) -> String {
         ("route", Some(workspace)) => format!("workspace {workspace}"),
         (action, _) => action.to_owned(),
     };
+    if let Some(windows) = rule.windows {
+        return format!("{} -> {target} [windows={}]", matchers.join(" "), windows.as_str());
+    }
     format!("{} -> {target}", matchers.join(" "))
 }
 

@@ -124,6 +124,7 @@ impl Doc {
             workspace_steps: self.lab(LabFeature::WorkspaceSteps),
             four_finger_swipe: self.lab(LabFeature::FourFingerSwipe),
             single_window_height: self.lab(LabFeature::SingleWindowHeight),
+            route_all_windows: self.lab(LabFeature::RouteAllWindows),
         }
     }
 
@@ -743,6 +744,8 @@ fn set_place(table: &mut dyn TableLike, place: Place) {
             };
             set_table_item(table, "action", value(action));
             table.remove("workspace");
+            // `windows` belongs to route rules only; the parser rejects it anywhere else.
+            table.remove("windows");
         }
     }
 }

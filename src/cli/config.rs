@@ -222,6 +222,7 @@ impl Key {
             Self::Lab(LabFeature::WorkspaceSteps) => "labs.workspace_steps",
             Self::Lab(LabFeature::FourFingerSwipe) => "labs.four_finger_swipe",
             Self::Lab(LabFeature::SingleWindowHeight) => "labs.single_window_height",
+            Self::Lab(LabFeature::RouteAllWindows) => "labs.route_all_windows",
         }
     }
 

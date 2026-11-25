@@ -103,3 +103,51 @@ fn config_show_lists_only_the_lab_switches_the_file_sets() {
     let text = temp.run(&["config", "show"]).stdout.unwrap();
     assert!(!text.contains("swipe_switch"), "{text}");
 }
+
+#[test]
+fn rules_add_windows_flag_writes_the_route_key_and_keeps_it() {
+    let temp = TempConfig::new("rules-windows-key");
+    for refused in [
+        &["--workspace", "4", "--windows", "every"][..],
+        &["--pin", "--windows", "all"],
+        &["--workspace", "4", "--windows=all", "--windows=first"],
+    ] {
+        let mut args = vec!["rules", "add", "--app", "com.google.Chrome"];
+        args.extend_from_slice(refused);
+        assert_eq!(temp.run(&args).exit_code, 1, "{refused:?}");
+    }
+
+    let route = temp.run(&[
+        "rules",
+        "add",
+        "--app",
+        "com.google.Chrome",
+        "--workspace=4",
+        "--windows=all",
+    ]);
+    assert_eq!(route.exit_code, 0, "{:?}", route.stderr);
+    assert!(
+        route.stdout.as_deref().is_some_and(|out| out.ends_with("[windows=all]")),
+        "{:?}",
+        route.stdout
+    );
+    // Later edits through the CLI rewrite the file; the key must come through them.
+    for edit in [
+        &["config", "set", "labs.route_all_windows", "true"][..],
+        &["rules", "add", "--app", "com.example.Notes", "--tile"],
+    ] {
+        let outcome = temp.run(edit);
+        assert_eq!(outcome.exit_code, 0, "{edit:?}: {:?}", outcome.stderr);
+    }
+    let listed: Value = serde_json::from_str(
+        temp.run(&["rules", "list", "--json"])
+            .stdout
+            .as_deref()
+            .unwrap(),
+    )
+    .unwrap();
+    assert_eq!(listed["rules"][0]["windows"], "all");
+    assert!(listed["rules"][1].get("windows").is_none());
+    let config = Config::parse(&temp.read()).unwrap();
+    assert!(config.labs().route_all_windows);
+}
