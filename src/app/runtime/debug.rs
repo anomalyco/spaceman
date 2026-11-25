@@ -48,7 +48,9 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
         let focused = self.backend.focused_window();
         // The same resolver the focus command runs, from the same effective
         // focus, so these never drift from what the keys do (#382).
-        let origin = self.effective_focus(focused.clone());
+        let origin = self
+            .effective_focus(focused.clone())
+            .filter(|_| !self.empty_choice_stands(focused.as_ref()));
         let mut target = |direction| self.focus_target(origin.as_ref(), direction, outputs);
         let targets = DebugTargets {
             left: target(Direction::Left),

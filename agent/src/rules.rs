@@ -119,6 +119,7 @@ impl Doc {
             physical_displays: self.lab(LabFeature::PhysicalDisplays),
             recent_focus: self.lab(LabFeature::RecentFocus),
             swipe_switch: self.lab(LabFeature::SwipeSwitch),
+            empty_workspace_focus: self.lab(LabFeature::EmptyWorkspaceFocus),
         }
     }
 

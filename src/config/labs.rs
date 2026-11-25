@@ -28,6 +28,10 @@ pub struct LabsConfig {
     /// Settings › Shortcuts switch for it.
     #[serde(default)]
     pub swipe_switch: bool,
+    /// An empty workspace chosen on another display is the focused one for commands until
+    /// another window takes focus.
+    #[serde(default)]
+    pub empty_workspace_focus: bool,
 }
 
 impl LabsConfig {
@@ -41,6 +45,7 @@ impl LabsConfig {
             LabFeature::PhysicalDisplays => self.physical_displays,
             LabFeature::RecentFocus => self.recent_focus,
             LabFeature::SwipeSwitch => self.swipe_switch,
+            LabFeature::EmptyWorkspaceFocus => self.empty_workspace_focus,
         }
     }
 }
@@ -60,17 +65,21 @@ pub enum LabFeature {
     RecentFocus,
     /// An off switch for the three-finger workspace swipe (`settings.trackpad_swipe`).
     SwipeSwitch,
+    /// An empty workspace chosen on another display is the focused one for commands until
+    /// another window takes focus.
+    EmptyWorkspaceFocus,
 }
 
 impl LabFeature {
     /// Every switch, in the order `[labs]` lists them.
-    pub const ALL: [Self; 6] = [
+    pub const ALL: [Self; 7] = [
         Self::Scratchpad,
         Self::Activity,
         Self::PortraitEdgeRows,
         Self::PhysicalDisplays,
         Self::RecentFocus,
         Self::SwipeSwitch,
+        Self::EmptyWorkspaceFocus,
     ];
 
     /// The `[labs]` key that turns this feature on.
@@ -83,6 +92,7 @@ impl LabFeature {
             Self::PhysicalDisplays => "physical_displays",
             Self::RecentFocus => "recent_focus",
             Self::SwipeSwitch => "swipe_switch",
+            Self::EmptyWorkspaceFocus => "empty_workspace_focus",
         }
     }
 

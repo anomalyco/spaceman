@@ -114,6 +114,7 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
         if let WorkerCommand::Action(_, outputs) | WorkerCommand::Gesture(_, _, outputs) = &command
         {
             self.follow_displays(outputs);
+            self.settle_empty_choice(outputs);
         }
         // Once the button is up, a gesture whose mouse-up never arrived (an
         // unreadable final frame, #395) is over: its previews are undone.
@@ -217,22 +218,30 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
                 }
                 Ok(status)
             }
-            WorkerAction::SwitchWorkspace(workspace) => self.switch_with(
-                workspace,
-                outputs,
-                cancelled,
-                RepeatSwitch::CycleFocus,
-                origin,
-            ),
+            WorkerAction::SwitchWorkspace(workspace) => {
+                let status = self.switch_with(
+                    workspace,
+                    outputs.clone(),
+                    cancelled,
+                    RepeatSwitch::CycleFocus,
+                    origin,
+                )?;
+                self.note_workspace_choice(workspace, &outputs);
+                Ok(status)
+            }
             // A menu-bar or HUD click on the workspace already up re-focuses it;
             // clicking it again must not jump to another window.
-            WorkerAction::SelectWorkspace(workspace) => self.switch_with(
-                workspace,
-                outputs,
-                cancelled,
-                RepeatSwitch::KeepFocus,
-                origin,
-            ),
+            WorkerAction::SelectWorkspace(workspace) => {
+                let status = self.switch_with(
+                    workspace,
+                    outputs.clone(),
+                    cancelled,
+                    RepeatSwitch::KeepFocus,
+                    origin,
+                )?;
+                self.note_workspace_choice(workspace, &outputs);
+                Ok(status)
+            }
             WorkerAction::WorkspaceBackAndForth => {
                 self.workspace_back_and_forth(outputs, cancelled)
             }

@@ -36,11 +36,18 @@ const GROUPS: [(&str, &str, &[Lab]); 4] = [
     (
         "workspaces",
         "Workspaces",
-        &[(
-            LabFeature::SwipeSwitch,
-            "Swipe switch",
-            "Adds a switch in Shortcuts to turn the 3-finger swipe off",
-        )],
+        &[
+            (
+                LabFeature::SwipeSwitch,
+                "Swipe switch",
+                "Adds a switch in Shortcuts to turn the 3-finger swipe off",
+            ),
+            (
+                LabFeature::EmptyWorkspaceFocus,
+                "Focus empty workspaces on other displays",
+                "Commands act on an empty workspace you show on another display",
+            ),
+        ],
     ),
     (
         "menu-bar",
@@ -112,5 +119,9 @@ mod tests {
         }
         assert_eq!(slug(LabFeature::PhysicalDisplays), "physical-displays");
         assert_eq!(slug(LabFeature::RecentFocus), "recent-focus");
+        assert_eq!(
+            slug(LabFeature::EmptyWorkspaceFocus),
+            "empty-workspace-focus"
+        );
     }
 }

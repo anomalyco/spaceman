@@ -127,6 +127,9 @@ monitor = "main"
 # swipe_switch = true lets settings.trackpad_swipe turn the three-finger swipe
 # off, and adds its switch to Settings › Shortcuts. Settings › Labs has a switch
 # for each.
+# empty_workspace_focus = true makes an empty workspace chosen on another display
+# the focused one for commands such as Option+Shift+Tab, until another window
+# takes focus.
 #
 # [labs]
 # scratchpad = false
@@ -135,3 +138,4 @@ monitor = "main"
 # physical_displays = false
 # recent_focus = false
 # swipe_switch = false
+# empty_workspace_focus = false

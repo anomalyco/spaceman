@@ -11,8 +11,11 @@ use std::time::{Duration, Instant};
 use crate::workspace::WorkspaceId;
 use crate::{AppInstanceId, PhysicalWindowId};
 
+mod chosen;
 mod requests;
 mod target;
+
+pub(super) use chosen::EmptyChoice;
 
 /// How long Accessibility may keep reporting the previously focused window
 /// after a focus command. App activation is asynchronous, so a second ⌥L
@@ -74,6 +77,9 @@ pub(super) struct WorkspaceHistory {
 pub(super) struct FocusTracker {
     phase: FocusPhase,
     history: WorkspaceHistory,
+    /// An empty workspace chosen on another display while a window there kept
+    /// focus (`[labs] empty_workspace_focus`).
+    empty_choice: Option<EmptyChoice>,
     /// Restored Fullscreen Layout workspaces whose front tile is raised again
     /// on their first cycle after a restart.
     fullscreen_restore: HashSet<WorkspaceId>,
@@ -194,6 +200,8 @@ impl FocusTracker {
             }
         };
         stale.extend(left);
+        // Spaceman focused a window, which ends any choice of an empty workspace.
+        self.empty_choice = None;
         let mut unique = Vec::with_capacity(stale.len());
         for entry in stale {
             if entry.as_ref() != Some(&target) && !unique.contains(&entry) {
@@ -321,6 +329,13 @@ impl FocusTracker {
         workspace: WorkspaceId,
         seed: impl FnOnce() -> Option<WorkspaceId>,
     ) {
+        if self
+            .empty_choice
+            .as_ref()
+            .is_some_and(|choice| choice.workspace != workspace)
+        {
+            self.empty_choice = None;
+        }
         if self.history.current == Some(workspace) {
             return;
         }

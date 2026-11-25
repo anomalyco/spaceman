@@ -44,12 +44,33 @@ Move workspace to another display                          // ws.move-workspace
 ├── Option+Shift+Tab / ctl move-workspace [next|prev|<display>]
 ├── Orders displays left-to-right; wraps around for next/prev; persists assignment to config.toml
 ├── With no visible window focused (an empty workspace), moves the workspace switched to last
+├── [labs] empty_workspace_focus: also after choosing an empty workspace on another display while
+│   a window elsewhere keeps focus (see "Empty workspace chosen on another display" below)
 ├── Reveals & lays out source display's previous workspace -> lays out moved workspace on target
 │   -> parks target's displaced workspace (which is only that display's lane history, even when
 │   another selector for the same display, such as a UUID, assigns it); the replacement is the
 │   workspace the source display showed last, whichever selector assigns it
 ├── A float carried to a shorter display (its center off every display) still comes back
 └── Preserves Fullscreen Layout and focus on the moved workspace (focus history untouched); HUD on both displays
+
+Empty workspace chosen on another display (Lab)            // ws.empty-choice
+├── Off by default; Settings › Labs › Workspaces › Focus empty workspaces on other displays,
+│   [labs] empty_workspace_focus = true, or spaceman config set labs.empty_workspace_focus true
+├── Showing an empty workspace focuses nothing, so the window on the display you came from keeps
+│   keyboard input and stays reported as focused; with the Lab off, commands follow that window
+├── Chosen with Option+<ws>, ctl switch, the menu or the HUD, on a display other than the focused
+│   window's -> it is the focused workspace for commands, wherever it shows:
+│   ├── Option+Shift+Tab moves it; the other display's workspace stays and nothing about it is saved
+│   ├── Commands that need a window (Option+Shift+F, Option+Shift+H/J/K/L, Option+Shift+<ws>,
+│   │   Option+Shift+Space) report there is none, as on an empty workspace on the display in use
+│   └── Option+H/J/K/L starts from its display and focuses the nearest tile that way
+├── Ends when another window takes focus, Spaceman focuses a window (Option+H, Option+<ws> of
+│   another workspace), the workspace gains a window or leaves the screen, a display is connected,
+│   unplugged or rearranged, or the Lab is turned off
+├── Clicking the window that already had focus does not end it: Accessibility reports no change
+├── Unchanged: Option+Tab, an empty workspace chosen on the display in use, and a chosen workspace
+│   with windows (the window that takes focus decides)
+└── Not affected: where a new window opens, and typing (the window that kept focus keeps the keys)
 
 Move window without switching                              // ws.move-window
 ├── Option+Shift+<ws> / ctl move <ws> -> window parked on target, current workspace reflows and
@@ -309,6 +330,8 @@ on the same letter.
   `move_workspace_persisted_assignment_survives_config_reload`,
   `move_workspace_replaces_unplugged_assignment_and_rolls_back_on_error`;
   `src/app/tests/empty_workspace_move.rs` (an empty workspace on a non-main display, issue 201);
+  `src/app/tests/empty_workspace_choice.rs` (`[labs] empty_workspace_focus`: an empty workspace
+  chosen on another display is the focused one, issue 360);
   `src/app/tests/dual_selector_move.rs` (a display with a UUID and a `secondary` selector, issue 202).
 - Unit (FakeBackend), `src/app/tests/reported/`, one file per report: two selectors naming one
   display across a restart (`restart_dual_selector.rs`, issue 386), a reconnect

@@ -339,8 +339,8 @@ in the file are kept.
 them off Spaceman behaves exactly as if Labs did not exist: no extra shortcuts register and no
 command changes behavior. Unknown keys are config errors. Settings › Labs lists every switch,
 grouped by what it changes (`Windows`: Scratchpad, Portrait edge rows and Recent focus;
-`Workspaces`: Swipe switch; `Menu bar & HUD`: Physical display order; `Settings`: Activity), and
-flipping one there writes the same key.
+`Workspaces`: Swipe switch and Focus empty workspaces on other displays; `Menu bar & HUD`: Physical
+display order; `Settings`: Activity), and flipping one there writes the same key.
 
 ```toml
 [labs]
@@ -350,6 +350,7 @@ portrait_edge_rows = false            # optional (default: false); top/bottom dr
 physical_displays = false             # optional (default: false); menu bar in physical display order and shape
 recent_focus = false                  # optional (default: false); Option+H/J/K/L returns where you were
 swipe_switch = false                  # optional (default: false); lets trackpad_swipe turn swipes off
+empty_workspace_focus = false         # optional (default: false); see below
 ```
 
 `scratchpad = true` enables the Scratchpad (see [Controls › Scratchpad](controls.md#scratchpad-lab)) and
@@ -392,6 +393,14 @@ not focused since Spaceman started rank last; with none of them focused, the nea
 A further tile never wins for being more recent. Crossing displays, focus from a floating window or
 an empty workspace, Fullscreen Layout, and `Option+Shift+H/J/K/L` are unchanged. It applies live. In Settings it is
 `Labs › Windows › Recent focus`.
+
+`empty_workspace_focus = true` makes an empty workspace chosen on another display the focused
+workspace for commands. Showing an empty workspace focuses nothing, so the window on the display you
+came from keeps keyboard input and, with the switch off, commands such as `Option+Shift+Tab` and
+`Option+Shift+F` keep acting on that window's workspace. With it on they act on the empty workspace
+you chose, wherever it shows, until another window takes focus (see
+[Workspaces](features/workspaces.md)). The switch takes effect live. In Settings it is
+`Labs › Workspaces › Focus empty workspaces on other displays`.
 
 ```sh
 spaceman config set labs.activity true

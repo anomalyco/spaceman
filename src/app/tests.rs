@@ -7,6 +7,7 @@ mod drag_path;
 mod drag_rows;
 mod dual_selector_move;
 mod dwindle;
+mod empty_workspace_choice;
 mod empty_workspace_move;
 mod float;
 mod float_regressions;
