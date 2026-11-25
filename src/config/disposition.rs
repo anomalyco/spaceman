@@ -10,7 +10,7 @@
 
 use crate::WorkspaceId;
 
-use super::WindowDisposition;
+use super::{Config, WindowDisposition};
 
 /// How a window is managed, when a source decides it.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -88,6 +88,22 @@ impl DispositionPatch {
     #[must_use]
     pub fn pins(self) -> bool {
         self.management == Some(Management::Pin)
+    }
+}
+
+impl Config {
+    /// Whether some rule that can match `bundle_id`'s windows looks at titles, so a window's
+    /// disposition is unknown until its title is read.
+    #[must_use]
+    pub fn has_title_rules(&self, bundle_id: &str) -> bool {
+        self.rules.iter().any(|rule| {
+            rule.matcher.matches_titles()
+                && rule
+                    .matcher
+                    .bundle_id
+                    .as_deref()
+                    .is_none_or(|value| value == bundle_id)
+        })
     }
 }
 

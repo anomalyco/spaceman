@@ -214,8 +214,12 @@ Pinned floats                                              // ws.pin
 
 Reopened at a parking spot                                 // ws.stale-parked
 ├── An app quit while some windows were parked reopens them one pixel inside a display corner
-└── Every such window Spaceman neither parked nor owns (not only the focused one) is brought onto
-    that display, cascaded 24 pt apart, then recalled or adopted like any new window
+├── Every such window Spaceman neither parked nor owns (not only the focused one) is brought onto
+│   that display, cascaded 24 pt apart, then recalled or adopted like any new window
+├── A window an `ignore` rule matches, by app or title, stays where it opened; it is judged once
+│   and not read again until its frame or the displays change
+└── One whose title a rule needs but Accessibility cannot resolve yet waits, retried with the
+    same backoff as a window that cannot move
 
 Displays                                                    // ws.displays
 ├── Default: 1-5 main, 6-10 secondary; [[workspaces]] monitor = main | secondary | UUID | name
@@ -518,6 +522,10 @@ on the same letter.
   displays change, issue 481), `a_window_that_moves_after_a_failed_rescue_is_tried_again_at_once`,
   `a_window_one_pixel_off_its_parking_spot_is_still_rescued`,
   `one_pixel_and_empty_windows_at_a_parking_spot_are_never_rescued`,
+  `a_reopened_window_its_title_rule_ignores_stays_at_the_parking_spot` (an exact-title ignore
+  ahead of a route for every window of a never-observed app; a title not yet readable waits,
+  issue 562), `an_ignored_window_at_a_parking_spot_is_judged_once` (no further title reads or
+  moves until its frame changes, issue 562),
   `a_single_window_cold_launch_still_opens_on_the_active_workspace`, and
   `reopened_notes_find_their_workspaces_by_size`, and
   `same_size_reopened_windows_match_by_document_and_fuzzy_title_in_reverse_order`;

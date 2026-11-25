@@ -411,3 +411,83 @@ fn one_pixel_and_empty_windows_at_a_parking_spot_are_never_rescued() {
     assert_eq!(position_writes(&runtime, 30), 0);
     assert_eq!(position_writes(&runtime, 31), 0);
 }
+
+#[test]
+fn a_reopened_window_its_title_rule_ignores_stays_at_the_parking_spot() {
+    // The app was never observed before relaunching, and its windows are judged by title: an
+    // ignored one is left where it opened, while its sibling is still rescued (#562).
+    const CORNER: &str = "test.example.corner";
+    let tile = outputs().main().frame;
+    let parked = main_parked_frame(tile);
+    let (quiet, work, unread) = (reopened(7, 30), reopened(7, 31), reopened(7, 32));
+    let other = window(10);
+    let backend = FakeBackend {
+        frames: HashMap::from([
+            (quiet.clone(), parked),
+            (work, parked),
+            (unread.clone(), parked),
+            (other.clone(), tile),
+        ]),
+        observation: Some(observation(&other, tile)),
+        rule_probes: HashMap::from([
+            (30, (CORNER, Some("C1 Quiet"), true)),
+            (31, (CORNER, Some("C2 Work"), true)),
+            (32, (CORNER, None, false)),
+        ]),
+        ..FakeBackend::default()
+    };
+    let config = Config::parse(&format!(
+        "version = 1\n[labs]\nroute_all_windows = true\n\
+         [[rules]]\nbundle_id = '{CORNER}'\ntitle = 'C1 Quiet'\naction = 'ignore'\n\
+         [[rules]]\nbundle_id = '{CORNER}'\naction = 'route'\nworkspace = 5\nwindows = 'all'"
+    ))
+    .unwrap();
+    let mut runtime = runtime_with_config(backend, config);
+
+    runtime.cycle(outputs(), &AtomicBool::new(false)).unwrap();
+
+    assert_eq!(position_writes(&runtime, 30), 0);
+    assert_eq!(runtime.backend.frames[&quiet], parked);
+    assert_eq!(position_writes(&runtime, 31), 1);
+    // A title it could not read yet might still match the ignore rule: it waits.
+    assert_eq!(position_writes(&runtime, 32), 0);
+    assert_eq!(runtime.backend.frames[&unread], parked);
+}
+
+#[test]
+fn an_ignored_window_at_a_parking_spot_is_judged_once() {
+    // Judging a window reads its title through Accessibility, which a hung app makes wait out
+    // the timeout: an ignored one is not read again every cycle, only once it moves (#562).
+    let tile = outputs().main().frame;
+    let parked = main_parked_frame(tile);
+    let quiet = reopened(7, 30);
+    let other = window(10);
+    let backend = FakeBackend {
+        frames: HashMap::from([(quiet.clone(), parked), (other.clone(), tile)]),
+        observation: Some(observation(&other, tile)),
+        rule_probes: HashMap::from([(30, ("test.example.corner", Some("C1 Quiet"), true))]),
+        ..FakeBackend::default()
+    };
+    let config = Config::parse(
+        "version = 1\n[[rules]]\nbundle_id = 'test.example.corner'\ntitle = 'C1 Quiet'\naction = 'ignore'",
+    )
+    .unwrap();
+    let mut runtime = runtime_with_config(backend, config);
+    let cancelled = AtomicBool::new(false);
+
+    runtime.cycle(outputs(), &cancelled).unwrap();
+    runtime.cycle(outputs(), &cancelled).unwrap();
+    assert_eq!(runtime.backend.rule_probe_calls, vec![30]);
+    assert_eq!(position_writes(&runtime, 30), 0);
+
+    // Resized at the spot: judged again, and still left alone.
+    let resized = main_parked_frame(crate::Rect {
+        width: tile.width / 2,
+        ..tile
+    });
+    runtime.backend.frames.insert(quiet.clone(), resized);
+    runtime.cycle(outputs(), &cancelled).unwrap();
+    assert_eq!(runtime.backend.rule_probe_calls, vec![30, 30]);
+    assert_eq!(position_writes(&runtime, 30), 0);
+    assert_eq!(runtime.backend.frames[&quiet], resized);
+}

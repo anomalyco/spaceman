@@ -234,6 +234,36 @@ pub fn frame(id: &PhysicalWindowId) -> Result<Rect, WindowAccessError> {
     })
 }
 
+/// What window rules match on, for a window no observation lists (one an app reopened at a
+/// parking spot). Its title stays in memory only; never log it.
+pub struct WindowRuleProbe {
+    pub bundle_id: String,
+    /// The window's title, `None` when it has none or Accessibility could not read it.
+    pub title: Option<std::sync::Arc<str>>,
+    /// Whether Accessibility resolved the window, so a missing title is an answer.
+    pub resolved: bool,
+}
+
+/// Reads `id`'s app bundle ID and window title for rule matching.
+#[must_use]
+pub fn window_rule_probe(id: &PhysicalWindowId) -> Option<WindowRuleProbe> {
+    let bundle_id = autoreleasepool(|_| {
+        running_application(&id.app)?
+            .bundleIdentifier()
+            .map(|value| value.to_string())
+    })?;
+    let read = with_managed_window_result(id, |window| {
+        Ok(attribute::<CFString>(window, "AXTitle")
+            .ok()
+            .map(|title| std::sync::Arc::from(title.to_string())))
+    });
+    Some(WindowRuleProbe {
+        bundle_id,
+        resolved: read.is_ok(),
+        title: read.ok().flatten(),
+    })
+}
+
 pub fn set_position_only(id: &PhysicalWindowId, target: Rect) -> ApplyOutcome {
     write_position(id, target, position_matches)
 }

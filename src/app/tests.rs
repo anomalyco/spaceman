@@ -152,6 +152,11 @@ struct FakeBackend {
     tab_detach: Option<FakeTabDetach>,
     /// Virtual time: it moves only when a test advances it.
     clock: FakeClock,
+    /// Bundle ID, title and whether Accessibility resolved it, by window ID, for windows
+    /// no observation lists.
+    rule_probes: HashMap<u32, (&'static str, Option<&'static str>, bool)>,
+    /// Window IDs whose bundle and title were read, in order.
+    rule_probe_calls: Vec<u32>,
 }
 
 struct FakeClock(Instant);
@@ -343,6 +348,19 @@ impl WorkspaceBackend for FakeBackend {
             }
         }
         outcome
+    }
+
+    fn window_rule_probe(
+        &mut self,
+        window: &crate::PhysicalWindowId,
+    ) -> Option<macos::WindowRuleProbe> {
+        self.rule_probe_calls.push(window.window_id);
+        let (bundle_id, title, resolved) = *self.rule_probes.get(&window.window_id)?;
+        Some(macos::WindowRuleProbe {
+            bundle_id: bundle_id.into(),
+            title: title.map(Arc::from),
+            resolved,
+        })
     }
 
     fn set_parked_position(
