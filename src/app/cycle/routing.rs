@@ -120,7 +120,7 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
 
     /// Brings a float its observation sent to another workspace onto that workspace's display:
     /// to its remembered frame or the same place on that display when the workspace shows,
-    /// else parked with its recovery frame there (#415, #416).
+    /// else parked with that as its recovery frame (#415, #416, #560).
     fn place_float_home(
         &mut self,
         home: &FloatHome,
@@ -132,13 +132,18 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
             return true;
         };
         let to = output_for(&self.workspaces, home.workspace, outputs);
+        let remembered = home.remembered.filter(|frame| to.contains_center(*frame));
         if !visible.contains(&home.workspace) {
+            let outcome = match remembered {
+                Some(frame) => self.park_window_at(&home.window, from, frame, outputs),
+                None => self.park_window_across(&home.window, from, to, outputs),
+            };
             return matches!(
-                self.park_window_across(&home.window, from, to, outputs),
+                outcome,
                 macos::ApplyOutcome::Applied | macos::ApplyOutcome::Gone
             );
         }
-        match home.remembered.filter(|frame| to.contains_center(*frame)) {
+        match remembered {
             Some(frame) if !frame.position_approximately_equals(home.observed, 1) => {
                 let outcome = self.backend.set_position(&home.window, frame);
                 log_event!(

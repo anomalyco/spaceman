@@ -40,7 +40,7 @@ Placement recall (reboot, fresh start, or app relaunch)     // recover.memory
 │   ├── recall closes early once every placement is claimed or the app quits
 │   ├── exact AXDocument, then exact title, then fuzzy title, then frame (8 px), then size (8 px), then creation order
 │   ├── a placement saved floating floats again at its remembered frame, on its workspace's
-│   │   display, until Toggle Float tiles it
+│   │   display (a hidden workspace reveals it there too), until Toggle Float tiles it
 │   ├── route/ignore rules win; disabled/unmanaged workspaces skipped
 │   └── apps launched after the startup window open on the active workspace
 ├── An app relaunched mid-session (an update or restart) recalls its placements too: its new
