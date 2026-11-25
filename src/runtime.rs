@@ -121,6 +121,26 @@ impl Engine {
         placements_for(self.display_layout(), &self.model, settings)
     }
 
+    /// Whether this workspace's reconciliation would bind the app's focused window to its
+    /// one missing tile as a native-tab replacement
+    /// ([`crate::reconcile::replaces_native_tab`]).
+    pub(crate) fn replaces_native_tab(
+        &self,
+        settings: &Settings,
+        windows: &[crate::ObservedWindow],
+        unbound: &[PhysicalWindowId],
+        focused: Option<&PhysicalWindowId>,
+    ) -> bool {
+        crate::reconcile::replaces_native_tab(
+            &self.model,
+            &self.evidence,
+            settings,
+            windows,
+            unbound,
+            focused,
+        )
+    }
+
     pub(crate) fn record_placement_target(&mut self, slot: crate::SlotId, frame: crate::Rect) {
         self.evidence.previous_placements.insert(slot, frame);
     }
