@@ -338,9 +338,10 @@ in the file are kept.
 `[labs]` turns on experimental features one by one. Every switch is off by default, and with all of
 them off Spaceman behaves exactly as if Labs did not exist: no extra shortcuts register and no
 command changes behavior. Unknown keys are config errors. Settings › Labs lists every switch,
-grouped by what it changes (`Windows`: Scratchpad, Portrait edge rows and Recent focus;
-`Workspaces`: Swipe switch and Focus empty workspaces on other displays; `Menu bar & HUD`: Physical
-display order; `Settings`: Activity), and flipping one there writes the same key.
+grouped by what it changes (`Windows`: Scratchpad, Portrait edge rows, Recent focus and Dragged
+floats follow their display; `Workspaces`: Swipe switch and Focus empty workspaces on other
+displays; `Menu bar & HUD`: Physical display order; `Settings`: Activity), and flipping one there
+writes the same key.
 
 ```toml
 [labs]
@@ -351,6 +352,7 @@ physical_displays = false             # optional (default: false); menu bar in p
 recent_focus = false                  # optional (default: false); Option+H/J/K/L returns where you were
 swipe_switch = false                  # optional (default: false); lets trackpad_swipe turn swipes off
 empty_workspace_focus = false         # optional (default: false); see below
+float_follows_display = false         # optional (default: false); dragged floats join that display's workspace
 ```
 
 `scratchpad = true` enables the Scratchpad (see [Controls › Scratchpad](controls.md#scratchpad-lab)) and
@@ -368,6 +370,15 @@ keep recording either way. Turning it off while the pane is open returns Setting
 swipe row in Settings › Shortcuts into the **Swipe to switch workspace** switch (see
 [Trackpad Swipe](#trackpad-swipe)). With it off, `trackpad_swipe` is ignored and swipes work as before.
 In Settings it is `Labs › Workspaces › Swipe switch`.
+
+`float_follows_display = true` makes a floating window you drag to another display belong to the
+workspace showing there, as a dragged tile already does. When the drag ends with the window's center
+on another display, it joins that display's workspace and keeps its frame and its floating. Switching
+that display hides and brings it back with its new workspace, switching its old display no longer
+does, and Option+Tab, Option-backtick, the HUD, the menu, restarts and remembered placements all use
+the new workspace. A drop on the same display, a display showing no workspace, a pinned window, a
+window shown from the Scratchpad, and moves made by the app or by macOS change nothing. With it off,
+a dragged float stays with the workspace it had.
 
 `portrait_edge_rows = true` adds drop bands along the top and bottom edges of a display whose tiled
 area is taller than it is wide: dragging a tiled window into one docks it into a full-width,

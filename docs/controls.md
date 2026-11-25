@@ -74,9 +74,14 @@ not expanded. Removing or moving away the workspace's final tiled window exits F
 focus, and the remaining tiles re-fill the space it held. Floating is per window and follows that
 window's workspace, so it parks and restores with a switch and survives an agent restart; it clears
 when the window closes. A floating window moves, resizes, and moves between workspaces like any
-other window. Press `Option+Shift+Space` again to put it back on the tiles, where it joins them in
-stable order. Windows that a `float` rule keeps floating, or that their application will not let
-Spaceman resize, stay floating; toggle them after removing the rule instead.
+other window. Dragging a floating window to another display leaves it with its workspace unless
+the `Dragged floats follow their display` Lab is on (Settings › Labs, or `[labs]
+float_follows_display`; see [Configuration › Labs](configuration.md#labs)): then a drag that ends
+with the window's center on another display gives it to the workspace showing there, at the frame
+it was dropped at and still floating. Press `Option+Shift+Space` again to put it back on the tiles,
+where it joins them in stable order. Windows that a `float` rule keeps floating, or that their
+application will not let Spaceman resize, stay floating; toggle them after removing the rule
+instead.
 
 Dragging a managed tile over a sibling swaps it. Dropping near a tile edge creates a nested split;
 dropping inside a band along the display's left or right edge (including any outer gap, once the

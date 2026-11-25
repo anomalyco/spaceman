@@ -31,6 +31,11 @@ const GROUPS: [(&str, &str, &[Lab]); 4] = [
                 "Recent focus",
                 "⌥H/J/K/L goes to the bordering tile you used last",
             ),
+            (
+                LabFeature::FloatFollowsDisplay,
+                "Dragged floats follow their display",
+                "A floating window dropped on another display joins its workspace",
+            ),
         ],
     ),
     (

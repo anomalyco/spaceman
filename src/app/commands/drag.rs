@@ -47,6 +47,12 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
     ) -> Result<CycleStatus, String> {
         let Some(source) = self.workspaces.workspace_of(&window) else {
             self.gesture = None;
+            if !preview
+                && let Some(moved) =
+                    self.drop_floating_window(window.clone(), outputs.clone(), cancelled)
+            {
+                return moved;
+            }
             return self.cycle(outputs, cancelled);
         };
         if !self.is_visible(source, &outputs) || self.parked.contains_key(&window) {

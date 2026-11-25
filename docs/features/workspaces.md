@@ -79,7 +79,10 @@ Move window without switching                              // ws.move-window
 │   size and relative place); focus follows it and Option+Tab goes back
 ├── Target hidden on another display -> parked off the edge of the display it is on; its recovery
 │   frame moves onto the target's display, so showing the workspace brings it up there
-└── ctl move-app <bundle-id> <ws>     -> every current window of that app, tiled or floating, in one request
+├── ctl move-app <bundle-id> <ws>     -> every current window of that app, tiled or floating, in one request
+└── [labs] float_follows_display: a float dragged with its center onto another display moves to the
+    workspace showing there, keeping its frame (src/app/commands/float_drop.rs); same display, no
+    workspace there, pinned or Scratchpad windows, and app or macOS moves change nothing
 
 Send tab to workspace                                      // ws.move-tab
 ├── ctl move-tab <ws> [--follow] / a [shortcuts.bindings] chord (no default chord)

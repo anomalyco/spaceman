@@ -2,6 +2,7 @@ use super::*;
 
 mod drag;
 mod float;
+mod float_drop;
 mod gesture;
 mod sizing;
 #[cfg(test)]
