@@ -74,14 +74,35 @@ pub fn target<'a>(
     focused: &PhysicalWindowId,
     direction: Direction,
 ) -> Option<&'a NavigationTile> {
+    target_by_recency(tiles, focused, direction, |_| None)
+}
+
+/// Like [`target`], but when several tiles on the focused tile's workspace
+/// border it on the side pressed (they share part of its row or column and
+/// none has a nearer edge), the one `recency` ranks lowest wins: 0 is the
+/// most recently focused, None never focused. A further tile never wins for
+/// being more recent, and with no ranked bordering tile the choice is
+/// [`target`]'s. Crossing to another workspace is unchanged.
+#[must_use]
+pub fn target_by_recency<'a>(
+    tiles: &'a [NavigationTile],
+    focused: &PhysicalWindowId,
+    direction: Direction,
+    recency: impl Fn(&PhysicalWindowId) -> Option<usize>,
+) -> Option<&'a NavigationTile> {
     let current = tiles.iter().find(|tile| &tile.window == focused)?;
-    if let Some(local) = neighbor(
-        tiles
-            .iter()
-            .filter(|tile| tile.workspace == current.workspace && &tile.window != focused),
-        current.frame,
-        direction,
-    ) {
+    let local = tiles
+        .iter()
+        .filter(|tile| tile.workspace == current.workspace && &tile.window != focused);
+    if let Some(bordering) = bordering(local.clone(), current.frame, direction)
+        .into_iter()
+        .filter_map(|tile| recency(&tile.window).map(|rank| (rank, tile)))
+        .min_by_key(|(rank, _)| *rank)
+        .map(|(_, tile)| tile)
+    {
+        return Some(bordering);
+    }
+    if let Some(local) = neighbor(local, current.frame, direction) {
         return Some(local);
     }
     let current_bounds = workspace_bounds(tiles, current.workspace)?;
@@ -222,6 +243,29 @@ fn neighbor<'a>(
     direction: Direction,
 ) -> Option<&'a NavigationTile> {
     pick_best_rect(candidates.map(|tile| (tile, tile.frame)), from, direction)
+}
+
+/// The tiles the first rank of [`pick_best_rect`] ties on before its center
+/// offset decides: those sharing part of `from`'s band with the nearest edge.
+fn bordering<'a>(
+    candidates: impl Iterator<Item = &'a NavigationTile>,
+    from: Rect,
+    direction: Direction,
+) -> Vec<&'a NavigationTile> {
+    let ahead = candidates
+        .map(|tile| (Reach::new(from, tile.frame, direction), tile))
+        .filter(|(reach, _)| {
+            reach.gap >= -EDGE_TOLERANCE && reach.travel > 0 && reach.overlap > EDGE_TOLERANCE
+        })
+        .collect::<Vec<_>>();
+    let Some(nearest) = ahead.iter().map(|(reach, _)| reach.gap.max(0)).min() else {
+        return Vec::new();
+    };
+    ahead
+        .into_iter()
+        .filter(|(reach, _)| reach.gap.max(0) == nearest)
+        .map(|(_, tile)| tile)
+        .collect()
 }
 
 fn pick_best_rect<T: Copy>(
@@ -570,6 +614,82 @@ mod tests {
                 .map(|tile| tile.window.window_id),
             Some(60)
         );
+    }
+
+    fn by_recency(
+        tiles: &[NavigationTile],
+        from: u32,
+        direction: Direction,
+        order: &[u32],
+    ) -> Option<u32> {
+        let focused = &tiles
+            .iter()
+            .find(|tile| tile.window.window_id == from)
+            .unwrap()
+            .window;
+        target_by_recency(tiles, focused, direction, |window| {
+            order.iter().position(|id| *id == window.window_id)
+        })
+        .map(|tile| tile.window.window_id)
+    }
+
+    #[test]
+    fn the_most_recent_bordering_tile_wins() {
+        // `1 | (2 / 3)` on a 1280 by 800 display, the pair 200 and 600 tall.
+        let tiles = vec![
+            sized(1, 1, 0, 0, 640, 800),
+            sized(2, 1, 640, 0, 640, 200),
+            sized(3, 1, 640, 200, 640, 600),
+        ];
+        assert_eq!(id(&tiles, 1, Direction::Right), Some(3));
+        assert_eq!(by_recency(&tiles, 1, Direction::Right, &[1, 2, 3]), Some(2));
+        assert_eq!(by_recency(&tiles, 1, Direction::Right, &[1, 3, 2]), Some(3));
+        // A tile focused since starting outranks one that never was.
+        assert_eq!(by_recency(&tiles, 1, Direction::Right, &[1, 2]), Some(2));
+        // With none ranked, the geometric choice stands.
+        assert_eq!(by_recency(&tiles, 1, Direction::Right, &[1]), Some(3));
+        // `1 / (2 | 3)` on a portrait display.
+        let portrait = vec![
+            sized(1, 1, 0, 0, 1080, 960),
+            sized(2, 1, 0, 960, 540, 960),
+            sized(3, 1, 540, 960, 540, 960),
+        ];
+        assert_eq!(
+            by_recency(&portrait, 1, Direction::Down, &[1, 3, 2]),
+            Some(3)
+        );
+        assert_eq!(
+            by_recency(&portrait, 1, Direction::Down, &[1, 2, 3]),
+            Some(2)
+        );
+    }
+
+    #[test]
+    fn recency_never_reaches_past_a_nearer_tile() {
+        // `1 | (2 / (3 | 4))`: 4 lies further right than 2 and 3.
+        let tiles = vec![
+            sized(1, 1, 0, 0, 640, 800),
+            sized(2, 1, 640, 0, 640, 400),
+            sized(3, 1, 640, 400, 320, 400),
+            sized(4, 1, 960, 400, 320, 400),
+        ];
+        assert_eq!(
+            by_recency(&tiles, 1, Direction::Right, &[1, 4, 3, 2]),
+            Some(3)
+        );
+        assert_eq!(
+            by_recency(&tiles, 1, Direction::Right, &[1, 4, 2, 3]),
+            Some(2)
+        );
+        // Only 4 was focused: the geometric choice between 2 and 3 stands.
+        assert_eq!(
+            by_recency(&tiles, 1, Direction::Right, &[4]),
+            id(&tiles, 1, Direction::Right)
+        );
+        // Another workspace's tiles are never ranked.
+        let mut displays = tiles.clone();
+        displays.push(sized(5, 6, 1280, 0, 640, 800));
+        assert_eq!(by_recency(&displays, 2, Direction::Right, &[5, 4]), Some(5));
     }
 
     #[test]

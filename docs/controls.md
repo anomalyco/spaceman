@@ -16,7 +16,7 @@ fails after the old registrations are released, it pauses and reports `Hotkeys u
 | `Option+Shift+Tab` | Move the focused workspace to the next display (wrapping left-to-right) |
 | Option-backtick | Focus the next window on the workspace: tiles in stable order, then floating windows, wrapping |
 | Option-Shift-backtick | Focus the previous window in that same order |
-| `Option+H/J/K/L` | Focus the nearest tile left/down/up/right, including across displays |
+| `Option+H/J/K/L` | Focus the nearest tile left/down/up/right, including across displays (with `[labs] recent_focus`, the most recently focused of several bordering tiles) |
 | `Option+Shift+H/J/K/L` | Move the focused tile in that direction |
 | `Option+/` | Toggle the active workspace layout's root horizontal/vertical axis |
 | `Option+-` / `Option+=` | Shrink/grow the focused tile by 50 pixels at its immediate split |
@@ -287,7 +287,7 @@ Spaceman registers the `spaceman://` URL scheme (and clickable web bounce links 
 
 - `spaceman://settings` — open Settings
 - `spaceman://settings/<pane>` — open `general`, `rules`, `workspaces`, `shortcuts`, `labs`, `layout`, or `activity` (plus optional `/<focus>`); `activity` falls back to `general` while `[labs] activity` is off
-- `spaceman://labs` / `spaceman://labs/<slug>` — open Settings › Labs and highlight `<slug>`, a switch's key with `-` for `_` (`scratchpad`, `activity`, `portrait-edge-rows`, `physical-displays`)
+- `spaceman://labs` / `spaceman://labs/<slug>` — open Settings › Labs and highlight `<slug>`, a switch's key with `-` for `_` (`scratchpad`, `activity`, `portrait-edge-rows`, `physical-displays`, `recent-focus`)
 - `spaceman://features/<slug>` — open the Settings pane and highlight for a feature (e.g. `workspaces`, `rules`, `shortcuts`, `gaps`, `hud`)
 
 Deep links only open Settings and highlight the requested pane or card. They never modify

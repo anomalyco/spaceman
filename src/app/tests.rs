@@ -23,6 +23,7 @@ mod move_workspace;
 mod ordered_out;
 mod parking;
 mod physical_displays;
+mod recent_focus;
 mod reconciliation;
 mod reconnect_unsettled;
 mod reliability;

@@ -43,6 +43,8 @@ pub(crate) struct LabsDoc {
     pub portrait_edge_rows: Option<bool>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub physical_displays: Option<bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub recent_focus: Option<bool>,
 }
 
 impl LabsDoc {
@@ -51,6 +53,7 @@ impl LabsDoc {
             && self.activity.is_none()
             && self.portrait_edge_rows.is_none()
             && self.physical_displays.is_none()
+            && self.recent_focus.is_none()
     }
 
     /// The switch as the file asks for it: off while unset.
@@ -74,6 +77,7 @@ impl LabsDoc {
             LabFeature::Activity => self.activity,
             LabFeature::PortraitEdgeRows => self.portrait_edge_rows,
             LabFeature::PhysicalDisplays => self.physical_displays,
+            LabFeature::RecentFocus => self.recent_focus,
         }
     }
 
@@ -83,6 +87,7 @@ impl LabsDoc {
             LabFeature::Activity => &mut self.activity,
             LabFeature::PortraitEdgeRows => &mut self.portrait_edge_rows,
             LabFeature::PhysicalDisplays => &mut self.physical_displays,
+            LabFeature::RecentFocus => &mut self.recent_focus,
         }
     }
 }

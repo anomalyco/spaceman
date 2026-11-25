@@ -19,6 +19,8 @@ Automatic tiling                                        // tile.auto
 
 Focus                                                   // tile.focus
 ├── Option+H/J/K/L / ctl focus <dir> -> nearest tile in that direction, crossing displays
+│   ├── [labs] recent_focus -> of several tiles bordering the focused one on that side, the most
+│   │   recently focused (in-memory, per tile slot; floats don't count), else the nearest
 │   └── In Fullscreen Layout -> previous/next tile in stable order (see fullscreen-layout.md)
 ├── Option+` / ctl focus next        -> next window: tiles in stable order, then floats, wrapping
 │   └── Option+Shift+` / ctl focus prev -> the same ring, backward
@@ -108,6 +110,15 @@ pause, quit, or hotkey loss.
   the freeze for a window that refuses its frame where it is. `src/macos/apply.rs`
   `a_window_from_another_display_that_lands_short_is_sized_again` covers the native follow-up size
   write; the live clamp itself is not covered.
+- Unit, `src/navigation.rs` and `src/runtime.rs`: `[labs] recent_focus` picks the most recently
+  focused bordering tile and never a further one (`the_most_recent_bordering_tile_wins`,
+  `recency_never_reaches_past_a_nearer_tile`), and the per-slot order ignores floats
+  (`focus_recency_orders_tiles_and_ignores_floats`) and drops closed tiles, so a reused slot ID
+  starts unranked (`a_reused_slot_id_starts_unranked`).
+- Unit (FakeBackend), `src/app/tests/recent_focus.rs`: with `1 | (2 / 3)`, left and back from 3
+  returns to 3 with the Lab on (also when the second press comes before the new focus is
+  reported) and lands on 2 with it off; the `ctl debug` targets match the keys. No live test
+  covers it yet.
 - Unit (FakeBackend), `src/app/tests/gestures.rs` and `src/app/tests/drag_path.rs`:
   non-destructive drag previews (path-independent side drops, fast cross-display drops, cancel
   restoration), display outer left/right edge column drop bands (full edge sweep, outer gaps,

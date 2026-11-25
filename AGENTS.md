@@ -35,7 +35,7 @@ This file is the current engineering contract. README and `docs/` describe curre
 - `agent/`, `src/app.rs`, `src/app/app_loop.rs`, `src/app/app_loop/`, `src/app/worker.rs`,
   `src/app/bridge.rs`: single-process Rune host (`spaceman-agent`), owner-only capped logging, 25 ms
   `NSTimer` foreground pump, action queue, status, restore-before-exit coordination, in-process
-  Settings window (`General`, `Layout`, `Rules`, `Workspaces`, `Shortcuts`, `Activity`), first-run onboarding
+  Settings window (`General`, `Layout`, `Rules`, `Workspaces`, `Shortcuts`, `Activity`, `Labs`), first-run onboarding
   tour (`agent/src/onboarding.rs`, `agent/src/onboarding/`), non-activating Workspace HUD overlay (`agent/src/hud.rs`),
   Playground (`⇧⌘D` / `--playground`), and the worker boundary.
 - `agent/src/controls.rs`, `agent/src/controls/`, `agent/src/design_tokens.rs`: the Settings design

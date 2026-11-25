@@ -54,5 +54,4 @@ focused, and `mark` on the shown window tiles it again.
 ## Gaps
 
 - No live check drives the scratchpad shortcuts themselves.
-- No Settings › Labs toggle yet; the switch lives in `config.toml`.
 - Activating a hidden window's app (Dock, Cmd+Tab) does not summon it.

@@ -118,9 +118,13 @@ monitor = "main"
 # physical_displays = true lists the menu bar's workspaces and the menu's
 # display sections left to right, draws a portrait display's glyph and HUD
 # Layouts previews tall, and tells same-named displays apart ("left", "right").
+# recent_focus = true makes Option+H/J/K/L go to the most recently focused of
+# several tiles bordering the focused one on that side, so pressing one way and
+# back returns where you were.
 #
 # [labs]
 # scratchpad = false
 # activity = false
 # portrait_edge_rows = false
 # physical_displays = false
+# recent_focus = false
