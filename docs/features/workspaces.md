@@ -394,7 +394,8 @@ on the same letter.
 - Unit (FakeBackend), `src/app/tests/reported/`, one file per report: two selectors naming one
   display across a restart (`restart_dual_selector.rs`, issue 386), a reconnect
   (`reconnect_dual_selector.rs`, issue 404) and a config edit (`config_same_display_alias.rs`,
-  issue 423); moving a workspace back after switches between those selectors
+  issue 423, and moving the edited workspace away revealing the one shown just before it, issue
+  544); moving a workspace back after switches between those selectors
   (`move_back_reveals_last_shown.rs`, issue 400); restored cross-selector history
   (`restored_cross_selector_history.rs`, issue 401); a tall float's round trip
   (`tall_float_round_trip.rs`, issue 403); floats returning on reconnect
