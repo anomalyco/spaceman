@@ -77,6 +77,11 @@ pub(super) trait WorkspaceBackend {
     fn active_space_changed_at(&mut self) -> Option<Instant> {
         None
     }
+    /// When three or four fingers last touched the trackpad: a desktop swipe
+    /// shows the arriving Space before macOS reports a change (#513).
+    fn space_gesture_at(&mut self) -> Option<Instant> {
+        None
+    }
     fn raise_window(&mut self, window: &crate::PhysicalWindowId) -> bool;
     fn focus_window(&mut self, window: &crate::PhysicalWindowId) -> bool;
     /// Presses the app's "Move Tab to New Window" for its focused `window`.
@@ -242,6 +247,10 @@ impl WorkspaceBackend for MacWorkspaceBackend {
 
     fn active_space_changed_at(&mut self) -> Option<Instant> {
         macos::last_active_space_change()
+    }
+
+    fn space_gesture_at(&mut self) -> Option<Instant> {
+        macos::last_space_gesture()
     }
 
     fn raise_window(&mut self, window: &crate::PhysicalWindowId) -> bool {

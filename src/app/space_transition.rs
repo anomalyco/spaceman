@@ -14,9 +14,17 @@ use super::*;
 const SLIDE_ARRIVAL_WINDOW: Duration = Duration::from_secs(2);
 
 impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
-    /// When the macOS Space slide under way settles, while one is.
+    /// When the macOS Space slide under way settles, while one is. A trackpad
+    /// swipe between desktops brings the arriving desktop's windows on screen
+    /// while the fingers move, before macOS reports the change and even when
+    /// the swipe is reversed, so three or four fingers on the trackpad hold
+    /// layout too, until a settle after they lift (#513).
     pub(super) fn space_transition_until(&mut self) -> Option<Instant> {
-        let until = self.backend.active_space_changed_at()? + SPACE_TRANSITION_SETTLE;
+        let latest = self
+            .backend
+            .active_space_changed_at()
+            .max(self.backend.space_gesture_at())?;
+        let until = latest + SPACE_TRANSITION_SETTLE;
         (self.backend.now() < until).then_some(until)
     }
 

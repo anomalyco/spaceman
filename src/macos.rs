@@ -48,7 +48,7 @@ pub use presenter::{
     AppSink, AxBackend, EnhancedUi, InteractivePresenter, PresenterBackend, PresenterStats,
     WriteOutcome,
 };
-pub use spaces::{last_active_space_change, take_active_space_changed};
+pub use spaces::{last_active_space_change, last_space_gesture, take_active_space_changed};
 pub use swipes::SwipeMonitor;
 pub use tabs::{TabDetachResult, detach_tab};
 

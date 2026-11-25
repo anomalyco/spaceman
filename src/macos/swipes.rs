@@ -81,6 +81,14 @@ impl SwipeGate {
         }
         self.tracker.frame(at, touches)
     }
+
+    /// Whether the frame just seen could be macOS sliding between desktops:
+    /// three or four fingers touching, and not a pointer drag. macOS shows
+    /// the arriving desktop's windows from the first movement, before it
+    /// reports a Space change and even if the swipe is reversed (#513).
+    fn may_slide_spaces(&self, touches: &[(f64, f64)]) -> bool {
+        self.touching && !self.suppressed && matches!(touches.len(), 3 | 4)
+    }
 }
 
 /// Whether any pointer button is down in the login session, including synthetic
@@ -227,10 +235,12 @@ unsafe extern "C-unwind" fn tap_callback(
             context.left_button_down.set(false);
         }
         let button_down = context.left_button_down.get() || live_button_down;
-        let swipe = context
-            .gate
-            .borrow_mut()
-            .frame(ns_event.timestamp(), &touches, button_down);
+        let mut gate = context.gate.borrow_mut();
+        let swipe = gate.frame(ns_event.timestamp(), &touches, button_down);
+        if gate.may_slide_spaces(&touches) {
+            super::spaces::note_space_gesture();
+        }
+        drop(gate);
         if let Some((swipe, fingers)) = swipe {
             let point = CGEvent::location(Some(cg_event));
             let point = (point.x.round() as i32, point.y.round() as i32);
@@ -323,5 +333,31 @@ mod tests {
             sweep(&mut gate, 0.1, (0.6, 0.5), (0.2, 0.5), |_| false),
             [(Swipe::Left, Fingers::Three)]
         );
+    }
+
+    /// #513: macOS shows the arriving desktop from a swipe's first movement,
+    /// so three or four fingers on the trackpad hold layout, while a pointer
+    /// drag, a two-finger scroll and lifted fingers do not.
+    #[test]
+    fn three_or_four_touching_fingers_may_be_sliding_between_desktops() {
+        let mut gate = SwipeGate::default();
+        let three = fingers(0.3, 0.5, 3);
+        gate.frame(0.0, &three, false);
+        assert!(gate.may_slide_spaces(&three));
+        let four = fingers(0.3, 0.5, 4);
+        gate.frame(0.01, &four, false);
+        assert!(gate.may_slide_spaces(&four));
+        gate.frame(0.02, &[], false);
+        assert!(!gate.may_slide_spaces(&[]));
+
+        let two = fingers(0.3, 0.5, 2);
+        gate.frame(0.1, &two, false);
+        assert!(!gate.may_slide_spaces(&two));
+
+        gate.frame(0.2, &[], false);
+        gate.frame(0.3, &three, true);
+        assert!(!gate.may_slide_spaces(&three));
+        gate.frame(0.31, &three, false);
+        assert!(!gate.may_slide_spaces(&three));
     }
 }

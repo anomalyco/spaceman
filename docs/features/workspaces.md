@@ -525,9 +525,13 @@ on the same letter.
   windows; `a_swipe_keeps_the_slot_of_an_app_whose_snapshot_timed_out`,
   `an_ordered_out_window_without_a_swipe_still_settles` and
   `a_long_settled_swipe_no_longer_releases_ordered_out_windows` keep the timeout and settle
-  protections. When macOS posts the Space change relative to the slide is not covered, nor is
-  macOS reporting the arriving desktop's windows before the Space change mid-swipe, which can
-  still tile both desktops' windows together until the first cycle after the hold (#431).
+  protections. `fingers_swiping_between_desktops_hold_layout_before_any_space_change` (#513):
+  three or four fingers on the trackpad hold layout like a Space slide, before macOS posts any
+  change and when a swipe is reversed, so the outgoing desktop's tile is not resized and the
+  arriving window is not adopted beside it; `src/macos/swipes.rs`
+  `three_or_four_touching_fingers_may_be_sliding_between_desktops` covers which touches count.
+  When macOS posts the Space change relative to the slide is not covered, nor is a desktop change
+  made without the trackpad reporting the arriving desktop's windows before the change.
 - Unit (FakeBackend), `src/app/tests/state_machine.rs`: a seeded, virtual-time run of 3,000 random
   switches, moves, floats, pins, scratchpad commands, drags, resizes, display changes, Space
   slides, restorations, window opens and closes and outside focus changes, checking after every
