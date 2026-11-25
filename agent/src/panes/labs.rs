@@ -11,7 +11,7 @@ use crate::{Ui, controls, controls::Paint, view::scroll_body};
 type Lab = (LabFeature, &'static str, &'static str);
 
 /// The pane's groups, in order: a key, a title, and their Labs.
-const GROUPS: [(&str, &str, &[Lab]); 3] = [
+const GROUPS: [(&str, &str, &[Lab]); 4] = [
     (
         "windows",
         "Windows",
@@ -32,6 +32,15 @@ const GROUPS: [(&str, &str, &[Lab]); 3] = [
                 "⌥H/J/K/L goes to the bordering tile you used last",
             ),
         ],
+    ),
+    (
+        "workspaces",
+        "Workspaces",
+        &[(
+            LabFeature::SwipeSwitch,
+            "Swipe switch",
+            "Adds a switch in Shortcuts to turn the 3-finger swipe off",
+        )],
     ),
     (
         "menu-bar",

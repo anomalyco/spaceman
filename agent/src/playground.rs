@@ -181,6 +181,7 @@ mod tests {
             "Shortcuts/shortcuts-recording",
             "Shortcuts/shortcuts-refused",
             "Shortcuts/shortcuts-custom",
+            "Shortcuts/shortcuts-swipe-off",
             "Activity/activity",
             "HUD/hud-switch",
             "HUD/hud-empty",

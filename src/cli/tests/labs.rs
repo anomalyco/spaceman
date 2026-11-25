@@ -76,3 +76,27 @@ fn config_gets_sets_and_resets_labs_activity() {
     assert_eq!(unknown.exit_code, 1);
     assert!(unknown.stderr.unwrap().contains("unknown Lab"));
 }
+
+#[test]
+fn config_show_lists_only_the_lab_switches_the_file_sets() {
+    let temp = TempConfig::new("config-labs-show-unset");
+    temp.write("version = 1\n");
+    let set = temp.run(&["config", "set", "labs.scratchpad", "true"]);
+    assert_eq!(set.exit_code, 0, "{:?}", set.stderr);
+
+    let shown = temp.run(&["config", "show", "--json"]).stdout.unwrap();
+    let show: Value = serde_json::from_str(&shown).unwrap();
+    let labs = show["labs"].as_object().unwrap();
+    assert_eq!(labs.get("scratchpad"), Some(&Value::Bool(true)));
+    for unset in [
+        "activity",
+        "portrait_edge_rows",
+        "physical_displays",
+        "recent_focus",
+        "swipe_switch",
+    ] {
+        assert!(!labs.contains_key(unset), "{unset} in {shown}");
+    }
+    let text = temp.run(&["config", "show"]).stdout.unwrap();
+    assert!(!text.contains("swipe_switch"), "{text}");
+}

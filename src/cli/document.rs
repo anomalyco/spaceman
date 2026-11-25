@@ -45,6 +45,8 @@ pub(crate) struct LabsDoc {
     pub physical_displays: Option<bool>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub recent_focus: Option<bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub swipe_switch: Option<bool>,
 }
 
 impl LabsDoc {
@@ -54,6 +56,7 @@ impl LabsDoc {
             && self.portrait_edge_rows.is_none()
             && self.physical_displays.is_none()
             && self.recent_focus.is_none()
+            && self.swipe_switch.is_none()
     }
 
     /// The switch as the file asks for it: off while unset.
@@ -78,6 +81,7 @@ impl LabsDoc {
             LabFeature::PortraitEdgeRows => self.portrait_edge_rows,
             LabFeature::PhysicalDisplays => self.physical_displays,
             LabFeature::RecentFocus => self.recent_focus,
+            LabFeature::SwipeSwitch => self.swipe_switch,
         }
     }
 
@@ -88,6 +92,7 @@ impl LabsDoc {
             LabFeature::PortraitEdgeRows => &mut self.portrait_edge_rows,
             LabFeature::PhysicalDisplays => &mut self.physical_displays,
             LabFeature::RecentFocus => &mut self.recent_focus,
+            LabFeature::SwipeSwitch => &mut self.swipe_switch,
         }
     }
 }
@@ -152,6 +157,8 @@ pub(crate) struct SettingsDoc {
     )]
     pub mouse_follows_focus: Option<MouseFollowsFocus>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub trackpad_swipe: Option<bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub single_window_max_width: Option<i64>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub workspace_order: Option<Vec<WorkspaceId>>,
@@ -196,6 +203,7 @@ impl SettingsDoc {
             && self.layout.is_none()
             && self.update_channel.is_none()
             && self.mouse_follows_focus.is_none()
+            && self.trackpad_swipe.is_none()
             && self.single_window_max_width.is_none()
             && self.workspace_order.is_none()
             && self.gaps.is_empty()
@@ -290,6 +298,12 @@ impl SettingsDoc {
     pub(crate) fn effective_mouse_follows_focus(&self) -> MouseFollowsFocus {
         self.mouse_follows_focus.unwrap_or_default()
     }
+
+    /// The file's `trackpad_swipe`, `true` while unset. Swipes follow it only with
+    /// `[labs] swipe_switch` on; `config get` and `config show` report the file's value either way.
+    pub(crate) fn effective_trackpad_swipe(&self) -> bool {
+        self.trackpad_swipe.unwrap_or(true)
+    }
 }
 
 fn serialize_optional_hud_style<S: serde::Serializer>(
@@ -371,6 +385,7 @@ pub(crate) struct EffectiveSettings {
     pub layout: &'static str,
     pub update_channel: &'static str,
     pub mouse_follows_focus: &'static str,
+    pub trackpad_swipe: bool,
     pub single_window_max_width: i32,
     pub workspace_order: Vec<WorkspaceId>,
     pub gaps: EffectiveGaps,
@@ -464,6 +479,7 @@ impl ConfigDoc {
             layout: self.settings.effective_layout().as_str(),
             update_channel: self.settings.effective_update_channel().as_str(),
             mouse_follows_focus: self.settings.effective_mouse_follows_focus().as_str(),
+            trackpad_swipe: self.settings.effective_trackpad_swipe(),
             single_window_max_width: spacing.single_window_max_width,
             workspace_order: self.settings.workspace_order.clone().unwrap_or_default(),
             gaps: EffectiveGaps {

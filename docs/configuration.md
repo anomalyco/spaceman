@@ -38,6 +38,7 @@ hud_position = "bottom"               # optional (default: "bottom"); or "top"
 layout = "dwindle"                    # optional (default: "dwindle"); or "columns"
 update_channel = "stable"             # optional (default: "stable"); or "dev", a build of every merge
 mouse_follows_focus = "off"           # optional (default: "off"); or "display", "window"
+trackpad_swipe = true                 # optional (default: true); read only with [labs] swipe_switch
 single_window_max_width = 0           # optional (default: 0, off); or 320 through 16384 points
 workspace_order = []                  # optional (default: []); workspaces listed first, in this order
 
@@ -139,6 +140,27 @@ In Settings › General, **Workspace HUD** picks `Off`, `Icons` or `Layouts`. Wh
 capsule lists. `spaceman config reset` removes a key that `spaceman config set` accepts, back
 to its default; `settings.workspace_order` is edited in the file instead (see
 [Display Assignments](#display-assignments)).
+
+## Trackpad Swipe
+
+`settings.trackpad_swipe` is read only while the `swipe_switch` Lab is on (see [Labs](#labs)); with
+the Lab off, the three-finger swipe always steps through workspaces, whatever the key says. With the
+Lab on, `trackpad_swipe = true` (the default) keeps the swipe, and `trackpad_swipe = false` stops it
+from ever changing Spaceman's workspace, so macOS handles it as it would without Spaceman (for
+example, moving between macOS desktops). Spaceman only ever listens to the trackpad, so it never
+stops macOS from acting on the gesture.
+
+```sh
+spaceman config set labs.swipe_switch true
+spaceman config set trackpad_swipe false
+spaceman config reset trackpad_swipe
+```
+
+`spaceman config get trackpad_swipe` and `spaceman config show` print the value the file sets (or
+`true` while unset), whether or not the Lab is on.
+
+With the Lab on, Settings › Shortcuts shows **Swipe to switch workspace** under Workspaces, the same
+switch; with it off, that row is the fixed `3-finger swipe` keys as before.
 
 ## New-Window Layout
 
@@ -316,8 +338,9 @@ in the file are kept.
 `[labs]` turns on experimental features one by one. Every switch is off by default, and with all of
 them off Spaceman behaves exactly as if Labs did not exist: no extra shortcuts register and no
 command changes behavior. Unknown keys are config errors. Settings › Labs lists every switch,
-grouped by what it changes (`Windows`: Scratchpad, Portrait edge rows and Recent focus; `Menu bar &
-HUD`: Physical display order; `Settings`: Activity), and flipping one there writes the same key.
+grouped by what it changes (`Windows`: Scratchpad, Portrait edge rows and Recent focus;
+`Workspaces`: Swipe switch; `Menu bar & HUD`: Physical display order; `Settings`: Activity), and
+flipping one there writes the same key.
 
 ```toml
 [labs]
@@ -326,6 +349,7 @@ activity = false                      # optional (default: false); Settings › 
 portrait_edge_rows = false            # optional (default: false); top/bottom drop bands on portrait displays
 physical_displays = false             # optional (default: false); menu bar in physical display order and shape
 recent_focus = false                  # optional (default: false); Option+H/J/K/L returns where you were
+swipe_switch = false                  # optional (default: false); lets trackpad_swipe turn swipes off
 ```
 
 `scratchpad = true` enables the Scratchpad (see [Controls › Scratchpad](controls.md#scratchpad-lab)) and
@@ -338,6 +362,11 @@ hidden in the scratchpad brings them back on screen, where they tile again.
 and Save snapshot (see [Restarts and Recovery](features/restarts-and-recovery.md)). With it off the pane
 stays out of the Settings sidebar and `⌘6` opens Labs instead; `spaceman doctor` and the journal
 keep recording either way. Turning it off while the pane is open returns Settings to General.
+
+`swipe_switch = true` makes Spaceman read `settings.trackpad_swipe` and turns the fixed three-finger
+swipe row in Settings › Shortcuts into the **Swipe to switch workspace** switch (see
+[Trackpad Swipe](#trackpad-swipe)). With it off, `trackpad_swipe` is ignored and swipes work as before.
+In Settings it is `Labs › Workspaces › Swipe switch`.
 
 `portrait_edge_rows = true` adds drop bands along the top and bottom edges of a display whose tiled
 area is taller than it is wide: dragging a tiled window into one docks it into a full-width,
@@ -486,7 +515,8 @@ normal recovery data.
 
 Edits saved in Spaceman Settings or in an external editor take effect automatically: rule changes,
 workspace display assignments, `settings.hud`, `settings.hud_style`,
-`settings.hud_position`, `settings.mouse_follows_focus`, `settings.workspace_order`, `settings.gaps`, and
+`settings.hud_position`, `settings.mouse_follows_focus`, `settings.trackpad_swipe`,
+`settings.workspace_order`, `settings.gaps`, and
 `settings.single_window_max_width` reload without restarting (Settings › Layout retiles at once; an
 external edit applies on the next retile);
 `settings.update_channel` applies at the next update check. Global shortcuts for a

@@ -119,3 +119,29 @@ fn a_config_reload_applies_and_clears_the_order() {
         [WorkspaceId::ONE, named('E'), named('Q'), named('W')]
     );
 }
+
+#[test]
+fn trackpad_swipe_off_stops_swipes_only_with_its_lab_on_and_reloads_live() {
+    let off = "trackpad_swipe = false";
+    let lab = "[labs]\nswipe_switch = true";
+    let swipe = |runtime: &mut WorkspaceRuntime<FakeBackend>, swipe| {
+        runtime
+            .swipe(swipe, (500, 400), outputs(), &AtomicBool::new(false))
+            .unwrap()
+            .active[0]
+    };
+
+    // With the Lab off the setting is ignored: swipes switch exactly as before.
+    let mut runtime = keyboard_row(off);
+    assert_eq!(swipe(&mut runtime, Swipe::Left), named('E'));
+    assert_eq!(swipe(&mut runtime, Swipe::Right), WorkspaceId::ONE);
+
+    // With it on, the swipe leaves the workspace alone in either direction.
+    runtime.replace_config(config(&format!("{off}\n{lab}")));
+    assert_eq!(swipe(&mut runtime, Swipe::Left), WorkspaceId::ONE);
+    assert_eq!(swipe(&mut runtime, Swipe::Right), WorkspaceId::ONE);
+
+    // Back on (or unset) after a reload, swipes step through workspaces again.
+    runtime.replace_config(config(lab));
+    assert_eq!(swipe(&mut runtime, Swipe::Left), named('E'));
+}

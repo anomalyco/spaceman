@@ -599,7 +599,8 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
     }
 
     /// Left goes to the next workspace in the display's menu section, right to
-    /// the previous one. Nothing happens past either end.
+    /// the previous one. Nothing happens past either end, or while
+    /// `settings.trackpad_swipe` is off.
     pub(super) fn swipe(
         &mut self,
         swipe: Swipe,
@@ -607,6 +608,9 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
         outputs: macos::DisplayOutputs,
         cancelled: &AtomicBool,
     ) -> Result<CycleStatus, String> {
+        if !self.config.trackpad_swipe() {
+            return Ok(self.status(0, &outputs));
+        }
         let display_id = outputs.display_for_point(point).id.clone();
         let current = self
             .visible_workspaces(&outputs)
