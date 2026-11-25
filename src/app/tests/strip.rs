@@ -616,6 +616,75 @@ fn a_focus_step_glides_and_settles_into_the_rest_layout() {
     );
 }
 
+/// Motion: Off (`scrolling_strip_duration_ms = 0`). Even with a main thread ready to present
+/// glides, ⌥L starts none: no spring, no deadline, nothing handed over, and the columns are at
+/// their rest frames when the key returns.
+#[test]
+fn motion_off_snaps_columns_to_rest_without_a_glide() {
+    let (mut runtime, windows) =
+        four_windows(&format!("{LAB_ON}scrolling_strip_duration_ms = 0\n"));
+    runtime.backend.animate_strip = true;
+    assert_eq!(runtime.config.labs().strip_spring(), None);
+    press(&mut runtime, WorkerAction::ToggleStrip).unwrap();
+    press(&mut runtime, WorkerAction::Focus(Direction::Right)).unwrap();
+    press(&mut runtime, WorkerAction::Focus(Direction::Right)).unwrap();
+
+    assert!(
+        runtime.strip_views.outbox.is_empty(),
+        "nothing for the main thread: {:?}",
+        runtime.strip_views.outbox
+    );
+    assert!(!runtime.strip_in_motion(WorkspaceId::ONE));
+    assert!(runtime.strip_views.next_deadline().is_none());
+    assert_eq!(
+        runtime.strip_views.view(WorkspaceId::ONE).camera,
+        Some(crate::app::strip::ViewportCamera::Static(500.0))
+    );
+    // The same rest layout a glide settles into, already applied.
+    let rest = [
+        peek_left(500),
+        At::Shown(column(0, 500)),
+        At::Shown(column(500, 500)),
+        At::Parked,
+    ];
+    assert_strip(&runtime, &windows, &rest);
+
+    // Stepping back snaps too, and a cycle has nothing to settle.
+    press(&mut runtime, WorkerAction::Focus(Direction::Left)).unwrap();
+    press(&mut runtime, WorkerAction::Focus(Direction::Left)).unwrap();
+    runtime.cycle(outputs(), &AtomicBool::new(false)).unwrap();
+    assert!(runtime.strip_views.outbox.is_empty());
+    assert!(!runtime.strip_in_motion(WorkspaceId::ONE));
+    assert_eq!(runtime.backend.frames[&windows[0]], column(0, 500));
+    assert!(!runtime.parked.contains_key(&windows[0]));
+}
+
+/// Turning Motion off while a glide runs stops that glide: the next step halts the main thread
+/// and lays the strip out at rest.
+#[test]
+fn turning_motion_off_mid_glide_halts_it_and_snaps() {
+    let (mut runtime, windows) = four_windows(LAB_ON);
+    runtime.backend.animate_strip = true;
+    press(&mut runtime, WorkerAction::ToggleStrip).unwrap();
+    press(&mut runtime, WorkerAction::Focus(Direction::Right)).unwrap();
+    press(&mut runtime, WorkerAction::Focus(Direction::Right)).unwrap();
+    present(&mut runtime);
+    assert!(runtime.strip_in_motion(WorkspaceId::ONE));
+
+    let off = format!("{LAB_ON}scrolling_strip_duration_ms = 0\n");
+    runtime.replace_config(Config::parse(&off).unwrap());
+    press(&mut runtime, WorkerAction::Focus(Direction::Left)).unwrap();
+
+    assert!(matches!(
+        runtime.strip_views.outbox.as_slice(),
+        [crate::app::strip::StripCommand::Halt(WorkspaceId::ONE)]
+    ));
+    assert!(!runtime.strip_in_motion(WorkspaceId::ONE));
+    assert!(runtime.strip_views.next_deadline().is_none());
+    assert_eq!(runtime.backend.frames[&windows[1]], column(0, 500));
+    assert_eq!(runtime.backend.frames[&windows[2]], column(500, 500));
+}
+
 /// A cycle mid-glide can catch a wide column crossing the screen's edge centered off screen in
 /// the Accessibility snapshot and the on-screen list read after it, while the window-server
 /// snapshot read just before still had it centered on screen (seen live: Safari at 80% lost its

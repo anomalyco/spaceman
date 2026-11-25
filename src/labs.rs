@@ -9,7 +9,9 @@ mod glide;
 
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
-pub use glide::{DAMPING_KEY, DURATION_KEY, GlideDamping, GlideDuration, SHARED_EDGE_KEY};
+pub use glide::{
+    DAMPING_KEY, DURATION_KEY, GlideDamping, GlideDuration, GlideMotion, SHARED_EDGE_KEY,
+};
 
 pub use crate::motion::SharedEdge;
 use crate::{
@@ -29,7 +31,8 @@ pub struct LabsConfig {
     /// syntax (`"alt+shift+s"`).
     #[serde(default, skip_serializing_if = "LabShortcut::is_default")]
     pub scrolling_strip_shortcut: LabShortcut,
-    /// How long a strip glide takes, in milliseconds (80 to 900, 180 by default).
+    /// How long a strip glide takes, in milliseconds (80 to 900, 180 by default), or 0 for no
+    /// glide.
     #[serde(default, skip_serializing_if = "GlideDuration::is_default")]
     pub scrolling_strip_duration_ms: GlideDuration,
     /// The glide spring's damping ratio (0.6 to 1.3, 1.0 by default: no overshoot).
@@ -96,9 +99,10 @@ impl LabsConfig {
         *self == Self::default()
     }
 
-    /// The spring a strip glide rides, from its duration and damping.
+    /// The spring a strip glide rides, from its duration and damping, or `None` when the
+    /// strip snaps without one.
     #[must_use]
-    pub fn strip_spring(&self) -> SpringParams {
+    pub fn strip_spring(&self) -> Option<SpringParams> {
         glide::spring(
             self.scrolling_strip_duration_ms,
             self.scrolling_strip_damping,

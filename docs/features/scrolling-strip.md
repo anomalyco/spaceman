@@ -19,16 +19,19 @@ Lab switch (Settings › Labs row / [labs] scrolling_strip / config set labs.scr
 │       Backspace in the recorder puts the default back                       // strip.shortcut
 ├── Customize… (quiet button beside the switch, only while it is on) -> sheet     // strip.sheet
 │   ├── the strip under the display
-│   ├── Glide tuning (below; also [labs] / config set labs.…)
+│   ├── Motion and Next to another display (below; also [labs] / config set labs.…)
 │   ├── Shortcuts: toggle, glide, move, width; every chord read from the file, so the base
 │   │   modifier, a rebound shortcut and the strip's own chord show as they are ("Not set" if unbound)
 │   └── Done, Escape or a press outside closes; switching the strip off closes it too
 ├── Glide tuning (the sheet / [labs] / config set labs.…)                        // strip.tuning
-│   ├── Glide 120 · 180 · 280 · 400 ms   -> scrolling_strip_duration_ms (80-900, default 180)
-│   ├── Feel Bouncy · Snappy · Soft      -> scrolling_strip_damping 0.78 · 1.0 · 1.18 (0.6-1.3)
+│   ├── Motion Off · Fast · Smooth -> scrolling_strip_duration_ms 0 · 180 (default, key left
+│   │   out) · 260; a pick also removes scrolling_strip_damping. Off starts no glide: columns
+│   │   snap to their rest frames
 │   ├── Next to another display Tuck · Slide -> scrolling_strip_shared_edge "tuck" | "slide"
-│   └── a value the file holds that isn't a preset shows as an extra segment; all hot-reload
-│       before the next key press, and a running glide is retuned in place
+│   ├── by hand only: scrolling_strip_duration_ms 80-900 and scrolling_strip_damping 0.6-1.3
+│   │   (under 1 bounces); a glide that is none of the three picks shows as Custom
+│   └── all hot-reload before the next key press; a running glide is retuned in place, or
+│       halted and laid out at rest when Motion goes Off
 
 Toggle (focused workspace) Option+Shift+S / ctl strip                         // strip.toggle
 ├── On : columns at their widths from the left edge, no glide; the rest peek or park durably
@@ -52,7 +55,8 @@ Ribbon and camera (pure math: src/strip.rs)                                   //
 Glide (src/app/strip/motion.rs -> src/app/app_loop/glide.rs)                   // strip.glide
 ├── Worker: records every column the glide takes out of view in parked-windows.json and resizes
 │           columns whose width changed, then aims CameraSpring (SpringParams::for_duration from
-│           [labs]: by default critically damped, a 1,280 pt move arriving within 1 pt in 180 ms)
+│           [labs]: by default critically damped, a 1,280 pt move arriving within 1 pt in 180 ms;
+│           with scrolling_strip_duration_ms = 0 there is no spring and the layout is applied at once)
 │           from its current position and velocity; a moved column gets its own offset spring;
 │           sends a StripMotion to the main thread
 ├── Main thread: CADisplayLink runs only while a glide does; each vsync samples the springs and
@@ -120,11 +124,17 @@ shared edge: `sliding_past_a_shared_edge_keeps_each_column_centered_on_its_own_d
 `sliding_lets_a_column_overhang_a_shared_edge_up_to_its_center` (`src/motion/tests.rs`). Glide
 tuning: `the_defaults_are_the_default_spring`, `a_shorter_glide_is_a_proportionally_faster_spring`,
 `default_spring_is_critically_damped_and_settles_a_column_move_in_180_ms` (`src/motion/tests.rs`),
-`tuning_round_trips_and_stays_out_of_the_file_at_its_defaults`, `tuning_out_of_range_is_refused`
+`tuning_round_trips_and_stays_out_of_the_file_at_its_defaults`, `tuning_out_of_range_is_refused`,
+`a_zero_duration_is_no_glide_and_has_no_spring`,
+`motion_names_its_three_picks_and_leaves_a_hand_tuned_glide_unnamed`
 (`src/labs/glide.rs`), `retuning_a_spring_keeps_its_motion_continuous`,
 `strip_glide_tuning_round_trips_and_leaves_defaults_out` (CLI, `src/cli/tests/labs.rs`),
-`glide_tuning_round_trips_and_leaves_its_defaults_out` (Settings, `agent/src/rules/glide.rs`) and
-`pickers_offer_the_presets_and_a_custom_value_from_the_file` (`agent/src/labs/tuning.rs`). Customize
+`motion_writes_one_key_and_leaves_the_default_out`,
+`a_hand_tuned_glide_is_no_pick_until_one_is_made` (Settings, `agent/src/rules/glide.rs`),
+`the_sheet_has_two_settings_and_motion_defaults_to_fast` and
+`a_hand_tuned_glide_shows_as_custom_until_a_pick_replaces_it` (`agent/src/labs/tuning.rs`). Motion
+Off: `motion_off_snaps_columns_to_rest_without_a_glide` and
+`turning_motion_off_mid_glide_halts_it_and_snaps` (`src/app/tests/strip.rs`). Customize
 sheet: `customize_opens_the_strip_sheet_and_only_while_the_strip_is_on` (`agent/src/labs.rs`) and
 `every_key_in_the_sheet_follows_the_file` (`agent/src/labs/customize.rs`). Ribbon,
 camera and glide math: `src/strip/tests.rs`
@@ -144,8 +154,8 @@ Persistence: `persisted_strip_round_trips_and_excludes_fullscreen_layout`. Confi
 Settings › Labs -> Scrolling Strip switch on
 Focus a window on the workspace
 └── Option+Shift+S (or the shortcut picked on the card) / spaceman ctl strip -> toggle
-Settings › Labs -> Customize… -> the strip, Glide / Feel / Next to another display, and its keys
-└── spaceman config set labs.scrolling_strip_duration_ms 380   (likewise _damping, _shared_edge)
+Settings › Labs -> Customize… -> the strip, Motion / Next to another display, and its keys
+└── spaceman config set labs.scrolling_strip_duration_ms 0   (no glide; likewise _damping, _shared_edge)
 ```
 
 ## Existing Checks

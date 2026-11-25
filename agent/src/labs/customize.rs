@@ -1,4 +1,4 @@
-//! The Scrolling Strip's Customize sheet: its picture, the three glide settings, and the keys
+//! The Scrolling Strip's Customize sheet: its picture, its two settings, and the keys
 //! that drive it. Every key is read from the file, so a changed base modifier, a rebound
 //! shortcut and the strip's own chord all show as they are. Changes apply at once; Done only
 //! closes.

@@ -2,7 +2,8 @@
 //! A key at its default leaves the file; one the file holds out of range reads as the default.
 
 use spaceman::labs::{
-    DAMPING_KEY, DURATION_KEY, GlideDamping, GlideDuration, SHARED_EDGE_KEY, SharedEdge,
+    DAMPING_KEY, DURATION_KEY, GlideDamping, GlideDuration, GlideMotion, SHARED_EDGE_KEY,
+    SharedEdge,
 };
 use toml_edit::{Item, value};
 
@@ -24,9 +25,18 @@ impl Doc {
             .unwrap_or_default()
     }
 
-    pub fn set_strip_duration(&mut self, duration: GlideDuration) {
+    /// Settings' pick for the glide, or `None` when the file tunes it by hand.
+    pub fn strip_motion(&self) -> Option<GlideMotion> {
+        GlideMotion::of(self.strip_duration(), self.strip_damping())
+    }
+
+    /// Writes `motion` as the file's one glide key (none for the default), dropping a
+    /// hand-tuned damping so the pick is exactly what runs.
+    pub fn set_strip_motion(&mut self, motion: GlideMotion) {
+        let duration = motion.duration();
         let item = (!duration.is_default()).then(|| value(i64::from(duration.ms())));
         self.set_key("labs", DURATION_KEY, item);
+        self.set_key("labs", DAMPING_KEY, None);
     }
 
     pub fn strip_damping(&self) -> GlideDamping {
@@ -37,11 +47,6 @@ impl Doc {
             })
             .and_then(|ratio| GlideDamping::new(ratio).ok())
             .unwrap_or_default()
-    }
-
-    pub fn set_strip_damping(&mut self, damping: GlideDamping) {
-        let item = (!damping.is_default()).then(|| value(damping.ratio()));
-        self.set_key("labs", DAMPING_KEY, item);
     }
 
     pub fn strip_shared_edge(&self) -> SharedEdge {
@@ -61,46 +66,72 @@ impl Doc {
 mod tests {
     use spaceman::{
         config::Config,
-        labs::{GlideDamping, GlideDuration, LabFeature, SharedEdge},
+        labs::{GlideMotion, LabFeature, SharedEdge},
     };
 
     use super::Doc;
 
     #[test]
-    fn glide_tuning_round_trips_and_leaves_its_defaults_out() {
+    fn motion_writes_one_key_and_leaves_the_default_out() {
         let source = "version = 1\n\n[labs]\nscrolling_strip = true\n";
         let mut doc = Doc::parse(source);
-        assert!(doc.strip_duration().is_default());
-        assert!(doc.strip_damping().is_default());
+        assert_eq!(doc.strip_motion(), Some(GlideMotion::Fast));
         assert_eq!(doc.strip_shared_edge(), SharedEdge::Tuck);
 
-        doc.set_strip_duration(GlideDuration::new(150).unwrap());
-        doc.set_strip_damping(GlideDamping::new(0.78).unwrap());
+        doc.set_strip_motion(GlideMotion::Smooth);
         doc.set_strip_shared_edge(SharedEdge::Slide);
-        assert_eq!(doc.strip_duration().ms(), 150);
-        assert_eq!(doc.strip_damping().ratio(), 0.78);
+        assert_eq!(doc.strip_motion(), Some(GlideMotion::Smooth));
         assert_eq!(doc.strip_shared_edge(), SharedEdge::Slide);
         let tuned = doc.source();
         assert!(
-            tuned.contains("scrolling_strip_duration_ms = 150"),
+            tuned.contains("scrolling_strip_duration_ms = 260"),
             "{tuned}"
         );
-        assert!(tuned.contains("scrolling_strip_damping = 0.78"), "{tuned}");
+        assert!(!tuned.contains("scrolling_strip_damping"), "{tuned}");
         assert!(
             tuned.contains("scrolling_strip_shared_edge = \"slide\""),
             "{tuned}"
         );
         let labs = Config::parse(&tuned).unwrap().labs();
-        assert_eq!(labs.scrolling_strip_duration_ms.ms(), 150);
+        assert_eq!(labs.scrolling_strip_duration_ms.ms(), 260);
         assert_eq!(labs.scrolling_strip_shared_edge, SharedEdge::Slide);
+        assert_eq!(labs, doc.labs());
 
-        doc.set_strip_duration(GlideDuration::default());
-        doc.set_strip_damping(GlideDamping::default());
+        doc.set_strip_motion(GlideMotion::Off);
+        assert!(
+            doc.source().contains("scrolling_strip_duration_ms = 0"),
+            "{}",
+            doc.source()
+        );
+        assert_eq!(doc.strip_motion(), Some(GlideMotion::Off));
+        assert_eq!(doc.labs().strip_spring(), None);
+        assert_eq!(Config::parse(&doc.source()).unwrap().labs(), doc.labs());
+
+        doc.set_strip_motion(GlideMotion::Fast);
         doc.set_strip_shared_edge(SharedEdge::default());
         assert_eq!(doc.source(), source);
         // Switching the Lab off leaves no empty table behind.
         doc.set_lab(LabFeature::ScrollingStrip, false);
         assert!(!doc.source().contains("[labs]"));
+    }
+
+    #[test]
+    fn a_hand_tuned_glide_is_no_pick_until_one_is_made() {
+        let mut doc = Doc::parse(
+            "version = 1\n[labs]\nscrolling_strip_duration_ms = 400\n\
+             scrolling_strip_damping = 0.78\n",
+        );
+        assert_eq!(doc.strip_motion(), None);
+        assert_eq!(doc.strip_duration().ms(), 400);
+        assert_eq!(doc.strip_damping().ratio(), 0.78);
+        // A pick replaces both keys.
+        doc.set_strip_motion(GlideMotion::Fast);
+        assert_eq!(doc.strip_motion(), Some(GlideMotion::Fast));
+        assert!(
+            !doc.source().contains("scrolling_strip_d"),
+            "{}",
+            doc.source()
+        );
     }
 
     #[test]
@@ -111,6 +142,7 @@ mod tests {
         );
         assert!(doc.strip_duration().is_default());
         assert!(doc.strip_damping().is_default());
+        assert_eq!(doc.strip_motion(), Some(GlideMotion::Fast));
         assert_eq!(doc.strip_shared_edge(), SharedEdge::Tuck);
     }
 }

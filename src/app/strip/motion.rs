@@ -168,10 +168,15 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
 
     /// Aims `workspace`'s camera at `plan`, starting or bending a glide when the target or a
     /// column's ribbon position changed. Returns whether a glide owns the strip's windows now.
+    /// With no one to present a glide, or the glide turned off, the camera rests on the target
+    /// at once and the caller lays the strip out there.
     pub(in crate::app) fn steer_strip(&mut self, workspace: WorkspaceId, plan: &StripPlan) -> bool {
         let now = Instant::now();
-        let animates = self.backend.presents_motion();
-        let params = self.config.labs().strip_spring();
+        let params = self
+            .config
+            .labs()
+            .strip_spring()
+            .filter(|_| self.backend.presents_motion());
         let view = &mut self.strip_views.views[workspace.index()];
         let placed: HashMap<_, _> = plan
             .ribbon
@@ -181,6 +186,18 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
         let Some(camera) = view.camera else {
             view.camera = Some(ViewportCamera::Static(plan.target));
             view.placed = placed;
+            return false;
+        };
+        let Some(params) = params else {
+            // A glide still running when it was turned off stops here.
+            if matches!(camera, ViewportCamera::Animating(_)) {
+                self.strip_views.outbox.push(StripCommand::Halt(workspace));
+            }
+            let view = &mut self.strip_views.views[workspace.index()];
+            view.camera = Some(ViewportCamera::Static(plan.target));
+            view.placed = placed;
+            view.shifts.clear();
+            view.settles_at = None;
             return false;
         };
         let mut changed = (camera.target() - plan.target).abs() >= 0.5;
@@ -201,15 +218,10 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
         }
         view.shifts.retain(|slot, _| placed.contains_key(slot));
         view.placed = placed;
-        if !animates {
-            view.camera = Some(ViewportCamera::Static(plan.target));
-            view.shifts.clear();
-            return false;
-        }
         if !changed {
             return matches!(camera, ViewportCamera::Animating(_));
         }
-        if !self.prepare_strip_glide(workspace, plan, now) {
+        if !self.prepare_strip_glide(workspace, plan, params, now) {
             let view = &mut self.strip_views.views[workspace.index()];
             if matches!(view.camera, Some(ViewportCamera::Animating(_))) {
                 self.strip_views.outbox.push(StripCommand::Halt(workspace));
@@ -234,6 +246,7 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
         &mut self,
         workspace: WorkspaceId,
         plan: &StripPlan,
+        params: SpringParams,
         aimed: Instant,
     ) -> bool {
         let engine = self.workspaces.engine(workspace);
@@ -301,7 +314,7 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
         let Some(old_camera) = view.camera else {
             return false;
         };
-        let mut camera = old_camera.spring(self.config.labs().strip_spring(), now);
+        let mut camera = old_camera.spring(params, now);
         camera.retarget(plan.target, now);
         let current_camera = camera.position(now);
         let shift_at = |slot| {

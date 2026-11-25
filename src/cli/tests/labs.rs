@@ -90,7 +90,7 @@ fn strip_glide_tuning_round_trips_and_leaves_defaults_out() {
     ));
     let labs = Config::parse(&temp.read()).unwrap().labs();
     assert_eq!(labs.scrolling_strip_shared_edge, SharedEdge::Slide);
-    let spring = labs.strip_spring();
+    let spring = labs.strip_spring().expect("a glide");
     assert_eq!(spring.damping_ratio, 0.78);
     assert!(
         spring.angular_frequency() < spaceman::motion::SpringParams::default().angular_frequency()
@@ -116,6 +116,15 @@ fn strip_glide_tuning_round_trips_and_leaves_defaults_out() {
         assert_eq!(refused.exit_code, 1, "{key} = {value}");
         assert!(refused.stderr.unwrap().starts_with("invalid value for"));
     }
+
+    // 0 is no glide at all.
+    let off = temp.run(&["config", "set", "labs.scrolling_strip_duration_ms", "0"]);
+    assert_eq!(off.exit_code, 0);
+    assert_eq!(get("labs.scrolling_strip_duration_ms"), "0");
+    assert_eq!(
+        Config::parse(&temp.read()).unwrap().labs().strip_spring(),
+        None
+    );
 
     // Back to the defaults: the keys leave the file.
     for (key, value) in [

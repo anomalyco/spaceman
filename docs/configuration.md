@@ -52,7 +52,7 @@ right = 0
 [labs]                                # optional; experimental features, each off by default
 scrolling_strip = false               # Scrolling Strip layout, toggled per workspace with its shortcut
 scrolling_strip_shortcut = "alt+shift+s" # optional; the strip's toggle, in [shortcuts] chord syntax
-scrolling_strip_duration_ms = 180     # optional; how long a strip glide takes, 80 through 900
+scrolling_strip_duration_ms = 180     # optional; how long a strip glide takes, 80 through 900; 0 is no glide
 scrolling_strip_damping = 1.0         # optional; glide spring damping, 0.6 through 1.3
 scrolling_strip_shared_edge = "tuck"  # optional; "tuck" or "slide" at an edge shared with a display
 scratchpad = false                    # the i3/sway-style Scratchpad and its two shortcuts
@@ -111,16 +111,19 @@ built-in shortcuts; a `[shortcuts]` binding on the same chord still wins. The de
 named workspace S's move shortcut. With every switch off Spaceman behaves exactly as without Labs. See
 [Scrolling Strip](features/scrolling-strip.md).
 
-The strip's glide tuning is also in Settings › Labs: while the strip is on, `Customize…` on its row
-opens a sheet with the three settings and the strip's keys as the file has them. Each key is left out
-of the file at its default:
+The strip's settings are also in Settings › Labs: while the strip is on, `Customize…` on its row
+opens a sheet with `Motion`, `Next to another display` and the strip's keys as the file has them.
+Each key is left out of the file at its default:
 
-- `scrolling_strip_duration_ms` (default `180`, 80 through 900) is how long a critically damped
-  glide across half a 2,560-point display takes to arrive within a point of its rest; shorter
-  moves arrive sooner, and 90 is twice as fast as 180. Settings offers 120, 180, 280 and 400 ms.
+- `scrolling_strip_duration_ms` (default `180`; `0`, or 80 through 900) is how long a critically
+  damped glide across half a 2,560-point display takes to arrive within a point of its rest;
+  shorter moves arrive sooner, and 90 is twice as fast as 180. `0` is no glide: columns snap to
+  where they rest. Settings' `Motion` writes this one key: Off is `0`, Fast is the default `180`
+  (so the key leaves the file), Smooth is `260`.
 - `scrolling_strip_damping` (default `1.0`, 0.6 through 1.3, kept to hundredths) is the spring's
-  damping ratio: `1.0` arrives without overshoot, lower overshoots a little and settles back
-  (Settings' Bouncy is `0.78`), higher eases in more softly (Soft is `1.18`).
+  damping ratio, set only by hand: `1.0` arrives without overshoot, lower overshoots a little and
+  settles back, higher eases in more softly. With a damping or a duration that is none of its three
+  picks, `Motion` shows Custom; picking Off, Fast or Smooth removes the damping.
 - `scrolling_strip_shared_edge` (default `"tuck"`) is how columns meet an edge the display shares
   with another monitor. `"tuck"` keeps them wholly on their own display: one crossing the edge
   waits there while its neighbor slides over it. `"slide"` lets them glide past the edge until just

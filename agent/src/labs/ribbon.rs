@@ -7,7 +7,8 @@ use rune::{Color, El, col, el, row, text};
 use crate::controls::Paint;
 
 const COLUMN_W: f32 = 116.0;
-const COLUMN_H: f32 = 52.0;
+/// Low enough that the whole sheet fits Settings' smallest window without scrolling.
+const COLUMN_H: f32 = 40.0;
 const SLIVER_W: f32 = 12.0;
 /// The display's bezel, and the columns' inset inside it: the display's corner is the card
 /// radius, so a column 4 in takes the small one (8 - 4).
@@ -22,7 +23,7 @@ pub(super) fn picture(p: Paint) -> El {
     col()
         .key("strip-picture")
         .w_full()
-        .py(12.0)
+        .py(8.0)
         .radius(radius)
         .clip_rounded(radius)
         .fill(c.bg_deep)
@@ -46,7 +47,7 @@ fn ribbon(p: Paint) -> El {
     };
     let display = col()
         .key("display")
-        .gap(8.0)
+        .gap(6.0)
         .items_center()
         .child(
             row()
