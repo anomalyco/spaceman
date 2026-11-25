@@ -589,11 +589,7 @@ fn run_replay(path: &str) -> Result<ReplayOutput, String> {
 
     for observation in replay.observations {
         let result = reconcile(&model, &observation, &evidence, &replay.settings);
-        evidence.previous_placements = result
-            .placements
-            .iter()
-            .map(|placement| (placement.slot, placement.frame))
-            .collect();
+        evidence.record(&observation, &result);
         model = result.model.clone();
         steps.push(result);
     }

@@ -13,6 +13,43 @@ const GHOSTTY_REPLACEMENT_SETTLE_CYCLES: u64 = 3;
 pub struct ReconciliationEvidence {
     #[serde(with = "crate::serde_map")]
     pub previous_placements: HashMap<SlotId, Rect>,
+    /// Each slot's window frame as last observed. An app that clamps its
+    /// window (a maximum size) never reaches the placement above, but its
+    /// incoming native tab takes the frame the outgoing one had.
+    #[serde(
+        default,
+        with = "crate::serde_map",
+        skip_serializing_if = "HashMap::is_empty"
+    )]
+    pub previous_frames: HashMap<SlotId, Rect>,
+}
+
+impl ReconciliationEvidence {
+    /// Remember an accepted cycle's targets and the frames it observed for
+    /// the slots still bound afterwards.
+    pub fn record(&mut self, observation: &NativeObservation, result: &Reconciliation) {
+        self.previous_placements = result
+            .placements
+            .iter()
+            .map(|placement| (placement.slot, placement.frame))
+            .collect();
+        let slots = &result.model.workspace.slots;
+        self.previous_frames
+            .retain(|id, _| slots.iter().any(|slot| slot.id == *id));
+        for app in &observation.applications {
+            let AppObservation::Complete { windows, .. } = app else {
+                continue;
+            };
+            for window in windows {
+                if let Some(slot) = slots
+                    .iter()
+                    .find(|slot| slot.bound_window() == Some(&window.id))
+                {
+                    self.previous_frames.insert(slot.id, window.frame);
+                }
+            }
+        }
+    }
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
@@ -381,26 +418,29 @@ fn replacement_candidate(
     candidate_matches_target(slot.id, &new[0], context)
 }
 
+/// The candidate sits where the slot's window was asked to go, or, when the
+/// app clamped that request, exactly where the outgoing window was last seen.
 fn candidate_matches_target(
     slot: SlotId,
     candidate: &PhysicalWindowId,
     context: &AppReconcileContext<'_>,
 ) -> bool {
-    context
-        .evidence
-        .previous_placements
-        .get(&slot)
-        .is_some_and(|target| {
-            context
-                .windows
-                .iter()
-                .find(|window| &window.id == candidate)
-                .is_some_and(|window| {
-                    window
-                        .frame
-                        .approximately_equals(*target, context.settings.frame_tolerance)
-                })
-        })
+    let Some(frame) = context
+        .windows
+        .iter()
+        .find(|window| &window.id == candidate)
+        .map(|window| window.frame)
+    else {
+        return false;
+    };
+    let evidence = context.evidence;
+    [
+        evidence.previous_placements.get(&slot),
+        evidence.previous_frames.get(&slot),
+    ]
+    .into_iter()
+    .flatten()
+    .any(|known| frame.approximately_equals(*known, context.settings.frame_tolerance))
 }
 
 fn remove_app(model: &mut Model, app: &AppInstanceId, decisions: &mut Vec<Decision>) {

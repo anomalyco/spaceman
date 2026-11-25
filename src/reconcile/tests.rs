@@ -297,6 +297,7 @@ fn valid_ghostty_replacement_preserves_slot() {
     let slot = first.model.workspace.slots[0].id;
     let evidence = ReconciliationEvidence {
         previous_placements: HashMap::from([(slot, OUTPUT)]),
+        ..ReconciliationEvidence::default()
     };
     let result = reconcile(
         &first.model,
@@ -368,6 +369,7 @@ fn finder_tab_replacement_keeps_its_slot_and_place_in_the_row() {
     let order: Vec<_> = first.model.workspace.slots.iter().map(|s| s.id).collect();
     let evidence = ReconciliationEvidence {
         previous_placements: HashMap::from([(order[0], left), (order[1], right)]),
+        ..ReconciliationEvidence::default()
     };
     let result = reconcile(
         &first.model,
@@ -403,6 +405,101 @@ fn finder_tab_replacement_keeps_its_slot_and_place_in_the_row() {
             },
         }]
     );
+}
+
+/// A tab group with a maximum size never reaches its Fullscreen Layout frame:
+/// the incoming tab is recognized by the frame the outgoing tab was clamped to.
+fn clamped_tab_switch(incoming: Rect) -> (Vec<SlotId>, Reconciliation) {
+    let tabs = app(10, 1);
+    let other = app(20, 1);
+    let clamped = Rect {
+        width: 600,
+        height: 500,
+        ..OUTPUT
+    };
+    let observation = NativeObservation {
+        cycle: 1,
+        mouse_down: false,
+        applications: vec![
+            complete(
+                &tabs,
+                "com.example.tabs",
+                Some(1),
+                vec![window(&tabs, 1, clamped)],
+            ),
+            complete(
+                &other,
+                "com.example.other",
+                Some(2),
+                vec![window(&other, 2, OUTPUT)],
+            ),
+        ],
+    };
+    let first = run(&Model::default(), 1, observation.applications.clone());
+    let order: Vec<_> = first.model.workspace.slots.iter().map(|s| s.id).collect();
+    let mut evidence = ReconciliationEvidence::default();
+    evidence.record(&observation, &first);
+    // Fullscreen Layout asks both tiles for the whole display.
+    evidence.previous_placements = HashMap::from([(order[0], OUTPUT), (order[1], OUTPUT)]);
+    let result = reconcile(
+        &first.model,
+        &NativeObservation {
+            cycle: 2,
+            mouse_down: false,
+            applications: vec![complete(
+                &tabs,
+                "com.example.tabs",
+                Some(3),
+                vec![window(&tabs, 3, incoming)],
+            )],
+        },
+        &evidence,
+        &Settings::for_output(OUTPUT),
+    );
+    (order, result)
+}
+
+#[test]
+fn clamped_tab_replacement_keeps_its_slot_at_the_outgoing_frame() {
+    let (order, result) = clamped_tab_switch(Rect {
+        width: 600,
+        height: 500,
+        ..OUTPUT
+    });
+
+    let slots = &result.model.workspace.slots;
+    assert_eq!(slots.iter().map(|s| s.id).collect::<Vec<_>>(), order);
+    assert_eq!(slots[0].bound_window().unwrap().window_id, 3);
+    assert_eq!(
+        result.decisions,
+        vec![Decision::NativeTabReplaced {
+            slot: order[0],
+            previous: PhysicalWindowId {
+                app: app(10, 1),
+                window_id: 1,
+            },
+            current: PhysicalWindowId {
+                app: app(10, 1),
+                window_id: 3,
+            },
+        }]
+    );
+}
+
+#[test]
+fn a_window_matching_neither_frame_still_gets_a_new_slot() {
+    let (order, result) = clamped_tab_switch(Rect {
+        x: 100,
+        width: 300,
+        height: 300,
+        ..OUTPUT
+    });
+
+    let slots = &result.model.workspace.slots;
+    assert_eq!(slots.len(), 2);
+    assert_eq!(slots[0].id, order[1]);
+    assert_ne!(slots[1].id, order[0]);
+    assert_eq!(slots[1].bound_window().unwrap().window_id, 3);
 }
 
 #[test]
