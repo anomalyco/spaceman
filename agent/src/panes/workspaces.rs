@@ -793,4 +793,43 @@ mod tests {
         let p = crate::controls::Paint::new(true, 2.0);
         let _ = pane(&ui, p);
     }
+
+    #[test]
+    fn a_name_two_extra_displays_share_resolves_where_the_engine_puts_it() {
+        use spaceman::macos::{DisplayOutput, DisplayOutputs};
+        use spaceman::{DisplaySelector, Rect};
+        // The right-hand screen is discovered first, the left-hand one sorts first. Issue 420.
+        let display = |id: &str, name: &str, x, is_main| DisplayOutput {
+            id: id.into(),
+            name: name.into(),
+            frame: Rect {
+                x,
+                y: 0,
+                width: 1000,
+                height: 800,
+            },
+            is_main,
+        };
+        let outputs = DisplayOutputs::new(vec![
+            display("center-id", "Main Panel", 0, true),
+            display("second-id", "Second Panel", 1000, false),
+            display("right-id", "External Panel", 2000, false),
+            display("left-id", "External Panel", -1000, false),
+        ])
+        .unwrap();
+        let choices = choices(&displays::connected(&outputs));
+        let nine = WorkspaceId::new(9).unwrap();
+        for saved in ["right-id", "left-id", "External Panel", "Main Panel", "main"] {
+            let doc = Doc::parse(&format!(
+                "version = 1\n[[workspaces]]\nworkspace = 9\nmonitor = '{saved}'\n"
+            ));
+            let monitor = effective_monitor(&doc, nine);
+            let engine = &outputs.resolve(&DisplaySelector::parse(&monitor)).id;
+            let (_, checked) = picker(&choices, &monitor);
+            assert_eq!(choices[checked].id.as_ref(), Some(engine), "{saved}");
+            let cards = sections(&doc, &choices, vec![nine]);
+            let card = cards.iter().find(|card| card.workspaces.contains(&nine));
+            assert_eq!(card.map(|card| &card.title), Some(&choices[checked].title));
+        }
+    }
 }

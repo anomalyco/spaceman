@@ -395,7 +395,9 @@ Defaults assign workspaces 1-5 to `main` and 6-10 to `secondary`. `monitor` acce
 - `main`, the display macOS marks as main;
 - `secondary`, the first attached non-main display;
 - an exact display UUID from `spaceman displays`;
-- an exact display name from `spaceman displays`.
+- an exact display name from `spaceman displays`. When two displays share that name, the first
+  one `spaceman displays` lists is used, and Settings › Workspaces shows the workspace under that
+  same display; use the UUID to pick the other.
 
 ```sh
 spaceman displays
