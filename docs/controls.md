@@ -45,7 +45,9 @@ Every shortcut above can be rebound, unbound, or replaced in the config file's `
 see [Configuration › Shortcuts](configuration.md#shortcuts). The table lists the built-in defaults.
 Settings › Shortcuts shows each shortcut's current chord: click its keys and press a new chord to
 rebind it (`esc` cancels, `⌫` clears it), or pick a Base modifier (`⌥`, `⌃⌥`, or `⌃⌥⌘`) to move
-every built-in shortcut at once. Changes register live, with no restart.
+every built-in shortcut at once. Changes register live, with no restart. If a saved table can't be
+registered, the pane still lists it; while the last working shortcuts stay registered it is marked
+**Previous shortcuts still run** and names each action's running chord where it differs.
 
 Named workspace shortcuts are registered only when referenced by config. If a configured letter
 overlaps a built-in shortcut, the workspace shortcut takes precedence. A `[shortcuts]` binding claims

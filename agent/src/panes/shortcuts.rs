@@ -92,6 +92,18 @@ pub fn pane(ui: &Ui, p: Paint) -> El {
 /// The base modifier every built-in shortcut holds, and a way back to the built-ins.
 fn modifier_rows(ui: &Ui, p: Paint, shortcuts: &Shortcuts) -> Vec<El> {
     let mut rows = Vec::new();
+    if running_shortcuts(ui).is_some() {
+        rows.push(controls::setting_row(
+            p,
+            "not-applied",
+            "Previous shortcuts still run",
+            Some((
+                "These rows show config.toml, which wasn't applied".into(),
+                p.muted(),
+            )),
+            row().key("none"),
+        ));
+    }
     if shortcuts.defaults {
         let labels = catalog::PRESETS.map(|(label, _)| label);
         let selected = catalog::PRESETS
@@ -142,6 +154,30 @@ fn modifier_rows(ui: &Ui, p: Paint, shortcuts: &Shortcuts) -> Vec<El> {
         ));
     }
     rows
+}
+
+/// The previous table, while it still runs because the saved one (which the rows show) was
+/// rejected. The agent publishes it only while those shortcuts are registered.
+fn running_shortcuts(ui: &Ui) -> Option<&Shortcuts> {
+    ui.agent.as_ref()?.running_shortcuts.as_ref()
+}
+
+/// What a shortcut runs as instead of its saved chords, while a rejected table leaves the
+/// previous one running; `None` when the two agree.
+fn running_note(
+    running: &Shortcuts,
+    saved: &Shortcuts,
+    named: &[WorkspaceId],
+    action: &Action,
+) -> Option<String> {
+    let chords = action.chords(running, named);
+    if chords == action.chords(saved, named) {
+        return None;
+    }
+    Some(chords.first().map_or_else(
+        || "Not running yet".to_owned(),
+        |chord| format!("Still runs {}", chord.keycaps().concat()),
+    ))
 }
 
 /// Saves the base modifier every built-in shortcut holds.
@@ -250,11 +286,14 @@ fn action_rows(
     actions
         .iter()
         .map(|action| {
+            let note = running_shortcuts(ui)
+                .and_then(|running| running_note(running, shortcuts, named, action))
+                .map(|note| (note, p.muted()));
             controls::setting_row(
                 p,
                 &format!("{}-row", action.id),
                 action.title,
-                None,
+                note,
                 shortcut_button(ui, p, shortcuts, named, action),
             )
         })

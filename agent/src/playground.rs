@@ -112,6 +112,7 @@ pub(crate) fn reset_fixture(ui: &mut Ui, pane: Pane) {
             WorkspaceId::named('M').unwrap_or(WorkspaceId::SIX),
         ],
         last_error: None,
+        running_shortcuts: None,
     });
 }
 
