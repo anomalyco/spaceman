@@ -9,8 +9,9 @@ use super::pill::HudView;
 pub const HOLD_MS: u64 = 1_150;
 /// Grace period before auto-dismissing once the pointer leaves the pill or a context menu closes.
 pub const RESUME_HOLD_MS: u64 = 600;
-/// How long the capsule's exit gets before the panel is ordered out. The exit spring is under
-/// 1/255 of the way from rest by then, so the cut removes nothing that shows.
+/// How long the capsule's exit gets before the panel is ordered out, so the cut removes nothing
+/// that shows. Reduce Motion sets it: Rune swaps the exit spring (under 1/255 by ~140 ms) for its
+/// fixed 0.18 s ease-in-out fade, which still shows at about 0.14 at 125 ms.
 pub const LEAVE_MS: u64 = 170;
 /// A freshly shown HUD draws its marker where the switch started for one frame, then sends it
 /// on without a hitch.
