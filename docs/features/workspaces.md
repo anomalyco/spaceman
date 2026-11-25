@@ -29,6 +29,14 @@ Swipe                                                      // ws.swipe
     Shortcuts › Swipe to switch workspace) -> swipes never switch; macOS keeps the gesture. Reloads
     live. With the Lab off, trackpad_swipe is ignored and the Shortcuts row stays fixed
 
+Step to the next or previous workspace (Lab: [labs] workspace_steps)  // ws.step
+├── ctl switch next|prev / a [shortcuts.bindings] chord (no built-in one) -> the swipe's stops
+│   (visible + occupied, in workspace order) on the focused display, stopping at either end;
+│   with no visible window focused, the display move-workspace would use
+├── ctl move next|prev [--follow] -> the focused window to the next/previous enabled workspace of
+│   its display, empty ones included, exactly as move <ws> [--follow]; stops at either end
+└── Lab off -> bindings skipped at registration, ctl reports "Workspace steps are off"
+
 Back-and-forth                                             // ws.back-and-forth
 ├── Option+Tab / ctl back-and-forth -> the workspace focused before this one, on any display
 │   (one global focus history; after a restart it starts from the focused display's lane history,
@@ -262,6 +270,7 @@ Keyboard (while tiling is enabled)
 Trackpad: three-finger swipe left/right -> next/previous workspace (turn macOS's three-finger
           "Swipe between full-screen applications" off or move it to four fingers)
 CLI: spaceman ctl switch | back-and-forth | move-workspace | move | move-tab | move-app | pin
+     (switch next|prev and move next|prev [--follow] with [labs] workspace_steps = true)
 Config: ~/Library/Application Support/Spaceman/config.toml -> [[rules]], [[workspaces]],
         [settings] workspace_order (edits apply when the file changes; new named-workspace shortcuts register on the next app start)
 Menu bar: shows the active workspace glyphs; its menu lists each display's visible workspace (checked)
@@ -296,6 +305,19 @@ on the same letter.
   `src/cli/tests/regressions.rs`: `config_commands_keep_and_show_the_workspace_order`; agent,
   `agent/src/hud/tests.rs`: `visited_empty_workspaces_keep_the_configured_workspace_order` (empty
   workspaces flicked through during one HUD show stay where the order puts them).
+- Workspace steps Lab: Unit (FakeBackend), `src/app/tests/workspace_steps.rs`:
+  `switch_steps_through_the_occupied_workspaces_of_the_focused_display_and_stops_at_the_ends`,
+  `switch_steps_on_the_side_display_that_has_focus`,
+  `with_no_window_focused_switch_steps_the_display_switched_to_last_and_move_refuses`,
+  `switch_follows_the_workspace_order_and_named_workspaces`,
+  `move_sends_the_focused_window_to_the_next_workspace_even_when_it_is_empty`,
+  `move_next_with_follow_twice_ends_on_three_with_the_window`, and
+  `workspace_steps_do_nothing_while_the_lab_is_off`. Unit, `src/workspace/tests.rs`:
+  `workspace_steps_stop_at_either_end_of_the_list`; `src/hotkeys.rs`:
+  `workspace_step_bindings_register_only_with_their_lab_on`; `src/shortcuts.rs`:
+  `commands_use_the_ctl_vocabulary`; `src/control.rs`: `parses_control_commands`; `src/config.rs`:
+  `parses_labs_with_workspace_steps_off_by_default`; agent, `agent/src/panes/shortcuts/catalog.rs`:
+  `workspace_steps_have_no_built_in_chord_and_name_their_bindings`.
 - Unit (FakeBackend), `src/app/tests/switch_repeat.rs`: a repeat `SwitchWorkspace` walks a
   3-tile workspace A -> B -> C -> A in split and Fullscreen Layout (remembered focus and HUD
   included), warps the pointer onto each next tile under `mouse_follows_focus`, steps on inside

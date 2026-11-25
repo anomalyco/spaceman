@@ -251,8 +251,16 @@ pub(crate) enum WorkerAction {
     /// A trackpad swipe, stepping through the occupied workspaces of the display
     /// under the pointer.
     Swipe(Swipe, (i32, i32)),
+    /// The Workspace Steps Lab's `switch next|prev`: the swipe's step, on the focused display.
+    StepWorkspace(crate::WorkspaceStep),
     MoveFocused(WorkspaceId),
     MoveFocusedFollow(WorkspaceId),
+    /// The Workspace Steps Lab's `move next|prev [--follow]`: the focused window one step
+    /// along every enabled workspace of its display.
+    MoveFocusedStep {
+        step: crate::WorkspaceStep,
+        follow: bool,
+    },
     MoveApp(String, WorkspaceId),
     /// Send the focused window's active tab to a workspace through the app's
     /// own "Move Tab to New Window"; a single-tab window moves whole.
@@ -294,9 +302,14 @@ impl WorkerAction {
             Self::WorkspaceBackAndForth => "workspace back-and-forth queued".into(),
             Self::MoveWorkspaceToDisplay(_) => "move workspace to display queued".into(),
             Self::Swipe(..) => "swipe queued".into(),
+            Self::StepWorkspace(step) => format!("switch {} queued", step.as_str()),
             Self::MoveFocused(workspace) => format!("move to workspace {workspace} queued"),
             Self::MoveFocusedFollow(workspace) => {
                 format!("move and switch to workspace {workspace} queued")
+            }
+            Self::MoveFocusedStep { step, follow } => {
+                let follow = if *follow { " and follow" } else { "" };
+                format!("move {}{follow} queued", step.as_str())
             }
             Self::MoveApp(_, workspace) => format!("move app to workspace {workspace} queued"),
             Self::MoveTab {

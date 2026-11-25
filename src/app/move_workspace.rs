@@ -448,7 +448,7 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
         Ok(status)
     }
 
-    fn focused_visible_workspace(
+    pub(super) fn focused_visible_workspace(
         &mut self,
         visible: &[ResolvedWorkspace],
         outputs: &macos::DisplayOutputs,

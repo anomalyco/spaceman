@@ -13,6 +13,7 @@ use super::commands::{CommandOrigin, WorkspaceFocusOutcome};
 
 mod moves;
 mod repeat;
+mod steps;
 
 pub(super) use repeat::RepeatSwitch;
 

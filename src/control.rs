@@ -12,7 +12,7 @@ use std::{
 };
 
 use crate::{
-    DisplaySelector, DisplayTarget, ResizeDirection, WorkspaceId,
+    DisplaySelector, DisplayTarget, ResizeDirection, WorkspaceId, WorkspaceStep,
     app::{Action, WorkerAction},
     deep_link::{self, DeepLink},
     scratchpad::ScratchpadCommand,
@@ -23,7 +23,7 @@ const REQUEST_READ_TIMEOUT: Duration = Duration::from_millis(250);
 const RESPONSE_TIMEOUT: Duration = Duration::from_secs(5);
 const CLIENT_TIMEOUT: Duration = Duration::from_secs(6);
 
-pub const COMMAND_USAGE: &str = "status|debug|settings|open TARGET|open-settings|open-accessibility|check-for-updates|toggle-launch-at-login|switch WORKSPACE|back-and-forth|move-workspace [next|prev|DISPLAY]|move WORKSPACE [--follow]|move-tab WORKSPACE [--follow]|move-app ID WORKSPACE|focus DIR|focus next|focus prev|move-direction DIR|layout|fullscreen|float|pin|resize shrink|resize grow|resize width|height POINTS|balance|scratchpad toggle|scratchpad mark|pause|resume|retile|wrong|restart|quit";
+pub const COMMAND_USAGE: &str = "status|debug|settings|open TARGET|open-settings|open-accessibility|check-for-updates|toggle-launch-at-login|switch WORKSPACE|switch next|prev|back-and-forth|move-workspace [next|prev|DISPLAY]|move WORKSPACE [--follow]|move next|prev [--follow]|move-tab WORKSPACE [--follow]|move-app ID WORKSPACE|focus DIR|focus next|focus prev|move-direction DIR|layout|fullscreen|float|pin|resize shrink|resize grow|resize width|height POINTS|balance|scratchpad toggle|scratchpad mark|pause|resume|retile|wrong|restart|quit";
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub(crate) enum Command {
@@ -213,11 +213,23 @@ fn parse_line(line: &str) -> Result<Command, String> {
         ["resume"] => return Ok(Command::Resume),
         ["restart"] => return Ok(Command::Restart),
         ["quit"] => return Ok(Command::Quit),
-        ["switch", workspace] => WorkerAction::SwitchWorkspace(WorkspaceId::parse(workspace)?),
+        ["switch", target] => match WorkspaceStep::parse(target) {
+            Some(step) => WorkerAction::StepWorkspace(step),
+            None => WorkerAction::SwitchWorkspace(WorkspaceId::parse(target)?),
+        },
         ["back-and-forth"] => WorkerAction::WorkspaceBackAndForth,
-        ["move", workspace] => WorkerAction::MoveFocused(WorkspaceId::parse(workspace)?),
-        ["move", workspace, "--follow"] | ["move", "--follow", workspace] => {
-            WorkerAction::MoveFocusedFollow(WorkspaceId::parse(workspace)?)
+        ["move", target] => match WorkspaceStep::parse(target) {
+            Some(step) => WorkerAction::MoveFocusedStep {
+                step,
+                follow: false,
+            },
+            None => WorkerAction::MoveFocused(WorkspaceId::parse(target)?),
+        },
+        ["move", target, "--follow"] | ["move", "--follow", target] => {
+            match WorkspaceStep::parse(target) {
+                Some(step) => WorkerAction::MoveFocusedStep { step, follow: true },
+                None => WorkerAction::MoveFocusedFollow(WorkspaceId::parse(target)?),
+            }
         }
         ["move-tab", workspace] => WorkerAction::MoveTab {
             target: WorkspaceId::parse(workspace)?,
@@ -308,6 +320,30 @@ mod tests {
             WorkerAction::SwitchWorkspace(WorkspaceId::new(10).unwrap())
         );
         assert!(parse_line("move 11").is_err());
+        assert_eq!(
+            queued("switch next"),
+            WorkerAction::StepWorkspace(WorkspaceStep::Next)
+        );
+        assert_eq!(
+            queued("switch prev"),
+            WorkerAction::StepWorkspace(WorkspaceStep::Prev)
+        );
+        assert_eq!(
+            queued("move next"),
+            WorkerAction::MoveFocusedStep {
+                step: WorkspaceStep::Next,
+                follow: false,
+            }
+        );
+        assert_eq!(
+            queued("move --follow prev"),
+            WorkerAction::MoveFocusedStep {
+                step: WorkspaceStep::Prev,
+                follow: true,
+            }
+        );
+        assert!(parse_line("switch previous").is_err());
+        assert!(parse_line("move-tab next").is_err());
         assert_eq!(
             queued("move 2 --follow"),
             WorkerAction::MoveFocusedFollow(WorkspaceId::new(2).unwrap())

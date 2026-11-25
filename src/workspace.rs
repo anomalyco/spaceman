@@ -30,6 +30,47 @@ pub enum DisplayTarget {
     Selector(DisplaySelector),
 }
 
+/// One step along a display's workspaces, in `settings.workspace_order`: `switch next|prev`
+/// and `move next|prev` (the Workspace Steps Lab). Steps stop at either end.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum WorkspaceStep {
+    Next,
+    Prev,
+}
+
+impl WorkspaceStep {
+    /// Parses `next` or `prev`.
+    #[must_use]
+    pub fn parse(value: &str) -> Option<Self> {
+        match value {
+            "next" => Some(Self::Next),
+            "prev" => Some(Self::Prev),
+            _ => None,
+        }
+    }
+
+    #[must_use]
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Next => "next",
+            Self::Prev => "prev",
+        }
+    }
+
+    /// The workspace one step from `current` in `ordered`, or `None` past either end or when
+    /// `current` is not listed.
+    #[must_use]
+    pub fn target(self, ordered: &[WorkspaceId], current: WorkspaceId) -> Option<WorkspaceId> {
+        let index = ordered.iter().position(|workspace| *workspace == current)?;
+        match self {
+            Self::Next => ordered.get(index + 1).copied(),
+            Self::Prev => index
+                .checked_sub(1)
+                .and_then(|index| ordered.get(index).copied()),
+        }
+    }
+}
+
 impl DisplaySelector {
     #[must_use]
     pub fn parse(value: &str) -> Self {

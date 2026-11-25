@@ -428,6 +428,7 @@ impl Config {
         }
         let mut shortcuts = raw.shortcuts.parse()?;
         shortcuts.scratchpad = raw.labs.scratchpad;
+        shortcuts.workspace_steps = raw.labs.workspace_steps;
         Ok(Self {
             settings: AppSettings {
                 hud: raw.settings.hud,
@@ -1162,6 +1163,16 @@ monitor = "main"
                 .contains("layout = \"columns\"")
         );
         drop(std::fs::remove_dir_all(dir));
+    }
+
+    #[test]
+    fn parses_labs_with_workspace_steps_off_by_default() {
+        let config = Config::parse("version = 1").unwrap();
+        assert!(!config.labs().workspace_steps);
+        assert!(!config.shortcuts().workspace_steps);
+        let config = Config::parse("version = 1\n[labs]\nworkspace_steps = true\n").unwrap();
+        assert!(config.labs().enabled(LabFeature::WorkspaceSteps));
+        assert!(config.shortcuts().workspace_steps);
     }
 
     #[test]

@@ -36,6 +36,8 @@ impl CommandOrigin {
             | WorkerAction::Focus(_)
             | WorkerAction::MoveFocused(_)
             | WorkerAction::MoveFocusedFollow(_)
+            | WorkerAction::StepWorkspace(_)
+            | WorkerAction::MoveFocusedStep { .. }
             | WorkerAction::MoveTab { .. } => Self::Explicit,
             _ => Self::Passive,
         }

@@ -44,6 +44,7 @@ mod tear_regressions;
 mod three_display;
 mod utility_floats;
 mod workspace_order;
+mod workspace_steps;
 use crate::{BindingState, Slot, SlotId};
 
 use super::*;

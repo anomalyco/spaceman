@@ -252,6 +252,10 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
             WorkerAction::MoveFocused(workspace) => {
                 self.move_focused(workspace, outputs, cancelled)
             }
+            WorkerAction::StepWorkspace(step) => self.step_workspace(step, outputs, cancelled),
+            WorkerAction::MoveFocusedStep { step, follow } => {
+                self.move_focused_step(step, follow, outputs, cancelled)
+            }
             WorkerAction::MoveFocusedFollow(workspace) => {
                 self.move_focused_follow(workspace, outputs, cancelled)
             }

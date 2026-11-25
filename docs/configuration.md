@@ -279,6 +279,8 @@ Commands:
 | `switch WORKSPACE` | Switch to workspace 1 through 10 or an enabled named workspace A through Z |
 | `move WORKSPACE [--follow]` | Move the focused window there without switching; `--follow` also switches to that workspace and follows the window |
 | `move-tab WORKSPACE [--follow]` | Send the focused window's active tab there as its own window (and switch with `--follow`); a single-tab window moves whole ([Controls](controls.md#send-tab-to-workspace)) |
+| `switch next\|prev` | Labs (`workspace_steps`): show the next or previous workspace of the focused display, taking the swipe's stops (its visible workspace and those holding windows, in `workspace_order`); stops at either end |
+| `move next\|prev [--follow]` | Labs (`workspace_steps`): move the focused window to the next or previous enabled workspace of its display, empty ones included, as `move WORKSPACE [--follow]` does; stops at either end |
 | `back-and-forth` | Return to the previous workspace |
 | `move-workspace [next\|prev\|DISPLAY]` | Move the focused workspace to another display |
 | `focus left\|down\|up\|right` | Focus the nearest tile in that direction (see `recent_focus` under [Labs](#labs)) |
@@ -339,8 +341,8 @@ in the file are kept.
 them off Spaceman behaves exactly as if Labs did not exist: no extra shortcuts register and no
 command changes behavior. Unknown keys are config errors. Settings › Labs lists every switch,
 grouped by what it changes (`Windows`: Scratchpad, Portrait edge rows, Recent focus and Dragged
-floats follow their display; `Workspaces`: Swipe switch and Focus empty workspaces on other
-displays; `Menu bar & HUD`: Physical display order; `Settings`: Activity), and flipping one there
+floats follow their display; `Workspaces`: Swipe switch, Focus empty workspaces on other
+displays and Workspace steps; `Menu bar & HUD`: Physical display order; `Settings`: Activity), and flipping one there
 writes the same key.
 
 ```toml
@@ -353,6 +355,7 @@ recent_focus = false                  # optional (default: false); Option+H/J/K/
 swipe_switch = false                  # optional (default: false); lets trackpad_swipe turn swipes off
 empty_workspace_focus = false         # optional (default: false); see below
 float_follows_display = false         # optional (default: false); dragged floats join that display's workspace
+workspace_steps = false               # optional (default: false); switch/move next|prev
 ```
 
 `scratchpad = true` enables the Scratchpad (see [Controls › Scratchpad](controls.md#scratchpad-lab)) and
@@ -412,6 +415,16 @@ came from keeps keyboard input and, with the switch off, commands such as `Optio
 you chose, wherever it shows, until another window takes focus (see
 [Workspaces](features/workspaces.md)). The switch takes effect live. In Settings it is
 `Labs › Workspaces › Focus empty workspaces on other displays`.
+
+`workspace_steps = true` turns on `switch next|prev` and `move next|prev [--follow]` (see the
+command table above) for `spaceman ctl` and `[shortcuts.bindings]`, and lists them in Settings ›
+Shortcuts › Workspaces as Step to next workspace on display, Step to previous workspace on display,
+Move window to next workspace on display, and Move window to previous workspace on display (not to be
+confused with Option+Tab's Previous workspace). None has a built-in chord. With the switch
+off, bindings to them are skipped (the log names the switch) and `spaceman ctl` reports
+`Workspace steps are off`. `switch` acts on the focused display (with no visible window focused, the
+display `move-workspace` would use); `move` reports why and moves nothing when no window has focus. In Settings it is
+`Labs › Workspaces › Workspace steps`.
 
 ```sh
 spaceman config set labs.activity true
