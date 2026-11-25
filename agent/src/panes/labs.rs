@@ -26,6 +26,11 @@ const GROUPS: [(&str, &str, &[Lab]); 3] = [
                 "Portrait edge rows",
                 "Drop a window on a portrait display's top or bottom edge for a row",
             ),
+            (
+                LabFeature::RelativeResize,
+                "Relative resize",
+                "Bind keys that make a window wider, narrower, taller or shorter",
+            ),
         ],
     ),
     (

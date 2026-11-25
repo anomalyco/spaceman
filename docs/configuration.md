@@ -269,6 +269,7 @@ Commands:
 | `pin` | Pin the focused window on every workspace (floating it first), or unpin it |
 | `resize shrink\|grow` | Shrink or grow the focused tile |
 | `resize width\|height POINTS` | Resize the focused window to that width or height (1 to 16384 points) |
+| `resize width\|height grow\|shrink POINTS` | With `[labs] relative_resize = true`, make the focused window that much wider, narrower, taller, or shorter (1 to 16384 points) |
 | `balance` | Equalize the focused tile's immediate split |
 | `retile` | Retile now |
 | `none` | Unbind the chord: no built-in shortcut claims it |
@@ -283,6 +284,24 @@ for each of their tiles), so a size that does not fit is clamped. A tile with no
 or the height of a tile in a single row) is left alone. Like `resize shrink|grow` and `balance`, it
 asks you to leave Fullscreen Layout first. Neither `resize width|height` nor `balance` has a
 built-in chord; bind them here.
+
+`resize width grow|shrink POINTS` and `resize height grow|shrink POINTS` (the `relative_resize` Lab,
+see [Labs](#labs)) step the focused window's own width or height from its current size: each one
+does what `resize width|height` does with the current size plus or minus `POINTS`, at the same
+split, with the same sharing and the same 50-point minimum. Unlike `Option+-` and `Option+=`, which
+move the focused tile's immediate split, they pick the axis, so a pair of chords per axis covers
+both. `resize width +100` still means a width of 100 points. They have no built-in chord:
+
+```toml
+[labs]
+relative_resize = true
+
+[shortcuts.bindings]
+"ctrl+alt+right" = "resize width grow 50"
+"ctrl+alt+left" = "resize width shrink 50"
+"ctrl+alt+down" = "resize height grow 50"
+"ctrl+alt+up" = "resize height shrink 50"
+```
 
 A global shortcut fires in every app, so a chord that types something takes that key everywhere:
 `alt+left` replaces macOS's Option+arrow word jump in text fields. Prefer `ctrl` or `alt+shift` for
@@ -315,9 +334,11 @@ in the file are kept.
 
 `[labs]` turns on experimental features one by one. Every switch is off by default, and with all of
 them off Spaceman behaves exactly as if Labs did not exist: no extra shortcuts register and no
-command changes behavior. Unknown keys are config errors. Settings › Labs lists every switch,
-grouped by what it changes (`Windows`: Scratchpad and Portrait edge rows; `Menu bar & HUD`: Physical
-display order; `Settings`: Activity), and flipping one there writes the same key.
+existing command changes behavior. A Lab's own commands still parse while it is off, so a binding
+you write for one (such as `resize width grow 50`) registers and reports that the Lab is off.
+Unknown keys are config errors. Settings › Labs lists every switch, grouped by what it changes
+(`Windows`: Scratchpad, Portrait edge rows and Relative resize; `Menu bar & HUD`: Physical display
+order; `Settings`: Activity), and flipping one there writes the same key.
 
 ```toml
 [labs]
@@ -325,6 +346,7 @@ scratchpad = false                    # optional (default: false); the i3/sway-s
 activity = false                      # optional (default: false); Settings › Activity
 portrait_edge_rows = false            # optional (default: false); top/bottom drop bands on portrait displays
 physical_displays = false             # optional (default: false); menu bar in physical display order and shape
+relative_resize = false               # optional (default: false); resize width|height grow|shrink
 ```
 
 `scratchpad = true` enables the Scratchpad (see [Controls › Scratchpad](controls.md#scratchpad-lab)) and
@@ -342,6 +364,11 @@ keep recording either way. Turning it off while the pane is open returns Setting
 area is taller than it is wide: dragging a tiled window into one docks it into a full-width,
 half-height row on that edge (see [Controls](controls.md)). With it off, only the left and right edge
 bands exist. The switch applies to the next drag.
+
+`relative_resize = true` (Settings › Labs › Windows › Relative resize) lets
+`resize width|height grow|shrink POINTS` run, from `[shortcuts.bindings]` or `spaceman ctl` (see
+[Shortcuts](#shortcuts)). With it off those commands still pass `config-check`
+but report `Relative resize is off` and change nothing; every other resize works as before.
 
 `physical_displays = true` makes the menu bar follow the displays on your desk. The workspace glyphs
 and the menu's display sections go left to right, then top to bottom, the order `Option+Shift+Tab`

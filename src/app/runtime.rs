@@ -261,6 +261,9 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
             WorkerAction::ResizeTo(axis, points) => {
                 self.resize_focused_to(axis, points, outputs, cancelled)
             }
+            WorkerAction::ResizeBy(axis, delta) => {
+                self.resize_focused_by(axis, delta, outputs, cancelled)
+            }
             WorkerAction::Balance => self.balance_focused(outputs, cancelled),
             WorkerAction::ToggleFullscreenLayout => {
                 self.toggle_fullscreen_layout(outputs, cancelled)

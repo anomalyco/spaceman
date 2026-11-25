@@ -218,6 +218,8 @@ spaceman ctl resize shrink
 spaceman ctl resize grow
 spaceman ctl resize width 1200
 spaceman ctl resize height 600
+spaceman ctl resize width grow 50
+spaceman ctl resize height shrink 50
 spaceman ctl balance
 spaceman ctl scratchpad toggle
 spaceman ctl scratchpad mark
@@ -242,9 +244,11 @@ and shows it on every workspace, or unpins it (no built-in shortcut). `scratchpa
 `scratchpad mark` are `Option+\` and `Option+Shift+\`; while `[labs] scratchpad` is off they report
 `Scratchpad is off`. `resize width|height POINTS` resizes the focused window to that width or
 height (its own frame, gaps excluded) by moving its boundary at the nearest split along that axis;
-the split's other tiles give or take the difference in proportion, never below 50 points. `balance`
-equalizes the focused tile's immediate split while respecting nested minimum sizes; it does not
-touch the workspace's other splits. Neither has a default shortcut (see
+the split's other tiles give or take the difference in proportion, never below 50 points.
+`resize width|height grow|shrink POINTS` does the same from the window's current width or height
+plus or minus `POINTS`; while `[labs] relative_resize` is off it reports `Relative resize is off`.
+`balance` equalizes the focused tile's immediate split while respecting nested minimum sizes; it
+does not touch the workspace's other splits. None of these has a default shortcut (see
 [Configuration › Shortcuts](configuration.md#shortcuts)). `hud` repeatedly renders sanitized
 runtime geometry in the terminal until interrupted. `ctl wrong` marks the journal the moment something looks wrong and
 writes a full arrangement snapshot, so `doctor` shows what the screen held then.
@@ -287,7 +291,7 @@ Spaceman registers the `spaceman://` URL scheme (and clickable web bounce links 
 
 - `spaceman://settings` — open Settings
 - `spaceman://settings/<pane>` — open `general`, `rules`, `workspaces`, `shortcuts`, `labs`, `layout`, or `activity` (plus optional `/<focus>`); `activity` falls back to `general` while `[labs] activity` is off
-- `spaceman://labs` / `spaceman://labs/<slug>` — open Settings › Labs and highlight `<slug>`, a switch's key with `-` for `_` (`scratchpad`, `activity`, `portrait-edge-rows`, `physical-displays`)
+- `spaceman://labs` / `spaceman://labs/<slug>` — open Settings › Labs and highlight `<slug>`, a switch's key with `-` for `_` (`scratchpad`, `activity`, `portrait-edge-rows`, `physical-displays`, `relative-resize`)
 - `spaceman://features/<slug>` — open the Settings pane and highlight for a feature (e.g. `workspaces`, `rules`, `shortcuts`, `gaps`, `hud`)
 
 Deep links only open Settings and highlight the requested pane or card. They never modify

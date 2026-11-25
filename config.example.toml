@@ -118,9 +118,12 @@ monitor = "main"
 # physical_displays = true lists the menu bar's workspaces and the menu's
 # display sections left to right, draws a portrait display's glyph and HUD
 # Layouts previews tall, and tells same-named displays apart ("left", "right").
+# relative_resize = true lets bindings such as "resize width grow 50" and
+# "resize height shrink 50" step the focused window's width or height.
 #
 # [labs]
 # scratchpad = false
 # activity = false
 # portrait_edge_rows = false
 # physical_displays = false
+# relative_resize = false

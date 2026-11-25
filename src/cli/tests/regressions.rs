@@ -327,6 +327,15 @@ fn config_show_includes_shortcuts_and_labs_in_toml_and_json() {
     let shown_json: Value = serde_json::from_str(&show_json_out.stdout.unwrap()).unwrap();
     assert_eq!(shown_json["settings"]["hud"], false);
     assert_eq!(shown_json["labs"]["scratchpad"], true);
+    // Unset Labs stay out of the JSON, not `null`.
+    assert_eq!(
+        shown_json["labs"]
+            .as_object()
+            .unwrap()
+            .keys()
+            .collect::<Vec<_>>(),
+        ["scratchpad"]
+    );
     assert_eq!(shown_json["shortcuts"]["defaults"], false);
     assert_eq!(shown_json["shortcuts"]["modifier"], "ctrl+alt");
     assert_eq!(

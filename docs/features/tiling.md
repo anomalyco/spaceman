@@ -43,6 +43,8 @@ Size                                                    // tile.size
 ├── Pointer resize       -> split weights follow both edges of a corner drag, preview during the gesture
 ├── ctl resize width|height <points> -> resize the focused window to that width/height at the
 │   nearest split on that axis; siblings give or take in proportion; clamped at minimums; lone tile unchanged
+├── ctl resize width|height grow|shrink <points> -> (Lab: [labs] relative_resize) the same, from the
+│   window's current width/height plus or minus <points>
 ├── ctl balance          -> equalize the focused tile's immediate split (no default hotkey)
 └── Window refuses its tile size (app minimum) -> its tile grows to fit and siblings give up
     the space; if necessary, try stacking an adjacent pair
@@ -64,7 +66,7 @@ Spacing                                                 // tile.spacing
 ```ts
 Keyboard: Option+H/J/K/L, Option+Shift+H/J/K/L, Option+`, Option+-, Option+=, Option+/
 Pointer:  drag a managed window (reorder/nest/move display), drag its edge (resize)
-CLI:      spaceman ctl focus | move-direction | resize shrink|grow|width|height | balance | layout | retile
+CLI:      spaceman ctl focus | move-direction | resize shrink|grow|width|height | resize width|height grow|shrink | balance | layout | retile
 Shortcut: [shortcuts.bindings] can bind any of those, e.g. "ctrl+alt+w" = "resize width 1200"
 Settings: Settings › Layout -> New windows (Dwindle | Columns), Window gaps (Customize separately: Between windows, Screen edges, Top/Bottom/Left/Right edge), Single-window width
 Config:   spaceman config set layout dwindle|columns; spaceman config set gaps.inner|gaps.outer|gaps.top|gaps.bottom|gaps.left|gaps.right|single_window_max_width <points>
@@ -82,6 +84,7 @@ pause, quit, or hotkey loss.
   `balance_applies_and_persists_the_focused_parent_split`,
   `resize_to_applies_and_persists_the_focused_window_width`,
   `resize_to_requires_leaving_fullscreen_layout`,
+  `resize_by_steps_the_focused_window_only_with_its_lab_on`,
   `reorder_moves_to_the_adjacent_display_at_a_tile_boundary`,
   `reorder_moves_to_an_empty_workspace_on_the_adjacent_display` (issue 119),
   `perpendicular_reorder_creates_a_mixed_split_for_three_windows`,
@@ -97,7 +100,9 @@ pause, quit, or hotkey loss.
   drop / move splits across restarts, untouched sibling splits and weights, legacy state loading,
   live config reload between Dwindle and Columns, cross-workspace moves, axis toggle, and Fullscreen Layout;
   `resize_to_*` in `src/layout_tree/tests.rs` cover the nearest split on each axis, proportional
-  sharing, recursive minimums, and lone tiles.
+  sharing, recursive minimums, and lone tiles;
+  `resize_by_on_steps_either_axis_from_the_current_extent` covers stepping width and height of
+  `1 | (2 / (3 | 4))` and shrinking back to the first sizes.
 - Unit (FakeBackend), `src/app/tests/three_display.rs` and `src/navigation.rs`: three-display
   directional focus from an empty workspace (parked window reported at corner/held-up or no focus,
   #355) and from top/bottom tiles of tall portrait side displays that do not overlap the middle
@@ -206,7 +211,7 @@ pause, quit, or hotkey loss.
   period: macOS confirms it, so the siblings reflow at once, and the window comes back as a
   new tile at the end of the layout. While nothing on the display is observed (another macOS Space
   is showing), tiles are kept.
-- `balance` and `resize width|height` have no default hotkey; bind them in
+- `balance`, `resize width|height` and `resize width|height grow|shrink` have no default hotkey; bind them in
   `[shortcuts.bindings]` or run them from the CLI.
 - With gaps, a drop that lands in the gap between two tiles misses both and leaves the layout as it
   was. The Workspace HUD's layout previews stay schematic and ignore spacing.

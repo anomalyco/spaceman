@@ -117,6 +117,7 @@ impl Doc {
             activity: self.lab(LabFeature::Activity),
             portrait_edge_rows: self.lab(LabFeature::PortraitEdgeRows),
             physical_displays: self.lab(LabFeature::PhysicalDisplays),
+            relative_resize: self.lab(LabFeature::RelativeResize),
         }
     }
 
