@@ -669,7 +669,8 @@ workspace display assignments, `settings.hud`, `settings.hud_style`,
 `settings.hud_position`, `settings.mouse_follows_focus`, `settings.trackpad_swipe`,
 `settings.workspace_order`, `settings.gaps`, `settings.single_window_max_width`, and
 `settings.single_window_max_height` reload without restarting (Settings › Layout retiles at once; an
-external edit applies on the next retile);
+external edit applies on the next retile; a hidden workspace given another display brings its
+floats back on that display, same size and place, when it next shows);
 `settings.update_channel` applies at the next update check. Global shortcuts for a
 newly added named workspace letter (`Option+A` ... `Option+Z`) register on the next app start:
 

@@ -23,6 +23,7 @@ mod numbered_move_stale_report;
 mod parked_sibling_takes_focus;
 mod pointer_follows_accepted_frame;
 mod pointer_resize_release_seam;
+mod reassign_hidden_float;
 mod reconnect_carries_floats;
 mod reconnect_dual_selector;
 mod reorder_edge_pointer;
