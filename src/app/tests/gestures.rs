@@ -358,3 +358,44 @@ fn releasing_resize_or_drop_after_workspace_switch_keeps_outgoing_workspace_park
     );
     assert_eq!(widths(&rt, WorkspaceId::ONE), [550, 450]);
 }
+
+#[test]
+fn releasing_a_previewed_swap_keeps_a_layout_toggle_made_while_held() {
+    let first = window(10);
+    let second = window(20);
+    let mut backend = FakeBackend {
+        focused: Some(first.clone()),
+        mouse_down: true,
+        ..FakeBackend::default()
+    };
+    backend.frames.insert(first.clone(), frame(50));
+    backend.frames.insert(second.clone(), frame(500));
+    let mut runtime = runtime(backend);
+    bind(&mut runtime, WorkspaceId::ONE, &first);
+    bind(&mut runtime, WorkspaceId::ONE, &second);
+    let cancelled = AtomicBool::new(false);
+
+    runtime
+        .drop_window(first.clone(), (750, 400), true, outputs(), &cancelled)
+        .unwrap();
+    // Option+/ arrives with the button still held and turns the columns into rows.
+    runtime.toggle_layout(outputs(), &cancelled).unwrap();
+    assert_eq!(
+        runtime.workspaces.engine(WorkspaceId::ONE).root_axis(),
+        crate::Axis::Vertical
+    );
+
+    // Releasing where the swap preview was shown must not bring the columns back (#524).
+    runtime.backend.mouse_down = false;
+    runtime
+        .drop_window(first.clone(), (750, 400), false, outputs(), &cancelled)
+        .unwrap();
+    assert_eq!(
+        runtime.workspaces.engine(WorkspaceId::ONE).root_axis(),
+        crate::Axis::Vertical
+    );
+    let mut bound = runtime.workspaces.engine(WorkspaceId::ONE).bound_windows();
+    bound.sort();
+    assert_eq!(bound, vec![first, second]);
+    assert!(runtime.gesture.is_none());
+}
