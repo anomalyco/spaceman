@@ -24,6 +24,7 @@ mod parking;
 mod reconciliation;
 mod reconnect_unsettled;
 mod reliability;
+mod residency;
 mod restart_recall;
 mod rules;
 mod scratchpad;

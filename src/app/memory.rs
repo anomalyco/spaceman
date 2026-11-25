@@ -127,10 +127,10 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
                         .replacement_workspaces(&window.id)
                         .next()
                         .is_none()
-                    && !matches!(
-                        self.config.disposition(&app.bundle_id, window),
-                        WindowDisposition::Ignored | WindowDisposition::Route(_)
-                    )
+                    && {
+                        let patch = self.config.patch(&app.bundle_id, window);
+                        !patch.is_ignored() && patch.home.is_none()
+                    }
             })
             .map(|window| (window.id.clone(), window.frame))
             .collect();
@@ -159,11 +159,6 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
                 workspace: placement.workspace,
                 floating: placement.floating,
             });
-            // A floated window floats again, like one restored on an agent
-            // restart, until the user toggles it back into the tiles.
-            if placement.floating {
-                self.manual_floating.insert(window.clone());
-            }
             recall.claimed.insert(window, placement);
             claimed_indices.push(index);
         }

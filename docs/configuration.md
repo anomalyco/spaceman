@@ -83,8 +83,9 @@ A window no rule matches gets Spaceman's built-in default. A short, fixed list o
 and password apps floats at its own size: Stickies, Calculator, Dictionary, Clock, Weather, System
 Settings, Passwords, Photo Booth, Voice Memos, Digital Color Meter, Archive Utility, Keychain
 Access, 1Password (7 and 8), Bitwarden, Raycast, Alfred, CleanShot X and Hex (the list is
-`FLOATING_BUNDLES` in `src/defaults.rs`). Every other window is managed normally. Any matching rule
-replaces the default, so `action = "tile"` tiles one of these apps again.
+`FLOATING_BUNDLES` in `src/defaults.rs`). Every other window is managed normally. A matching rule
+overrides the default for what it decides: `action = "tile"` tiles one of these apps again, and
+`action = "route"` keeps it floating but opens it on the routed workspace.
 
 - `float` excludes the window from tiling and resizing, preserves its native frame, and keeps it with
   its logical workspace (a remembered workspace during recall, or the active workspace where it was

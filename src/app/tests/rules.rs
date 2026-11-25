@@ -528,7 +528,7 @@ fn manual_float_and_float_rule_still_release_tiled_windows_immediately() {
         runtime.workspaces.floating_workspace_of(&first),
         Some(WorkspaceId::ONE)
     );
-    assert!(runtime.manual_floating.contains(&first));
+    assert!(runtime.workspaces.is_manual_float(&first));
     assert_eq!(runtime.backend.frames[&sibling], outputs().main().frame);
 
     // Subsequent cycles keep the manually floated window floating.

@@ -160,7 +160,7 @@ fn an_arrangement_spreads_open_windows_over_workspaces_without_cramming_one() {
         runtime.workspaces.floating_workspace_of(&note),
         Some(WorkspaceId::ONE)
     );
-    assert!(!runtime.manual_floating.contains(&note));
+    assert!(!runtime.workspaces.is_manual_float(&note));
     assert_eq!(runtime.backend.frames[&note].width, 200);
 
     // The arrangement was for these windows once. A window opened later is adopted as usual.
@@ -186,7 +186,12 @@ fn undoing_an_arrangement_puts_every_window_back_and_forgets_it() {
     assert_eq!(runtime.backend.frames, originals);
     assert!(runtime.parked.is_empty());
     assert!(runtime.backend.persisted.is_empty());
-    assert!(runtime.manual_floating.is_empty());
+    assert!(
+        !runtime
+            .workspaces
+            .floating_entries()
+            .any(|(window, _)| runtime.workspaces.is_manual_float(window))
+    );
     for window in originals.keys() {
         assert_eq!(runtime.workspaces.workspace_of_any(window), None);
     }

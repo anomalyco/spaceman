@@ -1,5 +1,7 @@
 use super::*;
+use crate::config::DispositionPatch;
 use crate::journal::PlacementSource;
+use crate::workspace::{FloatCause, Residency};
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(super) enum FrozenWindowAffinity {
@@ -19,8 +21,20 @@ pub(super) enum FrozenWindowAffinity {
     Ignored,
 }
 
+/// A float sent to `workspace` from wherever it opened (`observed`).
+pub(super) struct FloatHome {
+    pub(super) window: crate::PhysicalWindowId,
+    pub(super) workspace: WorkspaceId,
+    pub(super) observed: crate::Rect,
+    /// Where a recalled placement had it.
+    pub(super) remembered: Option<crate::Rect>,
+}
+
 pub(super) struct FrozenAffinityPolicy {
     pub(super) windows: HashMap<crate::PhysicalWindowId, FrozenWindowAffinity>,
+    /// Floats this observation gave a workspace (a route, a recall, a detached tab); routing
+    /// brings each onto its workspace's display before reconciliation.
+    pub(super) float_homes: Vec<FloatHome>,
     pub(super) visible_workspaces: HashSet<WorkspaceId>,
 }
 
@@ -55,6 +69,7 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
         // one terminated.
         self.note_absent_departures(observation);
         let mut affinities = HashMap::new();
+        let mut float_homes = Vec::new();
         // Read once, and only if a Complete snapshot omits an owned float.
         let mut onscreen_frames = None;
         for application in &observation.applications {
@@ -82,18 +97,23 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
             for window in windows {
                 self.heal_reappeared_window(window, visible, server_frames);
                 if self.parked.contains_key(&window.id)
-                    && self
-                        .scratchpad
-                        .entry(&window.id)
-                        .is_some_and(|entry| entry.shown_on.is_none())
+                    && matches!(
+                        self.workspaces.residency(&window.id),
+                        Some(Residency::Scratchpad { shown_on: None, .. })
+                    )
                 {
                     // Still hidden in the scratchpad (re-parked or settling); only an
                     // honored reappearance clears its parked record and lets it adopt.
                     affinities.insert(window.id.clone(), FrozenWindowAffinity::Ignored);
                     continue;
                 }
-                let disposition = self.config.disposition(&app.bundle_id, window);
-                if disposition == WindowDisposition::Ignored {
+                // A window that already holds a tile keeps it while it temporarily looks
+                // non-resizable (an attached window-modal sheet), and a tile rule tiles it
+                // whatever it looks like: user rule ⊕ built-in default ⊕ window traits.
+                let tiled = self.workspaces.workspace_of(&window.id).is_some();
+                let rules = self.config.patch(&app.bundle_id, window);
+                let patch = rules.over(DispositionPatch::traits(window.resizable, tiled));
+                if patch.is_ignored() {
                     if let Some(owner) = self.workspaces.workspace_of_any(&window.id) {
                         log_event!("release {:?} from workspace {}: ignored", window.id, owner);
                         self.forget_window(owner, &window.id);
@@ -101,34 +121,44 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
                     affinities.insert(window.id.clone(), FrozenWindowAffinity::Ignored);
                     continue;
                 }
-                // A float rule, not a manual override, floats this window. An
-                // agent restart seeds every restored float as manual because the
-                // saved state does not say why it floated, so hand it back to the
-                // rule: removing the rule then tiles it again (#160).
-                let float_rule = matches!(
-                    disposition,
-                    WindowDisposition::Floating | WindowDisposition::Pinned
-                );
-                if float_rule && !self.scratchpad.contains(&window.id) {
-                    self.manual_floating.remove(&window.id);
+                // A float rule, not a manual override, floats this window. An agent restart
+                // restores every float as manual because the saved state does not say why it
+                // floated, so hand it back to the rule: removing the rule then tiles it again
+                // (#160). A window no workspace owns yet floats by hand when the setup tour
+                // or a recalled placement floated it.
+                if rules.floats() {
+                    self.workspaces.hand_float_to_rule(&window.id);
                 }
-                // A window that already holds a tile keeps it while it temporarily
-                // looks non-resizable (for example while an attached window-modal
-                // close or save sheet disables its fullscreen button or AXSize),
-                // and a tile rule tiles it whatever it looks like. A float rule or
-                // Toggle Float still releases the tile immediately.
-                let tiled = self.workspaces.workspace_of(&window.id).is_some();
-                let floating = float_rule
-                    || self.manual_floating.contains(&window.id)
-                    || (!window.resizable && !tiled && disposition != WindowDisposition::Tiled);
+                let recalled = self.memory.recalled(&window.id);
+                let by_hand = self.workspaces.is_manual_float(&window.id)
+                    || (self.workspaces.residency(&window.id).is_none()
+                        && !rules.floats()
+                        && (self.arranged_float(&window.id)
+                            || recalled.is_some_and(|placement| placement.floating)));
+                let floating = patch.floats() || by_hand;
+                let cause = if by_hand {
+                    FloatCause::Manual
+                } else {
+                    FloatCause::Automatic
+                };
                 if floating {
                     if let Some(owner) = self.workspaces.workspace_of(&window.id) {
                         self.forget_window(owner, &window.id);
-                        self.workspaces.own_floating(window.id.clone(), owner);
+                        self.workspaces.float(window.id.clone(), owner, cause);
                     }
                 } else if self.workspaces.floating_workspace_of(&window.id).is_some() {
                     self.workspaces.forget_floating(&window.id);
                 }
+                let mut float_home = |runtime: &mut Self, target, frame| {
+                    runtime.workspaces.float(window.id.clone(), target, cause);
+                    float_homes.push(FloatHome {
+                        window: window.id.clone(),
+                        workspace: target,
+                        observed: window.frame,
+                        remembered: frame,
+                    });
+                    FrozenWindowAffinity::Floating
+                };
                 let affinity = if let Some(owner) = self.workspaces.workspace_of(&window.id) {
                     FrozenWindowAffinity::Owned(owner)
                 } else if let Some((_, target)) = detached_tab
@@ -137,8 +167,7 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
                 {
                     app_owns_window = true;
                     if floating {
-                        self.workspaces.own_floating(window.id.clone(), *target);
-                        FrozenWindowAffinity::Floating
+                        float_home(self, *target, None)
                     } else {
                         app_owns_tiled = true;
                         FrozenWindowAffinity::DetachedTab(*target)
@@ -158,101 +187,80 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
                     affinity
                 } else if floating && self.workspaces.floating_workspace_of(&window.id).is_some() {
                     FrozenWindowAffinity::Floating
-                } else if floating && let Some(placement) = self.memory.recalled(&window.id) {
+                } else if floating && let Some(placement) = recalled {
                     app_owns_window = true;
-                    self.workspaces
-                        .own_floating(window.id.clone(), placement.workspace);
                     self.note_placement(&window.id, PlacementSource::Recall, placement.workspace);
-                    FrozenWindowAffinity::Floating
+                    float_home(self, placement.workspace, Some(placement.frame))
                 } else if floating {
-                    let routed = match disposition {
-                        WindowDisposition::Route(target)
-                            if (!app_owns_window
-                                || self.config.route_matches_title(&app.bundle_id, window))
-                                && self
-                                    .scope
-                                    .manages_selector(self.workspaces.assignment(target)) =>
-                        {
-                            Some(target)
-                        }
-                        _ => None,
-                    };
+                    let routed = patch.home.filter(|target| {
+                        (!app_owns_window
+                            || self.config.route_matches_title(&app.bundle_id, window))
+                            && self
+                                .scope
+                                .manages_selector(self.workspaces.assignment(*target))
+                    });
                     if let Some(target) = routed {
                         app_owns_window = true;
                         log_event!("route floating {:?} -> workspace {}", window.id, target);
-                        self.workspaces.own_floating(window.id.clone(), target);
                         self.note_placement(&window.id, PlacementSource::Rule, target);
+                        float_home(self, target, None)
+                    } else if let Some(resolved) = visible
+                        .iter()
+                        .find(|resolved| resolved.output.contains_center(window.frame))
+                    {
+                        app_owns_window = true;
+                        log_event!(
+                            "adopt floating {:?} -> workspace {}",
+                            window.id,
+                            resolved.workspace
+                        );
+                        self.workspaces
+                            .float(window.id.clone(), resolved.workspace, cause);
+                        self.note_placement(
+                            &window.id,
+                            PlacementSource::Active,
+                            resolved.workspace,
+                        );
                         FrozenWindowAffinity::Floating
                     } else {
-                        visible
-                            .iter()
-                            .find(|resolved| resolved.output.contains_center(window.frame))
-                            .map_or(FrozenWindowAffinity::CurrentDisplay, |resolved| {
-                                app_owns_window = true;
-                                log_event!(
-                                    "adopt floating {:?} -> workspace {}",
-                                    window.id,
-                                    resolved.workspace
-                                );
-                                self.workspaces
-                                    .own_floating(window.id.clone(), resolved.workspace);
-                                self.note_placement(
-                                    &window.id,
-                                    PlacementSource::Active,
-                                    resolved.workspace,
-                                );
-                                FrozenWindowAffinity::Floating
-                            })
+                        FrozenWindowAffinity::CurrentDisplay
                     }
                 } else if let Some(target) = self.arranged_target(&window.id) {
                     // The setup tour's plan placed this open window: a route for it alone.
                     app_owns_window = true;
                     app_owns_tiled = true;
                     FrozenWindowAffinity::ExplicitRoute(target)
-                } else {
-                    match disposition {
-                        WindowDisposition::Route(target) => {
-                            if !self
-                                .scope
-                                .manages_selector(self.workspaces.assignment(target))
-                            {
-                                return Err(format!(
-                                    "window rule routes to unmanaged workspace {}",
-                                    target
-                                ));
-                            }
-                            if !app_owns_tiled
-                                || self.config.route_matches_title(&app.bundle_id, window)
-                            {
-                                app_owns_window = true;
-                                app_owns_tiled = true;
-                                FrozenWindowAffinity::ExplicitRoute(target)
-                            } else {
-                                FrozenWindowAffinity::CurrentDisplay
-                            }
-                        }
-                        WindowDisposition::Managed | WindowDisposition::Tiled => {
-                            app_owns_window = true;
-                            app_owns_tiled = true;
-                            self.memory
-                                .recalled(&window.id)
-                                .map(|placement| {
-                                    FrozenWindowAffinity::Inferred(placement.workspace)
-                                })
-                                .unwrap_or(FrozenWindowAffinity::CurrentDisplay)
-                        }
-                        WindowDisposition::Floating
-                        | WindowDisposition::Pinned
-                        | WindowDisposition::Ignored => unreachable!(),
+                } else if let Some(target) = patch.home {
+                    if !self
+                        .scope
+                        .manages_selector(self.workspaces.assignment(target))
+                    {
+                        return Err(format!(
+                            "window rule routes to unmanaged workspace {}",
+                            target
+                        ));
                     }
+                    if !app_owns_tiled || self.config.route_matches_title(&app.bundle_id, window) {
+                        app_owns_window = true;
+                        app_owns_tiled = true;
+                        FrozenWindowAffinity::ExplicitRoute(target)
+                    } else {
+                        FrozenWindowAffinity::CurrentDisplay
+                    }
+                } else {
+                    app_owns_window = true;
+                    app_owns_tiled = true;
+                    recalled.map_or(FrozenWindowAffinity::CurrentDisplay, |placement| {
+                        FrozenWindowAffinity::Inferred(placement.workspace)
+                    })
                 };
-                self.workspaces
-                    .set_rule_pinned(&window.id, disposition == WindowDisposition::Pinned);
+                self.workspaces.set_rule_pinned(&window.id, patch.pins());
                 affinities.insert(window.id.clone(), affinity);
             }
         }
         Ok(FrozenAffinityPolicy {
             windows: affinities,
+            float_homes,
             visible_workspaces: visible.iter().map(|resolved| resolved.workspace).collect(),
         })
     }

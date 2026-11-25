@@ -53,11 +53,6 @@ pub(super) struct WorkspaceRuntime<B = MacWorkspaceBackend> {
     pub(super) inaccessible_since: HashMap<crate::PhysicalWindowId, Instant>,
     /// Smallest width and height each window has refused to shrink below.
     pub(super) minimum_sizes: HashMap<crate::PhysicalWindowId, (i32, i32)>,
-    /// Windows the user floated with Toggle Float. They stay floating (and
-    /// survive agent restarts) until toggled back, unlike a rule's windows.
-    pub(super) manual_floating: HashSet<crate::PhysicalWindowId>,
-    /// The Scratchpad Lab's windows; hidden ones are parked and owned by no workspace.
-    pub(super) scratchpad: crate::scratchpad::ScratchpadState,
     pub(super) config: Config,
     pub(super) foreground_lanes: HashMap<String, DisplaySelector>,
     /// Global focus history across displays: the workspace focused now and the
@@ -372,7 +367,6 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
                 .collect()
         });
         let persisted_workspace_state = workspaces.state();
-        let manual_floating = super::commands::restored_floating(&workspaces);
         let has_spacing = !config.spacing().is_none();
         Self {
             backend,
@@ -386,8 +380,6 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
             omitted_windows: HashMap::new(),
             inaccessible_since: HashMap::new(),
             minimum_sizes: HashMap::new(),
-            manual_floating,
-            scratchpad: crate::scratchpad::ScratchpadState::default(),
             config,
             foreground_lanes: HashMap::new(),
             last_focused_workspace: None,
@@ -663,7 +655,6 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
         self.parked.forget_heals(window);
         self.inaccessible_since.remove(window);
         self.minimum_sizes.remove(window);
-        self.manual_floating.remove(window);
     }
 
     pub(super) fn clear_fullscreen_restore_if_inactive(&mut self, workspace: WorkspaceId) {

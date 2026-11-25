@@ -242,6 +242,11 @@ impl Engine {
         self.edit_weights(window, |layout, slot| layout.resize(slot, current, canvas))
     }
 
+    /// The slot a newly adopted window is inserted next to.
+    pub(crate) const fn insertion_focus(&self) -> Option<crate::SlotId> {
+        self.insertion_focus
+    }
+
     pub(crate) fn remember_insertion_focus(&mut self, window: &PhysicalWindowId) {
         self.insertion_focus = self.slot_for_window(window);
     }

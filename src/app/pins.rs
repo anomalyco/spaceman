@@ -14,13 +14,13 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
         self.parked.is_exempt(window) || self.workspaces.is_pinned(window)
     }
 
-    /// The disposition rules and defaults give an unobserved window, judged by its app's bundle
-    /// alone (a title rule cannot be checked without a title). `None` for an app never observed.
+    /// What rules and defaults say about an unobserved window, judged by its app's bundle alone
+    /// (a title rule cannot be checked without a title). `None` for an app never observed.
     pub(super) fn bundle_disposition(
         &self,
         window: &crate::PhysicalWindowId,
         frame: crate::Rect,
-    ) -> Option<WindowDisposition> {
+    ) -> Option<crate::config::DispositionPatch> {
         let bundle_id = self.memory.bundles.get(&window.app)?;
         let probe = crate::ObservedWindow {
             id: window.clone(),
@@ -28,7 +28,7 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
             resizable: true,
             title: None,
         };
-        Some(self.config.disposition(bundle_id, &probe))
+        Some(self.config.patch(bundle_id, &probe))
     }
 
     /// A `pin` rule that arrived while a float was parked: no observation lists a parked
@@ -44,7 +44,10 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
             .map(|(window, frame)| (window.clone(), *frame))
             .collect();
         for (window, frame) in parked {
-            if self.bundle_disposition(&window, frame) == Some(WindowDisposition::Pinned) {
+            if self
+                .bundle_disposition(&window, frame)
+                .is_some_and(crate::config::DispositionPatch::pins)
+            {
                 log_event!("pin rule now matches parked {:?}; showing it", window);
                 self.workspaces.set_rule_pinned(&window, true);
             }

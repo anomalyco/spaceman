@@ -129,10 +129,9 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
         let new = windows.iter().find(|window| {
             window.id != pending.source_window
                 && !pending.onscreen_before.contains(&window.id.window_id)
-                && self.workspaces.workspace_of_any(&window.id).is_none()
+                && self.workspaces.residency(&window.id).is_none()
                 && !self.parked.contains_key(&window.id)
-                && !self.scratchpad.contains(&window.id)
-                && self.config.disposition(&app.bundle_id, window) != WindowDisposition::Ignored
+                && !self.config.patch(&app.bundle_id, window).is_ignored()
         })?;
         let source = pending.source_window.clone();
         let target = pending.target_workspace;
@@ -186,15 +185,7 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
             self.forget_window_state(owner, from);
             return true;
         }
-        let Some(owner) = self.workspaces.floating_workspace_of(from) else {
-            return false;
-        };
-        self.workspaces.forget_floating(from);
-        self.workspaces.own_floating(to.clone(), owner);
-        if self.manual_floating.remove(from) {
-            self.manual_floating.insert(to.clone());
-        }
-        true
+        self.workspaces.hand_float_to(from, to)
     }
 
     /// Per-window evidence about `window` on `workspace`, which no longer owns it.
@@ -242,22 +233,8 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
             log_event!("move tab: {detached:?} did not reach workspace {target}");
             return Ok(status);
         }
+        // Routing already put it on the target's display, parked there if the target is hidden.
         let target_visible = self.is_visible(target, outputs);
-        if !target_visible
-            && self.workspaces.floating_workspace_of(&detached).is_some()
-            && !self.parked.contains_key(&detached)
-        {
-            let target_output = output_for(&self.workspaces, target, outputs);
-            let source_output = output_for(&self.workspaces, pending.source_workspace, outputs);
-            let window_output = self
-                .window_display_output(&detached, outputs)
-                .unwrap_or(source_output);
-            if self.park_window_across(&detached, window_output, target_output, outputs)
-                != macos::ApplyOutcome::Applied
-            {
-                status.failed += 1;
-            }
-        }
         if pending.follow && !target_visible {
             self.workspaces.remember_focus(target, &detached);
             let failed = status.failed;

@@ -13,7 +13,7 @@ use std::{
 use crate::{
     AppInstanceId, BindingState, Decision, Direction, DisplaySelector, DisplayTarget,
     NavigationTile, ResizeDirection, Settings, WorkspaceId, Workspaces,
-    config::{Config, WindowDisposition},
+    config::Config,
     control::{self, Command as ControlCommand, Request as ControlRequest},
     deep_link::OpenTarget,
     hotkeys::{DeliveryWatch, HotkeyPlan, Hotkeys},

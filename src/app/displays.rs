@@ -104,15 +104,16 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
         for window in due {
             // Hidden scratchpad windows intentionally have no workspace owner, but still need to
             // stay parked off-screen when a newly connected display covers their parking edge.
-            let output = match self.workspaces.workspace_of_any(&window) {
+            let output = match self.workspaces.residency(&window) {
                 _ if self.stays_on_screen(&window) => None,
-                Some(owner) if visible.contains(&owner) => None,
-                Some(owner) => Some(output_for(&self.workspaces, owner, outputs)),
-                None => self
-                    .scratchpad
-                    .entry(&window)
-                    .is_some_and(|entry| entry.shown_on.is_none())
-                    .then(|| outputs.main().frame),
+                Some(crate::workspace::Residency::Scratchpad { shown_on: None, .. }) => {
+                    Some(outputs.main().frame)
+                }
+                _ => self
+                    .workspaces
+                    .workspace_of_any(&window)
+                    .filter(|owner| !visible.contains(owner))
+                    .map(|owner| output_for(&self.workspaces, owner, outputs)),
             };
             // A write that fails stays due and is retried next time.
             if output.is_none_or(|output| {

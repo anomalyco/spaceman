@@ -500,8 +500,10 @@ fn non_resizable_window_parks_and_restores_with_its_workspace() {
     assert!(!runtime.parked.contains_key(&window));
 }
 
+/// A route is applied before reconciliation: a park that fails leaves the window owned by no
+/// workspace (never tiled on the one on screen), and the next cycle routes it again.
 #[test]
-fn failed_route_parking_rolls_back_to_source_workspace() {
+fn failed_route_parking_leaves_the_window_unowned_until_a_later_cycle_routes_it() {
     let window = window(10);
     let normal = frame(50);
     let mut backend = FakeBackend {
@@ -518,11 +520,25 @@ fn failed_route_parking_rolls_back_to_source_workspace() {
 
     runtime.cycle(outputs(), &AtomicBool::new(false)).unwrap();
 
+    assert_eq!(runtime.workspaces.workspace_of_any(&window), None);
+    assert!(!runtime.parked.contains_key(&window));
+    assert_eq!(runtime.backend.frames[&window], normal);
+
+    runtime.backend.fail_persist = false;
+    runtime.cycle(outputs(), &AtomicBool::new(false)).unwrap();
+
     assert_eq!(
         runtime.workspaces.workspace_of(&window),
-        Some(WorkspaceId::ONE)
+        Some(WorkspaceId::TWO)
     );
-    assert!(!runtime.parked.contains_key(&window));
+    assert!(runtime.parked.contains_key(&window));
+    assert!(
+        runtime
+            .workspaces
+            .engine(WorkspaceId::ONE)
+            .bound_windows()
+            .is_empty()
+    );
 }
 
 #[test]

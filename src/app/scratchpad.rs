@@ -10,6 +10,7 @@
 use super::parking::RESTORE_CONFIRM_TOLERANCE;
 use super::*;
 use crate::scratchpad::{ScratchpadCommand, summon_frame};
+use crate::workspace::FloatCause;
 
 const LAB_OFF: &str = "Scratchpad is off (set [labs] scratchpad = true in config.toml)";
 
@@ -38,7 +39,7 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
         let window = self
             .current_focus()
             .ok_or("Focused window is unavailable")?;
-        if let Some(entry) = self.scratchpad.entry(&window) {
+        if let Some(entry) = self.workspaces.scratchpad().entry(&window) {
             return match entry.shown_on {
                 Some(workspace) => {
                     self.release_from_scratchpad(window, workspace, outputs, cancelled)
@@ -81,7 +82,7 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
             _ => return Err("Focused window could not be moved off-screen".into()),
         }
         self.forget_window_on(workspace, &window, canvas);
-        self.scratchpad.insert(window.clone(), size);
+        self.workspaces.stash(window.clone(), size);
         log_event!("scratchpad: hid {window:?} from workspace {workspace}");
         let layout = self.layout_workspace(workspace, output, cancelled);
         self.persist_workspace_state_if_changed()?;
@@ -89,7 +90,9 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
         Ok(self.status(layout.failed, &outputs))
     }
 
-    /// A shown scratchpad window leaves the scratchpad and joins the tiles of its display.
+    /// A shown scratchpad window leaves the scratchpad and joins the tiles of the workspace it
+    /// is shown on, or floats there when a rule or its size keeps it out of the tiles. One
+    /// residency transition: its route never applies, since it is not a new window (#414).
     fn release_from_scratchpad(
         &mut self,
         window: crate::PhysicalWindowId,
@@ -97,17 +100,16 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
         outputs: macos::DisplayOutputs,
         cancelled: &AtomicBool,
     ) -> Result<CycleStatus, String> {
-        self.leave_scratchpad(&window);
-        self.manual_floating.remove(&window);
-        self.workspaces.forget_floating(&window);
+        // A summon still landing becomes an ordinary restore.
+        self.parked.cancel_summon(&window);
         log_event!("scratchpad: released {window:?} on workspace {workspace}");
-        // Reconciliation adopts an observed window it does not own, exactly as it adopts a new one.
-        let result = self.cycle(outputs, cancelled);
-        if self.workspaces.workspace_of_any(&window).is_none() {
-            self.workspaces.own_floating(window, workspace);
+        if self.keeps_floating(&window, &outputs).is_some() {
+            self.workspaces
+                .float(window, workspace, FloatCause::Automatic);
             self.persist_workspace_state_if_changed()?;
+            return Ok(self.status(0, &outputs));
         }
-        result
+        self.tile_in_place(window, workspace, &outputs, cancelled)
     }
 
     /// Hide the scratchpad window shown on the focused display's workspace, or summon the next one.
@@ -116,16 +118,16 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
         outputs: &macos::DisplayOutputs,
         cancelled: &AtomicBool,
     ) -> Result<CycleStatus, String> {
-        if self.scratchpad.is_empty() {
+        let scratchpad = self.workspaces.scratchpad();
+        if scratchpad.is_empty() {
             return Err("Scratchpad is empty".into());
         }
         let target = self.scratchpad_target(outputs)?;
-        let shown = self.scratchpad.shown_on(target.workspace);
+        let shown = scratchpad.shown_on(target.workspace);
         if !shown.is_empty() {
             return self.hide_scratchpad(&shown, &target, outputs);
         }
-        let window = self
-            .scratchpad
+        let window = scratchpad
             .next_for(target.workspace)
             .ok_or("Scratchpad is empty")?;
         self.summon_scratchpad(window, &target, outputs, cancelled)
@@ -184,7 +186,11 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
         outputs: &macos::DisplayOutputs,
         cancelled: &AtomicBool,
     ) -> Result<CycleStatus, String> {
-        let size = self.scratchpad.entry(&window).and_then(|entry| entry.size);
+        let size = self
+            .workspaces
+            .scratchpad()
+            .entry(&window)
+            .and_then(|entry| entry.size);
         let frame = summon_frame(target.output, size);
         let recovery = self.parked.record(&window).cloned();
         let expected = self.restore_target(frame);
@@ -209,10 +215,7 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
             &settings,
             cancelled,
         ));
-        self.workspaces
-            .own_floating(window.clone(), target.workspace);
-        self.manual_floating.insert(window.clone());
-        self.scratchpad.mark_shown(&window, target.workspace);
+        self.workspaces.show_scratchpad(&window, target.workspace);
         // Like any restore, the recovery frame is retired only once the window server
         // confirms the window arrived at its centered summon frame; until then its owner's
         // cycles confirm or retry the centered destination rather than the former tile frame.
@@ -319,7 +322,7 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
                 .ok()
                 .map(|frame| (frame.width, frame.height));
             match self.park_scratchpad_window(window, target.output, outputs) {
-                macos::ApplyOutcome::Applied => self.scratchpad.mark_hidden(window, size),
+                macos::ApplyOutcome::Applied => self.workspaces.hide_scratchpad(window, size),
                 macos::ApplyOutcome::Gone => {}
                 _ => failed += 1,
             }
@@ -329,8 +332,8 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
         Ok(self.status(failed, outputs))
     }
 
-    /// Park a shown scratchpad window and release its floating ownership. A closed window
-    /// leaves the scratchpad (`Gone`); any other failure leaves it shown.
+    /// Park a shown scratchpad window; the caller then hides it. A closed window leaves the
+    /// scratchpad (`Gone`); any other failure leaves it shown.
     fn park_scratchpad_window(
         &mut self,
         window: &crate::PhysicalWindowId,
@@ -350,28 +353,25 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
                 macos::ApplyOutcome::Gone => {
                     self.leave_scratchpad(window);
                     self.workspaces.forget_floating(window);
-                    self.manual_floating.remove(window);
                     return macos::ApplyOutcome::Gone;
                 }
                 macos::ApplyOutcome::Applied => return macos::ApplyOutcome::Unavailable,
                 outcome => return outcome,
             }
         }
-        self.workspaces.forget_floating(window);
-        self.manual_floating.remove(window);
         log_event!("scratchpad: hid {window:?}");
         macos::ApplyOutcome::Applied
     }
 
     /// `window` left the scratchpad; a summon still landing becomes an ordinary restore.
     pub(super) fn leave_scratchpad(&mut self, window: &crate::PhysicalWindowId) {
-        self.scratchpad.remove(window);
+        self.workspaces.leave_scratchpad(window);
         self.parked.cancel_summon(window);
     }
 
     pub(super) fn clear_scratchpad(&mut self) {
-        for entry in self.scratchpad.clear() {
-            self.parked.cancel_summon(&entry.window);
+        for window in self.workspaces.clear_scratchpad() {
+            self.parked.cancel_summon(&window);
         }
     }
 
@@ -429,14 +429,16 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
     }
 
     /// After every worker command: hide windows whose workspace was switched away (i3 keeps them
-    /// hidden until summoned again), prune windows that closed or left by other means, and bring
-    /// everything back when the Lab is turned off.
+    /// hidden until summoned again), let go of hidden windows that closed or came back on screen
+    /// by other means, and bring everything back when the Lab is turned off. A window that
+    /// closed, tiled, or moved while shown already left the scratchpad with its residency.
     pub(super) fn sync_scratchpad(&mut self, outputs: &macos::DisplayOutputs) {
-        if self.scratchpad.is_empty() {
+        let scratchpad = self.workspaces.scratchpad();
+        if scratchpad.is_empty() {
             return;
         }
         if !self.config.labs().scratchpad {
-            let hidden = self.scratchpad.hidden();
+            let hidden = scratchpad.hidden();
             self.clear_scratchpad();
             log_event!("scratchpad: Lab off; restoring {} window(s)", hidden.len());
             self.restore_windows(hidden);
@@ -447,18 +449,11 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
             .into_iter()
             .map(|resolved| resolved.workspace)
             .collect();
-        let entries: Vec<_> = self.scratchpad.entries().cloned().collect();
         let mut closed = Vec::new();
         let mut hid = false;
-        for entry in entries {
-            let window = entry.window;
+        for entry in scratchpad.entries() {
+            let window = &entry.window;
             match entry.shown_on {
-                // Closed, tiled again, or moved to another workspace: it left the scratchpad.
-                Some(workspace)
-                    if self.workspaces.floating_workspace_of(&window) != Some(workspace) =>
-                {
-                    self.leave_scratchpad(&window);
-                }
                 Some(workspace) if visible.contains(&workspace) => {}
                 Some(workspace) => {
                     let output = output_for(&self.workspaces, workspace, outputs);
@@ -467,35 +462,31 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
                     // `self.parked` still holds the pre-summon tile recovery frame (#258).
                     let size = self
                         .backend
-                        .frame(&window)
+                        .frame(window)
                         .ok()
-                        .or_else(|| self.parked.summon_destination(&window))
-                        .or_else(|| self.parked.get(&window).copied())
+                        .or_else(|| self.parked.summon_destination(window))
+                        .or_else(|| self.parked.get(window).copied())
                         .map(|frame| (frame.width, frame.height));
-                    if self.park_scratchpad_window(&window, output, outputs)
+                    if self.park_scratchpad_window(window, output, outputs)
                         == macos::ApplyOutcome::Applied
                     {
-                        self.scratchpad.mark_hidden(&window, size);
+                        self.workspaces.hide_scratchpad(window, size);
                         hid = true;
                     }
                 }
-                // Back on screen or owned by other means (healed, recovered): an ordinary window.
-                None if !self.parked.contains_key(&window)
-                    || self.workspaces.workspace_of_any(&window).is_some() =>
-                {
-                    self.leave_scratchpad(&window);
-                }
+                // Back on screen by other means (healed, recovered): an ordinary window.
+                None if !self.parked.contains_key(window) => self.leave_scratchpad(window),
                 None => {
                     if self.backend.is_process_running(&window.app)
-                        && self.backend.window_server_frame(&window).is_some()
+                        && self.backend.window_server_frame(window).is_some()
                     {
                         continue;
                     }
                     log_event!("scratchpad: {window:?} closed while hidden");
-                    if let Some(record) = self.commit_unparked(&window) {
+                    if let Some(record) = self.commit_unparked(window) {
                         closed.push((window.clone(), record));
                     }
-                    self.leave_scratchpad(&window);
+                    self.leave_scratchpad(window);
                 }
             }
         }

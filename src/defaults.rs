@@ -5,10 +5,11 @@
 //! is predictable and visible in one place. Size guesses are avoided on purpose: a small terminal
 //! window must still tile, and a Sticky that was once stretched must still float.
 //!
-//! These defaults apply only after the user's own `[[rules]]`: any matching rule wins, so
-//! `action = "tile"` tiles a built-in float again and `action = "pin"` pins one everywhere.
+//! These defaults apply only after the user's own `[[rules]]`: a matching rule wins wherever it
+//! decides, so `action = "tile"` tiles a built-in float again, `action = "pin"` pins one
+//! everywhere, and `action = "route"` floats one on the routed workspace.
 
-use crate::config::WindowDisposition;
+use crate::config::{DispositionPatch, Management, WindowDisposition};
 
 /// Bundle identifiers whose windows float by default.
 pub const FLOATING_BUNDLES: &[&str] = &[
@@ -50,6 +51,17 @@ pub fn disposition(bundle_id: &str) -> WindowDisposition {
         WindowDisposition::Floating
     } else {
         WindowDisposition::Managed
+    }
+}
+
+/// The built-in default as a patch under the user's rules: a float for the bundles above,
+/// nothing otherwise.
+#[must_use]
+pub fn patch(bundle_id: &str) -> DispositionPatch {
+    if floats_by_default(bundle_id) {
+        DispositionPatch::managed(Management::Float)
+    } else {
+        DispositionPatch::NONE
     }
 }
 

@@ -164,9 +164,7 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
                     if !server_frames.contains_key(&window.id.window_id) {
                         continue;
                     }
-                    let role = if self.config.disposition(&app.bundle_id, window)
-                        == WindowDisposition::Ignored
-                    {
+                    let role = if self.config.patch(&app.bundle_id, window).is_ignored() {
                         WindowRole::Ignored
                     } else {
                         WindowRole::Unowned

@@ -72,8 +72,10 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
                 window_id: id,
             };
             if self.workspaces.workspace_of_any(&window).is_some()
-                || self.scratchpad.contains(&window)
-                || self.bundle_disposition(&window, frame) == Some(WindowDisposition::Ignored)
+                || self.workspaces.scratchpad().contains(&window)
+                || self
+                    .bundle_disposition(&window, frame)
+                    .is_some_and(crate::config::DispositionPatch::is_ignored)
             {
                 continue;
             }

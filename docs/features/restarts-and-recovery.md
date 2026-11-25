@@ -39,7 +39,8 @@ Placement recall (reboot, fresh start, or app relaunch)     // recover.memory
 │   remembered placements
 │   ├── recall closes early once every placement is claimed or the app quits
 │   ├── frame match (8 px) first, then creation order
-│   ├── a placement saved floating floats again (keeps its frame) until Toggle Float tiles it
+│   ├── a placement saved floating floats again at its remembered frame, on its workspace's
+│   │   display, until Toggle Float tiles it
 │   ├── route/ignore rules win; disabled/unmanaged workspaces skipped
 │   └── apps launched after the startup window open on the active workspace
 ├── An app relaunched mid-session (an update or restart) recalls its placements too: its new

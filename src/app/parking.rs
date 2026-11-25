@@ -140,7 +140,7 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
         };
         // Hidden scratchpad windows intentionally have no workspace owner, so
         // re-park any background bounds reassertions here before affinity sees them.
-        for window in self.scratchpad.hidden() {
+        for window in self.workspaces.scratchpad().hidden() {
             if cancelled.load(Ordering::Acquire) {
                 return;
             }

@@ -5,8 +5,9 @@ use serde::{Deserialize, Serialize};
 use crate::{Engine, PhysicalWindowId};
 
 mod id;
-mod pins;
+mod residency;
 pub use id::WorkspaceId;
+pub(crate) use residency::{FloatCause, Residency};
 
 #[derive(Clone, Debug, Deserialize, Eq, Hash, Ord, PartialEq, PartialOrd, Serialize)]
 pub enum DisplaySelector {
@@ -181,11 +182,8 @@ pub struct Workspaces {
     assignments: [DisplaySelector; WorkspaceId::COUNT],
     active: HashMap<DisplaySelector, WorkspaceId>,
     previous: HashMap<DisplaySelector, WorkspaceId>,
-    floating_owners: HashMap<PhysicalWindowId, WorkspaceId>,
-    /// Floats pinned by hand to every workspace; persisted. Always a subset of `floating_owners`.
-    pinned: HashSet<PhysicalWindowId>,
-    /// Floats a `pin` rule matched on their latest observation; recomputed, never persisted.
-    rule_pinned: HashSet<PhysicalWindowId>,
+    /// Every managed window that holds no tile: floats (pinned or not) and the Scratchpad.
+    residency: residency::WindowTable,
     enabled: HashSet<WorkspaceId>,
     last_focused: [Option<crate::SlotId>; WorkspaceId::COUNT],
     last_focused_float: [Option<PhysicalWindowId>; WorkspaceId::COUNT],
@@ -204,9 +202,7 @@ impl Default for Workspaces {
                 (DisplaySelector::Secondary, WorkspaceId::SIX),
             ]),
             previous: HashMap::new(),
-            floating_owners: HashMap::new(),
-            pinned: HashSet::new(),
-            rule_pinned: HashSet::new(),
+            residency: residency::WindowTable::default(),
             enabled: WorkspaceId::numbered().collect(),
             last_focused: std::array::from_fn(|_| None),
             last_focused_float: std::array::from_fn(|_| None),
@@ -240,8 +236,11 @@ impl Workspaces {
                 .take(workspace_count)
                 .map(|engine| engine.model().workspace.slots.clone())
                 .collect(),
-            floating: sorted(self.floating_owners.clone()),
-            pinned: sorted(self.pinned.clone()),
+            floating: sorted(
+                self.floating_entries()
+                    .map(|(window, workspace)| (window.clone(), workspace)),
+            ),
+            pinned: sorted(self.residency.hand_pinned().cloned()),
             last_focused: trimmed(&self.last_focused, Option::is_some),
             fullscreen_layout: trimmed(&self.fullscreen_layout, |enabled| *enabled),
             maximized: Vec::new(),
@@ -292,16 +291,16 @@ impl Workspaces {
                 self.previous.insert(selector, workspace);
             }
         }
+        // The saved state does not say why a window floated, so every restored float floats
+        // by hand until its first observation hands it back to a float rule.
         for (window, workspace) in floating {
             if self.workspace_of(&window).is_none() {
-                self.floating_owners.insert(window, workspace);
+                self.float(window, workspace, FloatCause::Manual);
             }
         }
-        self.pinned.extend(
-            pinned
-                .into_iter()
-                .filter(|window| self.floating_owners.contains_key(window)),
-        );
+        for window in pinned {
+            let _: bool = self.pin(window);
+        }
         for index in 0..WorkspaceId::COUNT {
             let workspace = WorkspaceId::from_index(index);
             let valid_slot = |slots: &[Option<crate::SlotId>]| {
@@ -535,23 +534,9 @@ impl Workspaces {
     }
 
     #[must_use]
-    pub(crate) fn floating_workspace_of(&self, window: &PhysicalWindowId) -> Option<WorkspaceId> {
-        self.floating_owners.get(window).copied()
-    }
-
-    #[must_use]
     pub(crate) fn workspace_of_any(&self, window: &PhysicalWindowId) -> Option<WorkspaceId> {
         self.workspace_of(window)
             .or_else(|| self.floating_workspace_of(window))
-    }
-
-    pub(crate) fn own_floating(&mut self, window: PhysicalWindowId, workspace: WorkspaceId) {
-        if let Some(previous) = self.floating_owners.insert(window.clone(), workspace)
-            && previous != workspace
-            && self.last_focused_float[previous.index()].as_ref() == Some(&window)
-        {
-            self.last_focused_float[previous.index()] = None;
-        }
     }
 
     /// The workspace's tiles in stable tile order, then its floats in a stable
@@ -586,7 +571,9 @@ impl Workspaces {
 
     pub(crate) fn app_owns_windows(&self, app: &crate::AppInstanceId) -> bool {
         self.app_owns_tiled_windows(app)
-            || self.floating_owners.keys().any(|window| &window.app == app)
+            || self
+                .floating_entries()
+                .any(|(window, _)| &window.app == app)
     }
 
     pub(crate) fn forget_app_with(
@@ -603,34 +590,6 @@ impl Workspaces {
             self.prune_intents(workspace);
         }
         removed
-    }
-
-    pub(crate) fn floating_windows_for_app(
-        &self,
-        app: &crate::AppInstanceId,
-    ) -> Vec<PhysicalWindowId> {
-        self.floating_entries()
-            .filter(|(window, _)| &window.app == app)
-            .map(|(window, _)| window.clone())
-            .collect()
-    }
-
-    pub(crate) fn floating_entries(
-        &self,
-    ) -> impl Iterator<Item = (&PhysicalWindowId, WorkspaceId)> {
-        self.floating_owners
-            .iter()
-            .map(|(window, workspace)| (window, *workspace))
-    }
-
-    pub(crate) fn forget_floating(&mut self, window: &PhysicalWindowId) {
-        self.pinned.remove(window);
-        self.rule_pinned.remove(window);
-        if let Some(workspace) = self.floating_owners.remove(window)
-            && self.last_focused_float[workspace.index()].as_ref() == Some(window)
-        {
-            self.last_focused_float[workspace.index()] = None;
-        }
     }
 
     /// The one enabled workspace holding the app's windows, tiled or floating;

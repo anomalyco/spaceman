@@ -84,12 +84,13 @@ impl HudSink for LiveHudSink {
     }
 }
 
-/// Whether `bundle_id`'s windows float: by its own rule, else by Spaceman's built-in default.
+/// Whether `bundle_id`'s windows float: by its own rule, else by Spaceman's built-in default. A
+/// `route` rule only says where windows open, so a built-in float still floats there.
 fn floats(current: Option<Place>, floats_by_default: bool) -> bool {
     match current {
         Some(Place::Float | Place::Pin) => true,
-        Some(Place::Tile | Place::Workspace(_) | Place::Ignore) => false,
-        None => floats_by_default,
+        Some(Place::Tile | Place::Ignore) => false,
+        Some(Place::Workspace(_)) | None => floats_by_default,
     }
 }
 

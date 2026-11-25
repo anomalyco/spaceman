@@ -58,7 +58,8 @@ Send tab to workspace                                      // ws.move-tab
 │   title: English, Chromium's plural, or any of AppKit's MenuCommands.loctable translations)
 ├── Disabled or missing (one tab, or no native tabs) -> moves the whole window, exactly like move
 ├── Pressed -> PendingTabDetach (800 ms): the app's first window not on screen before the press is
-│   routed straight to <ws> ahead of any route rule (parked when hidden, never tiled on the source)
+│   routed straight to <ws> ahead of any route rule (parked when hidden, never tiled on the source;
+│   a floating tab moves onto <ws>'s display when <ws> is on screen elsewhere)
 │   ├── Chromium: the new window is the tab; the source window keeps its slot
 │   └── AppKit tab group: the moved tab keeps its window and the group's next tab appears in place,
 │       so that window takes over the source slot (told apart by which one left the old frame)
@@ -90,17 +91,21 @@ Focus follows                                              // ws.focus-follow
     or floating, are on one workspace
 
 Where a new window goes (first match wins)                 // ws.adoption
-├── Disposition: the first matching [[rules]] entry (bundle_id, title, title_contains), else the
+├── Disposition: the first matching [[rules]] entry (bundle_id, title, title_contains), over the
 │   built-in default (Stickies, Calculator, 1Password and other utilities float; src/defaults.rs),
-│   else managed. action = "tile" tiles a built-in float again
+│   over the window's traits (non-resizable floats), each deciding only what the ones before left
+│   open (src/config/disposition.rs). action = "tile" tiles a built-in float again; a route rule
+│   for a built-in float floats it on the routed workspace
 ├── ignore rule        -> never managed
-├── route rule         -> that workspace (parked if hidden); bundle-only route rules apply to the
-│                         app's initial window while secondary windows stay on the active workspace
+├── route rule         -> that workspace (parked if hidden), joined before any display reconciles,
+│                         so a failed park leaves it unowned and the next cycle routes it again;
+│                         bundle-only route rules apply to the app's initial window while
+│                         secondary windows stay on the active workspace
 ├── remembered placement (startup window, first 60 s, the app relaunched within 30 s of
 │   quitting, a returning app, or a new process presenting 2+ windows at once whose memory spans
 │   2+ workspaces) -> remembered workspace, matched by frame, then size, then creation order
 │   (floating if matched by a float rule, dialog/non-resizable without a tile rule, or remembered
-│   as floating)
+│   as floating; a remembered float moves to its remembered frame on that workspace's display)
 ├── float / pin rule, built-in float, dialog / non-resizable (no tile rule) -> floating on the
 │   active workspace under the window's center; each float belongs to its own workspace, so two
 │   Stickies notes can live on workspaces 1 and 2

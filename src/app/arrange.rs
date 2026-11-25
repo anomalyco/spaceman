@@ -14,6 +14,8 @@ pub(super) struct ArrangeState {
     /// Where the arrangement sends windows no workspace owns yet, until the cycle that adopts
     /// them has run.
     targets: HashMap<crate::PhysicalWindowId, WorkspaceId>,
+    /// Windows no workspace owns yet that the arrangement floats by hand once adopted.
+    floats: HashSet<crate::PhysicalWindowId>,
     /// Each window's frame before the last arrangement, for Undo.
     undo: HashMap<crate::PhysicalWindowId, crate::Rect>,
 }
@@ -26,6 +28,11 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
             .get(window)
             .copied()
             .filter(|target| self.arrangeable(*target))
+    }
+
+    /// Whether an arrangement under way floats `window` (owned by no workspace yet) by hand.
+    pub(super) fn arranged_float(&self, window: &crate::PhysicalWindowId) -> bool {
+        self.arranging.floats.contains(window)
     }
 
     fn arrangeable(&self, workspace: WorkspaceId) -> bool {
@@ -69,9 +76,7 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
         let mut observed = HashSet::new();
         for application in &mut observation.applications {
             if let crate::AppObservation::Complete { app, windows, .. } = application {
-                windows.retain(|window| {
-                    self.config.disposition(&app.bundle_id, window) != WindowDisposition::Ignored
-                });
+                windows.retain(|window| !self.config.patch(&app.bundle_id, window).is_ignored());
                 observed.extend(windows.iter().map(|window| window.id.clone()));
             }
         }
@@ -122,9 +127,7 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
             };
             let mut windows: Vec<_> = windows
                 .iter()
-                .filter(|window| {
-                    self.config.disposition(&app.bundle_id, window) != WindowDisposition::Ignored
-                })
+                .filter(|window| !self.config.patch(&app.bundle_id, window).is_ignored())
                 .collect();
             windows.sort_by(|left, right| left.id.cmp(&right.id));
             for window in &windows {
@@ -155,7 +158,7 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
                     ArrangedSlot::Float => match self.workspaces.workspace_of(&window.id) {
                         Some(owner) => floats.push((window.id.clone(), owner)),
                         None => {
-                            self.manual_floating.insert(window.id.clone());
+                            self.arranging.floats.insert(window.id.clone());
                         }
                     },
                 }
@@ -172,8 +175,8 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
                 .layout_settings(output_for(&self.workspaces, owner, &outputs))
                 .canvas();
             self.forget_window_on(owner, &window, canvas);
-            self.workspaces.own_floating(window.clone(), owner);
-            self.manual_floating.insert(window);
+            self.workspaces
+                .float(window, owner, crate::workspace::FloatCause::Manual);
         }
         let mut failed = 0;
         for (window, target) in moves {
@@ -187,6 +190,7 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
         }
         let cycled = self.cycle(outputs.clone(), cancelled);
         self.arranging.targets.clear();
+        self.arranging.floats.clear();
         let mut status = cycled?;
         // A window routed to a workspace on screen joins its tiles now, not a cycle later.
         for resolved in self.visible_workspaces(&outputs) {

@@ -2,7 +2,9 @@ use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
 
+mod disposition;
 mod write;
+pub use disposition::{DispositionPatch, Management};
 pub use write::{
     ConfigLock, lock_config, resolve_write_target, save_workspace_monitor_at, write_config_atomic,
 };
@@ -571,6 +573,17 @@ impl Config {
             || crate::defaults::disposition(bundle_id),
             |rule| rule.action,
         )
+    }
+
+    /// What the rules and built-in defaults say about `window`: the first matching user rule
+    /// over the built-in default. Callers add the window's traits with
+    /// [`DispositionPatch::over`].
+    #[must_use]
+    pub fn patch(&self, bundle_id: &str, window: &ObservedWindow) -> DispositionPatch {
+        let rule = self
+            .matching_rule(bundle_id, window)
+            .map_or(DispositionPatch::NONE, |rule| rule.action.into());
+        rule.over(crate::defaults::patch(bundle_id))
     }
 
     #[must_use]

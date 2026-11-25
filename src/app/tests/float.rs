@@ -45,7 +45,7 @@ fn toggling_a_tiled_window_floats_it_and_retiles_the_rest() {
         runtime.workspaces.floating_workspace_of(&floated),
         Some(WorkspaceId::ONE)
     );
-    assert!(runtime.manual_floating.contains(&floated));
+    assert!(runtime.workspaces.is_manual_float(&floated));
     assert_eq!(
         runtime.workspaces.engine(WorkspaceId::ONE).bound_windows(),
         vec![window(20)]
@@ -142,7 +142,7 @@ fn toggling_a_floating_window_tiles_it_again() {
         Some(WorkspaceId::ONE)
     );
     assert_eq!(runtime.workspaces.floating_workspace_of(&tiled), None);
-    assert!(!runtime.manual_floating.contains(&tiled));
+    assert!(!runtime.workspaces.is_manual_float(&tiled));
 
     let bound = runtime.workspaces.engine(WorkspaceId::ONE).bound_windows();
     assert_eq!(bound.len(), 2);
@@ -211,7 +211,7 @@ action = 'float'",
         Some(WorkspaceId::ONE)
     );
     assert!(
-        !runtime.manual_floating.contains(&floating),
+        !runtime.workspaces.is_manual_float(&floating),
         "a rule-floated window is not a manual float"
     );
 }
