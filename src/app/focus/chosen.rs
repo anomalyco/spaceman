@@ -39,19 +39,43 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
             return;
         }
         let left = self.backend.focused_window();
-        let kept_elsewhere = left.as_ref().is_some_and(|window| {
-            !self.parked.contains_key(window)
-                && self
-                    .workspaces
-                    .workspace_of_any(window)
-                    .is_some_and(|owner| owner != workspace && self.is_visible(owner, outputs))
-        });
+        let kept_elsewhere = left
+            .as_ref()
+            .is_some_and(|window| self.focus_kept_elsewhere(window, workspace, outputs));
         let chosen = self.focus.history().current == Some(workspace)
             && self.is_visible(workspace, outputs)
             && self.workspaces.windows(workspace).is_empty()
             && kept_elsewhere;
         self.focus
             .set_empty_choice(chosen.then_some(EmptyChoice { workspace, left }));
+    }
+
+    /// Whether window, still focused, is on another visible workspace than
+    /// workspace: by the workspace that owns it, or, for a window Spaceman
+    /// does not manage (an `ignore` rule, #532), by the display it is on.
+    fn focus_kept_elsewhere(
+        &mut self,
+        window: &crate::PhysicalWindowId,
+        workspace: WorkspaceId,
+        outputs: &macos::DisplayOutputs,
+    ) -> bool {
+        if self.parked.contains_key(window) {
+            return false;
+        }
+        if let Some(owner) = self.workspaces.workspace_of_any(window) {
+            return owner != workspace && self.is_visible(owner, outputs);
+        }
+        let Some(frame) = self
+            .backend
+            .window_server_frame(window)
+            .or_else(|| self.backend.frame(window).ok())
+        else {
+            return false;
+        };
+        self.visible_workspaces(outputs)
+            .iter()
+            .find(|entry| entry.output.contains_center(frame))
+            .is_some_and(|entry| entry.workspace != workspace)
     }
 
     /// Ends the choice once its workspace is no longer on a connected display.
