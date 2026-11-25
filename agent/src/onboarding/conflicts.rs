@@ -4,8 +4,6 @@
 //! The two macOS features live in the `com.apple.WindowManager` preferences. Turn off writes
 //! the same key System Settings writes, so it is undone there.
 
-#![allow(unsafe_code)]
-
 use crate::apps;
 
 #[derive(Clone, Debug, Eq, PartialEq)]

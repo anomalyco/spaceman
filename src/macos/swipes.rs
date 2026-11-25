@@ -102,8 +102,12 @@ pub struct SwipeMonitor {
     _context: Box<Context>,
 }
 
+/// Each swipe with the number of fingers and where the pointer was, in window-server
+/// coordinates.
+type SwipeReporter = Box<dyn Fn(Swipe, Fingers, (i32, i32))>;
+
 struct Context {
-    report: Box<dyn Fn(Swipe, Fingers, (i32, i32))>,
+    report: SwipeReporter,
     gate: RefCell<SwipeGate>,
     left_button_down: Cell<bool>,
     tap: RefCell<Option<CFRetained<CFMachPort>>>,

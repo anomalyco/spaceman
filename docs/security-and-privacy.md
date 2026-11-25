@@ -5,13 +5,13 @@
 Spaceman needs macOS Accessibility permission to enumerate eligible application windows, read their
 role, state, title, position, and size, determine focus, and focus, move, or resize them. It also reads
 the on-screen Core Graphics window list, display topology, keyboard input source, pointer position,
-and mouse-button state needed for tiling and gestures. Two listen-only event taps watch three-finger
-trackpad swipes and Option key presses. The key tap reads only the virtual key code and modifier flags
-of presses with Option held, never characters, to notice a Spaceman shortcut macOS did not deliver;
-other presses are ignored and nothing is stored. The setup tour's Try it step uses the same kind
-of tap, only while that step is on screen, to hear the four shortcuts it teaches. While the setup
-window has the keyboard on that step, Spaceman's global hotkeys are held off, so those shortcuts
-move the step's miniature desktop and no real window.
+and mouse-button state needed for tiling and gestures. Two listen-only event taps watch three- and
+four-finger trackpad swipes and Option key presses. The key tap reads only the virtual key code and
+modifier flags of presses with Option held, never characters, to notice a Spaceman shortcut macOS
+did not deliver; other presses are ignored and nothing is stored. The setup tour's Try it step uses
+the same kind of tap, only while that step is on screen, to hear the four shortcuts it teaches.
+While the setup window has the keyboard on that step, Spaceman's global hotkeys are held off, so
+those shortcuts move the step's miniature desktop and no real window.
 
 The permission is broad because macOS grants Accessibility at application scope. Spaceman limits its
 own writes to eligible standard, non-minimized, non-fullscreen windows whose position is settable.
@@ -54,9 +54,9 @@ sent anywhere. The tour's permission step reads two switches in the `com.apple.W
 preferences (`GloballyEnabled` for Stage Manager, `EnableTilingByEdgeDrag` for macOS edge tiling)
 and writes one only when you press its `Turn off`, which System Settings › Desktop & Dock undoes.
 
-Spaceman can read a window title for exact config-rule matching. Titles remain in memory and are
-explicitly excluded from serialized observations, persisted state, the arrangement journal,
-`spaceman ctl debug`, `spaceman doctor`, and `spaceman hud` output.
+Spaceman can read a window title for config-rule matching (including `title_contains`). Titles
+remain in memory and are explicitly excluded from serialized observations, persisted state, the
+arrangement journal, `spaceman ctl debug`, `spaceman doctor`, and `spaceman hud` output.
 
 The Workspace HUD shows each workspace's app icons. The runtime sends the agent each window's bundle
 identifier and its layout rectangle, never a title, and the agent reads the icons from the installed
