@@ -321,6 +321,7 @@ command changes behavior. Unknown keys are config errors.
 [labs]
 scratchpad = false                    # optional (default: false); the i3/sway-style Scratchpad
 activity = false                      # optional (default: false); Settings › Activity
+center_floats = false                 # optional (default: false); centred, keyboard-sized floats
 ```
 
 `scratchpad = true` enables the Scratchpad (see [Controls › Scratchpad](controls.md#scratchpad-lab)) and
@@ -333,6 +334,11 @@ hidden in the scratchpad brings them back on screen, where they tile again.
 and Save snapshot (see [Restarts and Recovery](features/restarts-and-recovery.md)). With it off the pane
 stays out of the Settings sidebar and its `⌘6` shortcut does nothing; `spaceman doctor` and the journal
 keep recording either way. Turning it off while the pane is open returns Settings to General.
+
+`center_floats = true` makes Toggle Float (`Option+Shift+Space`) centre the window at three quarters
+of its display, and lets `Option+-` / `Option+=` and `resize width|height` size a focused floating
+window around its centre (see [Controls › Center Floats](controls.md#center-floats-lab)). It takes
+effect live; turning it off leaves windows where they are.
 
 ```sh
 spaceman config set labs.activity true

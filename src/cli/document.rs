@@ -39,11 +39,13 @@ pub(crate) struct LabsDoc {
     pub scratchpad: Option<bool>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub activity: Option<bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub center_floats: Option<bool>,
 }
 
 impl LabsDoc {
     fn is_empty(&self) -> bool {
-        self.scratchpad.is_none() && self.activity.is_none()
+        self.scratchpad.is_none() && self.activity.is_none() && self.center_floats.is_none()
     }
 
     /// The switch as the file asks for it: off while unset.
@@ -65,6 +67,7 @@ impl LabsDoc {
         match feature {
             LabFeature::Scratchpad => self.scratchpad,
             LabFeature::Activity => self.activity,
+            LabFeature::CenterFloats => self.center_floats,
         }
     }
 
@@ -72,6 +75,7 @@ impl LabsDoc {
         match feature {
             LabFeature::Scratchpad => &mut self.scratchpad,
             LabFeature::Activity => &mut self.activity,
+            LabFeature::CenterFloats => &mut self.center_floats,
         }
     }
 }

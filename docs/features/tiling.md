@@ -43,8 +43,11 @@ Size                                                    // tile.size
 ├── ctl resize width|height <points> -> resize the focused window to that width/height at the
 │   nearest split on that axis; siblings give or take in proportion; clamped at minimums; lone tile unchanged
 ├── ctl balance          -> equalize the focused tile's immediate split (no default hotkey)
-└── Window refuses its tile size (app minimum) -> its tile grows to fit and siblings give up
-    the space; if necessary, try stacking an adjacent pair
+├── Window refuses its tile size (app minimum) -> its tile grows to fit and siblings give up
+│   the space; if necessary, try stacking an adjacent pair
+└── [labs] center_floats (Lab, off by default)
+    ├── Option+Shift+Space floats a tile -> centred at 3/4 of its display
+    └── Focused float + resize keys / resize width|height -> sized around its centre, kept on its display
 
 Axis                                                    // tile.axis
 └── Option+/ / ctl layout -> flip the root split axis (also exits Fullscreen Layout)
@@ -152,6 +155,9 @@ pause, quit, or hotkey loss.
   included. `src/config.rs` and `src/cli/tests.rs` cover parsing, `outer`'s fallback and its
   explicit edges, range errors and `spaceman config`; `agent/src/rules/tests.rs` covers Settings ›
   Layout saves that keep comments, keep `outer` and its explicit zeros, and restore the file.
+- `src/app/tests/centered_floats.rs` covers the Center Floats Lab: Toggle Float centring and
+  keyboard resizing of a focused float; `src/app/commands/centered_floats.rs` covers the
+  centre-keeping, display-clamped resize math.
 - Fixture replay: `cargo run -- replay fixtures/ghostty-tab-replacement.json` (reconciliation of a
   native-tab replacement, without the runtime).
 - Live harness (not run): `scripts/live-ghostty-tabs.sh` for native-tab slot preservation.

@@ -207,6 +207,10 @@ pub struct LabsConfig {
     /// Settings › Activity: the live arrangement log, doctor diagnostics, and process vitals.
     #[serde(default)]
     pub activity: bool,
+    /// Toggle Float centres the window at three quarters of its display, and `resize` sizes a
+    /// focused float around its centre.
+    #[serde(default)]
+    pub center_floats: bool,
 }
 
 impl LabsConfig {
@@ -216,6 +220,7 @@ impl LabsConfig {
         match feature {
             LabFeature::Scratchpad => self.scratchpad,
             LabFeature::Activity => self.activity,
+            LabFeature::CenterFloats => self.center_floats,
         }
     }
 }
@@ -227,11 +232,13 @@ pub enum LabFeature {
     Scratchpad,
     /// Settings › Activity: the live arrangement log, doctor diagnostics, and process vitals.
     Activity,
+    /// Centred, sized floats: Toggle Float centres the window and `resize` sizes a float.
+    CenterFloats,
 }
 
 impl LabFeature {
     /// Every switch, in the order `[labs]` lists them.
-    pub const ALL: [Self; 2] = [Self::Scratchpad, Self::Activity];
+    pub const ALL: [Self; 3] = [Self::Scratchpad, Self::Activity, Self::CenterFloats];
 
     /// The `[labs]` key that turns this feature on.
     #[must_use]
@@ -239,6 +246,7 @@ impl LabFeature {
         match self {
             Self::Scratchpad => "scratchpad",
             Self::Activity => "activity",
+            Self::CenterFloats => "center_floats",
         }
     }
 
