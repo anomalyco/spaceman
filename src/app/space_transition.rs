@@ -21,7 +21,7 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
     /// layout too, until a settle after they lift (#513). macOS reports the
     /// change about a second after they lift, so that settle is longer than
     /// the one after a reported change (#572).
-    pub(super) fn space_transition_until(&mut self) -> Option<Instant> {
+    fn space_transition_settled_at(&mut self) -> Option<Instant> {
         let changed = self
             .backend
             .active_space_changed_at()
@@ -30,7 +30,11 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
             .backend
             .space_gesture_at()
             .map(|at| at + SPACE_GESTURE_SETTLE);
-        let until = changed.max(gesture)?;
+        changed.max(gesture)
+    }
+
+    pub(super) fn space_transition_until(&mut self) -> Option<Instant> {
+        let until = self.space_transition_settled_at()?;
         (self.backend.now() < until).then_some(until)
     }
 
@@ -38,10 +42,10 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
     /// it see the desktop it brought on screen; a window it ordered out is on
     /// the desktop it left, not a flaky snapshot (#431).
     pub(super) fn space_slide_just_settled(&mut self) -> bool {
-        let Some(changed) = self.backend.active_space_changed_at() else {
+        let Some(settled) = self.space_transition_settled_at() else {
             return false;
         };
-        self.backend.now() < changed + SPACE_TRANSITION_SETTLE + SLIDE_ARRIVAL_WINDOW
+        self.backend.now() < settled + SLIDE_ARRIVAL_WINDOW
     }
 
     /// Whether a parked window of the frontmost app that is back on screen was

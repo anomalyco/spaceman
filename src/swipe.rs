@@ -7,8 +7,19 @@ const DISTANCE: f64 = 0.15;
 /// Horizontal travel must beat vertical travel by this much, so Mission Control's
 /// upward swipe never switches.
 const DOMINANCE: f64 = 2.0;
+/// How far three or four fingers must move horizontally (as a fraction of the
+/// trackpad's width) before Spaceman treats the touch as a macOS Space slide,
+/// ignoring stationary taps and resting palms.
+pub const SPACE_SLIDE_DISTANCE: f64 = 0.015;
 /// A gap this long between frames means the swipe's end was missed.
 const STALE_SECONDS: f64 = 0.5;
+
+fn centroid(touches: &[(f64, f64)]) -> (f64, f64) {
+    let count = touches.len() as f64;
+    let x = touches.iter().map(|touch| touch.0).sum::<f64>() / count;
+    let y = touches.iter().map(|touch| touch.1).sum::<f64>() / count;
+    (x, y)
+}
 
 /// How many fingers made a swipe. Spaceman steps workspaces on the count
 /// `Config::swipe_fingers` picks and leaves the other to macOS.
@@ -19,13 +30,6 @@ pub enum Fingers {
 }
 
 impl Fingers {
-    const fn count(self) -> usize {
-        match self {
-            Self::Three => 3,
-            Self::Four => 4,
-        }
-    }
-
     const fn of(count: usize) -> Option<Self> {
         match count {
             3 => Some(Self::Three),
@@ -107,9 +111,7 @@ impl SwipeTracker {
             self.state = State::Ready;
             return None;
         };
-        let count = fingers.count() as f64;
-        let x = touches.iter().map(|touch| touch.0).sum::<f64>() / count;
-        let y = touches.iter().map(|touch| touch.1).sum::<f64>() / count;
+        let (x, y) = centroid(touches);
         let (start_x, start_y) = match self.state {
             State::Tracking {
                 fingers: tracked,
@@ -135,6 +137,27 @@ impl SwipeTracker {
         self.state = State::Spent;
         let swipe = if dx < 0.0 { Swipe::Left } else { Swipe::Right };
         Some((swipe, fingers))
+    }
+
+    /// Whether the currently tracked three- or four-finger touch has moved
+    /// horizontally past [`SPACE_SLIDE_DISTANCE`] with horizontal travel
+    /// exceeding vertical travel (`|dx| >= 0.015 && |dx| > |dy|`).
+    #[must_use]
+    pub fn is_sliding_horizontally(&self, touches: &[(f64, f64)]) -> bool {
+        let State::Tracking {
+            fingers,
+            x: start_x,
+            y: start_y,
+        } = self.state
+        else {
+            return false;
+        };
+        if Fingers::of(touches.len()) != Some(fingers) {
+            return false;
+        }
+        let (x, y) = centroid(touches);
+        let (dx, dy) = ((x - start_x).abs(), (y - start_y).abs());
+        dx >= SPACE_SLIDE_DISTANCE && dx > dy
     }
 }
 
@@ -231,5 +254,28 @@ mod tests {
         assert_eq!(Swipe::Right.for_scroll_direction(true), Swipe::Right);
         assert_eq!(Swipe::Left.for_scroll_direction(false), Swipe::Right);
         assert_eq!(Swipe::Right.for_scroll_direction(false), Swipe::Left);
+    }
+
+    #[test]
+    fn horizontal_space_slide_requires_horizontal_travel_above_threshold() {
+        let mut tracker = SwipeTracker::default();
+        let origin = fingers(0.5, 0.5, 3);
+        assert_eq!(tracker.frame(0.0, &origin), None);
+        assert!(!tracker.is_sliding_horizontally(&origin));
+
+        // Sub-threshold horizontal jitter (stationary tap / resting palm).
+        let jitter = fingers(0.51, 0.5, 3);
+        assert_eq!(tracker.frame(0.01, &jitter), None);
+        assert!(!tracker.is_sliding_horizontally(&jitter));
+
+        // Upward vertical motion (Mission Control) does not count as horizontal.
+        let upward = fingers(0.52, 0.55, 3);
+        assert_eq!(tracker.frame(0.02, &upward), None);
+        assert!(!tracker.is_sliding_horizontally(&upward));
+
+        // Horizontal motion >= 0.015 exceeding vertical motion arms the slide.
+        let sliding = fingers(0.52, 0.505, 3);
+        assert_eq!(tracker.frame(0.03, &sliding), None);
+        assert!(tracker.is_sliding_horizontally(&sliding));
     }
 }
