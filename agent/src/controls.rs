@@ -17,7 +17,7 @@ use rune_kit::{Button, ButtonVariant, ControlSize, Kit, Switch};
 
 use crate::{Ui, apps::App};
 
-pub use keycaps::{chords, keycap, roll, tray, tray_held};
+pub use keycaps::{Held, chords, keycap, roll, tray, tray_held};
 pub use modal::{modal_panel, modal_sheet};
 pub use tokens::{KEYS, METRICS, MODAL, ModalWidth, WINDOW};
 

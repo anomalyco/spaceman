@@ -98,6 +98,16 @@ impl Tour {
             .collect()
     }
 
+    /// How opaque that element is on each frame from `from`.
+    fn opacities(&self, path: &str, from: usize) -> Vec<f32> {
+        self.track(path)
+            .frames
+            .iter()
+            .filter(|(frame, _)| *frame >= from)
+            .map(|(_, snap)| snap.op)
+            .collect()
+    }
+
     /// How opaque that element is now.
     fn opacity(&self, path: &str) -> f32 {
         self.track(path).frames.last().unwrap().1.op
@@ -341,6 +351,7 @@ fn the_last_lesson_brings_the_seal_and_the_desktop_stays_free_to_play_with() {
         (PhysicalKeyCode::Space, option_shift()),
         (PhysicalKeyCode::Space, option_shift()),
         (PhysicalKeyCode::KeyF, option_shift()),
+        (PhysicalKeyCode::Digit1, option()),
         (PhysicalKeyCode::KeyF, option_shift()),
     ];
     for (index, (key, mods)) in presses.into_iter().enumerate() {
@@ -388,4 +399,101 @@ fn another_base_modifier_changes_the_keys_asked_for_on_the_spot() {
     tour.press(PhysicalKeyCode::Digit2, control_option);
     assert_eq!(tour.demo().workspace(), 1);
     assert_eq!(tour.demo().learned(), 1);
+}
+
+#[test]
+fn the_prompt_and_its_keys_stay_on_screen_from_one_lesson_to_the_next() {
+    let mut tour = Tour::on_try_it();
+    let option_at = tour.rects("keycap-option", 0)[0];
+    let action_at = tour.rects("keycap-action", 0)[0];
+    // Option-2, Option-1, then Option-Shift-Space: Shift joins between Option and the last
+    // key, whose legend rolls from 1 to Space.
+    let from = tour.press(PhysicalKeyCode::Digit2, option());
+    tour.run.play(1.2);
+    tour.press(PhysicalKeyCode::Digit1, option());
+    tour.run.play(1.2);
+    assert_eq!(
+        tour.play().card(),
+        Card::Lesson {
+            index: 2,
+            learned: false
+        }
+    );
+    for path in [
+        "prompt",
+        "title",
+        "tray",
+        "keycap-option",
+        "keycap-action",
+        "progress",
+    ] {
+        let least = tour.opacities(path, from).into_iter().fold(1.0, f32::min);
+        assert!(least > 0.99, "{path} faded to {least}");
+    }
+    assert!(tour.shows("lesson2") && !tour.shows("lesson1") && !tour.shows("lesson0"));
+    assert!(tour.shows("keycap-shift") && tour.shows("legend-Space"));
+    assert!(!tour.shows("legend-1") && !tour.shows("legend-2"));
+
+    // Option never moved; the last key slid along to make room for Shift, and grew for Space.
+    let option = tour.rects("keycap-option", from);
+    assert!(
+        option
+            .iter()
+            .all(|rect| (rect[0] - option_at[0]).abs() < 0.5),
+        "{option:?}"
+    );
+    let action = tour.rects("keycap-action", from);
+    let last = action[action.len() - 1];
+    assert!(
+        last[0] > action_at[0] + 10.0 && last[2] > action_at[2] + 10.0,
+        "{last:?}"
+    );
+    let xs: Vec<f32> = action.iter().map(|rect| rect[0]).collect();
+    assert!(glides(&xs, 6.0), "{xs:?}");
+    // And the two marks filled.
+    assert!(tour.shows("mark0/done") && tour.shows("mark1/done") && !tour.shows("mark2/done"));
+    // The next lesson came up at the end of the tick's beat; let it settle.
+    tour.run.play(1.0);
+    assert_eq!(tour.findings(), Vec::<String>::new());
+}
+
+#[test]
+fn workspace_ones_number_again_brings_the_window_behind_forward() {
+    let mut tour = Tour::on_try_it();
+    for (key, mods) in [
+        (PhysicalKeyCode::Digit2, option()),
+        (PhysicalKeyCode::Digit1, option()),
+        (PhysicalKeyCode::Space, option_shift()),
+        (PhysicalKeyCode::Space, option_shift()),
+        (PhysicalKeyCode::KeyF, option_shift()),
+    ] {
+        tour.press(key, mods);
+        tour.run.play(1.2);
+    }
+    let front = *tour.rects("w-com.apple.Safari", 0).last().unwrap();
+    let tab = *tour.rects("w-com.apple.Terminal", 0).last().unwrap();
+    assert_eq!(
+        tour.play().card(),
+        Card::Lesson {
+            index: 5,
+            learned: false
+        }
+    );
+
+    let from = tour.press(PhysicalKeyCode::Digit1, option());
+    assert_eq!(tour.demo().desk(0).focus, 1);
+    assert_eq!(tour.demo().learned(), 6);
+    tour.run.play(1.0);
+    // The two trade places: Terminal fills the screen, and Safari is the tab behind it.
+    let terminal = tour.rects("w-com.apple.Terminal", from);
+    let safari = tour.rects("w-com.apple.Safari", from);
+    let near = |a: [f32; 4], b: [f32; 4]| a.iter().zip(b).all(|(a, b)| (a - b).abs() < 0.5);
+    assert!(near(terminal[terminal.len() - 1], front), "{terminal:?}");
+    assert!(near(safari[safari.len() - 1], tab), "{safari:?}");
+    let heights: Vec<f32> = terminal.iter().map(|rect| rect[3]).collect();
+    assert!(glides(&heights, 30.0), "{heights:?}");
+    // The menu bar names the app in front.
+    assert!(tour.shows("name-com.apple.Terminal") && !tour.shows("name-com.apple.Safari"));
+    tour.run.play(1.0);
+    assert_eq!(tour.findings(), Vec::<String>::new());
 }

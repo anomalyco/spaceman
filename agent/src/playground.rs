@@ -156,6 +156,7 @@ mod tests {
             "Onboarding/onboarding-try-it-ws2",
             "Onboarding/onboarding-try-it-floated",
             "Onboarding/onboarding-try-it-fullscreen",
+            "Onboarding/onboarding-try-it-cycled",
             "Onboarding/onboarding-try-it-complete",
             "General/general",
             "General/general-setup",

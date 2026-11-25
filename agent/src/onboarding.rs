@@ -510,12 +510,13 @@ fn play_scene(ui: &mut Ui, moves: &[Move]) {
 }
 
 /// The presses that learn every lesson, in order.
-const ALL_LESSONS: [Move; 6] = [
+const ALL_LESSONS: [Move; 7] = [
     Move::There,
     Move::Back,
     Move::Float,
     Move::Float,
     Move::Fullscreen,
+    Move::Back,
     Move::Fullscreen,
 ];
 
@@ -571,16 +572,11 @@ pub(crate) const SCENES: &[Scene] = &[
         play_scene(ui, &[Move::There, Move::Back, Move::Float]);
     }),
     ("onboarding-try-it-fullscreen", |ui| {
-        play_scene(
-            ui,
-            &[
-                Move::There,
-                Move::Back,
-                Move::Float,
-                Move::Float,
-                Move::Fullscreen,
-            ],
-        );
+        play_scene(ui, &ALL_LESSONS[..5]);
+    }),
+    // Option-1 again in Fullscreen Layout: Terminal has come forward from behind Safari.
+    ("onboarding-try-it-cycled", |ui| {
+        play_scene(ui, &ALL_LESSONS[..6]);
     }),
     // Every lesson learned, back on the tiles and free to play.
     ("onboarding-try-it-complete", |ui| {

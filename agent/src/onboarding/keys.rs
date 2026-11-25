@@ -1,7 +1,7 @@
 //! Hears the Try it step's shortcuts wherever the keyboard is.
 //!
 //! A listen-only key tap, up only while the Try it step is. It never stops a press. It matches
-//! the step's four chords by key code and modifiers and reads nothing else, and each one it
+//! the step's chords by key code and modifiers and reads nothing else, and each one it
 //! hears plays on the step's miniature desktop. While the setup window has the keyboard the
 //! global hotkeys are held off (`host::set_shortcut_practice`), so the press moves the
 //! miniature and no real window; with another window in front the real shortcut runs as usual
@@ -14,7 +14,7 @@ use crate::Ui;
 
 pub struct Listener {
     _monitor: KeyMonitor,
-    hears: [bool; 4],
+    hears: [bool; Move::ALL.len()],
 }
 
 impl Listener {

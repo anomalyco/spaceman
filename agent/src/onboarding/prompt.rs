@@ -1,18 +1,20 @@
 //! The Try it step's prompt: one lesson at a time under the miniature desktop. It reads as a
 //! shortcut's row in Settings does, what it does on the left and its keys on the right, with
-//! the step's progress under the title. The keys sink while they are pressed; a learned lesson
-//! gets a tick, then leaves upward as the next rises in; after the last, the keys' place is
-//! taken by a seal that draws its own check.
+//! the step's progress under the title. The card, its title and its keys stay put from one
+//! lesson to the next; only what changes moves. The keys sink while they are pressed; after the
+//! last lesson, the keys' place is taken by a seal that draws its own check.
 //!
-//! | What changes         | What moves                                              | Spring |
-//! | -------------------- | ------------------------------------------------------- | ------ |
-//! | A lesson is learned  | its tick and its progress mark pop in                   | .28 / .42 |
-//! | The next lesson      | the old one leaves upward, the new one rises in         | .30 / 0, .22 / 0 |
-//! | The last is learned  | the seal pops in, its check draws, a ring widens away   | .42 / .38, .34 / 0, .7 s |
+//! | What changes         | What moves                                                | Spring |
+//! | -------------------- | --------------------------------------------------------- | ------ |
+//! | A lesson is learned  | its tick pops in; its progress mark fills from the left   | .28 / .42, .40 / 0 |
+//! | The next lesson      | the title rolls up to the next; the tray keeps its keys,  | .30 / 0, .22 / 0 |
+//! |                      | a key the chord adds or drops springs in or out as its    | .18 / 0 |
+//! |                      | neighbours part or close, and the last key's legend rolls |         |
+//! | The last is learned  | the seal pops in, its check draws, a ring widens away     | .42 / .38, .34 / 0, .7 s |
 
 use rune::{
-    Beat, Easing, El, MotionIntent, Sequence, Shape, Spring, SpringPair, Transition, col, el, icon,
-    row, text,
+    Beat, Easing, Edge, El, MotionIntent, Sequence, Shape, Spring, SpringPair, Transition, col, el,
+    icon, row, text,
 };
 use spaceman::shortcuts::Chord;
 
@@ -29,6 +31,7 @@ use crate::{
 /// From the card's edge to its title and to its keys.
 pub const INSET: f32 = 16.0;
 const CARD_H: f32 = 56.0;
+const TITLE_H: f32 = 20.0;
 const MARK_W: f32 = 12.0;
 const MARK_H: f32 = 4.0;
 const SEAL: f32 = 28.0;
@@ -37,6 +40,8 @@ const SEAL: f32 = 28.0;
 const TICK: Spring = Spring::new(0.28, 0.42);
 const RISE: Spring = Spring::new(0.3, 0.0);
 const LEAVE: Spring = Spring::new(0.22, 0.0);
+/// A progress mark fills like a bar, without bounce.
+const FILL: Spring = Spring::new(0.4, 0.0);
 const SEAL_IN: Spring = Spring::new(0.42, 0.38);
 const CHECK_DRAW: Spring = Spring::new(0.34, 0.0);
 /// The ring the seal sends out as it lands: it widens and fades once.
@@ -60,7 +65,7 @@ pub fn card(ui: &Ui, p: Paint, play: &Play, still: bool) -> El {
             let chord = chords[lesson.mv.index()];
             (
                 title(p, index, lesson.title, learned),
-                keys(p, play, index, lesson.mv, chord),
+                keys(p, play, lesson.mv, chord, &chords),
                 format!(
                     "{}, {}, step {} of {}",
                     lesson.title,
@@ -88,13 +93,14 @@ pub fn card(ui: &Ui, p: Paint, play: &Play, still: bool) -> El {
         .radius(p.k.radius.xl)
         .fill(c.layer_01)
         .border(p.hair, c.border_weak)
+        .motion(RISE)
         .child(
             col()
                 .key("ask")
                 .grow(1.0)
                 .w(0.0)
                 .gap(7.0)
-                .child(el().key("title-slot").w_full().h(20.0).child(ask))
+                .child(ask)
                 .child(progress(p, play, showing)),
         )
         .child(
@@ -107,11 +113,14 @@ pub fn card(ui: &Ui, p: Paint, play: &Play, still: bool) -> El {
         )
 }
 
-/// A lesson leaves upward and the next rises into its place.
+/// A lesson's words leave upward and the next rise into their place, inside the title's clip.
 fn turn() -> Transition {
-    let enter = Transition::offset(0.0, 8.0).combined(Transition::opacity());
-    let exit = Transition::offset(0.0, -8.0).combined(Transition::opacity());
-    Transition::asymmetric(enter, exit).springs(SpringPair::new(RISE, LEAVE))
+    controls::roll().springs(SpringPair::new(RISE, LEAVE))
+}
+
+/// What comes in at the end, where the keys were, or leaves them: a fade and a hair of scale.
+fn swap() -> Transition {
+    Transition::scale(0.96).springs(SpringPair::new(RISE, LEAVE))
 }
 
 fn pop() -> Transition {
@@ -120,7 +129,8 @@ fn pop() -> Transition {
         .springs(SpringPair::new(TICK, LEAVE))
 }
 
-/// What the lesson does, and its tick once it is learned.
+/// What the lesson does, and its tick once it is learned. The title stays; its words roll
+/// over to the next lesson's, and the tick slides along beside them as their width springs.
 fn title(p: Paint, index: usize, label: &str, learned: bool) -> El {
     let tick = learned.then(|| {
         icon(p.k.glyph.check_small, 16.0)
@@ -130,34 +140,51 @@ fn title(p: Paint, index: usize, label: &str, learned: bool) -> El {
             .transition(pop())
     });
     row()
-        .key(format!("lesson{index}"))
-        .absolute(0.0, 0.0)
-        .h(20.0)
+        .key("title")
+        .w_full()
+        .h(TITLE_H)
         .gap(6.0)
         .center_y()
-        .transition(turn())
         .child(
-            text(label.to_owned())
-                .key("label")
-                .font(p.strong())
-                .color(p.text()),
+            row()
+                .key("words")
+                .h(TITLE_H)
+                .center_y()
+                .clip_rounded(0.0)
+                .child(
+                    text(label.to_owned())
+                        .key(format!("lesson{index}"))
+                        .font(p.strong())
+                        .color(p.text())
+                        .transition(turn()),
+                ),
         )
         .children(tick)
 }
 
-/// The lesson's keys in their tray, each down while it is pressed or held.
-fn keys(p: Paint, play: &Play, index: usize, mv: demo::Move, chord: Option<Chord>) -> El {
-    let tray = match chord {
-        Some(chord) => controls::tray_held(p, "tray", &play.caps(mv, chord)),
-        None => controls::chords(p, &[]),
+/// The lesson's keys in their tray, each down while it is pressed or held. The tray is the
+/// same from lesson to lesson, and its keys keep their places by which key they are. It sits
+/// at the start of room for the longest chord the lessons ask for, so the modifiers stay where
+/// they are while the keys after them come and go.
+fn keys(p: Paint, play: &Play, mv: demo::Move, chord: Option<Chord>, chords: &demo::Chords) -> El {
+    let Some(chord) = chord else {
+        return controls::chords(p, &[]).transition(swap());
     };
-    // Keyed by the chord too, so another base modifier brings its own keys in.
-    let spelled = chord.map_or_else(String::new, |chord| chord.keycaps().concat());
-    row()
-        .key(format!("keys{index}-{spelled}"))
-        .center_y()
-        .transition(turn())
-        .child(tray)
+    let longest = chords
+        .iter()
+        .flatten()
+        .copied()
+        .map(Chord::keycaps)
+        .max_by_key(|caps| (caps.len(), caps.concat().chars().count()))
+        .unwrap_or_default();
+    el().key("keys")
+        .transition(swap())
+        .child(
+            controls::tray(p, "room", &longest)
+                .opacity(0.0)
+                .a11y_hidden(),
+        )
+        .child(controls::tray_held(p, "tray", &play.caps(mv, chord)).absolute(0.0, 0.0))
 }
 
 /// One mark for each lesson: filled as it is learned, a touch brighter for the one asked for.
@@ -173,18 +200,21 @@ fn progress(p: Paint, play: &Play, showing: Card) -> El {
     };
     let mut marks = row().key("progress").h(MARK_H).gap(3.0).a11y_hidden();
     for index in 0..LESSONS.len() {
+        // Green slides in from the left, inside the mark, as a bar fills.
         let fill = (index < learned).then(|| {
             el().key("done")
                 .pin(Some(0.0), Some(0.0), Some(0.0), Some(0.0))
                 .radius(MARK_H / 2.0)
                 .fill(p.success())
-                .motion_intent(MotionIntent::OVERSHOOT)
-                .transition(pop())
+                .transition(
+                    Transition::move_edge(Edge::Leading).springs(SpringPair::new(FILL, LEAVE)),
+                )
         });
         marks = marks.child(
             el().key(format!("mark{index}"))
                 .size(MARK_W, MARK_H)
                 .radius(MARK_H / 2.0)
+                .clip_rounded(MARK_H / 2.0)
                 .fill(if asking == Some(index) {
                     c.border_strong
                 } else {
@@ -216,7 +246,7 @@ fn seal(p: Paint, still: bool) -> El {
     }
     el().key("seal")
         .size(SEAL, SEAL)
-        .transition(turn())
+        .transition(swap())
         .a11y_hidden()
         .child(ripple)
         .child(
