@@ -43,6 +43,9 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
             return;
         };
         if self.awaiting_display_repark(&window.id)
+            // A visible strip put it where it is (mid-glide, or held at a shared edge until the
+            // glide's settling layout parks it) and keeps it there; focus on it scrolls to it.
+            || self.is_strip_column(&window.id)
             || self
                 .recently_parked
                 .get(&window.id)
@@ -117,7 +120,9 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
                 workspace
             );
         }
-        if repeatedly_unparked {
+        // A strip column is the strip's to place; exempting it would leave it on screen over
+        // its neighbors for the rest of the session.
+        if repeatedly_unparked && !self.is_strip_column(window) {
             // The app insists on managing its saved position. Keep workspace
             // ownership and tiling, but stop trying to hide this physical
             // window across workspace switches for the rest of the session.
@@ -195,7 +200,9 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
     ) {
         let visible_workspaces: HashSet<_> =
             visible.iter().map(|resolved| resolved.workspace).collect();
-        let inactive = self.workspaces.inactive_windows_except(&visible_workspaces);
+        let mut inactive = self.workspaces.inactive_windows_except(&visible_workspaces);
+        // Strip columns outside the viewport are hidden like inactive workspaces' windows.
+        inactive.extend(self.parked_strip_columns(visible));
         let displays = outputs.frames().collect::<Vec<_>>();
         let screens = outputs.screens();
         let frontmost = self.backend.frontmost_application();
@@ -445,7 +452,7 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
     /// times out: Accessibility cannot reach a window on another macOS
     /// desktop, and dropping its recovery frame would strand it off screen
     /// (#328), so only the window server or its process may retire it.
-    fn confirm_gone(&mut self, window: &crate::PhysicalWindowId) -> bool {
+    pub(super) fn confirm_gone(&mut self, window: &crate::PhysicalWindowId) -> bool {
         if self.backend.window_server_frame(window).is_none()
             || !self.backend.is_process_running(&window.app)
         {

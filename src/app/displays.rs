@@ -8,7 +8,7 @@ use super::*;
 /// since they changed.
 #[derive(Default)]
 pub(super) struct DisplayWatch {
-    known: Option<macos::DisplayOutputs>,
+    pub(super) known: Option<macos::DisplayOutputs>,
     /// The displays before the last change, which pending windows were parked against.
     previous: Option<macos::DisplayOutputs>,
     repark_pending: HashSet<crate::PhysicalWindowId>,
@@ -91,10 +91,13 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
         if self.displays.repark_pending.is_empty() {
             return;
         }
-        let visible: HashSet<_> = self
-            .visible_workspaces(outputs)
+        let resolved = self.visible_workspaces(outputs);
+        let visible: HashSet<_> = resolved.iter().map(|resolved| resolved.workspace).collect();
+        // A visible strip's columns outside its viewport stay hidden too.
+        let strip_hidden: HashSet<_> = self
+            .parked_strip_columns(&resolved)
             .into_iter()
-            .map(|resolved| resolved.workspace)
+            .map(|(_, window)| window)
             .collect();
         let displays: Vec<_> = outputs.frames().collect();
         let screens = outputs.screens();
@@ -110,7 +113,7 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
             // Hidden scratchpad windows intentionally have no workspace owner, but still need to
             // stay parked off-screen when a newly connected display covers their parking edge.
             let output = if let Some(owner) = self.workspaces.workspace_of_any(&window) {
-                if visible.contains(&owner) {
+                if visible.contains(&owner) && !strip_hidden.contains(&window) {
                     continue;
                 }
                 output_for(&self.workspaces, owner, outputs)

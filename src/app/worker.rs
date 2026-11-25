@@ -27,7 +27,30 @@ pub(super) fn spawn_worker(
             }
             runtime
         });
-        while let Ok(command) = commands.recv() {
+        loop {
+            let command = match runtime.strip_views.next_deadline() {
+                Some(deadline) => {
+                    match commands.recv_timeout(deadline.saturating_duration_since(Instant::now()))
+                    {
+                        Ok(command) => command,
+                        Err(std::sync::mpsc::RecvTimeoutError::Timeout) => {
+                            // A glide has settled: lay its strip out for good.
+                            objc2::rc::autoreleasepool(|_| {
+                                runtime.settle_strip_glides(Instant::now());
+                            });
+                            if !send_strip_commands(&mut runtime, &results) {
+                                return;
+                            }
+                            continue;
+                        }
+                        Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => return,
+                    }
+                }
+                None => match commands.recv() {
+                    Ok(command) => command,
+                    Err(_) => return,
+                },
+            };
             // Every command starts uncancelled: a cancellation aimed at previous
             // work must never abort a freshly dispatched command. Background
             // cycles and previews remain interruptible; explicit user
@@ -57,9 +80,19 @@ pub(super) fn spawn_worker(
                     elapsed.as_millis()
                 );
             }
-            if results.send(result).is_err() {
+            if !send_strip_commands(&mut runtime, &results) || results.send(result).is_err() {
                 return;
             }
         }
     });
+}
+
+/// Hands glides started or stopped by the last command to the main thread, ahead of the
+/// command's status.
+fn send_strip_commands(runtime: &mut WorkspaceRuntime, results: &Sender<WorkerResult>) -> bool {
+    runtime
+        .strip_views
+        .outbox
+        .drain(..)
+        .all(|command| results.send(WorkerResult::Strip(command)).is_ok())
 }

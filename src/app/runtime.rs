@@ -96,6 +96,8 @@ pub(super) struct WorkspaceRuntime<B = MacWorkspaceBackend> {
     pub(super) memory: MemoryState,
     pub(super) journal: JournalState,
     pub(super) displays: super::displays::DisplayWatch,
+    /// Scrolling Strip cameras and the glides waiting for the main thread.
+    pub(super) strip_views: super::strip::StripViews,
     /// A pressed "Move Tab to New Window" awaiting its new window.
     pub(super) tab_detach: Option<super::detach_tab::PendingTabDetach>,
     /// The setup tour's arrangement: where it sends unowned windows, and how to undo it.
@@ -182,6 +184,10 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
                 (result, outputs)
             }
             WorkerCommand::RestoreAll(outputs) => {
+                self.strip_views.halt_all();
+                for workspace in WorkspaceId::all() {
+                    self.strip_views.reset(workspace);
+                }
                 if let Some(outputs) = &outputs {
                     self.note_outputs(outputs);
                 }
@@ -245,6 +251,18 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
             }
             Vec::new()
         };
+        if !matches!(
+            action,
+            WorkerAction::Retile
+                | WorkerAction::Focus(_)
+                | WorkerAction::CycleFocus
+                | WorkerAction::Resize(_)
+                | WorkerAction::Reorder(_)
+                | WorkerAction::Balance
+        ) {
+            // Anything else may hide, move or re-tile a strip's windows: stop its glide first.
+            self.strip_views.halt_all();
+        }
         let warp_context = if matches!(
             action,
             WorkerAction::SwitchWorkspace(_)
@@ -261,66 +279,82 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
         } else {
             super::commands::WarpContext::Suppressed
         };
-        let result = self.with_warp_context(warp_context, |rt| match action {
-            WorkerAction::Retile => {
-                let mut status = rt.cycle(outputs.clone(), cancelled)?;
-                if !rt.exact_spacing_workspaces.is_empty()
-                    && !rt.backend.mouse_down()
-                    && rt.space_transition_until().is_none()
-                {
-                    for r in rt.visible_workspaces(&outputs) {
-                        if rt.scope.manages_selector(&r.selector)
-                            && rt.exact_spacing_workspaces.contains(&r.workspace)
-                            && !rt.workspaces.windows(r.workspace).is_empty()
-                        {
-                            status.failed +=
-                                rt.layout_workspace(r.workspace, r.output, cancelled).failed;
+        let result = self.with_warp_context(warp_context, |rt| {
+            if let Some(result) = rt.strip_action(&action, &outputs, cancelled) {
+                return result;
+            }
+            match action {
+                WorkerAction::Retile => {
+                    let mut status = rt.cycle(outputs.clone(), cancelled)?;
+                    if !rt.exact_spacing_workspaces.is_empty()
+                        && !rt.backend.mouse_down()
+                        && rt.space_transition_until().is_none()
+                    {
+                        for r in rt.visible_workspaces(&outputs) {
+                            if rt.scope.manages_selector(&r.selector)
+                                && rt.exact_spacing_workspaces.contains(&r.workspace)
+                                && !rt.workspaces.windows(r.workspace).is_empty()
+                            {
+                                status.failed +=
+                                    rt.layout_workspace(r.workspace, r.output, cancelled).failed;
+                            }
                         }
                     }
+                    Ok(status)
                 }
-                Ok(status)
+                WorkerAction::SwitchWorkspace(workspace) => {
+                    rt.switch_with(workspace, outputs, cancelled, RepeatSwitch::CycleFocus)
+                }
+                // A menu-bar or HUD click on the workspace already up re-focuses it;
+                // clicking it again must not jump to another window.
+                WorkerAction::SelectWorkspace(workspace) => {
+                    rt.switch_with(workspace, outputs, cancelled, RepeatSwitch::KeepFocus)
+                }
+                WorkerAction::WorkspaceBackAndForth => {
+                    rt.workspace_back_and_forth(outputs, cancelled)
+                }
+                WorkerAction::MoveWorkspaceToDisplay(target) => {
+                    rt.move_workspace_to_display(target, outputs, cancelled)
+                }
+                WorkerAction::Swipe(swipe, point) => rt.swipe(swipe, point, outputs, cancelled),
+                WorkerAction::MoveFocused(workspace) => {
+                    rt.move_focused(workspace, outputs, cancelled)
+                }
+                WorkerAction::MoveFocusedFollow(workspace) => {
+                    rt.move_focused_follow(workspace, outputs, cancelled)
+                }
+                WorkerAction::MoveApp(bundle_id, workspace) => {
+                    rt.move_app(&bundle_id, workspace, outputs, cancelled)
+                }
+                WorkerAction::MoveTab { target, follow } => {
+                    rt.move_tab(target, follow, outputs, cancelled)
+                }
+                WorkerAction::CycleFocus => rt.cycle_focus(outputs, cancelled),
+                WorkerAction::CycleFocusPrevious => rt.cycle_focus_previous(outputs, cancelled),
+                WorkerAction::Focus(direction) => rt.focus_relative(direction, outputs, cancelled),
+                WorkerAction::Reorder(direction) => {
+                    rt.reorder_focused(direction, outputs, cancelled)
+                }
+                WorkerAction::ToggleLayout => rt.toggle_layout(outputs, cancelled),
+                WorkerAction::Resize(direction) => rt.resize_focused(direction, outputs, cancelled),
+                WorkerAction::ResizeTo(axis, points) => {
+                    rt.resize_focused_to(axis, points, outputs, cancelled)
+                }
+                WorkerAction::Balance => rt.balance_focused(outputs, cancelled),
+                WorkerAction::ToggleFullscreenLayout => {
+                    rt.toggle_fullscreen_layout(outputs, cancelled)
+                }
+                WorkerAction::ToggleFloat => rt.toggle_float(outputs, cancelled),
+                WorkerAction::ToggleStrip => rt.toggle_strip(outputs, cancelled),
+                WorkerAction::Scratchpad(command) => {
+                    rt.scratchpad_command(command, outputs, cancelled)
+                }
+                WorkerAction::MarkWrong => {
+                    rt.mark_wrong();
+                    Ok(rt.status(0, &outputs))
+                }
+                WorkerAction::Arrange(arrangement) => rt.arrange(&arrangement, outputs, cancelled),
             }
-            WorkerAction::SwitchWorkspace(workspace) => {
-                rt.switch_with(workspace, outputs, cancelled, RepeatSwitch::CycleFocus)
-            }
-            // A menu-bar or HUD click on the workspace already up re-focuses it;
-            // clicking it again must not jump to another window.
-            WorkerAction::SelectWorkspace(workspace) => {
-                rt.switch_with(workspace, outputs, cancelled, RepeatSwitch::KeepFocus)
-            }
-            WorkerAction::WorkspaceBackAndForth => rt.workspace_back_and_forth(outputs, cancelled),
-            WorkerAction::MoveWorkspaceToDisplay(target) => {
-                rt.move_workspace_to_display(target, outputs, cancelled)
-            }
-            WorkerAction::Swipe(swipe, point) => rt.swipe(swipe, point, outputs, cancelled),
-            WorkerAction::MoveFocused(workspace) => rt.move_focused(workspace, outputs, cancelled),
-            WorkerAction::MoveFocusedFollow(workspace) => {
-                rt.move_focused_follow(workspace, outputs, cancelled)
-            }
-            WorkerAction::MoveApp(bundle_id, workspace) => {
-                rt.move_app(&bundle_id, workspace, outputs, cancelled)
-            }
-            WorkerAction::MoveTab { target, follow } => {
-                rt.move_tab(target, follow, outputs, cancelled)
-            }
-            WorkerAction::CycleFocus => rt.cycle_focus(outputs, cancelled),
-            WorkerAction::CycleFocusPrevious => rt.cycle_focus_previous(outputs, cancelled),
-            WorkerAction::Focus(direction) => rt.focus_relative(direction, outputs, cancelled),
-            WorkerAction::Reorder(direction) => rt.reorder_focused(direction, outputs, cancelled),
-            WorkerAction::ToggleLayout => rt.toggle_layout(outputs, cancelled),
-            WorkerAction::Resize(direction) => rt.resize_focused(direction, outputs, cancelled),
-            WorkerAction::ResizeTo(axis, points) => {
-                rt.resize_focused_to(axis, points, outputs, cancelled)
-            }
-            WorkerAction::Balance => rt.balance_focused(outputs, cancelled),
-            WorkerAction::ToggleFullscreenLayout => rt.toggle_fullscreen_layout(outputs, cancelled),
-            WorkerAction::ToggleFloat => rt.toggle_float(outputs, cancelled),
-            WorkerAction::Scratchpad(command) => rt.scratchpad_command(command, outputs, cancelled),
-            WorkerAction::MarkWrong => {
-                rt.mark_wrong();
-                Ok(rt.status(0, &outputs))
-            }
-            WorkerAction::Arrange(arrangement) => rt.arrange(&arrangement, outputs, cancelled),
         });
         if let Some(pending) = &mut self.pending_focus {
             for entry in carried_stale {
@@ -417,6 +451,7 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
             memory: MemoryState::default(),
             journal: JournalState::default(),
             displays: super::displays::DisplayWatch::default(),
+            strip_views: super::strip::StripViews::default(),
             tab_detach: None,
             arranging: super::arrange::ArrangeState::default(),
         }
@@ -556,16 +591,7 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
     ) -> Vec<NavigationTile> {
         let mut tiles = Vec::new();
         for resolved in visible {
-            let settings = self.layout_settings(resolved.output);
-            let mut placements = self
-                .workspaces
-                .engine(resolved.workspace)
-                .placements(&settings);
-            if self.workspaces.uses_fullscreen_layout(resolved.workspace) {
-                for placement in &mut placements {
-                    placement.frame = settings.single();
-                }
-            }
+            let placements = self.shown_placements(resolved);
             tiles.extend(placements.into_iter().filter_map(|placement| {
                 placement.window.map(|window| NavigationTile {
                     workspace: resolved.workspace,
@@ -616,6 +642,7 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
         engine.fit_minimums(&settings, &self.minimum_sizes);
         let mut placements = engine.placements(&settings);
         self.apply_fullscreen_layout(workspace, &mut placements, &settings);
+        self.apply_strip_layout(workspace, &mut placements, output);
         let attempts = &mut self.apply_attempts[workspace.index()];
         for placement in &placements {
             if let Some(window) = placement.window.as_ref() {
@@ -727,6 +754,9 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
     }
 
     fn preview_layout(&self, workspace: WorkspaceId, output: crate::Rect) -> Vec<crate::Rect> {
+        if let Some(strip) = self.strip_preview(workspace, output) {
+            return strip;
+        }
         let mut layout = self.workspaces.engine(workspace).preview(output);
         if self.workspaces.uses_fullscreen_layout(workspace) {
             layout.fill(output);

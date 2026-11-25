@@ -14,6 +14,7 @@ mod design_tokens;
 #[cfg(target_os = "macos")]
 mod host;
 mod hud;
+mod labs;
 mod map;
 mod onboarding;
 mod panes;
@@ -33,7 +34,9 @@ use spaceman::app::{UiAction, UiAgentSnapshot, UiBridge};
 #[derive(Clone, Debug)]
 pub enum Sheet {
     /// The Workspace HUD's Customize sheet, with the demo desktop its miniature shows.
-    Hud(hud::HudPreview),
+    Hud(Box<hud::HudPreview>),
+    /// A Labs feature's Customize sheet (the Scrolling Strip's).
+    Lab(spaceman::labs::LabFeature),
 }
 
 /// The one anchored menu that is open.
@@ -139,7 +142,15 @@ impl Ui {
     pub fn open_hud_sheet(&mut self) {
         if self.doc.hud() {
             self.menu = None;
-            self.sheet = Some(Sheet::Hud(hud::HudPreview::sample()));
+            self.sheet = Some(Sheet::Hud(Box::new(hud::HudPreview::sample())));
+        }
+    }
+
+    /// Opens a Labs feature's Customize sheet. With the feature off there is nothing to customize.
+    pub fn open_lab_sheet(&mut self, feature: spaceman::labs::LabFeature) {
+        if self.doc.lab(feature) {
+            self.menu = None;
+            self.sheet = Some(Sheet::Lab(feature));
         }
     }
 
@@ -389,8 +400,13 @@ impl Ui {
     }
 
     fn sync_hud_from_doc(&mut self) {
-        if !self.doc.hud() {
-            // The HUD went off, here or in config.toml: its Customize sheet has nothing to show.
+        // What a sheet customizes went off, here or in config.toml: it has nothing to show.
+        let stale = match &self.sheet {
+            Some(Sheet::Hud(_)) => !self.doc.hud(),
+            Some(Sheet::Lab(feature)) => !self.doc.lab(*feature),
+            None => false,
+        };
+        if stale {
             self.sheet = None;
         }
         if let Some(driver) = &self.hud_driver {
@@ -731,9 +747,7 @@ mod tests {
             .unwrap()
             .resolve();
         ui.open_target(lab);
-        // Labs pane isn't registered yet, so it falls back to General while
-        // preserving highlight_lab for when Labs cards are present.
-        assert_eq!(ui.pane, Pane::General);
+        assert_eq!(ui.pane, Pane::Labs);
         assert_eq!(ui.highlight_lab.as_deref(), Some("scrolling-strip"));
         assert_eq!(ui.highlight_feature.as_deref(), Some("scrolling-strip"));
 

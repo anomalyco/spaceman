@@ -231,7 +231,7 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
         if !self.is_visible(workspace, &outputs) || self.parked.contains_key(&window) {
             return Ok(self.status(0, &outputs));
         }
-        if self.workspaces.uses_fullscreen_layout(workspace) {
+        if self.workspaces.uses_fullscreen_layout(workspace) || self.uses_strip(workspace) {
             return Ok(self.status(0, &outputs));
         }
         self.constrained[workspace.index()].remove(&window);
@@ -498,7 +498,7 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
         Ok(self.status(0, &outputs))
     }
 
-    fn focused_active_workspace(
+    pub(super) fn focused_active_workspace(
         &mut self,
         outputs: &macos::DisplayOutputs,
         cancelled: &AtomicBool,
@@ -584,6 +584,9 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
         if self.workspaces.uses_fullscreen_layout(workspace) {
             self.workspaces.set_fullscreen_layout(workspace, false);
             self.pending_fullscreen_focus_restore.remove(&workspace);
+        }
+        if self.uses_strip(workspace) {
+            self.workspaces.set_strip_layout(workspace, false);
         }
         self.workspaces.engine_mut(workspace).toggle_axis();
         let axis = self.workspaces.engine(workspace).root_axis();
@@ -704,11 +707,7 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
         outputs: &macos::DisplayOutputs,
         cancelled: &AtomicBool,
     ) -> Result<CycleStatus, String> {
-        let layout = self.layout_workspace(
-            workspace,
-            output_for(&self.workspaces, workspace, outputs),
-            cancelled,
-        );
+        let layout = self.layout_strip_workspace(workspace, outputs, cancelled);
         self.persist_workspace_state_if_changed()?;
         Ok(self.status(layout.failed, outputs))
     }

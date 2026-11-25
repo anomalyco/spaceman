@@ -49,6 +49,15 @@ bottom = 0
 left = 0
 right = 0
 
+[labs]                                # optional; experimental features, each off by default
+scrolling_strip = false               # Scrolling Strip layout, toggled per workspace with its shortcut
+scrolling_strip_shortcut = "alt+shift+s" # optional; the strip's toggle, in [shortcuts] chord syntax
+scrolling_strip_duration_ms = 180     # optional; how long a strip glide takes, 80 through 900; 0 is no glide
+scrolling_strip_damping = 1.0         # optional; glide spring damping, 0.6 through 1.3
+scrolling_strip_shared_edge = "tuck"  # optional; "tuck" or "slide" at an edge shared with a display
+scratchpad = false                    # the i3/sway-style Scratchpad and its two shortcuts
+activity = false                      # Settings › Activity
+
 [[rules]]
 bundle_id = "com.example.Application" # optional exact match
 title = "Preferences"                 # optional exact match
@@ -93,6 +102,37 @@ During startup recovery, after a qualifying mid-session relaunch, or for an appl
 return, a window not matched by a `route` or `ignore` rule (including one matched by a `float` rule)
 may return to a remembered workspace; see [Remembered Placements](#remembered-placements). Matching
 `route` and `ignore` rules always win over memory.
+
+`[labs]` holds one switch per experimental feature; Settings › Labs writes it, and an all-off
+table is left out of the file. `scrolling_strip_shortcut` picks the strip's toggle (Settings › Labs
+records it; the default `alt+shift+s` is left out of the file). It uses the [Shortcuts](#shortcuts)
+chord syntax, registers only while `scrolling_strip` is on, and claims its chord ahead of the
+built-in shortcuts; a `[shortcuts]` binding on the same chord still wins. The default gives way to a
+named workspace S's move shortcut. With every switch off Spaceman behaves exactly as without Labs. See
+[Scrolling Strip](features/scrolling-strip.md).
+
+The strip's settings are also in Settings › Labs: while the strip is on, `Customize…` on its row
+opens a sheet with `Motion`, `Next to another display` and the strip's keys as the file has them.
+Each key is left out of the file at its default:
+
+- `scrolling_strip_duration_ms` (default `180`; `0`, or 80 through 900) is how long a critically
+  damped glide across half a 2,560-point display takes to arrive within a point of its rest;
+  shorter moves arrive sooner, and 90 is twice as fast as 180. `0` is no glide: columns snap to
+  where they rest. Settings' `Motion` writes this one key: Off is `0`, Fast is the default `180`
+  (so the key leaves the file), Smooth is `260`.
+- `scrolling_strip_damping` (default `1.0`, 0.6 through 1.3, kept to hundredths) is the spring's
+  damping ratio, set only by hand: `1.0` arrives without overshoot, lower overshoots a little and
+  settles back, higher eases in more softly. With a damping or a duration that is none of its three
+  picks, `Motion` shows Custom; picking Off, Fast or Smooth removes the damping.
+- `scrolling_strip_shared_edge` (default `"tuck"`) is how columns meet an edge the display shares
+  with another monitor. `"tuck"` keeps them wholly on their own display: one crossing the edge
+  waits there while its neighbor slides over it. `"slide"` lets them glide past the edge until just
+  short of half their width, so macOS still counts them on their own display and, with "Displays
+  have separate Spaces" on (the macOS default), doesn't draw the part past the edge on the other
+  monitor. Columns that come to rest out of view are parked in both modes.
+
+All three reload before the next strip key press, with no restart; a glide already running keeps
+its position and speed and continues on the new spring.
 
 Title matching occurs only in memory. Titles are not serialized into persisted state, snapshots,
 `ctl debug`, or the HUD.
@@ -291,13 +331,18 @@ in the file are kept.
 
 `[labs]` turns on experimental features one by one. Every switch is off by default, and with all of
 them off Spaceman behaves exactly as if Labs did not exist: no extra shortcuts register and no
-command changes behavior. Unknown keys are config errors.
+command changes behavior. Unknown keys are config errors. Settings › Labs has a switch for each one,
+and `spaceman config set|get|reset labs.<key>` does the same from a terminal.
 
 ```toml
 [labs]
+scrolling_strip = false               # optional (default: false); the Scrolling Strip layout
 scratchpad = false                    # optional (default: false); the i3/sway-style Scratchpad
 activity = false                      # optional (default: false); Settings › Activity
 ```
+
+`scrolling_strip = true` enables the [Scrolling Strip](features/scrolling-strip.md) and registers its
+toggle shortcut; its other keys are described under [Configuration](#configuration) above.
 
 `scratchpad = true` enables the Scratchpad (see [Controls › Scratchpad](controls.md#scratchpad-lab)) and
 registers its two shortcuts, `Option+\` and `Option+Shift+\`, live without a restart (or on the next
@@ -307,7 +352,7 @@ hidden in the scratchpad brings them back on screen, where they tile again.
 
 `activity = true` adds Settings › Activity, the live arrangement log, journal health, process vitals,
 and Save snapshot (see [Restarts and Recovery](features/restarts-and-recovery.md)). With it off the pane
-stays out of the Settings sidebar and its `⌘6` shortcut does nothing; `spaceman doctor` and the journal
+stays out of the Settings sidebar and `⌘6` opens Labs, the last pane (`⌘7` while Activity is listed); `spaceman doctor` and the journal
 keep recording either way. Turning it off while the pane is open returns Settings to General.
 
 ```sh
@@ -420,9 +465,10 @@ normal recovery data.
 
 Edits saved in Spaceman Settings or in an external editor take effect automatically: rule changes,
 workspace display assignments, `settings.hud`, `settings.hud_style`,
-`settings.hud_position`, `settings.mouse_follows_focus`, `settings.workspace_order`, `settings.gaps`, and
-`settings.single_window_max_width` reload without restarting (Settings › Layout retiles at once; an
-external edit applies on the next retile);
+`settings.hud_position`, `settings.mouse_follows_focus`, `settings.workspace_order`, `settings.gaps`,
+`settings.single_window_max_width`, and `[labs]` (including the Scrolling Strip's shortcut and glide
+tuning) reload without restarting (Settings › Layout retiles at once; an external edit applies on
+the next retile);
 `settings.update_channel` applies at the next update check. Global shortcuts for a
 newly added named workspace letter (`Option+A` ... `Option+Z`) register on the next app start:
 

@@ -2,7 +2,7 @@
 //! shortcut's keys records a new chord (`recorder`), the base modifier moves every built-in
 //! shortcut at once, and each change is saved to `config.toml` and registered live.
 
-mod catalog;
+pub(crate) mod catalog;
 mod recorder;
 mod workspaces;
 
@@ -14,6 +14,7 @@ use spaceman::{
 };
 
 pub use recorder::Capture;
+pub(crate) use recorder::enabled_named_workspaces;
 pub(crate) use workspaces::switch_keys;
 
 /// The first chord that switches to `workspace`, as the setup tour asks for it.
@@ -197,8 +198,13 @@ fn shortcut_button(
     named: &[WorkspaceId],
     action: &'static Action,
 ) -> El {
+    recorder_button(ui, p, action.id, &action.chords(shortcuts, named))
+}
+
+/// The recorder for shortcut `id` showing `chords` at rest: the same keycap trays, hug and
+/// edge inset everywhere a shortcut is recorded (Settings › Shortcuts and Labs).
+pub(crate) fn recorder_button(ui: &Ui, p: Paint, id: &'static str, chords: &[Chord]) -> El {
     let c = &p.k.c;
-    let id = action.id;
     let (content, label) = match &ui.shortcut_capture {
         Capture::Listening {
             action: active,
@@ -210,12 +216,11 @@ fn shortcut_button(
         ),
         capture => {
             let saved = *capture == Capture::Saved { action: id };
-            let chords = action.chords(shortcuts, named);
             let label = chords
                 .first()
                 .map_or_else(|| "Not set".to_owned(), |chord| chord.keycaps().concat());
             (
-                keys_face(p, &chords, saved),
+                keys_face(p, chords, saved),
                 format!("Change shortcut, {label}"),
             )
         }

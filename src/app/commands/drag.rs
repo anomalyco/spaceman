@@ -57,7 +57,7 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
             self.drag_session = None;
             return Ok(self.status(0, &outputs));
         }
-        if self.workspaces.uses_fullscreen_layout(source) {
+        if self.workspaces.uses_fullscreen_layout(source) || self.uses_strip(source) {
             self.drag_session = None;
             return Ok(self.status(0, &outputs));
         }

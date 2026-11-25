@@ -10,6 +10,7 @@ docs/features/
 ├── workspaces.md           // switch, move, hide/reveal, where new windows go
 ├── tiling.md               // split layouts: focus, reorder, drag, resize, balance, axis
 ├── fullscreen-layout.md    // workspace-wide stacked "every window fills the display" mode
+├── scrolling-strip.md      // Labs: wide columns on a horizontal strip, off-viewport ones parked
 ├── scratchpad.md           // Lab: windows hidden off-screen until summoned
 ├── setup-tour.md           // first run: permission, the suggested arrangement, Try it
 └── restarts-and-recovery.md // what survives restarts/relaunches/reboots, restoration, doctor

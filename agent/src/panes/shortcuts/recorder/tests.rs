@@ -352,3 +352,58 @@ fn control_an_unrelated_chord_changes_nothing() {
     ]);
     assert_eq!(chords, Vec::<String>::new());
 }
+
+const STRIP: &str = "scrolling_strip_shortcut";
+
+#[test]
+fn recording_the_strip_shortcut_keeps_its_lab_on() {
+    let mut ui = crate::playground::blank_fixture();
+    ui.doc.set_lab(LabFeature::ScrollingStrip, true);
+    begin(&mut ui, STRIP);
+    record(&mut ui, STRIP, us(K::KeyF, mods(true, false, false, true)));
+    assert_eq!(ui.shortcut_capture, Capture::Saved { action: STRIP });
+    assert!(ui.doc.lab(LabFeature::ScrollingStrip));
+    assert_eq!(
+        ui.doc.lab_shortcut(LabFeature::ScrollingStrip),
+        LabShortcut(parse_chord("alt+cmd+f").unwrap())
+    );
+    let source = ui.doc.source();
+    assert!(source.contains("scrolling_strip = true"), "{source}");
+    assert!(
+        source.contains("scrolling_strip_shortcut = \"alt+cmd+f\""),
+        "{source}"
+    );
+
+    // ⌫ puts the default back, and the switch still stays on.
+    begin(&mut ui, STRIP);
+    record(&mut ui, STRIP, us(K::Backspace, Mods::default()));
+    assert_eq!(
+        ui.doc.lab_shortcut(LabFeature::ScrollingStrip),
+        LabShortcut::default()
+    );
+    assert!(ui.doc.lab(LabFeature::ScrollingStrip));
+}
+
+#[test]
+fn the_strip_shortcut_cannot_take_a_built_in_chord_or_give_its_own_away() {
+    let mut ui = crate::playground::blank_fixture();
+    ui.doc.set_lab(LabFeature::ScrollingStrip, true);
+    begin(&mut ui, STRIP);
+    // ⌥⇧F is Toggle Fullscreen Layout's: taking it would leave that shortcut with no key.
+    record(&mut ui, STRIP, us(K::KeyF, mods(true, false, true, false)));
+    assert!(message(&ui).is_some_and(|message| message.starts_with("Used by ")));
+    assert_eq!(
+        ui.doc.lab_shortcut(LabFeature::ScrollingStrip),
+        LabShortcut::default()
+    );
+
+    record(&mut ui, STRIP, us(K::KeyU, mods(true, false, false, true)));
+    begin(&mut ui, "focus-left");
+    record(
+        &mut ui,
+        "focus-left",
+        us(K::KeyU, mods(true, false, false, true)),
+    );
+    assert_eq!(message(&ui), Some("Used by Scrolling Strip"));
+    assert!(!ui.doc.has_custom_shortcuts());
+}

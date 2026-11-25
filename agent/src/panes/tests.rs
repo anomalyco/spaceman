@@ -1,4 +1,5 @@
 //! Which panes Settings lists: every pane, minus the Lab panes whose `[labs]` switch is off.
+//! Labs itself, where those switches are, is always listed.
 
 use super::*;
 
@@ -20,6 +21,7 @@ fn lab_panes_stay_out_of_the_sidebar_until_their_switch_is_on() {
             Pane::Rules,
             Pane::Workspaces,
             Pane::Shortcuts,
+            Pane::Labs,
         ]
     );
 
@@ -35,6 +37,7 @@ fn lab_panes_stay_out_of_the_sidebar_until_their_switch_is_on() {
         Pane::Rules,
         Pane::Workspaces,
         Pane::Shortcuts,
+        Pane::Labs,
     ] {
         assert!(pane.visible(LabsConfig::default()));
         assert!(pane.visible(activity_lab()));
@@ -47,10 +50,16 @@ fn command_shortcuts_skip_a_hidden_lab_pane() {
         Pane::from_shortcut('5', LabsConfig::default()),
         Some(Pane::Shortcuts)
     );
-    assert_eq!(Pane::from_shortcut('6', LabsConfig::default()), None);
+    // Labs, where the switches are, is always listed, and last: the core panes keep their digits.
+    assert_eq!(
+        Pane::from_shortcut('6', LabsConfig::default()),
+        Some(Pane::Labs)
+    );
+    assert_eq!(Pane::from_shortcut('7', LabsConfig::default()), None);
     assert_eq!(
         Pane::from_shortcut('6', activity_lab()),
         Some(Pane::Activity)
     );
-    assert_eq!(Pane::from_shortcut('7', activity_lab()), None);
+    assert_eq!(Pane::from_shortcut('7', activity_lab()), Some(Pane::Labs));
+    assert_eq!(Pane::from_shortcut('8', activity_lab()), None);
 }

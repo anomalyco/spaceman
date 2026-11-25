@@ -1,3 +1,5 @@
+//! The worker's debug snapshot: `spaceman ctl debug` and the agent's latest state.
+
 use super::*;
 
 #[derive(Clone, Debug, serde::Serialize)]
@@ -15,7 +17,7 @@ pub(in crate::app) struct RuntimeDebug {
 }
 
 #[derive(Clone, Debug, serde::Serialize)]
-struct DebugFloatingWindow {
+pub(super) struct DebugFloatingWindow {
     window: crate::PhysicalWindowId,
     workspace: WorkspaceId,
     /// Present exactly when the window is parked off-screen.
@@ -23,18 +25,19 @@ struct DebugFloatingWindow {
 }
 
 #[derive(Clone, Debug, serde::Serialize)]
-struct DebugDisplay {
+pub(super) struct DebugDisplay {
     id: String,
     name: String,
     frame: crate::Rect,
     workspace: WorkspaceId,
     axis: crate::Axis,
     fullscreen_layout: bool,
+    strip_layout: bool,
     layout: Vec<crate::Rect>,
 }
 
 #[derive(Clone, Debug, serde::Serialize)]
-struct DebugTargets {
+pub(super) struct DebugTargets {
     left: Option<crate::PhysicalWindowId>,
     down: Option<crate::PhysicalWindowId>,
     up: Option<crate::PhysicalWindowId>,
@@ -87,6 +90,7 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
                         fullscreen_layout: self
                             .workspaces
                             .uses_fullscreen_layout(resolved.workspace),
+                        strip_layout: self.uses_strip(resolved.workspace),
                         layout: self.preview_layout(resolved.workspace, HUD_PREVIEW_RECT),
                     })
                 })

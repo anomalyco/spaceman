@@ -112,7 +112,14 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
         let switch_started = Instant::now();
         let mut outgoing = self.workspaces.windows(previous);
         self.order_back_to_front(&mut outgoing, |window| window.window_id);
-        let incoming = self.workspaces.windows(workspace);
+        // Strip columns outside the viewport stay parked; only what will show is revealed.
+        let hidden = self.strip_hidden_windows(workspace, output);
+        let incoming: Vec<_> = self
+            .workspaces
+            .windows(workspace)
+            .into_iter()
+            .filter(|window| !hidden.contains(window))
+            .collect();
         log_event!(
             "switch: workspace {} -> {} (outgoing {}, incoming {})",
             previous,

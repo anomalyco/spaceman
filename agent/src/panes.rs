@@ -14,7 +14,7 @@ use spaceman::{
 use crate::{
     Sheet, Ui, activity,
     controls::Paint,
-    map,
+    labs, map,
     playground::{Scene, reset_fixture},
 };
 
@@ -52,16 +52,18 @@ pub enum Pane {
     Workspaces,
     Shortcuts,
     Activity,
+    Labs,
 }
 
 impl Pane {
-    pub const ALL: [Pane; 6] = [
+    pub const ALL: [Pane; 7] = [
         Pane::General,
         Pane::Layout,
         Pane::Rules,
         Pane::Workspaces,
         Pane::Shortcuts,
         Pane::Activity,
+        Pane::Labs,
     ];
 
     pub const fn key(self) -> &'static str {
@@ -72,6 +74,7 @@ impl Pane {
             Pane::Workspaces => "workspaces",
             Pane::Shortcuts => "shortcuts",
             Pane::Activity => "activity",
+            Pane::Labs => "labs",
         }
     }
 
@@ -83,6 +86,7 @@ impl Pane {
             Pane::Workspaces => "Workspaces",
             Pane::Shortcuts => "Shortcuts",
             Pane::Activity => "Activity",
+            Pane::Labs => "Labs",
         }
     }
 
@@ -94,6 +98,7 @@ impl Pane {
             Pane::Workspaces => &WORKSPACES_ICON,
             Pane::Shortcuts => &rune_theme_opencode::icons::KEYBOARD,
             Pane::Activity => &ACTIVITY_ICON,
+            Pane::Labs => &labs::LABS_ICON,
         }
     }
 
@@ -105,6 +110,7 @@ impl Pane {
             Pane::Workspaces => workspaces::pane(ui, p),
             Pane::Shortcuts => shortcuts::pane(ui, p),
             Pane::Activity => activity::pane(ui, p),
+            Pane::Labs => labs::pane(ui, p),
         }
     }
 
@@ -113,7 +119,12 @@ impl Pane {
     pub const fn visible(self, labs: LabsConfig) -> bool {
         match self {
             Pane::Activity => labs.enabled(LabFeature::Activity),
-            Pane::General | Pane::Layout | Pane::Rules | Pane::Workspaces | Pane::Shortcuts => true,
+            Pane::General
+            | Pane::Layout
+            | Pane::Rules
+            | Pane::Workspaces
+            | Pane::Shortcuts
+            | Pane::Labs => true,
         }
     }
 
@@ -130,9 +141,9 @@ impl Pane {
 
     /// Maps a `spaceman://` deep-link pane to a registered Settings pane.
     ///
-    /// Returns `None` for panes not registered in this build (such as `Labs`
-    /// or `WhatsNew`) so the caller can fall back cleanly while preserving
-    /// `highlight_lab` / `highlight_feature`.
+    /// Returns `None` for panes not registered in this build (`WhatsNew`) so the
+    /// caller can fall back cleanly while preserving `highlight_lab` /
+    /// `highlight_feature`.
     pub const fn from_deep_link(pane: spaceman::deep_link::DeepLinkPane) -> Option<Pane> {
         match pane {
             spaceman::deep_link::DeepLinkPane::General => Some(Pane::General),
@@ -141,8 +152,8 @@ impl Pane {
             spaceman::deep_link::DeepLinkPane::Workspaces => Some(Pane::Workspaces),
             spaceman::deep_link::DeepLinkPane::Shortcuts => Some(Pane::Shortcuts),
             spaceman::deep_link::DeepLinkPane::Activity => Some(Pane::Activity),
-            spaceman::deep_link::DeepLinkPane::Labs
-            | spaceman::deep_link::DeepLinkPane::WhatsNew => None,
+            spaceman::deep_link::DeepLinkPane::Labs => Some(Pane::Labs),
+            spaceman::deep_link::DeepLinkPane::WhatsNew => None,
         }
     }
 }
@@ -151,6 +162,7 @@ impl Pane {
 pub fn sheet(ui: &Ui, p: Paint, reduce_motion: bool, layer: &mut Vec<El>) {
     match &ui.sheet {
         Some(Sheet::Hud(preview)) => general::hud_sheet(ui, preview, p, reduce_motion, layer),
+        Some(Sheet::Lab(feature)) => labs::sheet(ui, *feature, p, layer),
         None => {}
     }
 }

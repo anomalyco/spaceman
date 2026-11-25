@@ -111,6 +111,7 @@ two styles of the same size side by side. Views name a role, never `p.k.ty.*`.
 | Titled card; a card whose label line carries an accessory | `section`, `section_with`; a card alone: `card` |
 | A line of copy under a card | `caption` |
 | Settings row (title, optional description, control) | `setting_row`, `toggle_row`; with a leading glyph: `icon_row`; anything else: `row_frame` |
+| A value read and not set, in a compact row (a sheet's shortcut keys) | `reference_row` |
 | A row the pointer is aimed at from a deep link | `highlight` |
 | A few exclusive choices | `rune_kit::SegmentedControl` |
 | Main and other actions | `button(…, ButtonKind::{Primary, Secondary}, …)` |
@@ -124,12 +125,16 @@ two styles of the same size side by side. Views name a role, never `p.k.ty.*`.
 ## The Customize pattern
 
 A setting with one choice most people make and a few that some people tune keeps a single row:
-the choice as a segmented control, and a quiet `Customize…` button beside it that exists only while
-there is something to customize. The button opens a `ModalWidth::Medium` sheet:
+the choice as a segmented control or a switch, and a quiet `Customize…` button beside it that
+exists only while there is something to customize. A row with both is not a whole-row toggle:
+only its switch flips it. The button opens a `ModalWidth::Medium` sheet:
 
-1. a live miniature of the thing being tuned, built from the real view (the Workspace HUD's sheet
-   draws `hud::stage::miniature` with the HUD's own capsule);
-2. one card of rows, on the page's rails;
+1. a picture of the thing being tuned: a live miniature built from the real view (the Workspace
+   HUD's sheet draws `hud::stage::miniature` with the HUD's own capsule), or a drawing of it (the
+   Scrolling Strip's sheet, `labs::ribbon`);
+2. one card of rows, on the page's rails, and under it any reference the feature needs (the strip's
+   keys, as `reference_row`s that read every chord from the file). A sheet taller than the window
+   scrolls its body between the title and the footer;
 3. `Done` in the footer as the default button. Escape and a press outside close it too.
 
 Every change applies as it is made; the sheet has no Cancel. The sheet closes on its own when the
@@ -191,7 +196,8 @@ cargo run --locked -p spaceman-agent -- --size 920x660 --scene hud-customize --s
 cargo run --locked -p spaceman-agent -- --scene general --theme light --snap /tmp/general-light.png
 # Several scenes, sizes and themes into one folder (<scene>-<width>[-light].png):
 OUT=captures/after SIZES="860x580 920x660 1200x840" THEMES="dark light" \
-  scripts/snap-set.sh general hud-customize layout rules workspaces shortcuts activity
+  scripts/snap-set.sh general hud-customize layout rules workspaces shortcuts activity \
+  labs-on labs-customize labs-custom-keys
 ```
 
 Render the same scenes on `dev` first for the "before". A snap draws one frame of a fixture: it

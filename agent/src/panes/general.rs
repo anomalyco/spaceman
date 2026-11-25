@@ -356,7 +356,7 @@ pub fn hud_sheet(
 /// Playground: the Customize sheet open over General, with the capsule on `position`.
 pub(crate) fn fixture_hud_sheet(ui: &mut Ui, position: HudPosition) {
     ui.edit(|doc| doc.set_hud_position(position));
-    ui.sheet = Some(Sheet::Hud(hud::HudPreview::sample()));
+    ui.sheet = Some(Sheet::Hud(Box::new(hud::HudPreview::sample())));
 }
 
 #[cfg(test)]

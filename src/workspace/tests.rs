@@ -240,6 +240,57 @@ fn persisted_state_restores_focus_and_fullscreen_layout() {
 }
 
 #[test]
+fn persisted_strip_round_trips_and_excludes_fullscreen_layout() {
+    let first = window(10);
+    let second = window(20);
+    let mut workspaces = Workspaces::default();
+    for (id, window) in [(1, &first), (2, &second)] {
+        workspaces.engine_mut(WorkspaceId::ONE).insert_slot(Slot {
+            id: SlotId(id),
+            weight: 1,
+            binding: BindingState::Bound(window.clone()),
+        });
+    }
+    let before = serde_json::to_value(workspaces.state()).unwrap();
+    assert!(before.get("strip").is_none());
+
+    workspaces.set_fullscreen_layout(WorkspaceId::ONE, true);
+    workspaces.set_strip_layout(WorkspaceId::ONE, true);
+    assert!(!workspaces.uses_fullscreen_layout(WorkspaceId::ONE));
+    workspaces
+        .strip_mut(WorkspaceId::ONE)
+        .set_width(SlotId(2), crate::strip::StripWidth::Full);
+    workspaces.strip_mut(WorkspaceId::ONE).anchor = Some(SlotId(2));
+
+    let encoded = serde_json::to_value(workspaces.state()).unwrap();
+    assert_eq!(
+        encoded["strip"],
+        serde_json::json!([{
+            "enabled": true,
+            "default_width": "full",
+            "widths": [[2, "full"]],
+            "anchor": 2
+        }])
+    );
+    let mut state: WorkspaceState = serde_json::from_value(encoded).unwrap();
+    state.validate().unwrap();
+    // A slot that no longer exists is forgotten rather than failing the restore.
+    state.strip[0]
+        .widths
+        .push((SlotId(9), crate::strip::StripWidth::Half));
+    let mut restored = Workspaces::default();
+    restored.restore(state);
+
+    assert!(restored.uses_strip_layout(WorkspaceId::ONE));
+    assert_eq!(
+        restored.strip(WorkspaceId::ONE),
+        workspaces.strip(WorkspaceId::ONE)
+    );
+    restored.set_fullscreen_layout(WorkspaceId::ONE, true);
+    assert!(!restored.uses_strip_layout(WorkspaceId::ONE));
+}
+
+#[test]
 fn persisted_empty_workspace_cannot_restore_fullscreen_layout() {
     let mut state = Workspaces::default().state();
     state.fullscreen_layout = vec![true];

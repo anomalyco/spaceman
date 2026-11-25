@@ -9,6 +9,7 @@ use spaceman::{
     config::{
         HudPosition, HudStyle, LabFeature, LabsConfig, LayoutMode, MouseFollowsFocus, UpdateChannel,
     },
+    labs::LabShortcut,
 };
 use toml_edit::{
     Array, ArrayOfTables, DocumentMut, InlineTable, Item, Table, TableLike, Value, value,
@@ -97,6 +98,11 @@ impl Doc {
     /// The `[labs]` switches as this document sets them.
     pub fn labs(&self) -> LabsConfig {
         LabsConfig {
+            scrolling_strip: self.lab(LabFeature::ScrollingStrip),
+            scrolling_strip_shortcut: self.lab_shortcut(LabFeature::ScrollingStrip),
+            scrolling_strip_duration_ms: self.strip_duration(),
+            scrolling_strip_damping: self.strip_damping(),
+            scrolling_strip_shared_edge: self.strip_shared_edge(),
             scratchpad: self.lab(LabFeature::Scratchpad),
             activity: self.lab(LabFeature::Activity),
         }
@@ -336,27 +342,57 @@ impl Doc {
         );
     }
 
+    /// Switches a Labs feature; off removes its key, and `[labs]` once it is empty.
+    pub fn set_lab(&mut self, feature: LabFeature, enabled: bool) {
+        self.set_key("labs", feature.key(), enabled.then(|| value(true)));
+    }
+
+    /// A Labs feature's shortcut from `[labs]`, or its default when unset or unreadable (and
+    /// for a feature that keeps none there).
+    pub fn lab_shortcut(&self, feature: LabFeature) -> LabShortcut {
+        feature
+            .shortcut_key()
+            .and_then(|key| self.doc.get("labs")?.as_table_like()?.get(key))
+            .and_then(Item::as_str)
+            .and_then(|source| spaceman::shortcuts::parse_chord(source).ok())
+            .map_or_else(LabShortcut::default, LabShortcut)
+    }
+
+    /// Sets a Labs feature's shortcut; the default removes its key.
+    pub fn set_lab_shortcut(&mut self, feature: LabFeature, shortcut: LabShortcut) {
+        let Some(key) = feature.shortcut_key() else {
+            return;
+        };
+        self.set_key(
+            "labs",
+            key,
+            (!shortcut.is_default()).then(|| value(shortcut.0.config_name())),
+        );
+    }
+
     /// Sets `key` in `[settings]`, or removes it (and an emptied table) for `None`, the default.
     fn set_setting(&mut self, key: &str, item: Option<Item>) {
+        self.set_key("settings", key, item);
+    }
+
+    /// Sets `key` in table `name`, or removes it (and an emptied table) for `None`.
+    fn set_key(&mut self, name: &str, key: &str, item: Option<Item>) {
         let Some(item) = item else {
-            let empty = if let Some(table) = self
-                .doc
-                .get_mut("settings")
-                .and_then(Item::as_table_like_mut)
-            {
-                table.remove(key);
-                table.is_empty()
-            } else {
-                false
-            };
+            let empty =
+                if let Some(table) = self.doc.get_mut(name).and_then(Item::as_table_like_mut) {
+                    table.remove(key);
+                    table.is_empty()
+                } else {
+                    false
+                };
             if empty {
-                self.remove_table("settings");
+                self.remove_table(name);
             }
             return;
         };
         let entry = self
             .doc
-            .entry("settings")
+            .entry(name)
             .or_insert_with(|| Item::Table(Table::new()));
         if !entry.is_table_like() {
             *entry = Item::Table(Table::new());
@@ -697,6 +733,7 @@ fn set_place(table: &mut dyn TableLike, place: Place) {
 }
 
 mod comments;
+mod glide;
 mod shortcuts;
 mod spacing;
 #[cfg(test)]

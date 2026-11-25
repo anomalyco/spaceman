@@ -130,8 +130,8 @@ Accessibility is missing), `Pause Tiling` (or `Resume Tiling` while paused), `Wo
 `Launch at Login`, `Settings...` (`⌘,`), `Check for Updates...`, and `Quit Spaceman` (`⌘Q`). Settings
 includes `General`, `Layout` (Dwindle or Columns new-window tiling, window gaps, screen-edge padding,
 and a single-window width for wide displays, over a live preview), `Rules`, `Workspaces`,
-`Shortcuts`, and, with `[labs] activity = true`, `Activity` (title-free arrangement diagnostics and
-process vitals). If macOS requires approval, the login item action opens **System
+`Shortcuts`, with `[labs] activity = true` `Activity` (title-free arrangement diagnostics and
+process vitals), and `Labs` (a switch for each experiment). If macOS requires approval, the login item action opens **System
 Settings > General > Login Items & Extensions**.
 
 ## Everyday Use
@@ -154,6 +154,7 @@ Core controls:
 | `Option+-`, `Option+=` | Shrink/grow the focused tile by 50 pixels |
 | `Option+Shift+F` | Toggle Fullscreen Layout without native fullscreen |
 | `Option+Shift+Space` | Float the focused window above the tiles, or tile it again |
+| `Option+Shift+S` | Toggle the Scrolling Strip (Labs: enable it in Settings › Labs first; the card can change the shortcut) |
 | Three-finger swipe left/right | Next/previous occupied workspace on the display under the pointer |
 
 The swipe shares three fingers with macOS's "Swipe between full-screen applications"; set that to

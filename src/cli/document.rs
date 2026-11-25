@@ -8,7 +8,7 @@ use serde::{Deserialize, Serialize};
 use spaceman::{
     DisplaySelector, WorkspaceId, Workspaces,
     config::{
-        Config, HudPosition, HudStyle, LabFeature, LayoutMode, MouseFollowsFocus, UpdateChannel,
+        Config, HudPosition, HudStyle, LabsConfig, LayoutMode, MouseFollowsFocus, UpdateChannel,
         config_path, lock_config, write_config_atomic,
     },
     spacing::{Spacing, SpacingKey, check_outer},
@@ -20,9 +20,10 @@ pub(crate) struct ConfigDoc {
     pub version: u32,
     #[serde(default, skip_serializing_if = "SettingsDoc::is_empty")]
     pub settings: SettingsDoc,
-    /// `[labs]`: the Lab switches, edited by `spaceman config set|reset labs.<key>`.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub labs: Option<LabsDoc>,
+    /// `[labs]`: the Lab switches and their settings, edited by
+    /// `spaceman config set|reset labs.<key>`. Left out of the file while all are default.
+    #[serde(default, skip_serializing_if = "LabsConfig::is_default")]
+    pub labs: LabsConfig,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub rules: Vec<RuleDoc>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
@@ -30,50 +31,6 @@ pub(crate) struct ConfigDoc {
     /// `[shortcuts]`, carried through untouched: no CLI command edits it.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub shortcuts: Option<ShortcutsDoc>,
-}
-
-#[derive(Clone, Copy, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
-#[serde(deny_unknown_fields)]
-pub(crate) struct LabsDoc {
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub scratchpad: Option<bool>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub activity: Option<bool>,
-}
-
-impl LabsDoc {
-    fn is_empty(&self) -> bool {
-        self.scratchpad.is_none() && self.activity.is_none()
-    }
-
-    /// The switch as the file asks for it: off while unset.
-    pub(crate) fn enabled(&self, feature: LabFeature) -> bool {
-        self.slot(feature).unwrap_or(false)
-    }
-
-    /// Whether the file sets the switch at all.
-    pub(crate) fn is_set(&self, feature: LabFeature) -> bool {
-        self.slot(feature).is_some()
-    }
-
-    /// Sets the switch; off removes the key, and the table with it once empty.
-    pub(crate) fn set(&mut self, feature: LabFeature, on: bool) {
-        *self.slot_mut(feature) = on.then_some(true);
-    }
-
-    const fn slot(&self, feature: LabFeature) -> Option<bool> {
-        match feature {
-            LabFeature::Scratchpad => self.scratchpad,
-            LabFeature::Activity => self.activity,
-        }
-    }
-
-    const fn slot_mut(&mut self, feature: LabFeature) -> &mut Option<bool> {
-        match feature {
-            LabFeature::Scratchpad => &mut self.scratchpad,
-            LabFeature::Activity => &mut self.activity,
-        }
-    }
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
@@ -92,7 +49,7 @@ impl Default for ConfigDoc {
         Self {
             version: 1,
             settings: SettingsDoc::default(),
-            labs: None,
+            labs: LabsConfig::default(),
             rules: Vec::new(),
             workspaces: Vec::new(),
             shortcuts: None,
@@ -395,8 +352,8 @@ impl RuleView {
 struct EffectiveConfigToml<'a> {
     version: u32,
     settings: EffectiveSettings,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    labs: Option<LabsDoc>,
+    #[serde(skip_serializing_if = "LabsConfig::is_default")]
+    labs: LabsConfig,
     #[serde(skip_serializing_if = "<[RuleDoc]>::is_empty")]
     rules: &'a [RuleDoc],
     #[serde(skip_serializing_if = "<[WorkspaceDoc]>::is_empty")]
@@ -406,18 +363,6 @@ struct EffectiveConfigToml<'a> {
 }
 
 impl ConfigDoc {
-    /// The `[labs]` table, created when a command first edits it.
-    pub(crate) fn labs_mut(&mut self) -> &mut LabsDoc {
-        self.labs.get_or_insert_with(LabsDoc::default)
-    }
-
-    /// Drops `[labs]` once it sets no switch, the way an emptied `[settings]` table goes.
-    pub(crate) fn prune_labs(&mut self) {
-        if self.labs.is_some_and(|labs| labs.is_empty()) {
-            self.labs = None;
-        }
-    }
-
     pub(crate) fn load_or_default(path: &Path) -> Result<(Self, bool), String> {
         let source = match fs::read_to_string(path) {
             Ok(source) => source,

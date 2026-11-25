@@ -3,16 +3,18 @@ use std::path::{Path, PathBuf};
 use serde::Serialize;
 use spaceman::{
     config::{
-        HudPosition, HudStyle, LabFeature, LayoutMode, MouseFollowsFocus, UpdateChannel, load_path,
+        HudPosition, HudStyle, LabFeature, LabsConfig, LayoutMode, MouseFollowsFocus,
+        UpdateChannel, load_path,
     },
+    labs::{GlideDamping, GlideDuration, SharedEdge},
     spacing::{self, SpacingKey},
 };
 
 use super::{
     Outcome,
     document::{
-        ConfigDoc, EffectiveSettings, LabsDoc, RuleView, SettingsDoc, ShortcutsDoc, WorkspaceDoc,
-        resolve_config_path, to_json_pretty,
+        ConfigDoc, EffectiveSettings, RuleView, ShortcutsDoc, WorkspaceDoc, resolve_config_path,
+        to_json_pretty,
     },
     help,
 };
@@ -29,8 +31,8 @@ struct ShowOutput {
     exists: bool,
     version: u32,
     settings: EffectiveSettings,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    labs: Option<LabsDoc>,
+    #[serde(skip_serializing_if = "LabsConfig::is_default")]
+    labs: LabsConfig,
     rules: Vec<RuleView>,
     workspaces: Vec<WorkspaceDoc>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -59,6 +61,14 @@ enum SettingKey {
     HudPosition,
     Layout,
     UpdateChannel,
+    /// A `[labs]` switch: `labs.scrolling_strip`, `labs.scratchpad`, `labs.activity`.
+    Lab(LabFeature),
+    /// `labs.scrolling_strip_duration_ms`.
+    StripDuration,
+    /// `labs.scrolling_strip_damping`.
+    StripDamping,
+    /// `labs.scrolling_strip_shared_edge`.
+    StripSharedEdge,
     MouseFollowsFocus,
     Outer,
     Spacing(SpacingKey),
@@ -66,6 +76,20 @@ enum SettingKey {
 
 impl SettingKey {
     fn parse(raw: &str) -> Result<Self, String> {
+        if let Some(id) = raw.strip_prefix("labs.") {
+            return match id {
+                "scrolling_strip_duration_ms" => Ok(Self::StripDuration),
+                "scrolling_strip_damping" => Ok(Self::StripDamping),
+                "scrolling_strip_shared_edge" => Ok(Self::StripSharedEdge),
+                _ => LabFeature::parse(id).map(Self::Lab).ok_or_else(|| {
+                    format!(
+                        "unknown Lab {raw:?}; valid Labs keys: labs.scrolling_strip, \
+                         labs.scrolling_strip_duration_ms, labs.scrolling_strip_damping, \
+                         labs.scrolling_strip_shared_edge, labs.scratchpad, labs.activity"
+                    )
+                }),
+            };
+        }
         match raw.strip_prefix("settings.").unwrap_or(raw) {
             "hud" => Ok(Self::Hud),
             "hud_style" => Ok(Self::HudStyle),
@@ -78,7 +102,10 @@ impl SettingKey {
                 format!(
                     "unknown setting {raw:?}; valid keys: hud, hud_style, hud_position, layout, \
                      update_channel, mouse_follows_focus, gaps.inner, gaps.outer, gaps.top, \
-                     gaps.bottom, gaps.left, gaps.right, single_window_max_width"
+                     gaps.bottom, gaps.left, gaps.right, single_window_max_width, \
+                     labs.scrolling_strip, labs.scrolling_strip_duration_ms, \
+                     labs.scrolling_strip_damping, labs.scrolling_strip_shared_edge, \
+                     labs.scratchpad, labs.activity"
                 )
             }),
         }
@@ -91,6 +118,12 @@ impl SettingKey {
             Self::HudPosition => "hud_position",
             Self::Layout => "layout",
             Self::UpdateChannel => "update_channel",
+            Self::Lab(LabFeature::ScrollingStrip) => "labs.scrolling_strip",
+            Self::Lab(LabFeature::Scratchpad) => "labs.scratchpad",
+            Self::Lab(LabFeature::Activity) => "labs.activity",
+            Self::StripDuration => "labs.scrolling_strip_duration_ms",
+            Self::StripDamping => "labs.scrolling_strip_damping",
+            Self::StripSharedEdge => "labs.scrolling_strip_shared_edge",
             Self::MouseFollowsFocus => "mouse_follows_focus",
             Self::Outer => spacing::OUTER,
             Self::Spacing(key) => key.path(),
@@ -98,7 +131,8 @@ impl SettingKey {
     }
 
     /// What the file asks for, every unset key at its default, as text and as JSON.
-    fn read(self, settings: &SettingsDoc) -> (String, serde_json::Value) {
+    fn read(self, doc: &ConfigDoc) -> (String, serde_json::Value) {
+        let settings = &doc.settings;
         match self {
             Self::Hud => {
                 let hud = settings.effective_hud();
@@ -144,11 +178,28 @@ impl SettingKey {
                 let value = key.get(&settings.effective_spacing());
                 (value.to_string(), serde_json::Value::from(value))
             }
+            Self::Lab(feature) => {
+                let enabled = doc.labs.enabled(feature);
+                (enabled.to_string(), serde_json::Value::Bool(enabled))
+            }
+            Self::StripDuration => {
+                let ms = doc.labs.scrolling_strip_duration_ms.ms();
+                (ms.to_string(), serde_json::Value::from(ms))
+            }
+            Self::StripDamping => {
+                let ratio = doc.labs.scrolling_strip_damping.ratio();
+                (ratio.to_string(), serde_json::Value::from(ratio))
+            }
+            Self::StripSharedEdge => {
+                let mode = doc.labs.scrolling_strip_shared_edge.as_str();
+                (mode.to_owned(), serde_json::Value::String(mode.to_owned()))
+            }
         }
     }
 
     /// Whether the file sets this key at all.
-    fn is_set(self, settings: &SettingsDoc) -> bool {
+    fn is_set(self, doc: &ConfigDoc) -> bool {
+        let settings = &doc.settings;
         match self {
             Self::Hud => settings.hud.is_some(),
             Self::HudStyle => settings.hud_style.is_some(),
@@ -158,11 +209,16 @@ impl SettingKey {
             Self::MouseFollowsFocus => settings.mouse_follows_focus.is_some(),
             Self::Outer => settings.gaps.outer.is_some(),
             Self::Spacing(key) => settings.has_spacing(key),
+            Self::Lab(feature) => doc.labs.enabled(feature),
+            Self::StripDuration => !doc.labs.scrolling_strip_duration_ms.is_default(),
+            Self::StripDamping => !doc.labs.scrolling_strip_damping.is_default(),
+            Self::StripSharedEdge => !doc.labs.scrolling_strip_shared_edge.is_default(),
         }
     }
 
     /// Removes the key from the file, back to its default, and any table it empties.
-    fn clear(self, settings: &mut SettingsDoc) {
+    fn clear(self, doc: &mut ConfigDoc) {
+        let settings = &mut doc.settings;
         match self {
             Self::Hud => settings.hud = None,
             Self::HudStyle => settings.hud_style = None,
@@ -172,43 +228,10 @@ impl SettingKey {
             Self::MouseFollowsFocus => settings.mouse_follows_focus = None,
             Self::Outer => settings.gaps.outer = None,
             Self::Spacing(key) => settings.clear_spacing(key),
-        }
-    }
-}
-
-/// A `config.toml` key the CLI can read and write: a `[settings]` key or a `[labs]` switch.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-enum Key {
-    Setting(SettingKey),
-    Lab(LabFeature),
-}
-
-impl Key {
-    fn parse(raw: &str) -> Result<Self, String> {
-        if let Some(lab) = raw.strip_prefix("labs.") {
-            return LabFeature::parse(lab).map(Self::Lab).ok_or_else(|| {
-                format!("unknown Lab {raw:?}; valid Labs: labs.scratchpad, labs.activity")
-            });
-        }
-        SettingKey::parse(raw).map(Self::Setting)
-    }
-
-    const fn as_str(self) -> &'static str {
-        match self {
-            Self::Setting(key) => key.as_str(),
-            Self::Lab(LabFeature::Scratchpad) => "labs.scratchpad",
-            Self::Lab(LabFeature::Activity) => "labs.activity",
-        }
-    }
-
-    /// What the file asks for, every unset key at its default, as text and as JSON.
-    fn read(self, doc: &ConfigDoc) -> (String, serde_json::Value) {
-        match self {
-            Self::Setting(key) => key.read(&doc.settings),
-            Self::Lab(feature) => {
-                let on = doc.labs.is_some_and(|labs| labs.enabled(feature));
-                (on.to_string(), serde_json::Value::Bool(on))
-            }
+            Self::Lab(feature) => doc.labs.set(feature, false),
+            Self::StripDuration => doc.labs.scrolling_strip_duration_ms = GlideDuration::default(),
+            Self::StripDamping => doc.labs.scrolling_strip_damping = GlideDamping::default(),
+            Self::StripSharedEdge => doc.labs.scrolling_strip_shared_edge = SharedEdge::default(),
         }
     }
 }
@@ -310,7 +333,7 @@ fn run_get(args: &[&str], path_override: Option<&Path>) -> Result<String, String
     let [raw_key] = positional.as_slice() else {
         return Err("usage: spaceman config get <key> [--json]".into());
     };
-    let key = Key::parse(raw_key)?;
+    let key = SettingKey::parse(raw_key)?;
     let path = resolve_config_path(path_override)?;
     let (doc, _) = ConfigDoc::load_or_default(&path)?;
     let (text, value) = key.read(&doc);
@@ -331,10 +354,13 @@ enum SettingValue {
     HudPosition(HudPosition),
     Layout(LayoutMode),
     UpdateChannel(UpdateChannel),
+    Lab(LabFeature, bool),
+    StripDuration(GlideDuration),
+    StripDamping(GlideDamping),
+    StripSharedEdge(SharedEdge),
     MouseFollowsFocus(MouseFollowsFocus),
     Outer(i64),
     Spacing(SpacingKey, i64),
-    Lab(LabFeature, bool),
 }
 
 impl SettingValue {
@@ -375,6 +401,44 @@ impl SettingValue {
                         "invalid value for update_channel: expected 'stable' or 'dev', got {raw_value:?}"
                     )
                 }),
+            SettingKey::Lab(feature) => match raw_value {
+                "true" => Ok(Self::Lab(feature, true)),
+                "false" => Ok(Self::Lab(feature, false)),
+                _ => Err(format!(
+                    "invalid value for {}: expected 'true' or 'false', got {raw_value:?}",
+                    key.as_str()
+                )),
+            },
+            SettingKey::StripDuration => raw_value
+                .parse::<u16>()
+                .map_err(|_| {
+                    format!(
+                        "invalid value for {}: expected a whole number of milliseconds, got {raw_value:?}",
+                        key.as_str()
+                    )
+                })
+                .and_then(GlideDuration::new)
+                .map(Self::StripDuration)
+                .map_err(|error| prefixed(key, error)),
+            SettingKey::StripDamping => raw_value
+                .parse::<f64>()
+                .map_err(|_| {
+                    format!(
+                        "invalid value for {}: expected a number such as 0.78, 1.0 or 1.18, got {raw_value:?}",
+                        key.as_str()
+                    )
+                })
+                .and_then(GlideDamping::new)
+                .map(Self::StripDamping)
+                .map_err(|error| prefixed(key, error)),
+            SettingKey::StripSharedEdge => SharedEdge::parse(raw_value)
+                .map(Self::StripSharedEdge)
+                .ok_or_else(|| {
+                    format!(
+                        "invalid value for {}: expected 'tuck' or 'slide', got {raw_value:?}",
+                        key.as_str()
+                    )
+                }),
             SettingKey::MouseFollowsFocus => MouseFollowsFocus::parse(raw_value)
                 .map(Self::MouseFollowsFocus)
                 .ok_or_else(|| {
@@ -396,16 +460,22 @@ impl SettingValue {
     }
 }
 
+/// `error` as an invalid value for `key`, unless it already says so.
+fn prefixed(key: SettingKey, error: String) -> String {
+    if error.starts_with("invalid value") {
+        error
+    } else {
+        format!("invalid value for {}: {error}", key.as_str())
+    }
+}
+
 fn run_set(args: &[&str], path_override: Option<&Path>) -> Result<String, String> {
     let (json, positional) = split_json_flag(args)?;
     let [raw_key, raw_value] = positional.as_slice() else {
         return Err("usage: spaceman config set <key> <value> [--json]".into());
     };
-    let key = Key::parse(raw_key)?;
-    let parsed_value = match key {
-        Key::Setting(setting) => SettingValue::parse(setting, raw_value)?,
-        Key::Lab(feature) => SettingValue::Lab(feature, parse_switch(key, raw_value)?),
-    };
+    let key = SettingKey::parse(raw_key)?;
+    let parsed_value = SettingValue::parse(key, raw_value)?;
     let path = resolve_config_path(path_override)?;
 
     let (text, value) = ConfigDoc::edit_locked(&path, |doc| {
@@ -445,6 +515,34 @@ fn run_set(args: &[&str], path_override: Option<&Path>) -> Result<String, String
                     serde_json::Value::String(parsed.as_str().to_owned()),
                 )
             }
+            SettingValue::Lab(feature, parsed) => {
+                doc.labs.set(feature, parsed);
+                (
+                    format!("set {} = {parsed}", key.as_str()),
+                    serde_json::Value::Bool(parsed),
+                )
+            }
+            SettingValue::StripDuration(parsed) => {
+                doc.labs.scrolling_strip_duration_ms = parsed;
+                (
+                    format!("set {} = {}", key.as_str(), parsed.ms()),
+                    serde_json::Value::from(parsed.ms()),
+                )
+            }
+            SettingValue::StripDamping(parsed) => {
+                doc.labs.scrolling_strip_damping = parsed;
+                (
+                    format!("set {} = {}", key.as_str(), parsed.ratio()),
+                    serde_json::Value::from(parsed.ratio()),
+                )
+            }
+            SettingValue::StripSharedEdge(parsed) => {
+                doc.labs.scrolling_strip_shared_edge = parsed;
+                (
+                    format!("set {} = {}", key.as_str(), parsed.as_str()),
+                    serde_json::Value::String(parsed.as_str().to_owned()),
+                )
+            }
             SettingValue::MouseFollowsFocus(parsed) => {
                 doc.settings.mouse_follows_focus = Some(parsed);
                 (
@@ -466,14 +564,6 @@ fn run_set(args: &[&str], path_override: Option<&Path>) -> Result<String, String
                     serde_json::Value::from(value),
                 )
             }
-            SettingValue::Lab(feature, on) => {
-                doc.labs_mut().set(feature, on);
-                doc.prune_labs();
-                (
-                    format!("set {} = {on}", key.as_str()),
-                    serde_json::Value::Bool(on),
-                )
-            }
         };
         Ok((output, true))
     })?;
@@ -493,28 +583,13 @@ fn run_reset(args: &[&str], path_override: Option<&Path>) -> Result<String, Stri
     let [raw_key] = positional.as_slice() else {
         return Err("usage: spaceman config reset <key> [--json]".into());
     };
-    let key = Key::parse(raw_key)?;
+    let key = SettingKey::parse(raw_key)?;
     let path = resolve_config_path(path_override)?;
     let (text, value) = ConfigDoc::edit_locked(&path, |doc| {
-        let changed = match key {
-            Key::Setting(setting) => {
-                let changed = setting.is_set(&doc.settings);
-                if changed {
-                    setting.clear(&mut doc.settings);
-                }
-                changed
-            }
-            Key::Lab(feature) => {
-                let changed = doc.labs.is_some_and(|labs| labs.is_set(feature));
-                if changed {
-                    if let Some(labs) = &mut doc.labs {
-                        labs.set(feature, false);
-                    }
-                    doc.prune_labs();
-                }
-                changed
-            }
-        };
+        let changed = key.is_set(doc);
+        if changed {
+            key.clear(doc);
+        }
         let (effective, value) = key.read(doc);
         Ok((
             (format!("reset {} = {effective}", key.as_str()), value),
@@ -529,18 +604,6 @@ fn run_reset(args: &[&str], path_override: Option<&Path>) -> Result<String, Stri
         })
     } else {
         Ok(text)
-    }
-}
-
-/// `true` or `false`, the only values a `[labs]` switch takes.
-fn parse_switch(key: Key, raw: &str) -> Result<bool, String> {
-    match raw {
-        "true" => Ok(true),
-        "false" => Ok(false),
-        _ => Err(format!(
-            "invalid value for {}: expected 'true' or 'false', got {raw:?}",
-            key.as_str()
-        )),
     }
 }
 

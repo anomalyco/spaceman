@@ -30,6 +30,7 @@ mod space_transitions;
 mod spacing;
 mod stacked_resize;
 mod startup;
+mod strip;
 mod switch_repeat;
 mod switching;
 mod tear_regressions;
@@ -117,6 +118,8 @@ struct FakeBackend {
     config_path: Option<PathBuf>,
     fail_persist_config: bool,
     persisted_monitors: Vec<(WorkspaceId, DisplaySelector)>,
+    /// Strip cameras glide (as with the real main thread) instead of jumping.
+    animate_strip: bool,
     pointer: Option<(i32, i32)>,
     mouse_down: bool,
     /// When macOS last changed the active Space.
@@ -151,6 +154,10 @@ impl FakeBackend {
 }
 
 impl WorkspaceBackend for FakeBackend {
+    fn presents_motion(&self) -> bool {
+        self.animate_strip
+    }
+
     fn confirms_no_windows(&mut self, app: &AppInstanceId) -> bool {
         self.close_probes.push(app.clone());
         self.apps_confirming_no_windows.contains(app)

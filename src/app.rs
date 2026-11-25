@@ -60,6 +60,7 @@ mod runtime;
 mod scratchpad;
 mod space_transition;
 mod state_writer;
+mod strip;
 mod switching;
 mod worker;
 
@@ -270,6 +271,8 @@ pub(crate) enum WorkerAction {
     ToggleFullscreenLayout,
     /// Float the focused window above the workspace's tiles, or tile it again.
     ToggleFloat,
+    /// Scrolling Strip on the focused workspace (a Lab).
+    ToggleStrip,
     /// Kit noticed something wrong: mark the journal and snapshot it.
     MarkWrong,
     /// Move the open windows onto the workspaces the setup tour's plan gives them.
@@ -311,6 +314,7 @@ impl WorkerAction {
             Self::Balance => "balance queued".into(),
             Self::ToggleFullscreenLayout => "fullscreen layout toggle queued".into(),
             Self::ToggleFloat => "float toggle queued".into(),
+            Self::ToggleStrip => "scrolling strip toggle queued".into(),
             Self::MarkWrong => "marking the journal".into(),
             Self::Arrange(_) => "arrangement queued".into(),
             Self::Scratchpad(command) => format!("scratchpad {} queued", command.as_str()),
@@ -403,6 +407,8 @@ enum WorkerResult {
     Restored {
         failed: usize,
     },
+    /// A Scrolling Strip glide for the main thread to present, or to stop.
+    Strip(strip::StripCommand),
     Inventory(Box<crate::onboarding_plan::Inventory>),
 }
 
@@ -418,6 +424,7 @@ pub struct PreparedAgent {
     hotkey_workspaces: Vec<WorkspaceId>,
     shortcuts: crate::shortcuts::Shortcuts,
     hud: bool,
+    labs: crate::labs::LabsConfig,
     controls: Receiver<ControlRequest>,
     control_server: control::Server,
     bridge: UiBridge,
@@ -435,6 +442,7 @@ pub fn prepare() -> Result<(PreparedAgent, UiBridge), String> {
     let (config, workspace_state) =
         recover_startup_metadata(Config::load(), load_workspace_state());
     let hud = config.hud();
+    let labs = config.labs();
     let shortcuts = config.shortcuts().clone();
     let mut configured_workspaces = Workspaces::default();
     config.configure_workspaces(&mut configured_workspaces);
@@ -484,6 +492,7 @@ pub fn prepare() -> Result<(PreparedAgent, UiBridge), String> {
             hotkey_workspaces,
             shortcuts,
             hud,
+            labs,
             controls,
             control_server,
             bridge: bridge.clone(),
@@ -546,6 +555,7 @@ impl PreparedAgent {
                 hotkey_workspaces: self.hotkey_workspaces,
                 shortcuts: self.shortcuts,
                 hud: self.hud,
+                labs: self.labs,
                 trusted,
                 setup_tour_open,
                 controls: self.controls,

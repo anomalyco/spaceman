@@ -184,13 +184,14 @@ impl MainThreadAgent {
 
     fn reinstall_changed_shortcuts(&mut self, next: Shortcuts) {
         let workspaces = &self.hotkey_workspaces;
+        let labs = &self.labs;
         let sender = &self.actions_sender;
         let delivery = &mut self.hotkey_delivery;
         let outcome = apply_with_rollback(
             &mut self.shortcuts,
             &mut self.hotkeys,
             next,
-            |shortcuts| HotkeyPlan::current(workspaces, shortcuts),
+            |shortcuts| HotkeyPlan::current(workspaces, shortcuts, labs),
             |plan| {
                 let hotkeys = Hotkeys::install(sender.clone(), plan)?;
                 log_event!("hotkeys: reloaded {} shortcuts", hotkeys.len());
@@ -259,7 +260,7 @@ impl MainThreadAgent {
             self.reinstall_changed_shortcuts(next);
             return;
         }
-        match HotkeyPlan::current(&self.hotkey_workspaces, &self.shortcuts) {
+        match HotkeyPlan::current(&self.hotkey_workspaces, &self.shortcuts, &self.labs) {
             Ok(plan) => self.reinstall_hotkeys(plan),
             Err(error) => {
                 let error = format!("Hotkeys unavailable: {error}");
@@ -277,6 +278,7 @@ pub(super) const NOT_APPLIED: &str = "Shortcuts not applied";
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::labs::LabsConfig;
     use crate::{
         hotkeys::{CONTROL_KEY, OPTION_KEY},
         keyboard_layout::LayoutSnapshot,
@@ -348,7 +350,8 @@ mod tests {
 
         // Start with the original keymap installed, then suspend hotkeys for recording.
         let mut active = original.clone();
-        let initial_plan = HotkeyPlan::from_layout(&[], &active, &layout).unwrap();
+        let initial_plan =
+            HotkeyPlan::from_layout(&[], &active, &LabsConfig::default(), &layout).unwrap();
         assert!(initial_plan.has_registration(
             0x0b,
             CONTROL_KEY | OPTION_KEY,
@@ -366,7 +369,7 @@ mod tests {
             &mut active,
             &mut hotkeys,
             unusable,
-            |shortcuts| HotkeyPlan::from_layout(&[], shortcuts, &layout),
+            |shortcuts| HotkeyPlan::from_layout(&[], shortcuts, &LabsConfig::default(), &layout),
             Ok,
             |slot| *slot = None,
         );
@@ -391,7 +394,7 @@ mod tests {
             &mut active,
             &mut hotkeys,
             replacement.clone(),
-            |shortcuts| HotkeyPlan::from_layout(&[], shortcuts, &layout),
+            |shortcuts| HotkeyPlan::from_layout(&[], shortcuts, &LabsConfig::default(), &layout),
             Ok,
             |slot| *slot = None,
         );
@@ -418,7 +421,7 @@ mod tests {
             &mut active,
             &mut hotkeys,
             blocked,
-            |shortcuts| HotkeyPlan::from_layout(&[], shortcuts, &layout),
+            |shortcuts| HotkeyPlan::from_layout(&[], shortcuts, &LabsConfig::default(), &layout),
             |plan| {
                 calls += 1;
                 if calls == 1 {

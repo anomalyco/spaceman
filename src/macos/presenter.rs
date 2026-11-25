@@ -11,7 +11,8 @@
 //! write. A lane turns it off once when its app joins a motion, keeps it off for the whole motion,
 //! and turns it back on 250 ms after the app's last frame, when the presenter is told to restore
 //! now (pause, quit), when it is dropped, or when the lane unwinds. Apps that don't support the
-//! attribute are remembered and never asked again.
+//! attribute are remembered and never asked again. The layout engine leaves a held app's attribute
+//! alone ([`holds`]), so its own writes never turn enhanced UI back on mid-motion.
 //!
 //! Native handles never leave their lane: callers name windows by [`PhysicalWindowId`] and
 //! positions by plain points, and each lane resolves its app's windows itself.
@@ -618,6 +619,8 @@ impl PresenterBackend for AxBackend {
     type Sink = AxAppSink;
 
     fn open(&self, app: &AppInstanceId) -> AxAppSink {
+        // Before the lane reads the attribute, so the layout engine can't restore it after.
+        holds::lock().acquire(app.pid);
         AxAppSink {
             app: app.clone(),
             application: application_element(app.pid),
@@ -650,6 +653,15 @@ impl AxAppSink {
             }
         }
         self.windows.get(&id.window_id).map(|window| &**window)
+    }
+}
+
+impl Drop for AxAppSink {
+    fn drop(&mut self) {
+        let mut holds = holds::lock();
+        if holds.release(self.app.pid) {
+            let _: AXError = set_attribute(&self.application, ENHANCED_UI, CFBoolean::new(true));
+        }
     }
 }
 
@@ -699,5 +711,6 @@ impl AppSink for AxAppSink {
     }
 }
 
+pub(super) mod holds;
 #[cfg(test)]
 mod tests;

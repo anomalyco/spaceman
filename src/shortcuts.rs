@@ -82,6 +82,21 @@ pub struct Chord {
     pub key: Key,
 }
 
+impl Chord {
+    /// The chord in `[shortcuts]` syntax, modifiers in ctrl, alt, shift, cmd order:
+    /// `alt+shift+s`. [`parse_chord`] reads it back unchanged.
+    #[must_use]
+    pub fn config_name(&self) -> String {
+        self.source()
+    }
+
+    /// The chord as macOS menus show it, modifiers in ⌃⌥⇧⌘ order: `⌥⇧S`.
+    #[must_use]
+    pub fn symbols(&self) -> String {
+        self.keycaps().concat()
+    }
+}
+
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq, PartialOrd, Ord)]
 pub struct Modifiers {
     pub command: bool,
@@ -673,6 +688,24 @@ mod tests {
             "balance now",
         ] {
             assert!(parse_command(invalid).is_err(), "{invalid}");
+        }
+    }
+
+    #[test]
+    fn chords_print_back_in_config_syntax_and_as_menu_symbols() {
+        for (source, name, symbols) in [
+            ("Shift+Option+S", "alt+shift+s", "⌥⇧S"),
+            ("cmd+ctrl+left", "ctrl+cmd+left", "⌃⌘←"),
+            ("alt+0", "alt+0", "⌥0"),
+            ("alt++", "alt++", "⌥+"),
+            ("ctrl+alt+f5", "ctrl+alt+f5", "⌃⌥F5"),
+            ("alt+shift+space", "alt+shift+space", "⌥⇧Space"),
+            ("alt+home", "alt+home", "⌥↖"),
+        ] {
+            let chord = parse_chord(source).unwrap();
+            assert_eq!(chord.config_name(), name, "{source}");
+            assert_eq!(parse_chord(name).unwrap(), chord, "{source}");
+            assert_eq!(chord.symbols(), symbols, "{source}");
         }
     }
 

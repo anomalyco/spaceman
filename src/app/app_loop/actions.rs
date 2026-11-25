@@ -17,7 +17,7 @@ impl MainThreadAgent {
         }
         self.awaiting_accessibility = false;
         if self.hotkeys.is_none() {
-            match HotkeyPlan::current(&self.hotkey_workspaces, &self.shortcuts)
+            match HotkeyPlan::current(&self.hotkey_workspaces, &self.shortcuts, &self.labs)
                 .and_then(|plan| Hotkeys::install(self.actions_sender.clone(), plan))
             {
                 Ok(registered) => {

@@ -184,7 +184,7 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
                 let mut failed = 0;
                 if !is_floating && self.is_visible(source, &outputs) {
                     failed += self
-                        .layout_workspace(source, source_output, cancelled)
+                        .relayout_source(source, source_output, &outputs, cancelled)
                         .failed;
                 }
                 self.persist_workspace_state_if_changed()?;
@@ -215,7 +215,7 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
         self.note_hand_move(&window, source, target);
         let mut failed = 0;
         if !is_floating && self.is_visible(source, &outputs) {
-            let layout = self.layout_workspace(source, source_output, cancelled);
+            let layout = self.relayout_source(source, source_output, &outputs, cancelled);
             failed += layout.failed;
         }
         if !target_is_active {
@@ -249,7 +249,13 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
                     failed += 1;
                 }
             }
-            if !is_floating {
+            if !is_floating && self.uses_strip(target) {
+                // The moved window becomes the strip's active column.
+                self.workspaces.remember_focus(target, &window);
+                failed += self
+                    .layout_strip_workspace(target, &outputs, cancelled)
+                    .failed;
+            } else if !is_floating {
                 let layout = self.layout_workspace(target, target_output, cancelled);
                 failed += layout.failed;
             } else if !was_parked
@@ -278,6 +284,20 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
         Ok(MoveWindowOutcome::Moved(status))
     }
 
+    /// Lays out the workspace a window left: as a strip when it is one.
+    fn relayout_source(
+        &mut self,
+        source: WorkspaceId,
+        source_output: crate::Rect,
+        outputs: &macos::DisplayOutputs,
+        cancelled: &AtomicBool,
+    ) -> LayoutStatus {
+        if self.uses_strip(source) {
+            self.layout_strip_workspace(source, outputs, cancelled)
+        } else {
+            self.layout_workspace(source, source_output, cancelled)
+        }
+    }
     /// Hands keyboard focus to a remaining visible window on `source` after
     /// `moved` was parked on an inactive workspace, so focus never stays
     /// stranded on the off-screen window (#323). When `source` is now empty,

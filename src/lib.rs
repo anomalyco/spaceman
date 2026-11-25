@@ -12,6 +12,7 @@ pub mod journal;
 #[cfg(target_os = "macos")]
 #[allow(unsafe_code)]
 mod keyboard_layout;
+pub mod labs;
 mod layout_tree;
 #[cfg(target_os = "macos")]
 pub mod live;
@@ -40,6 +41,7 @@ pub mod state_file;
 #[cfg(target_os = "macos")]
 #[allow(unsafe_code)]
 mod status_item;
+pub mod strip;
 pub mod swipe;
 #[cfg(target_os = "macos")]
 #[allow(unsafe_code)]

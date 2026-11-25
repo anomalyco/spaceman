@@ -15,18 +15,29 @@ fn rect(x: i32, y: i32, width: i32, height: i32) -> Rect {
     }
 }
 
-fn first_settled(spring: &CameraSpring, start: Instant, scale: f64) -> Duration {
+fn first_settled(spring: &CameraSpring, start: Instant, tolerance: f64) -> Duration {
     (0..2_000)
         .map(ms)
-        .find(|elapsed| spring.is_settled(start + *elapsed, scale))
+        .find(|elapsed| spring.is_settled(start + *elapsed, tolerance))
         .expect("spring settles within two seconds")
 }
 
 #[test]
-fn default_spring_is_critically_damped_at_omega_root_800() {
+fn default_spring_is_critically_damped_and_settles_a_column_move_in_180_ms() {
     let params = SpringParams::default();
     assert_eq!(params.damping_ratio, 1.0);
-    assert!((params.angular_frequency() - 800.0_f64.sqrt()).abs() < 1e-12);
+    assert_eq!(params, SpringParams::for_duration(180, 1.0));
+    let start = Instant::now();
+    for (duration, expected) in [(120, ms(120)), (180, ms(180)), (400, ms(400))] {
+        let mut spring =
+            CameraSpring::at_rest(SpringParams::for_duration(duration, 1.0), 0.0, start);
+        spring.retarget(CALIBRATION_MOVE_PT, start);
+        let settled = first_settled(&spring, start, SETTLE_TOLERANCE_PT);
+        assert!(
+            settled.abs_diff(expected) <= ms(1),
+            "{duration} ms spring settled after {settled:?}"
+        );
+    }
 }
 
 #[test]
@@ -34,7 +45,7 @@ fn critically_damped_spring_matches_the_closed_form() {
     let start = Instant::now();
     let (x0, v0, target) = (-640.0, 1_200.0, 900.0);
     let spring = CameraSpring::with_state(SpringParams::default(), target + x0, v0, target, start);
-    let w = 800.0_f64.sqrt();
+    let w = SpringParams::default().angular_frequency();
     for elapsed in [0, 8, 16, 50, 120, 300] {
         let t = ms(elapsed).as_secs_f64();
         let decay = (-w * t).exp();
@@ -78,13 +89,13 @@ fn velocity_is_the_derivative_of_position_in_every_damping_regime() {
 }
 
 #[test]
-fn a_column_width_move_settles_in_about_a_quarter_second_without_overshoot() {
+fn a_short_move_settles_sooner_without_overshoot() {
     let start = Instant::now();
     let mut spring = CameraSpring::at_rest(SpringParams::default(), 0.0, start);
     spring.retarget(100.0, start);
-    let settled = first_settled(&spring, start, 2.0);
+    let settled = first_settled(&spring, start, SETTLE_TOLERANCE_PT);
     assert!(
-        settled > ms(200) && settled < ms(350),
+        settled > ms(100) && settled < ms(180),
         "settled after {settled:?}"
     );
     let max = (0..400)
@@ -122,17 +133,17 @@ fn rapid_retargets_glide_in_one_accelerating_arc() {
         }
     }
     let end = start + ms(180);
-    let settled = first_settled(&spring, end, 2.0);
-    assert!((spring.position(end + settled) - 2_000.0).abs() <= 0.125);
+    let settled = first_settled(&spring, end, SETTLE_TOLERANCE_PT);
+    assert!((spring.position(end + settled) - 2_000.0).abs() <= SETTLE_TOLERANCE_PT);
 }
 
 #[test]
 fn a_fast_pass_through_the_target_is_not_settled() {
     let start = Instant::now();
     let spring = CameraSpring::with_state(SpringParams::default(), 500.0, 4_000.0, 500.0, start);
-    assert!(!spring.is_settled(start, 2.0));
+    assert!(!spring.is_settled(start, SETTLE_TOLERANCE_PT));
     let resting = CameraSpring::at_rest(SpringParams::default(), 500.0, start);
-    assert!(resting.is_settled(start, 2.0));
+    assert!(resting.is_settled(start, SETTLE_TOLERANCE_PT));
 }
 
 #[test]
@@ -268,4 +279,52 @@ fn a_column_wider_than_a_display_between_two_seams_pins_to_the_left_edge() {
 #[test]
 fn an_unknown_display_has_no_bounds() {
     assert!(ScrollingDisplayBounds::for_display(side_by_side(), "gone").is_none());
+}
+
+/// Kit's desk: two 2560-point Studio Displays side by side.
+#[test]
+fn sliding_lets_a_column_overhang_a_shared_edge_up_to_its_center() {
+    let displays = [
+        ("left", rect(0, 0, 2_560, 1_415)),
+        ("right", rect(2_560, 0, 2_560, 1_415)),
+    ];
+    let tuck = ScrollingDisplayBounds::for_display(displays, "left").unwrap();
+    assert_eq!(tuck.shared_edge, SharedEdge::Tuck);
+    assert_eq!(tuck.clamp_column_x(2_560, 1_280, 16), 2_560 - 1_280);
+    let slide = tuck.with_shared_edge(SharedEdge::Slide);
+    let farthest = slide.clamp_column_x(2_560, 1_280, 16);
+    assert_eq!(farthest, 2_560 - 640 - SLIDE_CENTER_MARGIN);
+    assert!(
+        farthest + 640 < 2_560,
+        "the center stays on the left display"
+    );
+    assert!(slide.holds_at_shared_edge(2_560, 1_280, 16));
+    assert!(!slide.holds_at_shared_edge(farthest, 1_280, 16));
+    // The free left edge peeks exactly as before.
+    assert_eq!(slide.clamp_column_x(-5_000, 1_280, 16), -1_280 + 16);
+    assert!(!slide.holds_at_shared_edge(-5_000, 1_280, 16));
+    // The right display overhangs its left seam the same way.
+    let right = ScrollingDisplayBounds::for_display(displays, "right")
+        .unwrap()
+        .with_shared_edge(SharedEdge::Slide);
+    assert_eq!(
+        right.clamp_column_x(0, 1_280, 16),
+        2_560 - 640 + SLIDE_CENTER_MARGIN
+    );
+    // Too narrow to overhang without its center crossing: it tucks.
+    assert_eq!(SharedEdge::Slide.overhang(10), 0);
+}
+
+#[test]
+fn retuning_a_spring_keeps_its_motion_continuous() {
+    let start = Instant::now();
+    let spring = CameraSpring::with_state(SpringParams::default(), 0.0, 0.0, 600.0, start);
+    let mid = start + ms(60);
+    let before = spring.sample(mid);
+    let faster = spring.retuned(SpringParams::for_duration(150, 0.78), mid);
+    let after = faster.sample(mid);
+    assert!((before.position - after.position).abs() < 1e-9);
+    assert!((before.velocity - after.velocity).abs() < 1e-9);
+    assert_eq!(faster.target(), 600.0);
+    assert_eq!(faster.params().damping_ratio, 0.78);
 }

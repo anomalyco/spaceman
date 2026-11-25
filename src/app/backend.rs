@@ -113,6 +113,11 @@ pub(super) trait WorkspaceBackend {
     fn journal(&mut self, line: &crate::journal::JournalLine);
     /// Waits briefly for state written in the background to reach the disk.
     fn flush_state(&mut self) {}
+    /// Whether a main thread presents strip glides frame by frame. Without one a strip's
+    /// camera jumps straight to its target.
+    fn presents_motion(&self) -> bool {
+        false
+    }
 }
 
 pub(super) struct MacWorkspaceBackend {
@@ -306,6 +311,10 @@ impl WorkspaceBackend for MacWorkspaceBackend {
             }
             Err(_) => {}
         }
+    }
+
+    fn presents_motion(&self) -> bool {
+        true
     }
 
     fn flush_state(&mut self) {

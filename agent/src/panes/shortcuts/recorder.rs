@@ -6,6 +6,7 @@
 use rune::{Mods, PhysicalInput, PhysicalKeyCode};
 use spaceman::{
     WorkspaceId,
+    labs::{LabFeature, LabShortcut},
     shortcuts::{self, Chord, Modifiers, Shortcuts},
 };
 
@@ -293,6 +294,13 @@ pub fn on_input(ui: &mut Ui, event: &PhysicalInput) -> bool {
 
 /// Saves what a press recorded, or keeps listening with why it was refused.
 pub fn record(ui: &mut Ui, id: &'static str, outcome: Press) {
+    if let Some(feature) = LabFeature::ALL
+        .into_iter()
+        .find(|feature| feature.shortcut_key() == Some(id))
+    {
+        record_lab(ui, feature, outcome);
+        return;
+    }
     let Some(action) = catalog::find(id) else {
         cancel(ui);
         return;
@@ -314,15 +322,70 @@ pub fn record(ui: &mut Ui, id: &'static str, outcome: Press) {
             });
             return;
         }
-        Press::Chord(chord) => match check(&shortcuts, &named, action, chord) {
-            Ok(()) => {
-                save(ui, id, |doc| {
-                    doc.set_shortcut(action.command, default, Some(chord));
-                });
-                return;
+        Press::Chord(chord) => {
+            match check(&shortcuts, &named, action, chord).and_then(|()| lab_check(ui, chord)) {
+                Ok(()) => {
+                    save(ui, id, |doc| {
+                        doc.set_shortcut(action.command, default, Some(chord));
+                    });
+                    return;
+                }
+                Err(message) => message,
             }
-            Err(message) => message,
-        },
+        }
+        Press::Refused(message) => message.to_owned(),
+    };
+    if let Capture::Listening { message, .. } = &mut ui.shortcut_capture {
+        *message = Some(refused);
+    }
+}
+
+/// A Labs feature that is on keeps its chord: a built-in shortcut can't take it from it.
+fn lab_check(ui: &Ui, chord: Chord) -> Result<(), String> {
+    match LabFeature::ALL.into_iter().find(|feature| {
+        feature.shortcut_key().is_some()
+            && ui.doc.lab(*feature)
+            && ui.doc.lab_shortcut(*feature).0 == chord
+    }) {
+        Some(feature) => Err(format!("Used by {}", feature.name())),
+        None => Ok(()),
+    }
+}
+
+/// A Labs feature's shortcut, recorded like any other: refused while a built-in shortcut, a
+/// `[shortcuts]` binding or a workspace key uses the chord, so recording one never knocks
+/// another shortcut out. ⌫ puts the default back. Only the shortcut's own key in `[labs]`
+/// changes; the feature's switch stays as it is.
+fn record_lab(ui: &mut Ui, feature: LabFeature, outcome: Press) {
+    let Some(id) = feature.shortcut_key() else {
+        cancel(ui);
+        return;
+    };
+    let refused = match outcome {
+        Press::Ignore => return,
+        Press::Cancel => {
+            cancel(ui);
+            return;
+        }
+        Press::Unbind => {
+            save(ui, id, |doc| {
+                doc.set_lab_shortcut(feature, LabShortcut::default());
+            });
+            return;
+        }
+        Press::Chord(chord) => {
+            let shortcuts = ui.doc.shortcuts();
+            let named = enabled_named_workspaces(ui);
+            match catalog::occupant(&shortcuts, &named, chord) {
+                Some(occupant) => format!("Used by {}", occupant.title()),
+                None => {
+                    save(ui, id, |doc| {
+                        doc.set_lab_shortcut(feature, LabShortcut(chord));
+                    });
+                    return;
+                }
+            }
+        }
         Press::Refused(message) => message.to_owned(),
     };
     if let Capture::Listening { message, .. } = &mut ui.shortcut_capture {

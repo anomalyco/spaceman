@@ -29,6 +29,8 @@ const SECTION_LABEL_LINE: f32 = 16.0;
 const ROW_PY: f32 = 8.0;
 /// Between a row's copy and its control.
 const ROW_GAP: f32 = 24.0;
+/// Clear space above and below a reference row's value.
+const REFERENCE_PY: f32 = 4.0;
 const PULSE: LoopSpec = LoopSpec::opacity(2.0, 0.0, 1.0, 0.45);
 
 /// Everything a control needs to paint itself.
@@ -214,6 +216,29 @@ pub fn row_frame(key: &str, described: bool) -> El {
         .px(METRICS.row_px)
         .py(ROW_PY)
         .center_y()
+}
+
+/// A reference row: a title and its value in a compact row, for a list read and not set (a
+/// sheet's shortcut keys). A keycap tray is a small control, so it keeps the row's inset
+/// above and below it.
+pub fn reference_row(p: Paint, key: &str, title: &str, value: El) -> El {
+    row()
+        .key(key)
+        .min_h(METRICS.row_h_compact + 2.0 * REFERENCE_PY)
+        .px(METRICS.row_px)
+        .gap(ROW_GAP)
+        .center_y()
+        .justify_between()
+        .label(title)
+        .child(
+            text(title)
+                .key("label")
+                .font(p.row_title())
+                .color(p.text())
+                .grow(1.0)
+                .shrink(),
+        )
+        .child(value)
 }
 
 /// A setting: title and optional description on the left, its control on the right.

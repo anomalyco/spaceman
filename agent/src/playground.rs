@@ -9,7 +9,9 @@ use spaceman::{
     app::{UiAgentSnapshot, UiLaunchAtLogin, UiUpdateStatus},
 };
 
-use crate::{Pane, Ui, activity, apps, controls::WINDOW, hud, map, onboarding, panes, rules::Doc};
+use crate::{
+    Pane, Ui, activity, apps, controls::WINDOW, hud, labs, map, onboarding, panes, rules::Doc,
+};
 
 pub(crate) type Scene = (&'static str, fn(&mut Ui));
 
@@ -18,6 +20,7 @@ const SCENE_GROUPS: &[&[Scene]] = &[
     panes::SCENES,
     map::SCENES,
     activity::SCENES,
+    labs::SCENES,
     hud::SCENES,
 ];
 
@@ -196,6 +199,11 @@ mod tests {
             "Shortcuts/shortcuts-refused",
             "Shortcuts/shortcuts-custom",
             "Activity/activity",
+            "Labs/labs",
+            "Labs/labs-on",
+            "Labs/labs-all-on",
+            "Labs/labs-customize",
+            "Labs/labs-custom-keys",
             "HUD/hud-switch",
             "HUD/hud-empty",
             "HUD/hud-fullscreen",
@@ -220,6 +228,6 @@ mod tests {
             let digit = char::from_digit((index + 1) as u32, 10).unwrap();
             assert_eq!(Pane::from_shortcut(digit, labs), Some(expected));
         }
-        assert_eq!(Pane::from_shortcut('7', labs), None);
+        assert_eq!(Pane::from_shortcut('8', labs), None);
     }
 }

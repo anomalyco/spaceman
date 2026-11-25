@@ -39,7 +39,7 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
         output: crate::Rect,
         results: &[macos::ApplyResult],
     ) -> bool {
-        if self.workspaces.uses_fullscreen_layout(workspace) {
+        if self.workspaces.uses_fullscreen_layout(workspace) || self.uses_strip(workspace) {
             return false;
         }
         let mut refused = false;

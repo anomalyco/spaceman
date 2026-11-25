@@ -23,6 +23,8 @@ pub(super) struct Probe {
     pub(super) config_stamp: Option<SystemTime>,
     /// The HUD setting read for `config_stamp`, when that config loaded.
     pub(super) hud: Option<bool>,
+    /// The `[labs]` switches read for `config_stamp`, when that config loaded.
+    pub(super) labs: Option<crate::labs::LabsConfig>,
     /// `[shortcuts]` read for `config_stamp`, when that config loaded.
     pub(super) shortcuts: Option<Shortcuts>,
 }
@@ -31,6 +33,7 @@ pub(super) struct Probe {
 #[derive(Clone, Debug, PartialEq)]
 pub(super) struct ConfigRead {
     pub(super) hud: bool,
+    pub(super) labs: crate::labs::LabsConfig,
     pub(super) shortcuts: Shortcuts,
 }
 
@@ -38,6 +41,7 @@ impl ConfigRead {
     fn load() -> Option<Self> {
         Config::load().ok().map(|config| Self {
             hud: config.hud(),
+            labs: config.labs(),
             shortcuts: config.shortcuts().clone(),
         })
     }
@@ -80,6 +84,7 @@ impl ProbeState {
             _ => (true, load_config()),
         };
         let hud = read.as_ref().map(|read| read.hud);
+        let labs = read.as_ref().map(|read| read.labs);
         let shortcuts = read.as_ref().map(|read| read.shortcuts.clone());
         self.config = Some((config_stamp, read));
         let login_due = forced
@@ -99,6 +104,7 @@ impl ProbeState {
             launch_at_login,
             config_stamp,
             hud,
+            labs,
             shortcuts,
         })
     }
@@ -243,6 +249,7 @@ mod tests {
     fn read(hud: bool) -> ConfigRead {
         ConfigRead {
             hud,
+            labs: crate::labs::LabsConfig::default(),
             shortcuts: Shortcuts::default(),
         }
     }

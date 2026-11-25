@@ -1,8 +1,8 @@
 # Scratchpad (Lab)
 
 Keep a few windows (a terminal, notes, a chat) one key away: hide them off-screen and summon one
-floating, centred, on whichever display you are using, then hide it again. Opt-in with
-`[labs] scratchpad = true`; off by default.
+floating, centred, on whichever display you are using, then hide it again. Opt-in with the
+Scratchpad switch in Settings › Labs or `[labs] scratchpad = true`; off by default.
 
 ## Sub-features
 
@@ -51,5 +51,4 @@ focused, and `mark` on the shown window tiles it again.
 ## Gaps
 
 - No live check drives the scratchpad shortcuts themselves.
-- No Settings › Labs toggle yet; the switch lives in `config.toml`.
 - Activating a hidden window's app (Dock, Cmd+Tab) does not summon it.

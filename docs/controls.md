@@ -22,6 +22,7 @@ fails after the old registrations are released, it pauses and reports `Hotkeys u
 | `Option+-` / `Option+=` | Shrink/grow the focused tile by 50 pixels at its immediate split |
 | `Option+Shift+F` | Toggle the workspace-wide Fullscreen Layout without entering native fullscreen |
 | `Option+Shift+Space` | Float the focused window above the tiles, or tile it again |
+| `Option+Shift+S` | Toggle the Scrolling Strip on the active workspace (Labs; registered only while `[labs] scrolling_strip` is on; change it on the Labs card or with `[labs] scrolling_strip_shortcut`) |
 | Three-finger swipe left/right | Next/previous workspace on the display under the pointer |
 
 A three-finger horizontal swipe steps through the workspaces that the display's menu section lists
@@ -65,6 +66,25 @@ restarts. `Option+/` exits Fullscreen Layout, toggles the preserved split axis, 
 the resulting normal layout. Keyboard resize (including `resize width|height`), balance, and tile
 reordering require leaving Fullscreen Layout first. Pointer dragging and resizing are ignored while the mode is active. Floating windows are
 not expanded. Removing or moving away the workspace's final tiled window exits Fullscreen Layout.
+
+Scrolling Strip (a Lab, off by default; turn it on in Settings › Labs) lays a workspace's tiles out
+as one horizontal ribbon of columns, each 33%, 50% (the default), 66%, 80% or 100% of the display,
+and glides a viewport along it at the display's refresh rate. Columns out of view keep a 16-point
+sliver past a free display edge and are parked behind an edge shared with another display; either way
+their frames are recorded like an inactive workspace's windows, and pause, quit, and restart restore
+them. On a strip, `Option+H`/`Option+L` step along the strip (the viewport only moves when the
+focused column would leave the screen, and taps faster than the glide bend it toward the newest
+column; past either end they continue to the adjacent display), `Option+Shift+H`/`Option+Shift+L`
+move the focused column, `Option+-`/`Option+=` step its width through 33% · 50% · 66% · 80% · 100%
+(columns you have not sized follow the last width you picked), and Option-backtick cycles columns.
+Focusing a column out of view any other way (a click, the Dock, Command-Tab) glides the viewport to
+it. Next to another display, a column crossing the shared edge waits at the edge under its
+neighbor, which slides over or off it, so nothing shows on the other display (with `[labs]
+scrolling_strip_shared_edge = "slide"` it glides up to halfway past the edge first). The column a
+key moves to takes focus as the key lands, so typing reaches it during the glide, and it shows on
+top. In Settings › Labs, `Customize…` beside the strip's switch shows the strip, its glide settings and
+its keys as you have them set. Turning on Fullscreen Layout or pressing `Option+/` leaves the
+strip. Pointer dragging and resizing are ignored on a strip.
 
 `Option+Shift+Space` floats the focused window: it leaves the tiles, keeps its exact frame and
 focus, and the remaining tiles re-fill the space it held. Floating is per window and follows that
@@ -152,7 +172,7 @@ The menu-bar control shows active workspace/layout glyphs and runtime errors. It
   and, while the HUD is on, `Customize…` beside it opens a sheet whose `Position` picks `Bottom` or `Top`
   (`[settings] hud_position`, default `Bottom`) under a live miniature of the capsule;
 - `Launch at Login`, shown checked when macOS has enabled the signed app bundle;
-- `Settings...` (`⌘,`), opening the Rune Settings window (`General`, `Layout`, `Rules`, `Workspaces`, `Shortcuts`, and, with `[labs] activity = true`, `Activity`, plus `⇧⌘D` Playground);
+- `Settings...` (`⌘,`), opening the Rune Settings window (`General`, `Layout`, `Rules`, `Workspaces`, `Shortcuts`, with `[labs] activity = true` `Activity`, and `Labs`, plus `⇧⌘D` Playground);
 - `Check for Updates...`, which checks and opens Settings (its sidebar and `General > Updates` show
   the result), or `Install Spaceman <version> and Restart` once an update is downloaded and verified;
 - `Quit Spaceman` (`⌘Q`).
@@ -203,6 +223,7 @@ spaceman ctl move-direction right
 spaceman ctl layout
 spaceman ctl fullscreen
 spaceman ctl float
+spaceman ctl strip
 spaceman ctl resize shrink
 spaceman ctl resize grow
 spaceman ctl resize width 1200
@@ -226,7 +247,9 @@ spaceman doctor 24
 
 Directions are `left`, `down`, `up`, and `right`. `focus next` is Option-backtick,
 `focus prev` is Option-Shift-backtick, `fullscreen` toggles the focused workspace's Fullscreen Layout, like `Option+Shift+F`, and `float`
-toggles the focused window's floating, like `Option+Shift+Space`. `scratchpad toggle` and
+toggles the focused window's floating, like `Option+Shift+Space`. `strip` toggles the workspace's
+Scrolling Strip, like `Option+Shift+S`, and answers `Scrolling Strip is off (enable it in Settings ›
+Labs)` while the Lab is off. `scratchpad toggle` and
 `scratchpad mark` are `Option+\` and `Option+Shift+\`; while `[labs] scratchpad` is off they report
 `Scratchpad is off`. `resize width|height POINTS` resizes the focused window to that width or
 height (its own frame, gaps excluded) by moving its boundary at the nearest split along that axis;
@@ -237,7 +260,7 @@ touch the workspace's other splits. Neither has a default shortcut (see
 runtime geometry in the terminal until interrupted. `ctl wrong` marks the journal the moment something looks wrong and
 writes a full arrangement snapshot, so `doctor` shows what the screen held then.
 
-`ctl debug` excludes window titles. It reports each display's Fullscreen Layout state and tiled
+`ctl debug` excludes window titles. It reports each display's Fullscreen Layout and Scrolling Strip state and tiled
 geometry plus floating-window workspace, parked state, and original recovery frame so workspace leaks
 can be diagnosed safely. Its `parking_exempt` list names managed windows that repeatedly rejected
 parking positions and are therefore left visible across workspace switches for the current session.

@@ -6,6 +6,7 @@ mod actions;
 mod automatic;
 mod controls;
 mod dispatch;
+mod glide;
 mod hotkey_health;
 mod live_shortcuts;
 mod probe;
@@ -81,6 +82,7 @@ pub(super) struct AppLoopInit {
     /// `[shortcuts]` as loaded at startup; later changes apply live (`live_shortcuts`).
     pub(super) shortcuts: crate::shortcuts::Shortcuts,
     pub(super) hud: bool,
+    pub(super) labs: crate::labs::LabsConfig,
     pub(super) trusted: bool,
     /// A first-run setup tour is open and holds automatic tiling until it ends.
     pub(super) setup_tour_open: bool,
@@ -99,6 +101,8 @@ pub struct MainThreadAgent {
     scope: ManagementScope,
     events: macos::WindowEventMonitor,
     hotkey_workspaces: Vec<WorkspaceId>,
+    /// The `[labs]` switches as last read; Labs shortcuts register only while on.
+    labs: crate::labs::LabsConfig,
     shortcuts: crate::shortcuts::Shortcuts,
     controls: Receiver<ControlRequest>,
     _control_server: control::Server,
@@ -153,6 +157,8 @@ pub struct MainThreadAgent {
     update_revision: u64,
     /// Tiling was on when Install & restart began, so a failed install resumes it.
     resume_after_update: bool,
+    /// Scrolling Strip glides, presented at the display's refresh rate.
+    glides: glide::GlidePresenter,
     setup: setup::SetupRequests,
 }
 
@@ -163,7 +169,7 @@ impl MainThreadAgent {
     ) -> Self {
         let trusted = init.trusted;
         let (hotkeys, hotkey_error) = if trusted {
-            match HotkeyPlan::current(&init.hotkey_workspaces, &init.shortcuts)
+            match HotkeyPlan::current(&init.hotkey_workspaces, &init.shortcuts, &init.labs)
                 .and_then(|plan| Hotkeys::install(init.actions_sender.clone(), plan))
             {
                 Ok(hotkeys) => {
@@ -205,6 +211,7 @@ impl MainThreadAgent {
             scope: init.scope,
             events: init.events,
             hotkey_workspaces: init.hotkey_workspaces,
+            labs: init.labs,
             shortcuts: init.shortcuts,
             controls: init.controls,
             _control_server: init.control_server,
@@ -250,6 +257,7 @@ impl MainThreadAgent {
             updater: crate::updater::Updater::start(),
             update_revision: 0,
             resume_after_update: false,
+            glides: glide::GlidePresenter::new(),
             setup: setup::SetupRequests::default(),
         };
         status_item::set_update(agent.updater.status().ready_version());
@@ -291,6 +299,7 @@ impl MainThreadAgent {
                 Ok(result) => result,
                 Err(TryRecvError::Empty) => break,
                 Err(TryRecvError::Disconnected) => {
+                    self.glides.cancel();
                     self.hotkeys = None;
                     self.release_hotkey_hold_on_stop();
                     self.pending_inputs.clear();
@@ -309,6 +318,12 @@ impl MainThreadAgent {
                 }
             };
             match result {
+                WorkerResult::Strip(command) => {
+                    if self.automatic {
+                        self.glides.handle(command);
+                    }
+                    continue;
+                }
                 WorkerResult::Status { result, debug } if self.automatic => {
                     self.worker.finish_command();
                     self.cancelled.store(false, Ordering::Release);
@@ -446,6 +461,7 @@ impl MainThreadAgent {
 
         self.send_wanted_inventory();
         if self.automatic {
+            self.glides.tick_without_link();
             self.tick_automatic();
         }
 
@@ -475,6 +491,7 @@ impl MainThreadAgent {
     }
 
     fn stop_automatic_and_restore(&mut self) {
+        self.glides.cancel();
         self.automatic = false;
         self.cancelled.store(true, Ordering::Release);
         self.hotkeys = None;
@@ -569,6 +586,12 @@ impl MainThreadAgent {
                     if let Some(hud) = probe.hud {
                         self.hud = hud;
                         status_item::set_hud(hud);
+                    }
+                    if let Some(labs) = probe.labs
+                        && labs != self.labs
+                    {
+                        self.labs = labs;
+                        self.replan_hotkeys("labs changed");
                     }
                     if let Some(shortcuts) = probe.shortcuts {
                         self.apply_shortcuts(shortcuts);

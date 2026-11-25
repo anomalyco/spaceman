@@ -20,7 +20,9 @@ use super::{
         onscreen_windows, optional_bool_attribute, physical_window_id, set_attribute,
         set_ax_timeout, set_position, set_size, window_frame,
     },
-    mouse_down, observe_window, process_incarnation_matches, running_application,
+    mouse_down, observe_window,
+    presenter::holds,
+    process_incarnation_matches, running_application,
 };
 
 #[derive(Debug, serde::Serialize)]
@@ -137,7 +139,7 @@ pub fn apply_managed(
                     continue;
                 }
             };
-            let _animations = WindowAnimationGuard::new(&app);
+            let _animations = WindowAnimationGuard::new(&app, app_id.pid);
             let mut pending = HashMap::<u32, Vec<usize>>::new();
             for index in &indices {
                 pending
@@ -485,7 +487,7 @@ fn apply_window(
             });
         }
 
-        let _animations = WindowAnimationGuard::new(&app);
+        let _animations = WindowAnimationGuard::new(&app, id.app.pid);
         return Some(apply_element(id, window, target, settings));
     }
     None
@@ -540,20 +542,26 @@ fn write_frame(
 
 fn without_window_animations<T>(app: &AppInstanceId, operation: impl FnOnce() -> T) -> T {
     let application = application_element(app.pid);
-    let _animations = WindowAnimationGuard::new(&application);
+    let _animations = WindowAnimationGuard::new(&application, app.pid);
     operation()
 }
 
+/// Turns an app's `AXEnhancedUserInterface` off for one layout write and back on after. An app
+/// a strip glide is moving is left alone: the presenter holds the attribute off for the whole
+/// glide, and a restore due while it does is handed to the presenter.
 struct WindowAnimationGuard<'a> {
     application: &'a AXUIElement,
+    pid: i32,
     restore_enhanced_ui: bool,
 }
 
 impl<'a> WindowAnimationGuard<'a> {
-    fn new(application: &'a AXUIElement) -> Self {
-        let restore_enhanced_ui = optional_bool_attribute(application, "AXEnhancedUserInterface")
-            .ok()
-            .unwrap_or(false);
+    fn new(application: &'a AXUIElement, pid: i32) -> Self {
+        let holds = holds::lock();
+        let restore_enhanced_ui = !holds.held(pid)
+            && optional_bool_attribute(application, "AXEnhancedUserInterface")
+                .ok()
+                .unwrap_or(false);
         if restore_enhanced_ui {
             let _: AXError = set_attribute(
                 application,
@@ -561,8 +569,10 @@ impl<'a> WindowAnimationGuard<'a> {
                 CFBoolean::new(false),
             );
         }
+        drop(holds);
         Self {
             application,
+            pid,
             restore_enhanced_ui,
         }
     }
@@ -570,7 +580,13 @@ impl<'a> WindowAnimationGuard<'a> {
 
 impl Drop for WindowAnimationGuard<'_> {
     fn drop(&mut self) {
-        if self.restore_enhanced_ui {
+        if !self.restore_enhanced_ui {
+            return;
+        }
+        let mut holds = holds::lock();
+        if holds.held(self.pid) {
+            holds.owe_restore(self.pid);
+        } else {
             let _: AXError = set_attribute(
                 self.application,
                 "AXEnhancedUserInterface",

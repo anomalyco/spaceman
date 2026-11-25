@@ -7,6 +7,7 @@ pub use write::{
     ConfigLock, lock_config, resolve_write_target, save_workspace_monitor_at, write_config_atomic,
 };
 
+pub use crate::labs::{LabFeature, LabsConfig};
 use crate::{
     DisplaySelector, ObservedWindow, WorkspaceId, Workspaces,
     shortcuts::{RawShortcuts, Shortcuts},
@@ -190,59 +191,6 @@ impl HudPosition {
             "top" => Some(Self::Top),
             _ => None,
         }
-    }
-}
-
-/// The `[labs]` table: experimental features, each behind its own switch and off by default.
-/// With every switch off Spaceman behaves exactly as if Labs did not exist.
-#[derive(Clone, Copy, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
-#[serde(deny_unknown_fields)]
-pub struct LabsConfig {
-    /// The i3/sway-style Scratchpad ([`crate::scratchpad`]) and its `⌥\` / `⌥⇧\` shortcuts.
-    #[serde(default)]
-    pub scratchpad: bool,
-    /// Settings › Activity: the live arrangement log, doctor diagnostics, and process vitals.
-    #[serde(default)]
-    pub activity: bool,
-}
-
-impl LabsConfig {
-    /// Whether `feature`'s switch is on.
-    #[must_use]
-    pub const fn enabled(self, feature: LabFeature) -> bool {
-        match feature {
-            LabFeature::Scratchpad => self.scratchpad,
-            LabFeature::Activity => self.activity,
-        }
-    }
-}
-
-/// Every `[labs]` switch, one per experimental feature.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum LabFeature {
-    /// The i3/sway-style Scratchpad ([`crate::scratchpad`]) and its `⌥\` / `⌥⇧\` shortcuts.
-    Scratchpad,
-    /// Settings › Activity: the live arrangement log, doctor diagnostics, and process vitals.
-    Activity,
-}
-
-impl LabFeature {
-    /// Every switch, in the order `[labs]` lists them.
-    pub const ALL: [Self; 2] = [Self::Scratchpad, Self::Activity];
-
-    /// The `[labs]` key that turns this feature on.
-    #[must_use]
-    pub const fn key(self) -> &'static str {
-        match self {
-            Self::Scratchpad => "scratchpad",
-            Self::Activity => "activity",
-        }
-    }
-
-    /// Parses a `[labs]` key such as `activity`.
-    #[must_use]
-    pub fn parse(key: &str) -> Option<Self> {
-        Self::ALL.into_iter().find(|feature| feature.key() == key)
     }
 }
 
@@ -479,12 +427,6 @@ impl Config {
         &self.shortcuts
     }
 
-    /// The `[labs]` switches: experimental features, all off by default.
-    #[must_use]
-    pub const fn labs(&self) -> LabsConfig {
-        self.labs
-    }
-
     #[must_use]
     pub const fn hud(&self) -> bool {
         self.settings.hud
@@ -530,6 +472,11 @@ impl Config {
             .chain(WorkspaceId::all().filter(|workspace| !self.workspace_order.contains(workspace)))
     }
 
+    /// The `[labs]` switches: experimental features, all off by default.
+    #[must_use]
+    pub const fn labs(&self) -> LabsConfig {
+        self.labs
+    }
     /// Gaps between tiles, outer screen padding and the lone-window width cap.
     #[must_use]
     pub const fn spacing(&self) -> Spacing {
@@ -917,6 +864,26 @@ monitor = "main"
         assert!(Config::parse("version = 1\n[settings]\nhud_style = \"grid\"\n").is_err());
         assert!(Config::parse("version = 1\n[settings]\nhud_style = true\n").is_err());
         assert_eq!(HudStyle::parse("Icons"), None);
+    }
+
+    #[test]
+    fn parses_labs_with_every_experiment_off_by_default() {
+        assert!(!Config::default().labs().scrolling_strip);
+        assert!(!Config::parse("version = 1").unwrap().labs().scrolling_strip);
+        assert!(
+            !Config::parse("version = 1\n[labs]\n")
+                .unwrap()
+                .labs()
+                .scrolling_strip
+        );
+        assert!(
+            Config::parse("version = 1\n[labs]\nscrolling_strip = true\n")
+                .unwrap()
+                .labs()
+                .scrolling_strip
+        );
+        assert!(Config::parse("version = 1\n[labs]\nwarp_drive = true\n").is_err());
+        assert!(Config::parse("version = 1\n[labs]\nscrolling_strip = 1\n").is_err());
     }
 
     #[test]
