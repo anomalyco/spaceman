@@ -231,18 +231,24 @@ impl MainThreadAgent {
         self.ui_dirty = true;
     }
 
-    /// Settings › Shortcuts is recording a chord (`true`) or finished (`false`). While it records,
-    /// the hotkeys are unregistered so the chord reaches the recorder instead of firing; they
-    /// register again, with any table saved meanwhile, the moment it stops.
-    pub fn set_shortcut_recording(&mut self, recording: bool) {
-        let now = Instant::now();
-        let hold = recording && self.recording_since.get_or_insert(now).elapsed() < RECORDING_LIMIT;
+    /// Holds the hotkeys off for this tick, or lets them back. `recording`: Settings › Shortcuts
+    /// is recording a chord, so it must reach the recorder instead of firing. `practicing`: the
+    /// setup tour's Try it step has the keyboard, so its shortcuts drive the tour's miniature
+    /// desktop instead of the real windows; the host says so only while the setup window is the
+    /// key window, so that hold needs no time limit. The hotkeys register again, with any table
+    /// saved meanwhile, the moment neither holds.
+    pub fn hold_hotkeys(&mut self, recording: bool, practicing: bool) {
+        let recording_for = recording.then(|| {
+            self.recording_since
+                .get_or_insert_with(Instant::now)
+                .elapsed()
+        });
         if !recording {
             self.recording_since = None;
         }
-        if hold {
+        if let Some(reason) = hold_reason(recording_for, practicing) {
             if self.hotkeys.take().is_some() {
-                log_event!("hotkeys: paused while Settings records a shortcut");
+                log_event!("hotkeys: paused while {reason}");
                 self.hotkey_delivery.clear();
                 self.hotkey_hold = HotkeyHold::Held { pending: None };
             }
@@ -254,7 +260,7 @@ impl MainThreadAgent {
         if self.hotkeys.is_some() {
             return;
         }
-        log_event!("hotkeys: resumed after recording");
+        log_event!("hotkeys: resumed");
         if let Some(next) = pending {
             self.reinstall_changed_shortcuts(next);
             return;
@@ -269,6 +275,18 @@ impl MainThreadAgent {
                 status_item::set_status(&error);
             }
         }
+    }
+}
+
+/// Why the hotkeys are held off, if they are: a recording within its limit, or the setup tour's
+/// Try it step.
+fn hold_reason(recording_for: Option<Duration>, practicing: bool) -> Option<&'static str> {
+    if recording_for.is_some_and(|elapsed| elapsed < RECORDING_LIMIT) {
+        Some("Settings records a shortcut")
+    } else if practicing {
+        Some("the setup tour tries its shortcuts")
+    } else {
+        None
     }
 }
 
@@ -296,6 +314,17 @@ mod tests {
         .unwrap()
         .shortcuts()
         .clone()
+    }
+
+    #[test]
+    fn a_recording_holds_for_its_limit_and_the_tour_for_as_long_as_it_practices() {
+        assert_eq!(hold_reason(None, false), None);
+        assert!(hold_reason(Some(Duration::ZERO), false).is_some());
+        // A recorder left listening gives the shortcuts back.
+        assert_eq!(hold_reason(Some(RECORDING_LIMIT), false), None);
+        // The tour's hold has no limit of its own, with or without a recording beside it.
+        assert!(hold_reason(None, true).is_some());
+        assert!(hold_reason(Some(RECORDING_LIMIT), true).is_some());
     }
 
     #[test]

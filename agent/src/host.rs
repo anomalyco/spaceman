@@ -38,6 +38,8 @@ thread_local! {
     static STARTUP_ERROR: RefCell<Option<String>> = const { RefCell::new(None) };
     /// Settings › Shortcuts is recording a chord; the next tick holds the hotkeys off.
     static RECORDING_SHORTCUT: Cell<bool> = const { Cell::new(false) };
+    /// The setup tour's Try it step is showing; each tick its window is key holds the hotkeys off.
+    static PRACTICING_SHORTCUTS: Cell<bool> = const { Cell::new(false) };
     /// A `[shortcuts]` table Settings just saved, for the next tick to register.
     static SAVED_SHORTCUTS: RefCell<Option<spaceman::shortcuts::Shortcuts>> =
         const { RefCell::new(None) };
@@ -48,6 +50,22 @@ thread_local! {
 /// any Rune callback.
 pub fn set_shortcut_recording(recording: bool) {
     RECORDING_SHORTCUT.with(|slot| slot.set(recording));
+}
+
+/// Holds the global hotkeys off while the setup tour's Try it step is showing and its window has
+/// the keyboard, so the step's shortcuts drive its miniature desktop instead of the real
+/// windows. With another window in front the shortcuts work as usual.
+pub fn set_shortcut_practice(practicing: bool) {
+    PRACTICING_SHORTCUTS.with(|slot| slot.set(practicing));
+}
+
+/// Whether the Settings window, which the setup tour draws in, is the key window.
+fn setup_window_is_key() -> bool {
+    MainThreadMarker::new().is_some_and(|mtm| {
+        NSApplication::sharedApplication(mtm)
+            .keyWindow()
+            .is_some_and(|window| window.title().to_string() == "Spaceman")
+    })
 }
 
 /// Registers a `[shortcuts]` table Settings saved, without waiting for the config probe.
@@ -236,6 +254,7 @@ fn start_main_thread() {
 
 fn tick_pump() {
     let recording = RECORDING_SHORTCUT.with(Cell::get);
+    let practicing = PRACTICING_SHORTCUTS.with(Cell::get) && setup_window_is_key();
     let saved = SAVED_SHORTCUTS.with(|slot| slot.borrow_mut().take());
     let outcome = PUMP.with(|slot| {
         slot.borrow_mut().as_mut().map(|state| {
@@ -244,7 +263,7 @@ fn tick_pump() {
             if let Some(shortcuts) = saved {
                 state.agent.apply_shortcuts(shortcuts);
             }
-            state.agent.set_shortcut_recording(recording);
+            state.agent.hold_hotkeys(recording, practicing);
             state.agent.tick()
         })
     });

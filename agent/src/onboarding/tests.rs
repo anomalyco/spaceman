@@ -4,11 +4,11 @@ use spaceman::WorkspaceId;
 
 use super::arrange::{Board, Geometry, Target, Tile};
 use super::conflicts::{Conflict, switch_on};
+use super::demo::Move;
 use super::flow::{
     Effect, Flow, Input, SetupState, Step, completion_recorded_at, launch_step_at,
     record_completion_at, record_step_at, saved_step_at,
 };
-use super::try_it::{self, Lesson, Lessons};
 use crate::{apps::window_manager_name, controls::PermissionControl, rules::Place};
 
 const SAFARI: &str = "com.apple.Safari";
@@ -212,15 +212,19 @@ fn try_it_never_advances_by_itself() {
     assert_eq!(flow.on(Input::Back), Effect::None);
     assert_eq!(flow.step(), Step::TryIt);
 
-    // Ticking every lesson leaves the tour on Try it: Done is the only way on.
+    // Making every move leaves the tour on Try it: Done is the only way on.
     let mut ui = crate::playground::blank_fixture();
     super::tour_scene(&mut ui, Step::TryIt, true, false);
-    for lesson in Lesson::ALL {
-        assert!(super::press(&mut ui, lesson));
+    for mv in Move::ALL {
+        assert!(super::press(&mut ui, mv));
     }
     let tour = ui.tour.as_ref().unwrap();
-    assert!(tour.lessons.complete());
+    assert!(tour.play.demo.complete());
     assert_eq!(tour.flow.step(), Step::TryIt);
+    // Nor do the beats that let the keys up and the ring go.
+    std::thread::sleep(std::time::Duration::from_millis(300));
+    assert!(ui.tour.as_mut().unwrap().play.settle());
+    assert_eq!(ui.tour.as_ref().unwrap().flow.step(), Step::TryIt);
     super::input(&mut ui, Input::Continue);
     assert!(ui.tour.is_none());
 }
@@ -291,46 +295,6 @@ fn a_conflict_shows_only_when_its_switch_is_on() {
     );
     super::resolve(&mut ui, 5);
     assert_eq!(ui.tour.as_ref().unwrap().conflicts.len(), 1);
-}
-
-#[test]
-fn lessons_tick_on_the_real_shortcuts_and_coming_back_needs_going_there() {
-    let ui = crate::playground::blank_fixture();
-    let chords = try_it::chords(&ui);
-    const OPTION: u32 = 1 << 11;
-    const SHIFT: u32 = 1 << 9;
-    assert!(
-        chords
-            .iter()
-            .all(|chord| chord.is_some_and(try_it::hearable))
-    );
-    assert_eq!(try_it::heard(&chords, 19, OPTION), Some(Lesson::There));
-    assert_eq!(try_it::heard(&chords, 18, OPTION), Some(Lesson::Back));
-    assert_eq!(
-        try_it::heard(&chords, 49, OPTION | SHIFT),
-        Some(Lesson::Float)
-    );
-    // Option-Shift-2 moves a window; Option-Space and Option-3 are not lessons.
-    assert_eq!(try_it::heard(&chords, 19, OPTION | SHIFT), None);
-    assert_eq!(try_it::heard(&chords, 49, OPTION), None);
-    assert_eq!(try_it::heard(&chords, 20, OPTION), None);
-
-    let mut lessons = Lessons::default();
-    assert!(
-        !lessons.press(Lesson::Back),
-        "nowhere to come back from yet"
-    );
-    assert!(lessons.press(Lesson::Float));
-    assert!(lessons.press(Lesson::There));
-    assert!(!lessons.press(Lesson::There), "a second press adds nothing");
-    assert!(lessons.press(Lesson::Back));
-    assert!(lessons.complete());
-
-    // A press only counts while Try it is on screen.
-    let mut ui = crate::playground::blank_fixture();
-    assert!(!super::press(&mut ui, Lesson::There));
-    super::tour_scene(&mut ui, Step::Arrange, true, false);
-    assert!(!super::press(&mut ui, Lesson::There));
 }
 
 fn tiles_on(board: &Board, workspace: WorkspaceId) -> Vec<&str> {
@@ -579,9 +543,11 @@ fn every_tour_scene_draws() {
     for (name, apply) in super::SCENES {
         let mut ui = crate::playground::blank_fixture();
         apply(&mut ui);
-        assert!(super::overlay(&ui, p).is_some(), "{name}");
+        assert!(super::overlay(&ui, p, false).is_some(), "{name}");
         let light = crate::controls::Paint::new(false, 1.0);
-        assert!(super::overlay(&ui, light).is_some(), "{name}");
+        assert!(super::overlay(&ui, light, false).is_some(), "{name}");
+        // Under Reduce Motion too.
+        assert!(super::overlay(&ui, p, true).is_some(), "{name}");
     }
 }
 

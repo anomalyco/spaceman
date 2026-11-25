@@ -325,6 +325,22 @@ fn worker_action(command: &Command) -> WorkerAction {
     }
 }
 
+/// The virtual key and Carbon modifiers `chord` is pressed as on the active keyboard layout: the
+/// key a shortcut with nothing else on it registers. `None` when the layout has no key for it.
+pub(crate) fn key_press(chord: shortcuts::Chord) -> Option<(u32, u32)> {
+    key_press_on(&LayoutSnapshot::current().ok()?, chord)
+}
+
+fn key_press_on(layout: &LayoutSnapshot, chord: shortcuts::Chord) -> Option<(u32, u32)> {
+    let key = layout
+        .candidates(logical_key(chord.key))
+        .ok()?
+        .into_iter()
+        .next()?;
+    let shift = if key.shift { SHIFT_KEY } else { 0 };
+    Some((key.key_code, carbon_modifiers(chord.modifiers) | shift))
+}
+
 fn logical_key(key: shortcuts::Key) -> LogicalKey {
     match key {
         shortcuts::Key::Character(character) => LogicalKey::Character(character),

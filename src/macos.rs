@@ -41,7 +41,7 @@ pub use ax::{
 pub use display_link::{DisplayFrame, DisplayLink, DisplayLinkError};
 pub use displays::{DisplayOutput, DisplayOutputs, display_ids, outputs};
 pub use events::WindowEventMonitor;
-pub use keys::KeyMonitor;
+pub use keys::{KeyMonitor, key_press};
 pub use presenter::{
     AppSink, AxBackend, EnhancedUi, InteractivePresenter, PresenterBackend, PresenterStats,
     WriteOutcome,

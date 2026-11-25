@@ -116,6 +116,15 @@ pub fn keycap(p: Paint, index: usize, label: &str, down: bool) -> El {
 /// A chord's keys at rest in their well, lit from above so its top edge falls into shadow.
 /// Keys a new chord adds rise into the well and keys it drops leave through its top.
 pub fn tray(p: Paint, key: &str, caps: &[String]) -> El {
+    tray_of(p, key, caps.iter().map(|cap| (cap.as_str(), false)))
+}
+
+/// A tray whose keys can be down: each cap with whether it is pressed.
+pub fn tray_held(p: Paint, key: &str, caps: &[(String, bool)]) -> El {
+    tray_of(p, key, caps.iter().map(|(cap, down)| (cap.as_str(), *down)))
+}
+
+fn tray_of<'a>(p: Paint, key: &str, caps: impl Iterator<Item = (&'a str, bool)>) -> El {
     let k = p.k;
     let c = &k.c;
     let (top, bottom, rim, well) = if k.dark {
@@ -154,9 +163,8 @@ pub fn tray(p: Paint, key: &str, caps: &[String]) -> El {
             ..Shadow::default()
         })
         .children(
-            caps.iter()
-                .enumerate()
-                .map(|(index, cap)| keycap(p, index, cap, false).transition(roll())),
+            caps.enumerate()
+                .map(|(index, (cap, down))| keycap(p, index, cap, down).transition(roll())),
         )
 }
 

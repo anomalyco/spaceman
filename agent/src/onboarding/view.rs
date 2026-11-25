@@ -1,12 +1,14 @@
 //! The four-step Rune setup tour view: Welcome, Accessibility, Your workspaces, and Try it.
 
 use rune::{
-    Color, El, Icon, Shadow, Spring, SpringPair, TextStyle, Transition, col, el, icon, row, text,
+    Color, El, Icon, Shadow, Spring, SpringPair, TextStyle, Transition, Tx, col, el, icon, row,
+    text,
 };
 use rune_kit::{Button, ButtonVariant, ControlSize, IconButton, IconButtonVariant, glyphs};
 
 use super::{
-    Input, Step, arrange, arrange::Board, conflicts::Conflict, flow::View, input, resolve, try_it,
+    Input, Step, arrange, arrange::Board, conflicts::Conflict, flow::View, input, resolve, stage,
+    try_it,
 };
 use crate::{
     Ui,
@@ -30,14 +32,15 @@ fn title_style(dark: bool) -> TextStyle {
         .tracking(-0.3)
 }
 
-pub fn overlay(ui: &Ui, p: Paint) -> Option<El> {
+/// The tour over the window. `still` is Reduce Motion.
+pub fn overlay(ui: &Ui, p: Paint, still: bool) -> Option<El> {
     let tour = ui.tour.as_ref()?;
     let view = tour.flow.view();
     let step_body = match view.step {
         Step::Welcome => welcome(p),
         Step::Setup => setup(p, &view, &tour.conflicts),
         Step::Arrange => workspaces(ui, p, &tour.board),
-        Step::TryIt => try_it::view(ui, p, &view, tour.lessons),
+        Step::TryIt => try_it::view(ui, p, &view, &tour.play, still),
     };
     let width = step_width(view.step);
     let page = col()
@@ -142,7 +145,7 @@ fn footer(p: Paint, view: &View, nothing_to_arrange: bool, width: f32) -> El {
         });
     }
     let primary = if enabled {
-        btn.on_press(|ui: &mut Ui| input(ui, Input::Continue))
+        btn.on_press_tx(|ui: &mut Ui, tx: &mut Tx| advance(ui, Input::Continue, tx))
             .build(p.k)
             .px(12.0)
             .radius(p.k.radius.md)
@@ -173,8 +176,8 @@ fn footer(p: Paint, view: &View, nothing_to_arrange: bool, width: f32) -> El {
         _ => None,
     };
     let skip = (view.step == Step::Arrange).then(|| {
-        controls::button(p, "tour-skip", "Skip", ButtonKind::Secondary, |ui, _| {
-            input(ui, Input::Skip);
+        controls::button(p, "tour-skip", "Skip", ButtonKind::Secondary, |ui, tx| {
+            advance(ui, Input::Skip, tx);
         })
         .help("Leave every window where it is")
     });
@@ -196,6 +199,18 @@ fn footer(p: Paint, view: &View, nothing_to_arrange: bool, width: f32) -> El {
                 .children(skip)
                 .child(primary),
         )
+}
+
+/// Moves the tour on, and gives the keyboard to the miniature desktop when that lands on Try it.
+fn advance(ui: &mut Ui, to: Input, tx: &mut Tx) {
+    input(ui, to);
+    if ui
+        .tour
+        .as_ref()
+        .is_some_and(|tour| tour.flow.step() == Step::TryIt)
+    {
+        tx.focus(stage::KEY, false);
+    }
 }
 
 fn step_dots(p: Paint, view: &View) -> Option<El> {

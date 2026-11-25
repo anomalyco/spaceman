@@ -32,7 +32,13 @@ Your workspaces                                                      // tour.arr
 └── One window or none -> "Nothing to arrange yet", primary reads Start tiling
 
 Try it                                                               // tour.try
-├── Press ⌥2, ⌥1, ⌥⇧Space on the real workspaces; each ticks green when heard
+├── A miniature desktop: two workspaces of two windows, a menu bar, a Workspace HUD capsule
+├── Four moves, by key or by click: ⌥2, ⌥1, ⌥⇧Space (float), ⌥⇧F (Fullscreen Layout)
+│   ├── Each ticks green the first time it changes the miniature; four -> "All 4 mastered"
+│   ├── The chords follow [shortcuts] (Base modifier, rebinds); free play goes on afterwards
+│   └── Reduce Motion: workspaces and windows cross-fade instead of travelling
+├── Setup window has the keyboard -> global hotkeys held off; a chord moves only the miniature
+│   └── Another window in front -> the real shortcut runs and the miniature follows along
 ├── The window floats above the tiles while this step shows; it never advances by itself
 ├── Launch at login checkbox
 ├── Undo & restore -> tiling paused, every window back at its frame from before Arrange
@@ -61,19 +67,42 @@ Unit, `agent/src/onboarding/tests.rs` (flow, board and fixtures):
 `arrange_and_start_saves_no_rules_for_utilities_that_float_by_default`,
 `tiling_a_built_in_float_on_the_board_saves_a_tile_rule`,
 `the_board_moves_a_tile_by_click_or_drag_and_floats_by_drop`,
-`lessons_tick_on_the_real_shortcuts_and_coming_back_needs_going_there`,
 `a_conflict_shows_only_when_its_switch_is_on`.
+
+Unit, `agent/src/onboarding/demo/tests.rs` (the Try it miniature):
+`switching_to_two_goes_there_and_counts_only_when_the_desktop_moves`,
+`switching_back_to_one_counts_after_going_there`,
+`floating_lifts_the_focused_window_and_the_other_takes_the_screen`,
+`fullscreen_layout_toggles_and_keeps_the_other_window_behind`,
+`four_moves_complete_it_in_any_order_and_free_play_goes_on`,
+`the_default_chords_are_heard_by_key_code`,
+`a_custom_base_modifier_moves_every_chord_and_the_window_hears_what_the_tap_cannot`,
+`a_press_sinks_its_keys_for_a_beat_and_a_held_modifier_for_as_long_as_it_is_held`,
+`the_ring_shows_once_when_the_last_move_is_made`,
+`a_press_counts_only_on_try_it_and_undo_starts_the_desktop_over`.
+
+Motion (the real view at 120 Hz, clicked and typed at), `agent/src/onboarding/motion_tests.rs`:
+`a_click_makes_the_move_and_the_workspaces_slide_with_the_marker_stretching`,
+`a_click_gives_the_stage_the_keyboard_and_real_keys_make_the_other_moves`,
+`arriving_from_the_arrangement_gives_the_stage_the_keyboard`,
+`floating_lifts_the_window_off_the_grid_while_the_other_springs_wide`,
+`fullscreen_fills_the_screen_and_leaves_a_tab_of_the_window_behind`.
+
+Unit, `src/app/app_loop/live_shortcuts.rs`:
+`a_recording_holds_for_its_limit_and_the_tour_for_as_long_as_it_practices`.
 
 Scenes (`--scene`): `onboarding-welcome`, `onboarding-permission` (`-waiting`, `-ready`,
 `-conflict`), `onboarding-arrange` (`-dual`, `-drag`, `-empty`), `onboarding-try-it`
-(`-progress`, `-complete`).
+(`-ws2`, `-floated`, `-fullscreen`, `-complete`).
 
 ## Known gaps
 
 - No live harness or gauntlet step drives the tour: the arrangement on real windows, the Try it key
-  tap, the floating window level, and both `Turn off` writes are covered by unit tests and scenes
-  only.
-- Try it hears a shortcut only if it holds Option and has a fixed key code. A rebound chord without
-  Option, or on a letter key, is shown but never ticked.
+  tap, the hotkey hold while the setup window has the keyboard, the floating window level, and both
+  `Turn off` writes are covered by unit tests and scenes only.
+- The key tap hears a Try it chord only if it holds Option. A chord without Option is heard by the
+  setup window's own key events, so only while the miniature has the keyboard; clicking its keys
+  always works.
+- The miniature always has the same four windows (Safari, Terminal, Notes, Mail), not the ones open.
 - A window that opens between the plan being drawn and `Arrange & start` follows its app's last
   slot; an app that was not open then is tiled where you are, as always.

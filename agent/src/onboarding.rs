@@ -2,9 +2,13 @@
 
 mod arrange;
 mod conflicts;
+mod demo;
 mod flow;
 #[cfg(target_os = "macos")]
 mod keys;
+#[cfg(test)]
+mod motion_tests;
+mod stage;
 #[cfg(test)]
 mod tests;
 mod try_it;
@@ -14,8 +18,8 @@ use std::time::{Duration, Instant};
 
 pub use arrange::Board;
 pub use conflicts::Conflict;
+pub use demo::Move;
 pub use flow::{Effect, Flow, Input, SetupState, Step, launch_step};
-pub use try_it::{Lesson, Lessons};
 pub use view::overlay;
 
 use rune::Tx;
@@ -35,8 +39,8 @@ pub struct Tour {
     pub conflicts: Vec<Conflict>,
     /// The Arrange step's plan.
     pub board: Board,
-    /// The Try it step's ticks.
-    pub lessons: Lessons,
+    /// The Try it step's miniature desktop, and what is pressed on it.
+    pub play: try_it::Play,
     advance_at: Option<Instant>,
     completed: bool,
     /// Arrange & start was pressed, so tiling runs with the plan applied.
@@ -44,7 +48,7 @@ pub struct Tour {
     /// The step the tour's side effects (reading conflicts, asking for the plan, listening
     /// for shortcuts) were last brought in line with.
     synced: Option<Step>,
-    /// Hears the lessons' shortcuts while the Try it step shows in a live window.
+    /// Hears the Try it step's shortcuts while it shows in a live window.
     #[cfg(target_os = "macos")]
     keys: Option<keys::Listener>,
 }
@@ -55,7 +59,7 @@ impl Tour {
             flow,
             conflicts: Vec::new(),
             board: Board::default(),
-            lessons: Lessons::default(),
+            play: try_it::Play::default(),
             advance_at: None,
             completed,
             started: false,
@@ -66,6 +70,7 @@ impl Tour {
     }
 
     pub fn from_launch(step: Step, accessibility: bool, ui: &mut Ui) -> Self {
+        look_up_demo_apps(ui);
         let status = SetupState {
             accessibility,
             ..ui_setup_state(ui)
@@ -74,7 +79,19 @@ impl Tour {
     }
 
     pub fn manual(ui: &mut Ui) -> Self {
+        look_up_demo_apps(ui);
         Self::new(Flow::new(Step::Welcome, ui_setup_state(ui), true), true)
+    }
+
+    /// Whether the key tap hears `mv`'s chord, so the window's own key events leave it alone.
+    pub fn tap_hears(&self, mv: Move) -> bool {
+        #[cfg(target_os = "macos")]
+        return self.keys.as_ref().is_some_and(|keys| keys.hears(mv));
+        #[cfg(not(target_os = "macos"))]
+        {
+            let _ = mv;
+            false
+        }
     }
 
     fn fixture(step: Step, accessibility: bool, asked: bool, ui: &mut Ui) -> Self {
@@ -103,7 +120,15 @@ impl Tour {
         for bundle_id in tour.board.bundle_ids() {
             ui.apps.get(&bundle_id);
         }
+        look_up_demo_apps(ui);
         tour
+    }
+}
+
+/// The miniature desktop's windows wear their apps' icons, looked up before the view runs.
+fn look_up_demo_apps(ui: &mut Ui) {
+    for bundle_id in demo::APPS.iter().flatten() {
+        ui.apps.get(bundle_id);
     }
 }
 
@@ -134,6 +159,7 @@ pub fn poll(ui: &mut Ui, tx: &mut Tx) -> bool {
     apply(ui, effect);
     remember_step(ui, step_before);
     sync(ui);
+    let settled = settle_play(ui, tx);
     if let Some(at) = ui.tour.as_ref().and_then(|tour| tour.advance_at) {
         tx.wake_after(
             ADVANCE_BEAT
@@ -142,7 +168,24 @@ pub fn poll(ui: &mut Ui, tx: &mut Tx) -> bool {
         );
     }
     let after = ui.tour.as_ref().map(|tour| tour.flow.view());
-    after.as_ref() != Some(&before)
+    after.as_ref() != Some(&before) || settled
+}
+
+/// Lets a pressed key back up and the completion ring go once their beats have passed, and
+/// asks to be woken for whichever is still due.
+fn settle_play(ui: &mut Ui, tx: &mut Tx) -> bool {
+    let Some(tour) = &mut ui.tour else {
+        return false;
+    };
+    let settled = tour.play.settle();
+    if settled {
+        // A beat ending isn't input to this window, so ask for its motion.
+        tx.animated();
+    }
+    if let Some(wait) = tour.play.pending() {
+        tx.wake_after(wait.max(Duration::from_millis(1)));
+    }
+    settled
 }
 
 pub fn input(ui: &mut Ui, input: Input) {
@@ -172,12 +215,28 @@ pub fn inventory(ui: &mut Ui, mut inventory: Inventory) -> bool {
     true
 }
 
-/// A lesson's shortcut was heard on the Try it step. Returns whether the view changed.
-pub fn press(ui: &mut Ui, lesson: Lesson) -> bool {
+/// A move's shortcut was pressed on the Try it step: its keys go down and the miniature
+/// desktop makes the move. Returns whether the view changed.
+pub fn press(ui: &mut Ui, mv: Move) -> bool {
     match &mut ui.tour {
-        Some(tour) if tour.flow.step() == Step::TryIt => tour.lessons.press(lesson),
+        Some(tour) if tour.flow.step() == Step::TryIt => {
+            tour.play.press(mv);
+            true
+        }
         _ => false,
     }
+}
+
+/// As [`press`], from a key or a click: the keys and the desktop move on their springs, and the
+/// window wakes to let the keys back up.
+pub fn pressed(ui: &mut Ui, mv: Move, tx: &mut Tx) -> bool {
+    if !press(ui, mv) {
+        return false;
+    }
+    // A press from the key tap isn't input to this window, so ask for its motion.
+    tx.animated();
+    tx.wake_after(try_it::KEY_BEAT);
+    true
 }
 
 /// The button on a conflict's row: turn the macOS feature off, or quit the other window
@@ -197,7 +256,7 @@ pub fn resolve(ui: &mut Ui, index: usize) {
 
 /// Brings the tour's side effects in line with the step on screen: the permission step reads
 /// what is in the way, Arrange asks the worker for the open windows, and Try it listens for
-/// its shortcuts with the window kept above the tiles.
+/// its shortcuts with the window kept above the tiles and the real hotkeys held off.
 fn sync(ui: &mut Ui) {
     let live = !ui.fixture;
     let Some(tour) = &mut ui.tour else {
@@ -221,18 +280,22 @@ fn sync(ui: &mut Ui) {
     }
 }
 
-/// Listens for the lessons only while a live window shows Try it, where the window also
-/// floats above the tiles the shortcuts bring forward.
+/// Listens for the step's shortcuts only while a live window shows Try it. There the window
+/// also floats above the tiles Arrange & start just placed, and the global hotkeys are held
+/// off whenever it has the keyboard, so a shortcut moves the miniature desktop and no real
+/// window.
 #[cfg(target_os = "macos")]
 fn listen_on_try_it(ui: &mut Ui, step: Step) {
-    let chords = try_it::chords(ui);
+    let trying = step == Step::TryIt;
+    let presses = trying.then(|| demo::presses(&demo::chords(ui), spaceman::macos::key_press));
     let window = ui.window.clone();
     let Some(tour) = &mut ui.tour else {
         return;
     };
-    crate::host::float_setup_window(step == Step::TryIt);
-    tour.keys = match (step, window) {
-        (Step::TryIt, Some(window)) => keys::listen(window, chords),
+    crate::host::float_setup_window(trying);
+    crate::host::set_shortcut_practice(trying);
+    tour.keys = match (presses, window) {
+        (Some(presses), Some(window)) => keys::listen(window, presses),
         _ => None,
     };
 }
@@ -287,7 +350,7 @@ fn apply(ui: &mut Ui, effect: Effect) {
         Effect::Undo => {
             if let Some(tour) = &mut ui.tour {
                 tour.started = false;
-                tour.lessons = Lessons::default();
+                tour.play = try_it::Play::default();
             }
             ui.undo_arrangement();
             set_fixture_tiling(ui, false);
@@ -305,7 +368,7 @@ fn arrange_and_start(ui: &mut Ui) {
         return;
     };
     tour.started = true;
-    tour.lessons = Lessons::default();
+    tour.play = try_it::Play::default();
     let arrangement = tour.board.plan.arrangement();
     let (floats, tiles) = tour
         .board
@@ -363,6 +426,7 @@ fn finish(ui: &mut Ui) {
     #[cfg(target_os = "macos")]
     if !ui.fixture {
         crate::host::float_setup_window(false);
+        crate::host::set_shortcut_practice(false);
     }
     if !ui.fixture {
         flow::record_completion();
@@ -406,10 +470,14 @@ fn board_scene(ui: &mut Ui, board: Board) {
     }
 }
 
-fn lessons_scene(ui: &mut Ui, done: &[Lesson]) {
+/// Try it after `moves`, at rest: no key down and no ring showing.
+fn play_scene(ui: &mut Ui, moves: &[Move]) {
     tour_scene(ui, Step::TryIt, true, false);
-    for lesson in done {
-        press(ui, *lesson);
+    for mv in moves {
+        press(ui, *mv);
+    }
+    if let Some(tour) = &mut ui.tour {
+        tour.play.rest();
     }
 }
 
@@ -453,12 +521,30 @@ pub(crate) const SCENES: &[Scene] = &[
     ("onboarding-arrange-empty", |ui| {
         board_scene(ui, Board::fixture_single())
     }),
-    ("onboarding-try-it", |ui| lessons_scene(ui, &[])),
-    ("onboarding-try-it-progress", |ui| {
-        lessons_scene(ui, &[Lesson::There])
+    ("onboarding-try-it", |ui| play_scene(ui, &[])),
+    ("onboarding-try-it-ws2", |ui| play_scene(ui, &[Move::There])),
+    ("onboarding-try-it-floated", |ui| {
+        play_scene(ui, &[Move::There, Move::Back, Move::Float]);
     }),
+    // The last move: Fullscreen Layout, and all four are made.
+    ("onboarding-try-it-fullscreen", |ui| {
+        play_scene(
+            ui,
+            &[Move::There, Move::Back, Move::Float, Move::Fullscreen],
+        );
+    }),
+    // Free play after the four moves, back on the tiles.
     ("onboarding-try-it-complete", |ui| {
-        lessons_scene(ui, &Lesson::ALL);
+        play_scene(
+            ui,
+            &[
+                Move::There,
+                Move::Back,
+                Move::Float,
+                Move::Fullscreen,
+                Move::Fullscreen,
+            ],
+        );
         if let Some(agent) = &mut ui.agent {
             agent.launch_at_login = UiLaunchAtLogin::On;
         }

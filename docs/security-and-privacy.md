@@ -9,7 +9,9 @@ and mouse-button state needed for tiling and gestures. Two listen-only event tap
 trackpad swipes and Option key presses. The key tap reads only the virtual key code and modifier flags
 of presses with Option held, never characters, to notice a Spaceman shortcut macOS did not deliver;
 other presses are ignored and nothing is stored. The setup tour's Try it step uses the same kind
-of tap, only while that step is on screen, to tick the three shortcuts it asks for.
+of tap, only while that step is on screen, to hear the four shortcuts it teaches. While the setup
+window has the keyboard on that step, Spaceman's global hotkeys are held off, so those shortcuts
+move the step's miniature desktop and no real window.
 
 The permission is broad because macOS grants Accessibility at application scope. Spaceman limits its
 own writes to eligible standard, non-minimized, non-fullscreen windows whose position is settable.

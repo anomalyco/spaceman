@@ -1,32 +1,40 @@
-//! Hears the Try it step's shortcuts.
+//! Hears the Try it step's shortcuts wherever the keyboard is.
 //!
-//! Carbon hotkeys take Option shortcuts before any window sees them once Spaceman has
-//! registered them, so the window's own key events can't tick the lessons. A listen-only key
-//! tap hears them either way, and only while the Try it step is up. It never stops a press:
-//! the real shortcut still runs, on the real workspaces. It matches the step's three chords
-//! by key code and modifiers and reads nothing else.
+//! A listen-only key tap, up only while the Try it step is. It never stops a press. It matches
+//! the step's four chords by key code and modifiers and reads nothing else, and each one it
+//! hears plays on the step's miniature desktop. While the setup window has the keyboard the
+//! global hotkeys are held off (`host::set_shortcut_practice`), so the press moves the
+//! miniature and no real window; with another window in front the real shortcut runs as usual
+//! and the miniature follows along.
 
-use spaceman::{macos::KeyMonitor, shortcuts::Chord};
+use spaceman::macos::KeyMonitor;
 
-use super::try_it;
+use super::demo::{self, Move, Presses};
 use crate::Ui;
 
 pub struct Listener {
     _monitor: KeyMonitor,
+    hears: [bool; 4],
 }
 
-/// Starts hearing `chords` for `window`, or `None` without Accessibility.
-pub fn listen(window: rune::AppHandle<Ui>, chords: [Option<Chord>; 3]) -> Option<Listener> {
+impl Listener {
+    /// Whether the tap hears `mv`'s chord, so the window's own key events leave it alone.
+    pub const fn hears(&self, mv: Move) -> bool {
+        self.hears[mv.index()]
+    }
+}
+
+/// Starts hearing `presses` for `window`, or `None` without Accessibility.
+pub fn listen(window: rune::AppHandle<Ui>, presses: Presses) -> Option<Listener> {
     KeyMonitor::install(move |key_code, modifiers| {
-        let Some(lesson) = try_it::heard(&chords, key_code, modifiers) else {
+        let Some(mv) = demo::heard(&presses, key_code, modifiers) else {
             return;
         };
-        window.update_if(move |ui, tx| {
-            // A press from the tap isn't input to this window, so ask for its motion.
-            tx.animated();
-            super::press(ui, lesson)
-        });
+        window.update_if(move |ui, tx| super::pressed(ui, mv, tx));
     })
     .ok()
-    .map(|monitor| Listener { _monitor: monitor })
+    .map(|monitor| Listener {
+        _monitor: monitor,
+        hears: presses.map(demo::hearable),
+    })
 }

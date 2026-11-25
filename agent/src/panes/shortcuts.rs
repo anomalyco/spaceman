@@ -23,13 +23,21 @@ pub(crate) fn switch_chord(shortcuts: &Shortcuts, workspace: WorkspaceId) -> Opt
         .next()
 }
 
-/// The first chord that toggles the focused window's floating.
-pub(crate) fn float_chord(shortcuts: &Shortcuts, named: &[WorkspaceId]) -> Option<Chord> {
-    catalog::find("float")?
+/// The first chord that runs the catalog's action `id` ("float", "fullscreen").
+pub(crate) fn action_chord(
+    shortcuts: &Shortcuts,
+    named: &[WorkspaceId],
+    id: &str,
+) -> Option<Chord> {
+    catalog::find(id)?
         .chords(shortcuts, named)
         .into_iter()
         .next()
 }
+
+/// A physical key press read as the recorder reads it: the modifiers held, and the chord it
+/// spells on the active keyboard layout.
+pub(crate) use recorder::{modifiers as held_modifiers, pressed_chord};
 
 use crate::{
     Ui,
