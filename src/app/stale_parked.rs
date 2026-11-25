@@ -144,6 +144,8 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
         // Rescue in creation order, so the cascade matches the order recall assigns.
         stale.sort_by_key(|(id, ..)| *id);
         let ids = stale.iter().map(|(id, ..)| *id).collect();
+        // Always-on-top windows have no owner here: observation ignores them, so recall and
+        // tiling could never adopt one, and an app may keep a hidden one at the edge (#581).
         let owners = self.backend.window_owners(&ids);
         let mut cascade: HashMap<(i32, i32), i32> = HashMap::new();
         for (id, frame, output) in stale {

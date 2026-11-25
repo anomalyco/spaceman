@@ -174,6 +174,7 @@ fn pointer_hit_testing_uses_front_to_back_geometry_without_ax_focus() {
     let front = WindowServerWindow {
         pid: 1,
         id: 10,
+        layer: 0,
         frame: Rect {
             x: -1000,
             y: -200,
@@ -184,6 +185,7 @@ fn pointer_hit_testing_uses_front_to_back_geometry_without_ax_focus() {
     let behind = WindowServerWindow {
         pid: 2,
         id: 20,
+        layer: 0,
         frame: Rect {
             width: 800,
             ..front.frame
@@ -205,6 +207,7 @@ fn pointer_hit_testing_includes_windows_whose_resize_border_reaches_a_gap() {
     let left = WindowServerWindow {
         pid: 1,
         id: 10,
+        layer: 0,
         frame: Rect {
             x: 0,
             y: 0,
@@ -216,6 +219,7 @@ fn pointer_hit_testing_includes_windows_whose_resize_border_reaches_a_gap() {
     let right = WindowServerWindow {
         pid: 2,
         id: 20,
+        layer: 0,
         frame: Rect {
             x: 508,
             ..left.frame

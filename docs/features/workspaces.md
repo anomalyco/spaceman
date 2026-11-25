@@ -218,6 +218,7 @@ Reopened at a parking spot                                 // ws.stale-parked
 ├── An app quit while some windows were parked reopens them one pixel inside a display corner
 ├── Every such window Spaceman neither parked nor owns (not only the focused one) is brought onto
 │   that display, cascaded 24 pt apart, then recalled or adopted like any new window
+├── Always-on-top windows stay where they are: Spaceman ignores them, so it never moves one there
 ├── A window an `ignore` rule matches, by app or title, stays where it opened; it is judged once
 │   and not read again until its frame or the displays change
 └── One whose title a rule needs but Accessibility cannot resolve yet waits, retried with the

@@ -372,7 +372,8 @@ pub fn is_process_incarnation_running(id: &AppInstanceId) -> bool {
 }
 
 /// The running application instance owning each of `window_ids`, per the window server.
-/// Windows it no longer lists, or whose process is not a running application, are left out.
+/// Windows it no longer lists, windows off the normal layer (always-on-top windows, which
+/// observation ignores), or whose process is not a running application, are left out.
 #[must_use]
 pub fn window_owners(window_ids: &HashSet<u32>) -> HashMap<u32, AppInstanceId> {
     autoreleasepool(|_| {
@@ -381,7 +382,9 @@ pub fn window_owners(window_ids: &HashSet<u32>) -> HashMap<u32, AppInstanceId> {
         };
         windows
             .into_iter()
-            .filter(|window| window.pid > 0 && window_ids.contains(&window.id))
+            .filter(|window| {
+                window.pid > 0 && window.layer == 0 && window_ids.contains(&window.id)
+            })
             .filter_map(|window| {
                 let application =
                     NSRunningApplication::runningApplicationWithProcessIdentifier(window.pid)?;

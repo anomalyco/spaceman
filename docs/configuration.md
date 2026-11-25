@@ -595,9 +595,10 @@ on the active workspace.
 
 An application quit while some of its windows were parked reopens them at the parking spot, one
 pixel inside a display corner. Spaceman brings back every such window it did not park itself (not
-only the focused one), cascading them onto that display, so recall and tiling can adopt them. A
-window an `ignore` rule matches, by its app or its title, stays where it opened; one whose title a
-rule needs but macOS cannot report yet waits until it can. Multi-window applications that restore
+only the focused one), cascading them onto that display, so recall and tiling can adopt them.
+Always-on-top windows, which Spaceman ignores, stay where they are. A window an `ignore` rule
+matches, by its app or its title, stays where it opened; one whose title a rule needs but macOS
+cannot report yet waits until it can. Multi-window applications that restore
 windows with identical frames are matched by creation order, which is a best guess.
 
 A changed arrangement replaces an application's memory only after it holds for 10 seconds while the
