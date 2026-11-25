@@ -356,7 +356,9 @@ impl AnomalyTracker {
             events.push(JournalEvent::Anomaly {
                 state: AnomalyState::Begin,
                 anomaly: anomaly.clone(),
-                duration_ms: None,
+                // How long the disagreement had already persisted before it was journaled,
+                // so a still-open anomaly reports the same duration as a finished one.
+                duration_ms: Some(duration_ms(now.saturating_duration_since(first_seen))),
             });
             self.active.insert(key, (anomaly, first_seen));
         }

@@ -115,7 +115,9 @@ spaceman config reset settings.hud_position
 In Settings › General, **Workspace HUD** picks `Off`, `Icons` or `Layouts`. While it is not
 `Off`, **Customize…** beside it opens a sheet: a live miniature of the capsule over **Position**
 (`Bottom` or `Top`) and a link to Settings › Workspaces, which decides the workspaces each display's
-capsule lists. `spaceman config reset` removes any settings key, back to its default.
+capsule lists. `spaceman config reset` removes a key that `spaceman config set` accepts, back
+to its default; `settings.workspace_order` is edited in the file instead (see
+[Display Assignments](#display-assignments)).
 
 ## New-Window Layout
 
@@ -395,8 +397,9 @@ across config edits until that state no longer refers to it.
 `settings.workspace_order` sets the order a display's workspaces appear in the Workspace HUD, the
 menu bar menu, and three-finger swipes. Listed workspaces come first, in the order given; every other
 workspace follows in the default order (1 through 10, then A through Z), so a partial list is fine
-and an empty or missing list changes nothing. Entries are workspaces `1` through `10` or `"A"`
-through `"Z"`, as numbers or strings; an unknown or repeated entry is rejected. The order only
+and an empty or missing list changes nothing. The key is set in the file only: `spaceman config
+set` and `spaceman config reset` do not accept it. Entries are workspaces `1` through `10` or
+`"A"` through `"Z"`, as numbers or strings; an unknown or repeated entry is rejected. The order only
 changes where workspaces are listed: listing a letter does not enable it, and shortcuts, routes and
 saved state are unaffected. For the top keyboard row:
 
