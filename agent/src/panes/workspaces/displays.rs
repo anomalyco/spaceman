@@ -74,27 +74,42 @@ pub(crate) struct Choice {
     pub name: Option<String>,
     /// Whether a display is plugged in for this choice.
     pub connected: bool,
+    /// The display's position in discovery order (`DisplayOutputs::displays`), which decides
+    /// which display a name shared by several screens resolves to.
+    pub discovery: Option<usize>,
 }
 
 impl Choice {
-    /// Whether the `monitor` value `selector` names this display, exactly as
-    /// `DisplayOutputs::resolve_exact` does: by built-in selector, UUID, or name.
-    fn matches(&self, selector: &str) -> bool {
-        self.selector == selector
-            || self.id.as_deref() == Some(selector)
-            || self.name.as_deref() == Some(selector)
+    /// Whether the `monitor` value `selector` names this display by UUID or name.
+    fn names(&self, selector: &str) -> bool {
+        self.id.as_deref() == Some(selector) || self.name.as_deref() == Some(selector)
     }
 }
 
 /// The choice `selector` (a `config.toml` `monitor` value) resolves to, if any display here
-/// answers to it.
+/// answers to it, exactly as `DisplayOutputs::resolve_exact` does: a built-in selector first,
+/// then the first display in discovery order whose UUID or name it is. Choices are sorted by
+/// position, so a name two screens share must not resolve to the leftmost one. Issue 420.
 pub(crate) fn index_of(choices: &[Choice], selector: &str) -> Option<usize> {
-    choices.iter().position(|choice| choice.matches(selector))
+    if let Some(index) = choices.iter().position(|choice| choice.selector == selector) {
+        return Some(index);
+    }
+    choices
+        .iter()
+        .enumerate()
+        .filter(|(_, choice)| choice.names(selector))
+        .min_by_key(|(_, choice)| choice.discovery)
+        .map(|(index, _)| index)
 }
 
 /// Main, then Secondary, then every further display left to right. Main and Secondary are always
 /// offered, even when nothing is plugged into them, because workspaces fall back to main.
 pub(crate) fn choices(displays: &[ConnectedDisplay]) -> Vec<Choice> {
+    let discovery = |display: &ConnectedDisplay| {
+        displays
+            .iter()
+            .position(|other| std::ptr::eq(other, display))
+    };
     let mut ordered: Vec<&ConnectedDisplay> = displays.iter().collect();
     ordered.sort_by(|left, right| {
         rank(left).cmp(&rank(right)).then_with(|| {
@@ -111,6 +126,8 @@ pub(crate) fn choices(displays: &[ConnectedDisplay]) -> Vec<Choice> {
         built_in(MAIN, "Main", "Main display", main),
         built_in(SECONDARY, "Secondary", "Secondary display", secondary),
     ];
+    choices[0].discovery = main.and_then(discovery);
+    choices[1].discovery = secondary.and_then(discovery);
     choices[0].caption = match &main {
         Some(display) if !display.name.is_empty() => {
             format!("{} · Default for 1–5", display.name)
@@ -142,6 +159,7 @@ pub(crate) fn choices(displays: &[ConnectedDisplay]) -> Vec<Choice> {
             id: Some(display.id.clone()),
             name: Some(display.name.clone()),
             connected: true,
+            discovery: discovery(*display),
         });
     }
     // Past two displays the picker names every screen, so Secondary names its own too: with two
@@ -188,6 +206,7 @@ fn built_in(
         id: display.map(|display| display.id.clone()),
         name: display.map(|display| display.name.clone()),
         connected: display.is_some(),
+        discovery: None,
     }
 }
 
