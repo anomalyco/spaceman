@@ -91,11 +91,7 @@ impl Engine {
                 .filter(|&id| result.model.slot(id).is_some());
         }
         result.placements = placements_for(self.display_layout(), &result.model, settings);
-        self.evidence.previous_placements = result
-            .placements
-            .iter()
-            .map(|placement| (placement.slot, placement.frame))
-            .collect();
+        self.evidence.record(observation, &result);
         self.model = result.model.clone();
         self.prune_focus_order();
         Ok(result)
@@ -154,6 +150,7 @@ impl Engine {
         let slot = self.model.workspace.slots.remove(index);
         self.sync_layout(None, mode, output);
         self.evidence.previous_placements.remove(&slot.id);
+        self.evidence.previous_frames.remove(&slot.id);
         self.invalidate_layout();
         Some(slot)
     }
@@ -177,6 +174,9 @@ impl Engine {
         let slots = &self.model.workspace.slots;
         self.evidence
             .previous_placements
+            .retain(|id, _| slots.iter().any(|slot| slot.id == *id));
+        self.evidence
+            .previous_frames
             .retain(|id, _| slots.iter().any(|slot| slot.id == *id));
         self.sync_layout(None, mode, output);
         self.invalidate_layout();

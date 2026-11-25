@@ -16,7 +16,7 @@ Automatic tiling                                        // tile.auto
 │   ├── Last app window closes but its surface lingers -> siblings reflow when the app confirms closure
 │   └── App keeps its ordered-out window alive -> slot settles for two seconds
 └── Native tab replaces its window -> same slot, order, weight, nesting
-    ├── Any app (Finder, Safari, Terminal...) -> when the evidence is unambiguous (one window out, one in, focus moved to it, same frame)
+    ├── Any app (Finder, Safari, Terminal...) -> when the evidence is unambiguous (one window out, one in, focus moved to it, at the tile's frame or, for an app that caps its window size, where the old tab was)
     └── Ghostty -> ambiguous evidence also holds the slot for a bounded settle
 
 Focus                                                   // tile.focus
