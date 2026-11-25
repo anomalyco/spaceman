@@ -57,6 +57,49 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
         true
     }
 
+    /// While Spaceman is focusing a window on a shown workspace, its app may
+    /// hand focus to another of its windows on a hidden workspace as it
+    /// activates (#534). That is the app's doing, not the user's: focus the
+    /// requested window again rather than follow the other one; the request
+    /// still settles at its original deadline, so an app that insists is
+    /// followed after that.
+    pub(in crate::app) fn reclaim_from_sibling(
+        &mut self,
+        reported: &crate::PhysicalWindowId,
+        visible: &[ResolvedWorkspace],
+    ) {
+        let is_shown =
+            |workspace: WorkspaceId| visible.iter().any(|shown| shown.workspace == workspace);
+        // Only a window focus follow would chase: one on a hidden workspace
+        // that is not pinned. A new, unmanaged or scratchpad window keeps focus.
+        let hidden = !self.workspaces.is_pinned(reported)
+            && self
+                .workspaces
+                .workspace_of_any(reported)
+                .is_some_and(|workspace| !is_shown(workspace));
+        if !hidden {
+            return;
+        }
+        let now = self.backend.now();
+        let Some(target) = self.focus.sibling_target(now, reported).filter(|target| {
+            self.workspaces
+                .workspace_of_any(target)
+                .is_some_and(is_shown)
+        }) else {
+            return;
+        };
+        // Refocus once per sibling; later reports of it are already explained.
+        if !self.focus.explain_as_target(reported) {
+            return;
+        }
+        log_event!(
+            "focus follow: {:?} took focus from requested {:?}; focusing it again",
+            reported,
+            target
+        );
+        let _: bool = self.backend.focus_window(&target);
+    }
+
     /// Guards the focus left behind so focus follow does not chase it.
     pub(in crate::app) fn guard_departure(
         &mut self,

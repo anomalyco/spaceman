@@ -150,6 +150,9 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
         // report a focus request in flight explains is no focus change at all:
         // it must neither switch a display nor rewrite history (#399).
         self.retry_follow_after_space_change();
+        if focused_is_frontmost && let Some(reported) = focused.as_ref() {
+            self.reclaim_from_sibling(reported, &visible);
+        }
         let suppressed = self.focus.holds_back(
             self.backend.now(),
             focused.as_ref(),
