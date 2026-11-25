@@ -132,6 +132,9 @@ monitor = "main"
 # takes focus.
 # float_follows_display = true makes a floating window dragged to another
 # display join the workspace showing there, as a dragged tile already does.
+# workspace_steps = true turns on "switch next|prev" and "move next|prev [--follow]",
+# which step through the focused display's workspaces (bind them under
+# [shortcuts.bindings]; none has a built-in chord).
 #
 # [labs]
 # scratchpad = false
@@ -142,3 +145,4 @@ monitor = "main"
 # swipe_switch = false
 # empty_workspace_focus = false
 # float_follows_display = false
+# workspace_steps = false

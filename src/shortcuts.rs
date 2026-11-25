@@ -5,7 +5,9 @@ use std::collections::BTreeMap;
 
 use serde::Deserialize;
 
-use crate::{Axis, Direction, DisplaySelector, DisplayTarget, ResizeDirection, WorkspaceId};
+use crate::{
+    Axis, Direction, DisplaySelector, DisplayTarget, ResizeDirection, WorkspaceId, WorkspaceStep,
+};
 
 /// The parsed `[shortcuts]` table.
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -19,6 +21,9 @@ pub struct Shortcuts {
     pub bindings: Vec<Binding>,
     /// Register the Scratchpad Lab's shortcuts. Set from `[labs] scratchpad`, not this table.
     pub scratchpad: bool,
+    /// Register `switch next|prev` and `move next|prev` bindings. Set from
+    /// `[labs] workspace_steps`, not this table.
+    pub workspace_steps: bool,
 }
 
 impl Default for Shortcuts {
@@ -28,6 +33,7 @@ impl Default for Shortcuts {
             modifier: Modifiers::OPTION,
             bindings: Vec::new(),
             scratchpad: false,
+            workspace_steps: false,
         }
     }
 }
@@ -54,6 +60,7 @@ impl Shortcuts {
         self.defaults != other.defaults
             || self.modifier != other.modifier
             || self.scratchpad != other.scratchpad
+            || self.workspace_steps != other.workspace_steps
             || meaning(self) != meaning(other)
     }
 
@@ -271,6 +278,11 @@ pub enum Command {
     Switch(WorkspaceId),
     Move(WorkspaceId),
     MoveFollow(WorkspaceId),
+    /// Show the next or previous workspace of the focused display (the Workspace Steps Lab).
+    SwitchStep(WorkspaceStep),
+    /// Send the focused window one workspace along its display (the Workspace Steps Lab).
+    MoveStep(WorkspaceStep),
+    MoveStepFollow(WorkspaceStep),
     /// Send the focused window's active tab to a workspace (`move-tab`).
     MoveTab(WorkspaceId),
     MoveTabFollow(WorkspaceId),
@@ -290,7 +302,7 @@ pub enum Command {
     Retile,
 }
 
-pub const COMMAND_USAGE: &str = "switch WORKSPACE|move WORKSPACE [--follow]|move-tab WORKSPACE [--follow]|back-and-forth|move-workspace [next|prev|DISPLAY]|focus DIR|focus next|focus prev|move-direction DIR|layout|fullscreen|float|resize shrink|resize grow|resize width|height POINTS|balance|retile|none";
+pub const COMMAND_USAGE: &str = "switch WORKSPACE|switch next|prev|move WORKSPACE [--follow]|move next|prev [--follow]|move-tab WORKSPACE [--follow]|back-and-forth|move-workspace [next|prev|DISPLAY]|focus DIR|focus next|focus prev|move-direction DIR|layout|fullscreen|float|resize shrink|resize grow|resize width|height POINTS|balance|retile|none";
 
 /// `[shortcuts]` as written.
 #[derive(Deserialize)]
@@ -354,6 +366,7 @@ impl RawShortcuts {
             modifier,
             bindings,
             scratchpad: false,
+            workspace_steps: false,
         })
     }
 }
@@ -464,10 +477,19 @@ pub fn parse_command(source: &str) -> Result<Option<Command>, String> {
     let parts = trimmed.split_whitespace().collect::<Vec<_>>();
     let command = match parts.as_slice() {
         ["none"] => return Ok(None),
-        ["switch", workspace] => Command::Switch(WorkspaceId::parse(workspace)?),
-        ["move", workspace] => Command::Move(WorkspaceId::parse(workspace)?),
-        ["move", workspace, "--follow"] | ["move", "--follow", workspace] => {
-            Command::MoveFollow(WorkspaceId::parse(workspace)?)
+        ["switch", target] => match WorkspaceStep::parse(target) {
+            Some(step) => Command::SwitchStep(step),
+            None => Command::Switch(WorkspaceId::parse(target)?),
+        },
+        ["move", target] => match WorkspaceStep::parse(target) {
+            Some(step) => Command::MoveStep(step),
+            None => Command::Move(WorkspaceId::parse(target)?),
+        },
+        ["move", target, "--follow"] | ["move", "--follow", target] => {
+            match WorkspaceStep::parse(target) {
+                Some(step) => Command::MoveStepFollow(step),
+                None => Command::MoveFollow(WorkspaceId::parse(target)?),
+            }
         }
         ["move-tab", workspace] => Command::MoveTab(WorkspaceId::parse(workspace)?),
         ["move-tab", workspace, "--follow"] | ["move-tab", "--follow", workspace] => {
@@ -512,6 +534,15 @@ impl Command {
         }
     }
 
+    /// Whether this command belongs to the Workspace Steps Lab.
+    #[must_use]
+    pub const fn is_workspace_step(&self) -> bool {
+        matches!(
+            self,
+            Self::SwitchStep(_) | Self::MoveStep(_) | Self::MoveStepFollow(_)
+        )
+    }
+
     /// A short description for logs, matching the built-in shortcuts' wording.
     #[must_use]
     pub fn description(&self) -> String {
@@ -520,6 +551,22 @@ impl Command {
             Self::Move(workspace) => format!("move window to workspace {workspace}"),
             Self::MoveFollow(workspace) => {
                 format!("move window to workspace {workspace} and follow")
+            }
+            Self::SwitchStep(WorkspaceStep::Next) => "switch to next workspace on display".into(),
+            Self::SwitchStep(WorkspaceStep::Prev) => {
+                "switch to previous workspace on display".into()
+            }
+            Self::MoveStep(WorkspaceStep::Next) => {
+                "move window to next workspace on display".into()
+            }
+            Self::MoveStep(WorkspaceStep::Prev) => {
+                "move window to previous workspace on display".into()
+            }
+            Self::MoveStepFollow(WorkspaceStep::Next) => {
+                "move window to next workspace on display and follow".into()
+            }
+            Self::MoveStepFollow(WorkspaceStep::Prev) => {
+                "move window to previous workspace on display and follow".into()
             }
             Self::MoveTab(workspace) => format!("move tab to workspace {workspace}"),
             Self::MoveTabFollow(workspace) => {
@@ -636,6 +683,23 @@ mod tests {
             ("focus next", Some(Command::FocusNext)),
             ("focus prev", Some(Command::FocusPrev)),
             (
+                "switch next",
+                Some(Command::SwitchStep(WorkspaceStep::Next)),
+            ),
+            (
+                "switch prev",
+                Some(Command::SwitchStep(WorkspaceStep::Prev)),
+            ),
+            ("move next", Some(Command::MoveStep(WorkspaceStep::Next))),
+            (
+                "move prev --follow",
+                Some(Command::MoveStepFollow(WorkspaceStep::Prev)),
+            ),
+            (
+                "move --follow next",
+                Some(Command::MoveStepFollow(WorkspaceStep::Next)),
+            ),
+            (
                 "move-direction up",
                 Some(Command::MoveDirection(Direction::Up)),
             ),
@@ -665,6 +729,8 @@ mod tests {
         }
         assert!(parse_command("explode").is_err());
         assert!(parse_command("switch 11").is_err());
+        assert!(parse_command("switch previous").is_err());
+        assert!(parse_command("move-tab next").is_err());
         assert!(parse_command("focus sideways").is_err());
         for invalid in [
             "resize width",

@@ -52,6 +52,11 @@ const GROUPS: [(&str, &str, &[Lab]); 4] = [
                 "Focus empty workspaces on other displays",
                 "Commands act on an empty workspace you show on another display",
             ),
+            (
+                LabFeature::WorkspaceSteps,
+                "Workspace steps",
+                "Shortcuts to step to the next or previous workspace on a display",
+            ),
         ],
     ),
     (

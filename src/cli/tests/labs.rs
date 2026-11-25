@@ -41,6 +41,9 @@ fn config_gets_sets_and_resets_labs_activity() {
     )
     .unwrap();
     assert_eq!(show["labs"]["activity"], true);
+    // Unset switches stay out of the JSON instead of printing null.
+    assert_eq!(show["labs"].get("workspace_steps"), None);
+    assert_eq!(show["labs"].get("scratchpad"), None);
     let shown = Config::parse(&temp.run(&["config", "show"]).stdout.unwrap()).unwrap();
     assert!(shown.labs().activity);
 

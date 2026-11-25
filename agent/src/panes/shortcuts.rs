@@ -61,6 +61,15 @@ pub fn pane(ui: &Ui, p: Paint) -> El {
         &named,
         catalog::WORKSPACE_ACTIONS,
     ));
+    if shortcuts.workspace_steps {
+        workspace_rows.extend(action_rows(
+            ui,
+            p,
+            &shortcuts,
+            &named,
+            catalog::WORKSPACE_STEP_ACTIONS,
+        ));
+    }
     workspace_rows.push(swipe_row(ui, p));
     scroll_body(
         "shortcuts-body",

@@ -206,12 +206,16 @@ alter layouts require automatic tiling to be enabled.
 spaceman ctl status
 spaceman ctl debug
 spaceman ctl switch 2
+spaceman ctl switch next
+spaceman ctl switch prev
 spaceman ctl back-and-forth
 spaceman ctl move-workspace
 spaceman ctl move-workspace prev
 spaceman ctl move-workspace secondary
 spaceman ctl move 7
 spaceman ctl move 7 --follow
+spaceman ctl move next
+spaceman ctl move prev --follow
 spaceman ctl move-tab 2
 spaceman ctl move-tab 2 --follow
 spaceman ctl move-app com.tinyspeck.slackmacgap 6
@@ -249,7 +253,11 @@ Directions are `left`, `down`, `up`, and `right`. `focus next` is Option-backtic
 toggles the focused window's floating, like `Option+Shift+Space`. `pin` floats the focused window
 and shows it on every workspace, or unpins it (no built-in shortcut). `scratchpad toggle` and
 `scratchpad mark` are `Option+\` and `Option+Shift+\`; while `[labs] scratchpad` is off they report
-`Scratchpad is off`. `resize width|height POINTS` resizes the focused window to that width or
+`Scratchpad is off`. `switch next|prev` and `move next|prev [--follow]` need
+`[labs] workspace_steps = true` and have no built-in shortcut: `switch` steps through the focused
+display's visible and occupied workspaces as a swipe does, and `move` sends the focused window to the
+next or previous enabled workspace of its display, empty ones included; both stop at either end
+(see [Configuration › Labs](configuration.md#labs)). `resize width|height POINTS` resizes the focused window to that width or
 height (its own frame, gaps excluded) by moving its boundary at the nearest split along that axis;
 the split's other tiles give or take the difference in proportion, never below 50 points. `balance`
 equalizes the focused tile's immediate split while respecting nested minimum sizes; it does not

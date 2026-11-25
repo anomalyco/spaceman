@@ -121,6 +121,7 @@ impl Doc {
             swipe_switch: self.lab(LabFeature::SwipeSwitch),
             empty_workspace_focus: self.lab(LabFeature::EmptyWorkspaceFocus),
             float_follows_display: self.lab(LabFeature::FloatFollowsDisplay),
+            workspace_steps: self.lab(LabFeature::WorkspaceSteps),
         }
     }
 

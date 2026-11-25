@@ -650,3 +650,18 @@ fn hand_pins_persist_for_floating_windows_and_rule_pins_do_not() {
     let older: WorkspaceState = serde_json::from_str(&older).unwrap();
     older.validate().unwrap();
 }
+
+#[test]
+fn workspace_steps_stop_at_either_end_of_the_list() {
+    let id = |number| WorkspaceId::new(number).unwrap();
+    let listed = [id(1), id(3), id(5)];
+    assert_eq!(WorkspaceStep::Next.target(&listed, id(1)), Some(id(3)));
+    assert_eq!(WorkspaceStep::Next.target(&listed, id(3)), Some(id(5)));
+    assert_eq!(WorkspaceStep::Next.target(&listed, id(5)), None);
+    assert_eq!(WorkspaceStep::Prev.target(&listed, id(5)), Some(id(3)));
+    assert_eq!(WorkspaceStep::Prev.target(&listed, id(1)), None);
+    assert_eq!(WorkspaceStep::Next.target(&listed, id(2)), None);
+    assert_eq!(WorkspaceStep::parse("next"), Some(WorkspaceStep::Next));
+    assert_eq!(WorkspaceStep::parse("prev"), Some(WorkspaceStep::Prev));
+    assert_eq!(WorkspaceStep::parse("previous"), None);
+}

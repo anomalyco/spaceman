@@ -119,7 +119,7 @@ impl HotkeyPlan {
         // `[shortcuts]` bindings claim their chords first, so a built-in shortcut on the same
         // chord quietly gives way instead of colliding.
         for binding in &shortcuts.bindings {
-            plan.push_binding(binding, enabled);
+            plan.push_binding(binding, enabled, shortcuts.workspace_steps);
         }
         if shortcuts.defaults {
             push_defaults(&mut plan, enabled, carbon_modifiers(shortcuts.modifier));
@@ -301,6 +301,15 @@ fn worker_action(command: &Command) -> WorkerAction {
         Command::Switch(workspace) => WorkerAction::SwitchWorkspace(*workspace),
         Command::Move(workspace) => WorkerAction::MoveFocused(*workspace),
         Command::MoveFollow(workspace) => WorkerAction::MoveFocusedFollow(*workspace),
+        Command::SwitchStep(step) => WorkerAction::StepWorkspace(*step),
+        Command::MoveStep(step) => WorkerAction::MoveFocusedStep {
+            step: *step,
+            follow: false,
+        },
+        Command::MoveStepFollow(step) => WorkerAction::MoveFocusedStep {
+            step: *step,
+            follow: true,
+        },
         Command::MoveTab(workspace) => WorkerAction::MoveTab {
             target: *workspace,
             follow: false,
@@ -388,7 +397,7 @@ impl<'a> PlanBuilder<'a> {
 
     /// Claims a `[shortcuts]` binding's chord: registers its command, or for `none` only
     /// reserves the chord so no built-in shortcut takes it.
-    fn push_binding(&mut self, binding: &Binding, enabled: &[WorkspaceId]) {
+    fn push_binding(&mut self, binding: &Binding, enabled: &[WorkspaceId], workspace_steps: bool) {
         let source = &binding.source;
         let candidates = match self.layout.candidates(logical_key(binding.chord.key)) {
             Ok(candidates) => candidates,
@@ -424,6 +433,13 @@ impl<'a> PlanBuilder<'a> {
                 .insert(chord, format!("{source} (unavailable)"));
             self.warnings.push(format!(
                 "skipped shortcut {source}: workspace {workspace} is not enabled on a managed display"
+            ));
+            return;
+        }
+        if command.is_workspace_step() && !workspace_steps {
+            self.occupied.insert(chord, format!("{source} (Lab off)"));
+            self.warnings.push(format!(
+                "skipped shortcut {source}: next and prev workspace steps need [labs] workspace_steps = true"
             ));
             return;
         }
@@ -1024,6 +1040,28 @@ mod tests {
             .iter()
             .filter(|registration| registration.action == *action)
             .collect()
+    }
+
+    #[test]
+    fn workspace_step_bindings_register_only_with_their_lab_on() {
+        let enabled = WorkspaceId::numbered().collect::<Vec<_>>();
+        let next = WorkerAction::StepWorkspace(crate::WorkspaceStep::Next);
+        let off = shortcuts(true, r#""ctrl+alt+h" = "switch next""#);
+        let plan = HotkeyPlan::from_layout(&enabled, &off, &layout()).unwrap();
+        assert!(registration(&plan, &next).is_empty());
+        assert!(
+            plan.warnings
+                .iter()
+                .any(|warning| warning.contains("workspace_steps")),
+            "{:?}",
+            plan.warnings
+        );
+        let on = Shortcuts {
+            workspace_steps: true,
+            ..off
+        };
+        let plan = HotkeyPlan::from_layout(&enabled, &on, &layout()).unwrap();
+        assert_eq!(registration(&plan, &next).len(), 1);
     }
 
     #[test]

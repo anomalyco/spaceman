@@ -35,6 +35,10 @@ pub struct LabsConfig {
     /// A floating window dragged to another display joins the workspace showing there.
     #[serde(default)]
     pub float_follows_display: bool,
+    /// `switch next|prev` and `move next|prev [--follow]`: step through the workspaces of the
+    /// focused display from the keyboard.
+    #[serde(default)]
+    pub workspace_steps: bool,
 }
 
 impl LabsConfig {
@@ -50,6 +54,7 @@ impl LabsConfig {
             LabFeature::SwipeSwitch => self.swipe_switch,
             LabFeature::EmptyWorkspaceFocus => self.empty_workspace_focus,
             LabFeature::FloatFollowsDisplay => self.float_follows_display,
+            LabFeature::WorkspaceSteps => self.workspace_steps,
         }
     }
 }
@@ -74,11 +79,13 @@ pub enum LabFeature {
     EmptyWorkspaceFocus,
     /// A floating window dragged to another display joins the workspace showing there.
     FloatFollowsDisplay,
+    /// `switch next|prev` and `move next|prev [--follow]` on the focused display.
+    WorkspaceSteps,
 }
 
 impl LabFeature {
     /// Every switch, in the order `[labs]` lists them.
-    pub const ALL: [Self; 8] = [
+    pub const ALL: [Self; 9] = [
         Self::Scratchpad,
         Self::Activity,
         Self::PortraitEdgeRows,
@@ -87,6 +94,7 @@ impl LabFeature {
         Self::SwipeSwitch,
         Self::EmptyWorkspaceFocus,
         Self::FloatFollowsDisplay,
+        Self::WorkspaceSteps,
     ];
 
     /// The `[labs]` key that turns this feature on.
@@ -101,6 +109,7 @@ impl LabFeature {
             Self::SwipeSwitch => "swipe_switch",
             Self::EmptyWorkspaceFocus => "empty_workspace_focus",
             Self::FloatFollowsDisplay => "float_follows_display",
+            Self::WorkspaceSteps => "workspace_steps",
         }
     }
 

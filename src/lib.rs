@@ -62,7 +62,7 @@ pub use reconcile::{
     Decision, Placement, Reconciliation, ReconciliationEvidence, Settings, reconcile,
 };
 pub use runtime::{CycleTicket, Engine, StaleCycle};
-pub use workspace::{DisplaySelector, DisplayTarget, WorkspaceId, Workspaces};
+pub use workspace::{DisplaySelector, DisplayTarget, WorkspaceId, WorkspaceStep, Workspaces};
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum ResizeDirection {
