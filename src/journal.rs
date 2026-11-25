@@ -98,7 +98,7 @@ pub enum JournalEvent {
         moved_to: WorkspaceId,
         after_ms: u64,
     },
-    /// The user ran `spaceman ctl wrong` (or Save Snapshot) when something looked wrong; a full
+    /// The user ran `spaceman ctl wrong` (or Save snapshot) when something looked wrong; a full
     /// snapshot follows.
     MarkedWrong,
     Stop,

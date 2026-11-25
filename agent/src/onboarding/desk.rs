@@ -10,10 +10,7 @@ use rune::{
 };
 
 use super::sandbox::{Lesson, Sandbox, Unit};
-use crate::{
-    Ui,
-    controls::{DESCRIPTION, Paint},
-};
+use crate::{Ui, controls::Paint};
 
 /// The practice row's width: the display, a gap, and the lessons.
 pub const WIDTH: f32 = 600.0;
@@ -430,7 +427,7 @@ fn lessons(p: Paint, s: &Sandbox) -> El {
             .child(
                 text("Add ⇧ to move the window.")
                     .key("copy")
-                    .font(DESCRIPTION)
+                    .font(p.description())
                     .color(p.faint())
                     .wrap()
                     .w(LESSONS_W - MARKER - MARKER_GAP),

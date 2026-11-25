@@ -2,8 +2,11 @@ use std::path::{Path, PathBuf};
 
 use serde::Serialize;
 use spaceman::{
-    config::{HudPosition, HudStyle, LayoutMode, MouseFollowsFocus, UpdateChannel, load_path},
-    labs::{GlideDamping, GlideDuration, LabFeature, LabsConfig, SharedEdge},
+    config::{
+        HudPosition, HudStyle, LabFeature, LabsConfig, LayoutMode, MouseFollowsFocus,
+        UpdateChannel, load_path,
+    },
+    labs::{GlideDamping, GlideDuration, SharedEdge},
     spacing::{self, SpacingKey},
 };
 
@@ -58,7 +61,7 @@ enum SettingKey {
     HudPosition,
     Layout,
     UpdateChannel,
-    /// A `[labs]` switch.
+    /// A `[labs]` switch: `labs.scrolling_strip`, `labs.scratchpad`, `labs.activity`.
     Lab(LabFeature),
     /// `labs.scrolling_strip_duration_ms`.
     StripDuration,
@@ -78,11 +81,11 @@ impl SettingKey {
                 "scrolling_strip_duration_ms" => Ok(Self::StripDuration),
                 "scrolling_strip_damping" => Ok(Self::StripDamping),
                 "scrolling_strip_shared_edge" => Ok(Self::StripSharedEdge),
-                _ => LabFeature::from_id(id).map(Self::Lab).ok_or_else(|| {
+                _ => LabFeature::parse(id).map(Self::Lab).ok_or_else(|| {
                     format!(
-                        "unknown setting {raw:?}; valid labs keys: labs.scrolling_strip, \
+                        "unknown Lab {raw:?}; valid Labs keys: labs.scrolling_strip, \
                          labs.scrolling_strip_duration_ms, labs.scrolling_strip_damping, \
-                         labs.scrolling_strip_shared_edge"
+                         labs.scrolling_strip_shared_edge, labs.scratchpad, labs.activity"
                     )
                 }),
             };
@@ -101,7 +104,8 @@ impl SettingKey {
                      update_channel, mouse_follows_focus, gaps.inner, gaps.outer, gaps.top, \
                      gaps.bottom, gaps.left, gaps.right, single_window_max_width, \
                      labs.scrolling_strip, labs.scrolling_strip_duration_ms, \
-                     labs.scrolling_strip_damping, labs.scrolling_strip_shared_edge"
+                     labs.scrolling_strip_damping, labs.scrolling_strip_shared_edge, \
+                     labs.scratchpad, labs.activity"
                 )
             }),
         }
@@ -115,6 +119,8 @@ impl SettingKey {
             Self::Layout => "layout",
             Self::UpdateChannel => "update_channel",
             Self::Lab(LabFeature::ScrollingStrip) => "labs.scrolling_strip",
+            Self::Lab(LabFeature::Scratchpad) => "labs.scratchpad",
+            Self::Lab(LabFeature::Activity) => "labs.activity",
             Self::StripDuration => "labs.scrolling_strip_duration_ms",
             Self::StripDamping => "labs.scrolling_strip_damping",
             Self::StripSharedEdge => "labs.scrolling_strip_shared_edge",

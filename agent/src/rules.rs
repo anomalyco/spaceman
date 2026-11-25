@@ -6,8 +6,10 @@ use std::path::PathBuf;
 
 use spaceman::{
     WorkspaceId,
-    config::{HudPosition, HudStyle, LayoutMode, MouseFollowsFocus, UpdateChannel},
-    labs::{LabFeature, LabShortcut},
+    config::{
+        HudPosition, HudStyle, LabFeature, LabsConfig, LayoutMode, MouseFollowsFocus, UpdateChannel,
+    },
+    labs::LabShortcut,
 };
 use toml_edit::{
     Array, ArrayOfTables, DocumentMut, InlineTable, Item, Table, TableLike, Value, value,
@@ -91,6 +93,30 @@ impl Doc {
 
     pub fn reload_pending(&self) -> bool {
         self.pending_reload
+    }
+
+    /// The `[labs]` switches as this document sets them.
+    pub fn labs(&self) -> LabsConfig {
+        LabsConfig {
+            scrolling_strip: self.lab(LabFeature::ScrollingStrip),
+            scrolling_strip_shortcut: self.lab_shortcut(LabFeature::ScrollingStrip),
+            scrolling_strip_duration_ms: self.strip_duration(),
+            scrolling_strip_damping: self.strip_damping(),
+            scrolling_strip_shared_edge: self.strip_shared_edge(),
+            scratchpad: self.lab(LabFeature::Scratchpad),
+            activity: self.lab(LabFeature::Activity),
+        }
+    }
+
+    /// Whether `feature`'s switch is on, read straight from the edited file so a toggle shows
+    /// in Settings without waiting for a reload.
+    pub fn lab(&self, feature: LabFeature) -> bool {
+        self.doc
+            .get("labs")
+            .and_then(Item::as_table_like)
+            .and_then(|labs| labs.get(feature.key()))
+            .and_then(Item::as_bool)
+            .unwrap_or(false)
     }
 
     /// Reloads from this document's path (or the active config path if unset).
@@ -316,27 +342,17 @@ impl Doc {
         );
     }
 
-    /// Whether a Labs feature is switched on in `[labs]` (every one defaults to off).
-    pub fn lab(&self, feature: LabFeature) -> bool {
-        self.doc
-            .get("labs")
-            .and_then(Item::as_table_like)
-            .and_then(|table| table.get(feature.id()))
-            .and_then(Item::as_bool)
-            .unwrap_or(false)
-    }
-
     /// Switches a Labs feature; off removes its key, and `[labs]` once it is empty.
     pub fn set_lab(&mut self, feature: LabFeature, enabled: bool) {
-        self.set_key("labs", feature.id(), enabled.then(|| value(true)));
+        self.set_key("labs", feature.key(), enabled.then(|| value(true)));
     }
 
-    /// A Labs feature's shortcut from `[labs]`, or its default when unset or unreadable.
+    /// A Labs feature's shortcut from `[labs]`, or its default when unset or unreadable (and
+    /// for a feature that keeps none there).
     pub fn lab_shortcut(&self, feature: LabFeature) -> LabShortcut {
-        self.doc
-            .get("labs")
-            .and_then(Item::as_table_like)
-            .and_then(|table| table.get(feature.shortcut_id()))
+        feature
+            .shortcut_key()
+            .and_then(|key| self.doc.get("labs")?.as_table_like()?.get(key))
             .and_then(Item::as_str)
             .and_then(|source| spaceman::shortcuts::parse_chord(source).ok())
             .map_or_else(LabShortcut::default, LabShortcut)
@@ -344,9 +360,12 @@ impl Doc {
 
     /// Sets a Labs feature's shortcut; the default removes its key.
     pub fn set_lab_shortcut(&mut self, feature: LabFeature, shortcut: LabShortcut) {
+        let Some(key) = feature.shortcut_key() else {
+            return;
+        };
         self.set_key(
             "labs",
-            feature.shortcut_id(),
+            key,
             (!shortcut.is_default()).then(|| value(shortcut.0.config_name())),
         );
     }

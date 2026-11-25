@@ -14,9 +14,11 @@ Pause / quit / update / macOS asks Spaceman to terminate   // recover.restore-on
 │   └── that frame's display unplugged -> moved onto the main display instead
 ├── Recovery entry removed only after the window server confirms arrival
 │   └── Accessibility says "gone" but the window server still lists it -> entry kept, retried
+│       for as long as it lasts (a window on another macOS desktop restores once that desktop
+│       is shown); only the window server dropping it or its app quitting retires the entry
 └── Restoration fails -> exit blocked, menu shows "Restoring windows · N failed", retries
 
-Install & Restart (in-app update)                          // recover.update
+Install & restart (in-app update)                          // recover.update
 ├── Update downloaded and verified first (size, SHA-256, anomaly.spaceman, Developer ID, team)
 ├── Same exit as quit: tiling stops, every parked window restored
 ├── Only after restoration fully succeeds -> signature re-checked, bundles swapped, relaunch
@@ -48,7 +50,8 @@ Placement recall (reboot, fresh start, or app relaunch)     // recover.memory
 └── Arrangement changes recorded after holding 10 s (quitting does not shrink the memory)
 
 Diagnose                                                   // recover.doctor
-├── Settings › Activity -> 24h health, recent journal rows, procwatch vitals, Save Snapshot
+├── Settings › Activity ([labs] activity = true) -> 24h health, recent journal rows, procwatch
+│                                vitals, Save snapshot
 ├── spaceman doctor [hours] -> starts, restorations, recalls, wrong placements, anomalies,
 │                                last arrangement
 ├── spaceman ctl wrong -> marks the journal and snapshots the arrangement right now
@@ -61,13 +64,14 @@ Diagnose                                                   // recover.doctor
 ```ts
 Menu bar: workspaces (switch) | Pause Tiling (pause + restore) | Workspace HUD | Settings... (⌘,)
           | Check for Updates... / Install Spaceman <version> and Restart | Quit Spaceman (⌘Q)
-Settings: sidebar foot and General -> Updates (Install & Restart, Switch to Dev/Stable, Download,
-          Check Now, Update channel)
-Settings: Activity -> Journal (Show in Finder) | Save Snapshot
+Settings: sidebar foot -> version, Check for updates, Install & restart
+          General -> Updates (Update channel; plus one row only when there is something to act
+          on: Install & restart, Switch to Dev/Stable, Download, Check again)
+Settings: Activity ([labs] activity = true) -> Journal (Show in Finder) | Save snapshot
 CLI:      spaceman ctl pause | resume | quit | restart | status | debug
           spaceman doctor [hours]      // reads files directly; works with the agent stopped
           spaceman hud
-Implicit: macOS restart/log out/shutdown, Install & Restart, quitting with an update ready,
+Implicit: macOS restart/log out/shutdown, Install & restart, quitting with an update ready,
           reopening Spaceman.app after a crash
 Files:    ~/Library/Application Support/Spaceman/
           ├── workspace-state.json   parked-windows.json   window-memory.json
@@ -86,7 +90,9 @@ See [Recovery](../recovery.md) for the safe manual procedure; never delete `park
   `startup.rs` `invalid_startup_metadata_falls_back_so_parked_recovery_can_start`;
   `tear_regressions.rs` `restore_all_keeps_recovery_for_a_window_the_window_server_still_lists`,
   `restore_all_after_unplugging_lands_windows_on_a_connected_display`,
-  `restore_all_command_moves_recovery_frames_onto_the_current_displays`.
+  `restore_all_command_moves_recovery_frames_onto_the_current_displays`;
+  `space_transitions.rs` `restore_keeps_recovery_for_a_parked_window_on_another_desktop` (kept
+  past the Accessibility grace, restored once reachable; a closed window still lets exit finish).
 - Unit (FakeBackend), `memory.rs`: startup recall by frame then order, no recall for instances that
   already own windows, route precedence, recall expiry, recall closing when the app quits,
   mid-session launches opening on the active workspace, mid-session relaunches (quit first or

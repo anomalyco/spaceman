@@ -22,6 +22,38 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
             .with_layout(self.config.layout())
     }
 
+    /// The last known display canvas for `workspace`, or an empty rect before
+    /// any display outputs have been observed.
+    pub(super) fn known_workspace_canvas(&self, workspace: WorkspaceId) -> crate::Rect {
+        self.displays
+            .known
+            .as_ref()
+            .map(|outputs| {
+                self.layout_settings(output_for(&self.workspaces, workspace, outputs))
+                    .canvas()
+            })
+            .unwrap_or_default()
+    }
+
+    /// Move a tiled window to `target` using the last known source canvas and `target_output`.
+    pub(super) fn move_tiled_to(
+        &mut self,
+        window: &crate::PhysicalWindowId,
+        target: WorkspaceId,
+        target_output: crate::Rect,
+    ) -> Option<WorkspaceId> {
+        let source = self.workspaces.workspace_of(window)?;
+        let source_canvas = self.known_workspace_canvas(source);
+        let target_canvas = self.layout_settings(target_output).canvas();
+        self.workspaces.move_window_with(
+            window,
+            target,
+            self.config.layout(),
+            source_canvas,
+            target_canvas,
+        )
+    }
+
     /// Record the current displays. When they differ from the last ones, every
     /// parked window is due a re-park against them.
     pub(super) fn note_outputs(&mut self, outputs: &macos::DisplayOutputs) {

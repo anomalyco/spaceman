@@ -22,8 +22,8 @@ Spaceman currently:
 - persists active workspaces, nested split layouts, tile order and weights, and parked-window recovery
   metadata across Spaceman restarts, and remembers each application's window placements by bundle
   identifier so reboots and startup recovery return windows to their workspaces;
-- journals window arrangements and model/screen disagreements locally, summarized in Settings (`Activity`)
-  and by `spaceman doctor`;
+- journals window arrangements and model/screen disagreements locally, summarized by
+  `spaceman doctor` and, with the `[labs] activity` switch on, in Settings (`Activity`);
 - shows a non-activating Workspace HUD capsule on each display on workspace switches,
   cross-workspace moves, and layout toggles (`[settings] hud = true`): a row of that display's
   workspaces, drawn as numbers and app icons by default or (`hud_style = "layouts"`) as their layouts with app
@@ -55,7 +55,7 @@ experimental; read [Known limitations](docs/limitations.md) before installing it
      && ditto -x -k /tmp/Spaceman.zip /Applications && open /Applications/Spaceman.app
    ```
 
-3. Follow the setup tour: grant Accessibility access, then press `Start Tiling`.
+3. Follow the setup tour: grant Accessibility access, then press `Start tiling`.
 4. Optionally link the bundled CLI: `mkdir -p "$HOME/.local/bin" && ln -sf "/Applications/Spaceman.app/Contents/MacOS/spaceman" "$HOME/.local/bin/spaceman"`.
 
 To check the download first, get
@@ -65,7 +65,7 @@ run `shasum -a 256 -c Spaceman.zip.sha256`, then unzip it and move `Spaceman.app
 to `/Applications`.
 
 Spaceman updates itself from Anomaly's release service: when an update is ready, choose
-`Install & Restart` in Settings or the menu, or just quit and it installs for the next launch.
+`Install & restart` in Settings or the menu's install item, or just quit and it installs for the next launch.
 Spaceman restores every window first.
 Builds after 0.3.0 are signed by Anomaly with the bundle ID `anomaly.spaceman`, so macOS asks for
 Accessibility access once more after that update; your config, workspaces and parked-window recovery
@@ -106,7 +106,7 @@ maintainer workflow.
 3. On a fresh install, Spaceman opens its three-step setup tour when Accessibility access is missing.
    Choose `Allow` and grant Spaceman access in **System Settings > Privacy & Security** (the
    Accessibility list, named System & App Protection Override on macOS 27.3 and later), optionally
-   enable `Launch at Login`, then press `Start Tiling`.
+   enable `Launch at login`, then press `Start tiling`.
 4. Confirm operation with `spaceman ctl status`.
 
 Automatic tiling starts when the setup tour finishes. A fresh install holds it while the tour is
@@ -118,8 +118,8 @@ Accessibility is missing), `Pause Tiling` (or `Resume Tiling` while paused), `Wo
 `Launch at Login`, `Settings...` (`⌘,`), `Check for Updates...`, and `Quit Spaceman` (`⌘Q`). Settings
 includes `General`, `Layout` (Dwindle or Columns new-window tiling, window gaps, screen-edge padding,
 and a single-window width for wide displays, over a live preview), `Rules`, `Workspaces`,
-`Shortcuts`, and `Activity` (title-free arrangement
-diagnostics and process vitals). If macOS requires approval, the login item action opens **System
+`Shortcuts`, with `[labs] activity = true` `Activity` (title-free arrangement diagnostics and
+process vitals), and `Labs` (a switch for each experiment). If macOS requires approval, the login item action opens **System
 Settings > General > Login Items & Extensions**.
 
 ## Everyday Use

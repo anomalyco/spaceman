@@ -1,6 +1,10 @@
 use super::*;
 
+mod drag;
 mod sizing;
+pub(super) use drag::DragSession;
+#[cfg(test)]
+pub(super) use drag::{DISPLAY_EDGE_DROP_BAND, display_edge_bands};
 
 /// How long Accessibility may keep reporting the previously focused window
 /// after a focus command. App activation is asynchronous, so a second ⌥L
@@ -211,88 +215,6 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
                 frame: self.layout_settings(resolved.output).single(),
             })
             .collect()
-    }
-
-    pub(super) fn drop_window(
-        &mut self,
-        window: crate::PhysicalWindowId,
-        point: (i32, i32),
-        preview: bool,
-        outputs: macos::DisplayOutputs,
-        cancelled: &AtomicBool,
-    ) -> Result<CycleStatus, String> {
-        let Some(source) = self.workspaces.workspace_of(&window) else {
-            return self.cycle(outputs, cancelled);
-        };
-        if !self.is_visible(source, &outputs) || self.parked.contains_key(&window) {
-            return Ok(self.status(0, &outputs));
-        }
-        if self.workspaces.uses_fullscreen_layout(source) || self.uses_strip(source) {
-            return Ok(self.status(0, &outputs));
-        }
-        self.constrained[source.index()].remove(&window);
-        self.applied[source.index()].remove(&window);
-        let target = self
-            .navigation_tiles(&outputs)
-            .into_iter()
-            .find(|tile| tile.window != window && tile.frame.contains(point.0, point.1));
-        if let Some(target) = target {
-            if target.workspace != source {
-                if preview {
-                    return Ok(self.status(0, &outputs));
-                }
-                return self.with_warp_context(WarpContext::Suppressed, |rt| {
-                    rt.move_window(window, target.workspace, outputs, cancelled)
-                });
-            }
-            let direction = drop_direction(point, target.frame);
-            let changed = match direction {
-                Some(direction) => self.workspaces.engine_mut(source).move_window_relative(
-                    &window,
-                    &target.window,
-                    direction,
-                ),
-                None => self
-                    .workspaces
-                    .engine_mut(source)
-                    .swap_windows(&window, &target.window),
-            };
-            if changed {
-                let layout = self.layout_workspace_during_drag(
-                    source,
-                    output_for(&self.workspaces, source, &outputs),
-                    preview.then_some(&window),
-                    cancelled,
-                );
-                if !preview {
-                    self.persist_workspace_state_if_changed()?;
-                }
-                return Ok(self.status(layout.failed, &outputs));
-            }
-        }
-        if let Some(target) = self
-            .visible_workspaces(&outputs)
-            .into_iter()
-            .find(|resolved| resolved.output.contains(point.0, point.1))
-            .map(|resolved| resolved.workspace)
-            && target != source
-        {
-            if preview {
-                return Ok(self.status(0, &outputs));
-            }
-            return self.with_warp_context(WarpContext::Suppressed, |rt| {
-                rt.move_window(window, target, outputs, cancelled)
-            });
-        }
-        let layout = self.layout_workspace(
-            source,
-            output_for(&self.workspaces, source, &outputs),
-            cancelled,
-        );
-        if !preview {
-            self.persist_workspace_state_if_changed()?;
-        }
-        Ok(self.status(layout.failed, &outputs))
     }
 
     pub(super) fn resize_window(
@@ -689,7 +611,10 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
     ) -> Result<CycleStatus, String> {
         // Detach from the tiles first so the remaining windows re-fill its
         // space on the very next layout. Focus and frame stay where they are.
-        self.forget_window(workspace, &window);
+        let canvas = self
+            .layout_settings(output_for(&self.workspaces, workspace, &outputs))
+            .canvas();
+        self.forget_window_on(workspace, &window, canvas);
         self.workspaces.own_floating(window.clone(), workspace);
         self.manual_floating.insert(window);
         self.relayout_persist(workspace, &outputs, cancelled)
@@ -752,26 +677,4 @@ pub(super) fn restored_floating(workspaces: &Workspaces) -> HashSet<crate::Physi
         .floating_entries()
         .map(|(window, _)| window.clone())
         .collect()
-}
-
-fn drop_direction(point: (i32, i32), frame: crate::Rect) -> Option<Direction> {
-    let distances = [
-        (point.0 - frame.x, Direction::Left, frame.width),
-        (
-            frame.x + frame.width - point.0,
-            Direction::Right,
-            frame.width,
-        ),
-        (point.1 - frame.y, Direction::Up, frame.height),
-        (
-            frame.y + frame.height - point.1,
-            Direction::Down,
-            frame.height,
-        ),
-    ];
-    distances
-        .into_iter()
-        .filter(|(distance, _, extent)| *distance <= *extent / 4)
-        .min_by_key(|(distance, _, _)| *distance)
-        .map(|(_, direction, _)| direction)
 }

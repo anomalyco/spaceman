@@ -1,6 +1,6 @@
 //! Spaceman Labs: experimental features, each behind its own switch in `config.toml`'s
 //! `[labs]` table and off by default. There is no master switch; Settings › Labs lists every
-//! feature in [`LabFeature::ALL`] as a card with a toggle.
+//! feature in [`LabFeature::ALL`] with its own.
 //!
 //! Gate a feature where its work starts (the worker action, the hotkey registration), not only
 //! where its UI shows: with every switch off, Spaceman behaves exactly as if Labs did not exist.
@@ -22,7 +22,8 @@ use crate::{
 #[derive(Clone, Copy, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct LabsConfig {
-    #[serde(default)]
+    /// Wide columns on a horizontal strip per workspace ([`crate::strip`]).
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub scrolling_strip: bool,
     /// The chord that turns the strip on or off for the focused workspace, in `[shortcuts]`
     /// syntax (`"alt+shift+s"`).
@@ -38,9 +39,11 @@ pub struct LabsConfig {
     #[serde(default, skip_serializing_if = "SharedEdge::is_default")]
     pub scrolling_strip_shared_edge: SharedEdge,
     /// The i3/sway-style Scratchpad ([`crate::scratchpad`]) and its `⌥\` / `⌥⇧\` shortcuts.
-    /// Set in `config.toml` only for now: it has no card in Settings › Labs.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub scratchpad: bool,
+    /// Settings › Activity: the live arrangement log, doctor diagnostics, and process vitals.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub activity: bool,
 }
 
 /// A Labs feature's own shortcut: a chord written as a `[shortcuts]` key.
@@ -102,73 +105,92 @@ impl LabsConfig {
         )
     }
 
+    /// Whether `feature`'s switch is on.
     #[must_use]
     pub const fn enabled(self, feature: LabFeature) -> bool {
         match feature {
             LabFeature::ScrollingStrip => self.scrolling_strip,
+            LabFeature::Scratchpad => self.scratchpad,
+            LabFeature::Activity => self.activity,
         }
     }
 
     pub const fn set(&mut self, feature: LabFeature, enabled: bool) {
         match feature {
             LabFeature::ScrollingStrip => self.scrolling_strip = enabled,
+            LabFeature::Scratchpad => self.scratchpad = enabled,
+            LabFeature::Activity => self.activity = enabled,
         }
     }
 }
 
-/// One experiment in Labs.
+/// Every `[labs]` switch, one per experimental feature.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum LabFeature {
     /// Wide columns on a horizontal strip per workspace ([`crate::strip`]).
     ScrollingStrip,
+    /// The i3/sway-style Scratchpad ([`crate::scratchpad`]) and its `⌥\` / `⌥⇧\` shortcuts.
+    Scratchpad,
+    /// Settings › Activity: the live arrangement log, doctor diagnostics, and process vitals.
+    Activity,
 }
 
 impl LabFeature {
-    pub const ALL: &[Self] = &[Self::ScrollingStrip];
+    /// Every switch, in the order Settings › Labs lists them.
+    pub const ALL: [Self; 3] = [Self::ScrollingStrip, Self::Scratchpad, Self::Activity];
 
-    /// Its key in `[labs]`.
+    /// The `[labs]` key that turns this feature on.
     #[must_use]
-    pub const fn id(self) -> &'static str {
+    pub const fn key(self) -> &'static str {
         match self {
             Self::ScrollingStrip => "scrolling_strip",
+            Self::Scratchpad => "scratchpad",
+            Self::Activity => "activity",
         }
+    }
+
+    /// Parses a `[labs]` switch such as `activity`.
+    #[must_use]
+    pub fn parse(key: &str) -> Option<Self> {
+        Self::ALL.into_iter().find(|feature| feature.key() == key)
     }
 
     #[must_use]
     pub const fn name(self) -> &'static str {
         match self {
             Self::ScrollingStrip => "Scrolling Strip",
+            Self::Scratchpad => "Scratchpad",
+            Self::Activity => "Activity",
         }
     }
 
+    /// What the feature does, in one phrase.
     #[must_use]
     pub const fn summary(self) -> &'static str {
         match self {
-            Self::ScrollingStrip => {
-                "Keep windows wide on a horizontal strip that glides instead of shrinking tiles."
-            }
+            Self::ScrollingStrip => "Windows keep their width on a strip that glides",
+            Self::Scratchpad => "Tuck windows out of sight and summon them with a shortcut",
+            Self::Activity => "The arrangement log and diagnostics, as a pane in Settings",
         }
     }
 
-    /// The shortcut that turns it on where it applies, as `labs` has it.
+    /// The feature's own recordable shortcut as `labs` has it, for the features that keep
+    /// one in `[labs]`. The Scratchpad's two shortcuts live in `[shortcuts]`.
     #[must_use]
-    pub const fn shortcut(self, labs: &LabsConfig) -> Chord {
+    pub const fn shortcut(self, labs: &LabsConfig) -> Option<Chord> {
         match self {
-            Self::ScrollingStrip => labs.scrolling_strip_shortcut.0,
+            Self::ScrollingStrip => Some(labs.scrolling_strip_shortcut.0),
+            Self::Scratchpad | Self::Activity => None,
         }
     }
 
     /// Its shortcut's key in `[labs]`.
     #[must_use]
-    pub const fn shortcut_id(self) -> &'static str {
+    pub const fn shortcut_key(self) -> Option<&'static str> {
         match self {
-            Self::ScrollingStrip => "scrolling_strip_shortcut",
+            Self::ScrollingStrip => Some("scrolling_strip_shortcut"),
+            Self::Scratchpad | Self::Activity => None,
         }
-    }
-
-    #[must_use]
-    pub fn from_id(id: &str) -> Option<Self> {
-        Self::ALL.iter().copied().find(|feature| feature.id() == id)
     }
 
     /// What a command that needs this feature answers while it is off.
@@ -187,14 +209,21 @@ mod tests {
         let mut labs = LabsConfig::default();
         assert!(labs.is_default());
         for feature in LabFeature::ALL {
-            assert!(!labs.enabled(*feature));
-            assert_eq!(LabFeature::from_id(feature.id()), Some(*feature));
-            labs.set(*feature, true);
-            assert!(labs.enabled(*feature));
+            assert!(!labs.enabled(feature));
+            assert_eq!(LabFeature::parse(feature.key()), Some(feature));
+            labs.set(feature, true);
+            assert!(labs.enabled(feature));
             assert!(!labs.is_default());
-            labs.set(*feature, false);
+            assert_eq!(
+                toml::to_string(&labs).unwrap(),
+                format!("{} = true\n", feature.key()),
+                "only the switch that is on is written"
+            );
+            labs.set(feature, false);
         }
-        assert_eq!(LabFeature::from_id("warp_drive"), None);
+        assert!(labs.is_default());
+        assert_eq!(LabFeature::parse("warp_drive"), None);
+        assert_eq!(LabFeature::parse(""), None);
     }
 
     #[test]
@@ -204,22 +233,26 @@ mod tests {
             Ok(LabShortcut::default())
         );
         let labs: LabsConfig = toml::from_str("scrolling_strip = true").unwrap();
-        assert_eq!(LabFeature::ScrollingStrip.shortcut(&labs).symbols(), "⌥⇧S");
+        let symbols = |labs: &LabsConfig| {
+            LabFeature::ScrollingStrip
+                .shortcut(labs)
+                .map(|chord| chord.symbols())
+        };
+        assert_eq!(symbols(&labs).as_deref(), Some("⌥⇧S"));
         let picked: LabsConfig =
             toml::from_str("scrolling_strip_shortcut = \"ctrl+alt+s\"").unwrap();
-        assert_eq!(
-            LabFeature::ScrollingStrip.shortcut(&picked).symbols(),
-            "⌃⌥S"
-        );
+        assert_eq!(symbols(&picked).as_deref(), Some("⌃⌥S"));
+        // Only the strip keeps a shortcut of its own in `[labs]`.
+        for feature in [LabFeature::Scratchpad, LabFeature::Activity] {
+            assert_eq!(feature.shortcut(&picked), None);
+            assert_eq!(feature.shortcut_key(), None);
+        }
         assert!(!picked.is_default());
         assert_eq!(
             toml::to_string(&picked).unwrap(),
-            "scrolling_strip = false\nscrolling_strip_shortcut = \"ctrl+alt+s\"\n"
+            "scrolling_strip_shortcut = \"ctrl+alt+s\"\n"
         );
-        assert_eq!(
-            toml::to_string(&LabsConfig::default()).unwrap(),
-            "scrolling_strip = false\n"
-        );
+        assert_eq!(toml::to_string(&LabsConfig::default()).unwrap(), "");
         for bad in ["\"s\"", "\"shift+s\"", "\"alt+banana\"", "5"] {
             let source = format!("scrolling_strip_shortcut = {bad}");
             assert!(toml::from_str::<LabsConfig>(&source).is_err(), "{bad}");

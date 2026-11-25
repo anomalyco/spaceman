@@ -1,7 +1,8 @@
 //! Rules as a workspace map: a tile per workspace showing the apps that open there, and the
 //! apps that float below. Dragging an app to another tile, or to the float box, rewrites its
 //! rule. Everything sits at computed positions, so a drag knows where the pointer is from the
-//! dragged icon's own spot.
+//! dragged icon's own spot. The map is as wide as the pane's cards (`Ui::card_w`): its tiles and
+//! chips share that width out, and its labels sit on the page's text rail.
 
 use rune::{Cursor, El, PointerPress, Tx, el, row, text};
 use rune_kit::{Menu as KitMenu, MenuItem, Placement};
@@ -10,21 +11,20 @@ use spaceman::WorkspaceId;
 use crate::{
     Menu, Pane, Ui,
     apps::{self, App},
-    controls::{self, Paint},
+    controls::{self, METRICS, Paint},
     playground::{Scene, reset_fixture},
     rules::{Doc, Place, Rule},
     view::scroll_body,
 };
 
 const COLS: usize = 5;
-const TILE_W: f32 = 108.0;
 const TILE_H: f32 = 100.0;
-const GAP: f32 = 10.0;
-pub const MAP_W: f32 = COLS as f32 * TILE_W + (COLS - 1) as f32 * GAP;
-const HEAD_H: f32 = 20.0;
-const HEAD_GAP: f32 = 10.0;
+const GAP: f32 = 8.0;
+/// A section label's line and the gap to what it names, as over a card.
+const HEAD_H: f32 = 16.0;
+const HEAD_GAP: f32 = METRICS.label_gap;
 const GRID_TOP: f32 = HEAD_H + HEAD_GAP;
-const SECTION_GAP: f32 = 24.0;
+const SECTION_GAP: f32 = METRICS.section_gap;
 /// Inside a tile: where its icons start, their size and spacing, and how many fit.
 const TILE_PAD: f32 = 12.0;
 const ICONS_TOP: f32 = 38.0;
@@ -33,20 +33,21 @@ const ICON_GAP: f32 = 6.0;
 const ICONS_PER_ROW: usize = 3;
 const ICONS_SHOWN: usize = 6;
 /// The float box and its chips.
-const BOX_PAD: f32 = 10.0;
-const CHIP_W: f32 = 128.0;
+const BOX_PAD: f32 = 8.0;
 const CHIP_H: f32 = 32.0;
 const CHIP_GAP: f32 = 8.0;
 const CHIP_ICON: f32 = 20.0;
 const CHIPS_PER_ROW: usize = 4;
 /// Pointer travel before a press on an app becomes a drag.
 const SLOP: f32 = 3.0;
+/// The dot a title rule's icon wears.
+const TITLE_DOT: f32 = 8.0;
 
 pub(crate) const SCENES: &[Scene] = &[
     ("rules", |ui| reset_fixture(ui, Pane::Rules)),
     ("rules-drag", |ui| {
         reset_fixture(ui, Pane::Rules);
-        ui.drag = Drag::fixture(&ui.doc);
+        ui.drag = Drag::fixture(&ui.doc, ui.card_w);
     }),
     ("rules-add", |ui| {
         reset_fixture(ui, Pane::Rules);
@@ -71,8 +72,8 @@ pub struct Drag {
 
 impl Drag {
     /// Slack mid-drag over workspace 4, for stills.
-    fn fixture(doc: &Doc) -> Option<Drag> {
-        let layout = Layout::new(doc);
+    fn fixture(doc: &Doc, width: f32) -> Option<Drag> {
+        let layout = Layout::new(doc, width);
         let rule = doc
             .rules()
             .into_iter()
@@ -80,8 +81,9 @@ impl Drag {
         let (origin, size) = layout.spot(&rule)?;
         let grab = (size.0 / 2.0, size.1 / 2.0);
         let to = layout.grid.tile_origin(3);
+        let tile_w = layout.grid.tile_w();
         let delta = (
-            to.0 + TILE_W / 2.0 - origin.0 - grab.0,
+            to.0 + tile_w / 2.0 - origin.0 - grab.0,
             to.1 + TILE_H / 2.0 - origin.1 - grab.1,
         );
         Some(Drag {
@@ -94,7 +96,7 @@ impl Drag {
             moved: true,
             target: layout
                 .grid
-                .target_at(to.0 + TILE_W / 2.0, to.1 + TILE_H / 2.0),
+                .target_at(to.0 + tile_w / 2.0, to.1 + TILE_H / 2.0),
         })
     }
 }
@@ -108,7 +110,8 @@ struct Layout {
 }
 
 impl Layout {
-    fn new(doc: &Doc) -> Layout {
+    /// The map for a pane whose cards are `width` wide.
+    fn new(doc: &Doc, width: f32) -> Layout {
         let rules = doc.rules();
         let tiles = doc.workspaces_with_referenced(WorkspaceId::numbered());
         let mut routed = vec![Vec::new(); tiles.len()];
@@ -129,6 +132,7 @@ impl Layout {
         }
         Layout {
             grid: DropGrid {
+                width,
                 tiles,
                 floating_len: floating.len(),
             },
@@ -149,7 +153,7 @@ impl Layout {
     /// A rule's item: its top-left in the map and its size.
     fn spot(&self, rule: &Rule) -> Option<((f32, f32), (f32, f32))> {
         if let Some(slot) = self.floating.iter().position(|r| r.index == rule.index) {
-            return Some((self.grid.chip_origin(slot), (CHIP_W, CHIP_H)));
+            return Some((self.grid.chip_origin(slot), (self.grid.chip_w(), CHIP_H)));
         }
         self.routed.iter().enumerate().find_map(|(tile, rules)| {
             let slot = rules.iter().position(|r| r.index == rule.index)?;
@@ -164,11 +168,23 @@ impl Layout {
 /// copy to hit-test the pointer.
 #[derive(Clone, Debug)]
 struct DropGrid {
+    /// The map's width: the pane's card width.
+    width: f32,
     tiles: Vec<WorkspaceId>,
     floating_len: usize,
 }
 
 impl DropGrid {
+    /// A workspace tile's width: the map's, shared between the columns.
+    fn tile_w(&self) -> f32 {
+        (self.width - (COLS - 1) as f32 * GAP) / COLS as f32
+    }
+
+    /// A float chip's width: the box's inside, shared between a row of chips.
+    fn chip_w(&self) -> f32 {
+        (self.width - 2.0 * BOX_PAD - (CHIPS_PER_ROW - 1) as f32 * CHIP_GAP) / CHIPS_PER_ROW as f32
+    }
+
     fn grid_rows(&self) -> usize {
         self.tiles.len().div_ceil(COLS)
     }
@@ -199,7 +215,7 @@ impl DropGrid {
     fn tile_origin(&self, index: usize) -> (f32, f32) {
         let (col, row) = (index % COLS, index / COLS);
         (
-            col as f32 * (TILE_W + GAP),
+            col as f32 * (self.tile_w() + GAP),
             GRID_TOP + row as f32 * (TILE_H + GAP),
         )
     }
@@ -207,17 +223,17 @@ impl DropGrid {
     fn chip_origin(&self, slot: usize) -> (f32, f32) {
         let (col, row) = (slot % CHIPS_PER_ROW, slot / CHIPS_PER_ROW);
         (
-            BOX_PAD + col as f32 * (CHIP_W + CHIP_GAP),
+            BOX_PAD + col as f32 * (self.chip_w() + CHIP_GAP),
             self.box_top() + BOX_PAD + row as f32 * (CHIP_H + CHIP_GAP),
         )
     }
 
     /// The place under a point in the map.
     fn target_at(&self, x: f32, y: f32) -> Option<Place> {
-        if (0.0..=MAP_W).contains(&x)
+        if (0.0..=self.width).contains(&x)
             && (GRID_TOP - GAP..=GRID_TOP + self.grid_h() + GAP).contains(&y)
         {
-            let col = ((x + GAP / 2.0) / (TILE_W + GAP))
+            let col = ((x + GAP / 2.0) / (self.tile_w() + GAP))
                 .floor()
                 .clamp(0.0, (COLS - 1) as f32);
             let row = ((y - GRID_TOP + GAP / 2.0) / (TILE_H + GAP))
@@ -227,13 +243,15 @@ impl DropGrid {
             return self.tiles.get(index).map(|tile| Place::Workspace(*tile));
         }
         let top = self.float_head_top();
-        ((0.0..=MAP_W).contains(&x) && (top..=self.box_top() + self.box_h() + GAP).contains(&y))
-            .then_some(Place::Float)
+        ((0.0..=self.width).contains(&x)
+            && (top..=self.box_top() + self.box_h() + GAP).contains(&y))
+        .then_some(Place::Float)
     }
 }
 
 pub fn pane(ui: &Ui, p: Paint, layer: &mut Vec<El>) -> El {
-    let layout = Layout::new(&ui.doc);
+    let layout = Layout::new(&ui.doc, ui.card_w);
+    let width = layout.grid.width;
     let view = MapView {
         ui,
         p,
@@ -253,23 +271,35 @@ pub fn pane(ui: &Ui, p: Paint, layer: &mut Vec<El>) -> El {
     } else {
         "Drag an app to move it"
     };
-    let mut map = el().key("map").w(MAP_W).h(layout.grid.height()).child(
-        controls::heading(p, "where", "Where apps open", Some(hint))
-            .w(MAP_W)
-            .px(0.0)
-            .absolute(0.0, 0.0),
-    );
+    // The labels sit on the text rail, as over a card; the tiles and the float box take the
+    // card's edges.
+    let heading = |key: &str, title: &str, accessory: Option<El>, top: f32| {
+        el().key(key)
+            .absolute(0.0, top)
+            .w(width)
+            .child(controls::section_header(p, title, accessory))
+    };
+    let mut map = el()
+        .key("map")
+        .w(width)
+        .h(layout.grid.height())
+        .child(heading(
+            "where",
+            "Where apps open",
+            Some(controls::caption(p, hint)),
+            0.0,
+        ));
     for (index, workspace) in layout.grid.tiles.iter().copied().enumerate() {
         let (x, y) = layout.grid.tile_origin(index);
         map = map.child(view.tile(index, workspace, layer).absolute(x, y));
     }
     map = map
-        .child(
-            controls::heading(p, "float-heading", "Floating", None)
-                .w(MAP_W)
-                .px(0.0)
-                .absolute(0.0, layout.grid.float_head_top()),
-        )
+        .child(heading(
+            "float-heading",
+            "Floating",
+            None,
+            layout.grid.float_head_top(),
+        ))
         .child(view.float_box(layer));
     if let Some(drag) = ui.drag.as_ref().filter(|drag| drag.moved) {
         map = map.children(view.ghost(drag));
@@ -304,7 +334,7 @@ impl MapView<'_> {
             .key(format!("tile-{workspace}"))
             .role("group")
             .label(format!("Workspace {workspace}"))
-            .size(TILE_W, TILE_H)
+            .size(self.layout.grid.tile_w(), TILE_H)
             .radius(self.p.k.radius.lg)
             .fill(if target { c.layer_02 } else { c.layer_01 })
             .border(border.0, border.1)
@@ -312,7 +342,7 @@ impl MapView<'_> {
             .child(
                 text(workspace.to_string())
                     .key("number")
-                    .font(self.p.k.ty.ui_medium)
+                    .font(self.p.tabular(self.p.strong()))
                     .color(if active {
                         self.p.text()
                     } else {
@@ -322,7 +352,7 @@ impl MapView<'_> {
             )
             .child(
                 self.add_button(Place::Workspace(workspace), layer)
-                    .absolute(TILE_W - 30.0, 8.0),
+                    .absolute(self.layout.grid.tile_w() - 30.0, 8.0),
             );
         let overflow = rules.len() > ICONS_SHOWN;
         for (slot, rule) in rules.iter().enumerate() {
@@ -331,12 +361,12 @@ impl MapView<'_> {
                 tile = tile.child(
                     el().key("more")
                         .size(ICON, ICON)
-                        .radius(6.0)
+                        .radius(self.p.k.radius.md)
                         .fill(c.layer_03)
                         .center()
                         .child(
                             text(format!("+{}", rules.len() - slot))
-                                .font(self.p.k.ty.small_medium)
+                                .font(self.p.tabular(self.p.tag()))
                                 .color(self.p.muted()),
                         )
                         .absolute(x, y),
@@ -356,7 +386,7 @@ impl MapView<'_> {
         let target = self.target == Some(Place::Float);
         let mut area = el()
             .key("float-box")
-            .w(MAP_W)
+            .w(self.layout.grid.width)
             .h(self.layout.grid.box_h())
             .radius(self.p.k.radius.lg)
             .fill(if target { c.layer_02 } else { c.layer_01 })
@@ -382,7 +412,7 @@ impl MapView<'_> {
         let c = &self.p.k.c;
         let name = self.rule_name(rule);
         row()
-            .size(CHIP_W, CHIP_H)
+            .size(self.layout.grid.chip_w(), CHIP_H)
             .px(6.0)
             .gap(8.0)
             .center_y()
@@ -396,7 +426,7 @@ impl MapView<'_> {
                     name
                 })
                 .key("name")
-                .font(self.p.k.ty.ui)
+                .font(self.p.row_title())
                 .color(self.p.text())
                 .truncate()
                 .shrink(),
@@ -409,8 +439,8 @@ impl MapView<'_> {
             .key("add-float")
             .role("button")
             .label("Add app")
-            .size(CHIP_W, CHIP_H)
-            .px(10.0)
+            .size(self.layout.grid.chip_w(), CHIP_H)
+            .px(8.0)
             .gap(6.0)
             .center_y()
             .radius(self.p.k.radius.md)
@@ -421,7 +451,11 @@ impl MapView<'_> {
             .focus_ring(2.0, -2.0, c.border_focus)
             .on_press(|ui: &mut Ui| ui.open_add_menu(Place::Float))
             .child(rune::icon(&rune_theme_opencode::icons::PLUS, 14.0).color(c.icon_muted))
-            .child(text("Add app").font(self.p.k.ty.ui).color(self.p.muted()));
+            .child(
+                text("Add app")
+                    .font(self.p.row_title())
+                    .color(self.p.muted()),
+            );
         self.add_menu("add-float-menu", trigger, Place::Float, layer)
     }
 
@@ -544,7 +578,7 @@ impl MapView<'_> {
             .flatten()
             .chain(&self.layout.floating)
             .find(|rule| rule.index == drag.rule)?;
-        let item = if drag.size == (CHIP_W, CHIP_H) {
+        let item = if drag.size.1 == CHIP_H {
             self.chip(rule)
         } else {
             self.app_icon(rule, ICON)
@@ -593,8 +627,8 @@ impl MapView<'_> {
         let c = &self.p.k.c;
         icon.child(
             el().key("title-dot")
-                .size(8.0, 8.0)
-                .radius(4.0)
+                .size(TITLE_DOT, TITLE_DOT)
+                .radius(TITLE_DOT / 2.0)
                 .fill(c.icon_accent)
                 .border(1.5, c.layer_01)
                 .absolute(size - 6.0, -2.0),
@@ -688,10 +722,32 @@ fn drag_step(
 mod tests {
     use super::*;
 
+    /// The cards' width as Settings opens.
+    const WIDTH: f32 = 660.0;
+
+    #[test]
+    fn the_map_shares_out_the_cards_width() {
+        let doc = Doc::parse(include_str!("../fixtures/config.toml"));
+        // The smallest window, the one Settings opens at, and the widest the cards get.
+        for width in [600.0, WIDTH, METRICS.content_max] {
+            let grid = Layout::new(&doc, width).grid;
+            let last_tile = grid.tile_origin(COLS - 1).0 + grid.tile_w();
+            assert!((last_tile - width).abs() < 0.01, "tiles end at {last_tile}");
+            let last_chip = grid.chip_origin(CHIPS_PER_ROW - 1).0 + grid.chip_w();
+            assert!(
+                (last_chip - (width - BOX_PAD)).abs() < 0.01,
+                "chips end at {last_chip}"
+            );
+            // Six icons still fit a tile at the narrowest.
+            let (x, _) = Layout::icon_offset(ICONS_PER_ROW - 1);
+            assert!(x + ICON + TILE_PAD <= grid.tile_w());
+        }
+    }
+
     #[test]
     fn hit_tests_tiles_and_the_float_box() {
         let doc = Doc::parse(include_str!("../fixtures/config.toml"));
-        let layout = Layout::new(&doc);
+        let layout = Layout::new(&doc, WIDTH);
         let grid = &layout.grid;
         assert_eq!(grid.tiles.len(), 11, "1–10 and M");
         let ws = |name| Some(Place::Workspace(WorkspaceId::parse(name).unwrap()));
@@ -716,7 +772,7 @@ mod tests {
 
         // Default config shows all ten numbered workspaces and no unmentioned named ones.
         let mut doc = Doc::parse("version = 1\n");
-        let layout = Layout::new(&doc);
+        let layout = Layout::new(&doc, WIDTH);
         let expected_numbered: Vec<WorkspaceId> = WorkspaceId::numbered().collect();
         assert_eq!(layout.grid.tiles, expected_numbered);
         assert_eq!(layout.grid.tiles.len(), 10);
@@ -751,18 +807,18 @@ mod tests {
             config.disposition("com.example.Editor", &sample_window),
             spaceman::config::WindowDisposition::Route(ws10)
         );
-        let after_add = Layout::new(&doc);
+        let after_add = Layout::new(&doc, WIDTH);
         assert_eq!(after_add.grid.tiles, expected_numbered);
         assert_eq!(after_add.routed[9].len(), 1);
         assert!(after_add.spot(&doc.rules()[0]).is_some());
 
         // Mentioning workspace 10 in [[workspaces]] also keeps workspace 10 once.
         doc.set_monitor(ws10, Some("main"));
-        assert_eq!(Layout::new(&doc).grid.tiles, expected_numbered);
+        assert_eq!(Layout::new(&doc, WIDTH).grid.tiles, expected_numbered);
 
         // Mentioning a named workspace appends it after workspace 10 and hit-tests it.
         doc.set_monitor(ws_m, Some("main"));
-        let with_named = Layout::new(&doc);
+        let with_named = Layout::new(&doc, WIDTH);
         assert_eq!(with_named.grid.tiles.len(), 11);
         assert_eq!(with_named.grid.tiles[9], ws10);
         assert_eq!(with_named.grid.tiles[10], ws_m);
@@ -776,7 +832,7 @@ mod tests {
     #[test]
     fn every_rule_has_a_spot() {
         let doc = Doc::parse(include_str!("../fixtures/config.toml"));
-        let layout = Layout::new(&doc);
+        let layout = Layout::new(&doc, WIDTH);
         for rule in doc.rules() {
             assert!(layout.spot(&rule).is_some(), "{rule:?}");
         }
@@ -816,11 +872,11 @@ mod tests {
         let mut ui = crate::playground::blank_fixture();
         ui.fixture = false;
         ui.doc = Doc::load_from(path.clone());
-        let layout = Layout::new(&ui.doc);
+        let layout = Layout::new(&ui.doc, WIDTH);
         let rule = ui.doc.rules()[0].clone();
         let (origin, size) = layout.spot(&rule).unwrap();
         let ws2 = layout.grid.tile_origin(1);
-        let dx = ws2.0 + TILE_W / 2.0 - origin.0 - size.0 / 2.0;
+        let dx = ws2.0 + layout.grid.tile_w() / 2.0 - origin.0 - size.0 / 2.0;
         let dy = ws2.1 + TILE_H / 2.0 - origin.1 - size.1 / 2.0;
 
         let grab = (size.0 / 2.0, size.1 / 2.0);

@@ -67,6 +67,8 @@ Focus follows                                              // ws.focus-follow
 │   -> that workspace becomes active, with focus on that window (not its remembered tile)
 │   └── Switch interrupted by that same activation -> retiles every 40 ms for 500 ms and follows it
 │       as soon as Accessibility catches up
+│   └── Activation slides macOS to another Space (Cmd+Tab out of a native fullscreen app)
+│       -> follows once the slide settles; a follow the slide made fail is retried, not re-homed
 ├── Focusing a window on another display's visible workspace -> no switch; Option+Tab remembers it
 └── No focused window reported -> follows the frontmost app only when all its windows, tiled
     or floating, are on one workspace
@@ -83,10 +85,14 @@ Where a new window goes (first match wins)                 // ws.adoption
 
 Displays                                                    // ws.displays
 ├── Default: 1-5 main, 6-10 secondary; [[workspaces]] monitor = main | secondary | UUID | name
-├── Settings › Workspaces offers every connected display: Main, Secondary, then each further
-│   display as its own picker segment and section card (numbered Display 3/4 past three
-│   displays); picking one writes its UUID, the same selector Option+Shift+Tab persists, and a
-│   saved UUID renders back as that display's name
+├── Settings › Workspaces offers every connected display as its own picker segment and card:
+│   Main and Secondary with two displays, and past two Main then each display by its own name,
+│   numbered when two share one (Studio Display 1 / Studio Display 2; Display 2/3/4 in the
+│   segments past three displays); picking one writes its UUID, the same selector
+│   Option+Shift+Tab persists, and a saved UUID renders back as that display's name
+├── A row set to a display other than its built-in default says Default: <that display> in the
+│   picker's own words; a row already on its default says nothing, including one saved by the
+│   UUID of the display that is also Secondary
 ├── Preferred display unplugged -> its workspaces fall back to main, return on reconnect; its
 │   saved assignment keeps a Disconnected displays card with the picker on Not connected
 └── Display added or removed -> hidden windows re-parked against the new displays; visible owned
@@ -239,13 +245,21 @@ on the same letter.
   `switching_away_parks_a_window_that_overflows_the_display_edge`,
   `laying_out_a_parked_window_retires_its_stale_recovery_frame`.
 - Unit, `agent/src/panes/workspaces.rs`: the display picker with two displays (Main | Secondary
-  kept, section captions name the real displays), three displays (two identically named externals
-  told apart as `Secondary` and `Studio Display 2`, picking the third writes its UUID, a saved
-  UUID renders as its label, a saved UUID for Main resolves to Main), one display (Secondary still
-  offered), an unplugged display (an extra `Not connected` segment, its `config.toml` entry
-  kept), and four displays (numbered segments `Display 3`/`Display 4`, names kept in the
-  headings). Section cards and segments themselves are seen in the Playground
-  (`Workspaces/workspaces-three-displays`, `Workspaces/workspaces-four-displays`,
+  kept, section captions name the real displays, a saved Secondary or Main UUID says no default
+  note), three displays (two identically named externals told apart as `Studio Display 1` and
+  `Studio Display 2`, picking the third writes its UUID, a saved UUID renders as its label, a
+  saved UUID for Main resolves to Main, and a workspace saved by the Secondary display's UUID
+  shows no `Default:` note while the third display names it as the default it differs from —
+  issue 337), one display (Secondary still offered), an unplugged display (an extra `Not
+  connected` segment, its `config.toml` entry kept), and four displays (numbered segments
+  `Display 2`/`Display 3`/`Display 4`, names kept in the headings), a name too long for a segment
+  (`a_long_display_name_stays_in_its_heading_and_only_its_segment_is_numbered`,
+  `two_long_names_that_macos_suffixed_keep_their_names_and_an_unnamed_display_its_position` —
+  issue 349), and workspace 10's title naming the keys `[shortcuts]` gives it
+  (`workspace_10_names_the_keys_that_really_switch_to_it` — issue 350). Section cards and segments
+  themselves are seen in the Playground
+  (`Workspaces/workspaces-three-displays`, `Workspaces/workspaces-long-name`,
+  `Workspaces/workspaces-custom-modifier`, `Workspaces/workspaces-four-displays`,
   `Workspaces/workspaces-unplugged`), not by a test.
 - Unit, `src/macos/displays.rs`: `selector_for` (`main`/`secondary`/UUID) and `ordered` (left to
   right), shared with `Option+Shift+Tab`.
@@ -282,6 +296,12 @@ on the same letter.
 - Unit (FakeBackend), `src/app/tests/reconciliation.rs`:
   `an_app_that_quits_while_hidden_releases_its_tiles_and_recovery_metadata` (an app that quits
   while its windows are parked frees their tiles without the workspace being shown).
+- Unit (FakeBackend), `src/app/tests/space_transitions.rs`:
+  `cmd_tab_out_of_native_fullscreen_lands_on_the_target_workspace`,
+  `a_focus_follow_a_space_slide_interrupts_is_retried` and
+  `a_failed_focus_follow_without_a_space_change_stays_suppressed` (focus follow across a Space
+  slide), and `a_space_slide_holds_layout_until_it_settles`. When macOS posts the Space change
+  relative to the slide is not covered.
 - Unit: `src/hotkeys/delivery.rs` pairs Option presses seen by the key tap with Carbon deliveries
   in either order and reports a press still undelivered after 750 ms. The tap
   (`src/macos/keys.rs`) and the re-registration in `src/app/app_loop/hotkey_health.rs` are not

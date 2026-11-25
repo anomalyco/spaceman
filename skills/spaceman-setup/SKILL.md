@@ -5,7 +5,7 @@ description: Install, configure, verify, troubleshoot, or uninstall the Spaceman
 
 # Spaceman Setup
 
-Spaceman is an experimental native macOS tiling window manager for Apple silicon. Version 0.3.3 is
+Spaceman is an experimental native macOS tiling window manager for Apple silicon. Version 0.3.4 is
 signed by Anomaly (`anomaly.spaceman`), notarized, and distributed outside the Mac App Store. The
 preview declares macOS 14.0 as its minimum; compatibility is not yet broadly qualified.
 
@@ -36,9 +36,9 @@ open "/Applications/Spaceman.app"
 
 Spaceman opens a three-step setup tour: `Welcome`, `Give Spaceman window access`, then
 `You're all set`. Choose `Get started`, grant Accessibility access in
-**System Settings > Privacy & Security**, optionally enable `Launch at Login`, and press
-`Start Tiling`. Tiling stays paused while the tour is open, so granting permission never rearranges
-windows behind it; automatic tiling starts when you press `Start Tiling`.
+**System Settings > Privacy & Security**, optionally enable `Launch at login`, and press
+`Start tiling`. Tiling stays paused while the tour is open, so granting permission never rearranges
+windows behind it; automatic tiling starts when you press `Start tiling`.
 
 The permission list is named **Accessibility** through macOS 26, **Device Control and Data Access**
 on macOS 27.0 through 27.2, and **System & App Protection Override** on macOS 27.3 and later. On 27.3
@@ -93,7 +93,7 @@ spaceman displays
 
 ## Troubleshoot
 
-- **Tiling never starts**: the setup tour is still open and waiting for `Start Tiling`, or
+- **Tiling never starts**: the setup tour is still open and waiting for `Start tiling`, or
   Accessibility permission is missing. Open Settings, run the tour again, and check the menu bar item.
 - **Hotkeys do nothing**: another app owns the `Option` shortcuts, or Accessibility permission is
   missing — the menu bar item reports which.
@@ -102,12 +102,12 @@ spaceman displays
   until pause or quit has restored every window.
 - **Windows keep moving on their own**: another window manager is running; quit it, then
   `spaceman ctl resume`.
-- **Updates**: Spaceman checks Anomaly's release service and offers `Install & Restart` in Settings
+- **Updates**: Spaceman checks Anomaly's release service and offers `Install & restart` in Settings
   and the menu; it restores every window first.
 
 ## Uninstall
 
-Turn off `Launch at Login` in Spaceman Settings first, then restore and quit:
+Turn off `Launch at login` in Spaceman Settings first, then restore and quit:
 
 ```sh
 spaceman ctl pause   # wait for "mode":"paused" and "busy":false

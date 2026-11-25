@@ -154,7 +154,7 @@ pub struct MainThreadAgent {
     updater: crate::updater::Updater,
     /// The updater revision last shown.
     update_revision: u64,
-    /// Tiling was on when Install & Restart began, so a failed install resumes it.
+    /// Tiling was on when Install & restart began, so a failed install resumes it.
     resume_after_update: bool,
     /// Scrolling Strip glides, presented at the display's refresh rate.
     glides: glide::GlidePresenter,

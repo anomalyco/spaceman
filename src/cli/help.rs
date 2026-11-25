@@ -182,6 +182,8 @@ pub(crate) fn config_help(executable: &str) -> String {
         "  labs.scrolling_strip_damping  0.6-1.3  Glide spring damping; under 1 bounces (default: 1.0)",
         "  labs.scrolling_strip_shared_edge  tuck | slide  How columns meet another monitor's edge",
         "                        (default: tuck)",
+        "  labs.scratchpad  true | false    The i3/sway-style Scratchpad and its two shortcuts",
+        "  labs.activity    true | false    Settings › Activity: arrangement log and diagnostics",
         "",
         "Notes:",
         "  - Respects SPACEMAN_CONFIG and SPACEMAN_APPLICATION_SUPPORT.",

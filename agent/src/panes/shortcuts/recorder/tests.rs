@@ -324,7 +324,7 @@ fn a_cleared_shortcut_stays_cleared_after_its_old_chord_is_reused() {
             .collect::<Vec<_>>(),
         ["alt+h"]
     );
-    // Reset to Defaults restores every built-in shortcut.
+    // Reset to defaults restores every built-in shortcut.
     ui.doc.reset_shortcuts();
     assert!(!ui.doc.has_custom_shortcuts());
 }

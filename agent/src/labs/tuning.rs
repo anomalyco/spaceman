@@ -1,6 +1,6 @@
-//! The Scrolling Strip's glide tuning on its card, shown while the strip is on: how long a glide
-//! takes, how springy it is, and how columns meet another display's edge. Each pick writes
-//! `[labs]` in `config.toml`, and the worker reloads it before the next key press.
+//! The Scrolling Strip's glide tuning in its Customize sheet: how long a glide takes, how
+//! springy it is, and how columns meet another display's edge. Each pick writes `[labs]` in
+//! `config.toml`, and the worker reloads it before the next key press.
 
 use rune::{El, Tx};
 use rune_kit::SegmentedControl;
@@ -41,10 +41,12 @@ fn options<T: Copy + PartialEq>(
 fn picker<T: Copy + PartialEq + 'static>(
     p: Paint,
     key: &str,
+    label: &str,
     (labels, values, selected): (Vec<String>, Vec<T>, usize),
     pick: fn(&mut Ui, T),
 ) -> El {
     SegmentedControl::new(&labels, Some(selected))
+        .label(label)
         .fit()
         .on_pick(move |ui: &mut Ui, index, _: &mut Tx| {
             if let Some(value) = values.get(index) {
@@ -94,6 +96,7 @@ fn duration_row(ui: &Ui, p: Paint) -> El {
     let control = picker(
         p,
         "duration-picker",
+        "Glide",
         duration_options(ui.doc.strip_duration()),
         |ui, duration| ui.edit(|doc| doc.set_strip_duration(duration)),
     );
@@ -104,28 +107,35 @@ fn damping_row(ui: &Ui, p: Paint) -> El {
     let control = picker(
         p,
         "damping-picker",
+        "Feel",
         damping_options(ui.doc.strip_damping()),
         |ui, damping| ui.edit(|doc| doc.set_strip_damping(damping)),
     );
     controls::setting_row(p, "glide-feel", "Feel", None, control)
 }
 
+/// What the chosen option does: the row's description says what is true now.
+const fn shared_edge_effect(edge: SharedEdge) -> &'static str {
+    match edge {
+        SharedEdge::Tuck => "Columns stay on this display",
+        SharedEdge::Slide => "Columns glide halfway past the shared edge",
+    }
+}
+
 fn shared_edge_row(ui: &Ui, p: Paint) -> El {
+    let edge = ui.doc.strip_shared_edge();
     let control = picker(
         p,
         "shared-edge-picker",
-        shared_edge_options(ui.doc.strip_shared_edge()),
+        "Next to another display",
+        shared_edge_options(edge),
         |ui, edge| ui.edit(|doc| doc.set_strip_shared_edge(edge)),
     );
     controls::setting_row(
         p,
         "shared-edge",
         "Next to another display",
-        Some((
-            "Tuck keeps columns on this display. Slide lets them glide halfway past the edge."
-                .into(),
-            p.muted(),
-        )),
+        Some((shared_edge_effect(edge).into(), p.muted())),
         control,
     )
 }

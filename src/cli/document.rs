@@ -8,10 +8,9 @@ use serde::{Deserialize, Serialize};
 use spaceman::{
     DisplaySelector, WorkspaceId, Workspaces,
     config::{
-        Config, HudPosition, HudStyle, LayoutMode, MouseFollowsFocus, UpdateChannel, config_path,
-        lock_config, write_config_atomic,
+        Config, HudPosition, HudStyle, LabsConfig, LayoutMode, MouseFollowsFocus, UpdateChannel,
+        config_path, lock_config, write_config_atomic,
     },
-    labs::LabsConfig,
     spacing::{Spacing, SpacingKey, check_outer},
 };
 
@@ -21,6 +20,8 @@ pub(crate) struct ConfigDoc {
     pub version: u32,
     #[serde(default, skip_serializing_if = "SettingsDoc::is_empty")]
     pub settings: SettingsDoc,
+    /// `[labs]`: the Lab switches and their settings, edited by
+    /// `spaceman config set|reset labs.<key>`. Left out of the file while all are default.
     #[serde(default, skip_serializing_if = "LabsConfig::is_default")]
     pub labs: LabsConfig,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]

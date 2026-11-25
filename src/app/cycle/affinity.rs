@@ -265,7 +265,9 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
                     .map(|slot| slot.identity_window().clone())
                     .collect::<Vec<_>>();
                 self.note_departure(&app);
-                self.workspaces.forget_app(workspace, &app);
+                let canvas = self.known_workspace_canvas(workspace);
+                self.workspaces
+                    .forget_app_with(workspace, &app, self.config.layout(), canvas);
                 for window in &windows {
                     self.forget_window(workspace, window);
                 }

@@ -508,6 +508,13 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
             // A pending restore may land after rollback. Supersede that write
             // even when its recovery entry has not yet been retired.
             let _: macos::ApplyOutcome = self.park_window(window, output, outputs);
+            // Spaceman revealed this window itself. Even when the re-park write
+            // could not land (mid Space slide), seeing it on screen right
+            // after is not the app or the user summoning it, so heal must not
+            // re-home it during the settle grace (#329).
+            if self.parked.contains_key(window) {
+                self.recently_parked.insert(window.clone(), Instant::now());
+            }
         }
     }
 

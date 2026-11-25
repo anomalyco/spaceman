@@ -6,10 +6,13 @@ pub mod shortcuts;
 pub(crate) mod workspaces;
 
 use rune::{El, Icon};
-use spaceman::app::{UiLaunchAtLogin, UiUpdateStatus};
+use spaceman::{
+    app::{UiLaunchAtLogin, UiUpdateStatus},
+    config::{LabFeature, LabsConfig},
+};
 
 use crate::{
-    Ui, activity,
+    Sheet, Ui, activity,
     controls::Paint,
     labs, map,
     playground::{Scene, reset_fixture},
@@ -107,14 +110,33 @@ impl Pane {
             Pane::Workspaces => workspaces::pane(ui, p),
             Pane::Shortcuts => shortcuts::pane(ui, p),
             Pane::Activity => activity::pane(ui, p),
-            Pane::Labs => labs::pane(ui, p, layer),
+            Pane::Labs => labs::pane(ui, p),
         }
     }
 
-    /// Maps `⌘1`..`⌘N` in sidebar order.
-    pub fn from_shortcut(digit: char) -> Option<Pane> {
+    /// Whether Settings lists this pane with `labs` as configured. A Lab pane stays out of the
+    /// sidebar until its `[labs]` switch is on.
+    pub const fn visible(self, labs: LabsConfig) -> bool {
+        match self {
+            Pane::Activity => labs.enabled(LabFeature::Activity),
+            Pane::General
+            | Pane::Layout
+            | Pane::Rules
+            | Pane::Workspaces
+            | Pane::Shortcuts
+            | Pane::Labs => true,
+        }
+    }
+
+    /// Pane::ALL without the Lab panes whose switch is off, in sidebar order.
+    pub fn listed(labs: LabsConfig) -> impl Iterator<Item = Pane> {
+        Self::ALL.into_iter().filter(move |pane| pane.visible(labs))
+    }
+
+    /// Maps `⌘1`..`⌘N` in the sidebar order `labs` lists, so a hidden Lab pane takes no digit.
+    pub fn from_shortcut(digit: char, labs: LabsConfig) -> Option<Pane> {
         let index = digit.to_digit(10)?.checked_sub(1)? as usize;
-        Self::ALL.get(index).copied()
+        Self::listed(labs).nth(index)
     }
 
     /// Maps a `spaceman://` deep-link pane to a registered Settings pane.
@@ -136,6 +158,18 @@ impl Pane {
     }
 }
 
+/// Mounts the open modal sheet, if there is one, above the pane.
+pub fn sheet(ui: &Ui, p: Paint, reduce_motion: bool, layer: &mut Vec<El>) {
+    match &ui.sheet {
+        Some(Sheet::Hud(preview)) => general::hud_sheet(ui, preview, p, reduce_motion, layer),
+        Some(Sheet::Lab(feature)) => labs::sheet(ui, *feature, p, layer),
+        None => {}
+    }
+}
+
+#[cfg(test)]
+mod tests;
+
 pub(crate) const SCENES: &[Scene] = &[
     ("general", |ui| reset_fixture(ui, Pane::General)),
     ("general-setup", |ui| {
@@ -145,6 +179,19 @@ pub(crate) const SCENES: &[Scene] = &[
             agent.automatic = false;
             agent.launch_at_login = UiLaunchAtLogin::Off;
         }
+    }),
+    ("general-hud-off", |ui| {
+        reset_fixture(ui, Pane::General);
+        ui.set_hud(None);
+    }),
+    // The Workspace HUD's Customize sheet, with the capsule on each edge.
+    ("hud-customize", |ui| {
+        reset_fixture(ui, Pane::General);
+        general::fixture_hud_sheet(ui, spaceman::config::HudPosition::Bottom);
+    }),
+    ("hud-customize-top", |ui| {
+        reset_fixture(ui, Pane::General);
+        general::fixture_hud_sheet(ui, spaceman::config::HudPosition::Top);
     }),
     ("general-update-ready", |ui| {
         reset_fixture(ui, Pane::General);
@@ -176,6 +223,17 @@ pub(crate) const SCENES: &[Scene] = &[
         ui.displays = workspaces::fixture_three();
         let nine = spaceman::WorkspaceId::new(9).unwrap_or(spaceman::WorkspaceId::SIX);
         ui.edit(|doc| doc.set_monitor(nine, Some(workspaces::THIRD_FIXTURE_ID)));
+    }),
+    // A display whose name is too long for a segment: its card keeps the name (issue 349).
+    ("workspaces-long-name", |ui| {
+        reset_fixture(ui, Pane::Workspaces);
+        ui.displays = workspaces::fixture_long_name();
+    }),
+    // The Control + Option base: workspace 10 names the keys that switch to it (issue 350).
+    ("workspaces-custom-modifier", |ui| {
+        reset_fixture(ui, Pane::Workspaces);
+        shortcuts::fixture_custom(ui);
+        ui.shortcut_capture = shortcuts::Capture::default();
     }),
     // A fourth monitor: the picker numbers the last two so it stays one readable row.
     ("workspaces-four-displays", |ui| {

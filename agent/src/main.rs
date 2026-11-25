@@ -9,6 +9,8 @@ static ALLOCATOR: procwatch::alloc::Counting = procwatch::alloc::Counting::syste
 mod activity;
 mod apps;
 mod controls;
+#[cfg(test)]
+mod design_tokens;
 #[cfg(target_os = "macos")]
 mod host;
 mod hud;
@@ -28,8 +30,14 @@ use rules::{Doc, Place};
 use rune::{AppSpec, KeyEvent, PointerPress, Tx, Waker};
 use spaceman::app::{UiAction, UiAgentSnapshot, UiBridge};
 
-/// One fixed size: tiling window managers float such a window, and every pane fits it.
-pub const WINDOW_SIZE: (f32, f32) = (860.0, 580.0);
+/// The one modal sheet that is open.
+#[derive(Clone, Debug)]
+pub enum Sheet {
+    /// The Workspace HUD's Customize sheet, with the demo desktop its miniature shows.
+    Hud(Box<hud::HudPreview>),
+    /// A Labs feature's Customize sheet (the Scrolling Strip's).
+    Lab(spaceman::labs::LabFeature),
+}
 
 /// The one anchored menu that is open.
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -57,6 +65,9 @@ pub struct Ui {
     pub tour: Option<onboarding::Tour>,
     pub drag: Option<map::Drag>,
     pub menu: Option<Menu>,
+    pub sheet: Option<Sheet>,
+    /// The width cards have in the pane on screen, as last laid out.
+    pub(crate) card_w: f32,
     pub running: Vec<apps::Running>,
     /// Every connected display, as Settings › Workspaces offers them.
     pub(crate) displays: Vec<panes::workspaces::ConnectedDisplay>,
@@ -78,7 +89,6 @@ pub struct Ui {
     pub(crate) shortcut_capture: panes::shortcuts::Capture,
     /// Scenes render fixed data and ignore the live agent and file.
     pub(crate) fixture: bool,
-    pub(crate) labs: labs::LabsView,
 }
 
 impl Ui {
@@ -105,6 +115,8 @@ impl Ui {
             tour: None,
             drag: None,
             menu: None,
+            sheet: None,
+            card_w: controls::WINDOW.card_w(controls::WINDOW.size.0),
             running: Vec::new(),
             displays: Vec::new(),
             displays_at: None,
@@ -115,7 +127,6 @@ impl Ui {
             per_edge: None,
             shortcut_capture: panes::shortcuts::Capture::Idle,
             fixture: false,
-            labs: labs::LabsView::default(),
         };
         ui.look_up_apps();
         if let Some(step) = initial_tour {
@@ -127,7 +138,28 @@ impl Ui {
         ui
     }
 
+    /// Opens the Workspace HUD's Customize sheet. With the HUD off there is nothing to customize.
+    pub fn open_hud_sheet(&mut self) {
+        if self.doc.hud() {
+            self.menu = None;
+            self.sheet = Some(Sheet::Hud(Box::new(hud::HudPreview::sample())));
+        }
+    }
+
+    /// Opens a Labs feature's Customize sheet. With the feature off there is nothing to customize.
+    pub fn open_lab_sheet(&mut self, feature: spaceman::labs::LabFeature) {
+        if self.doc.lab(feature) {
+            self.menu = None;
+            self.sheet = Some(Sheet::Lab(feature));
+        }
+    }
+
+    pub fn close_sheet(&mut self) {
+        self.sheet = None;
+    }
+
     pub fn start_tour(&mut self) {
+        self.sheet = None;
         self.menu = None;
         self.drag = None;
         self.flush_pending_reload();
@@ -143,6 +175,7 @@ impl Ui {
         self.pane = pane;
         self.navigated = true;
         self.menu = None;
+        self.sheet = None;
         self.drag = None;
         self.flush_pending_reload();
         self.highlight_lab = None;
@@ -162,7 +195,18 @@ impl Ui {
         self.hud_preview = None;
         let pane = match target.pane {
             Some(deep_pane) => match Pane::from_deep_link(deep_pane) {
-                Some(pane) => pane,
+                Some(pane) if pane.visible(self.doc.labs()) => pane,
+                Some(pane) => {
+                    let line = format!(
+                        "spaceman: deep link pane '{}' is behind an off [labs] switch; opening General\n",
+                        pane.key()
+                    );
+                    drop(std::io::Write::write_all(
+                        &mut std::io::stderr().lock(),
+                        line.as_bytes(),
+                    ));
+                    Pane::General
+                }
                 None => {
                     let line = format!(
                         "spaceman: deep link pane '{}' is not registered in this build; opening General\n",
@@ -319,6 +363,7 @@ impl Ui {
                 }
             }
             self.look_up_apps();
+            self.sync_hud_from_doc();
             return;
         }
         match self.doc.edit_and_save(edit) {
@@ -329,7 +374,16 @@ impl Ui {
         self.look_up_apps();
     }
 
-    fn sync_hud_from_doc(&self) {
+    fn sync_hud_from_doc(&mut self) {
+        // What a sheet customizes went off, here or in config.toml: it has nothing to show.
+        let stale = match &self.sheet {
+            Some(Sheet::Hud(_)) => !self.doc.hud(),
+            Some(Sheet::Lab(feature)) => !self.doc.lab(*feature),
+            None => false,
+        };
+        if stale {
+            self.sheet = None;
+        }
         if let Some(driver) = &self.hud_driver {
             driver.set_enabled(self.doc.hud());
             driver.set_style(self.doc.hud_style());
@@ -344,6 +398,18 @@ impl Ui {
         self.doc = self.doc.reloaded();
         self.look_up_apps();
         self.sync_hud_from_doc();
+        self.leave_hidden_lab_pane();
+    }
+
+    /// Moves Settings off a Lab pane whose switch just turned off.
+    pub(crate) fn leave_hidden_lab_pane(&mut self) {
+        if !self.pane.visible(self.doc.labs()) {
+            self.pane = Pane::General;
+            self.navigated = true;
+            self.menu = None;
+            self.sheet = None;
+            self.drag = None;
+        }
     }
 
     /// Handles a config-changed notification from the agent pump: reloads immediately when
@@ -434,6 +500,10 @@ fn poll(ui: &mut Ui, clock: f64, tx: &mut Tx) -> bool {
 
 fn on_key(ui: &mut Ui, event: &KeyEvent, _tx: &mut Tx) -> bool {
     if event.key == rune::Key::Escape {
+        if ui.sheet.is_some() && ui.tour.is_none() {
+            ui.close_sheet();
+            return true;
+        }
         if ui.drag.is_some() || ui.menu.is_some() {
             ui.drag = None;
             ui.menu = None;
@@ -447,10 +517,11 @@ fn on_key(ui: &mut Ui, event: &KeyEvent, _tx: &mut Tx) -> bool {
     }
     if ui.tour.is_none()
         && ui.hud_preview.is_none()
+        && ui.sheet.is_none()
         && !event.mods.shift
         && !event.mods.alt
         && let rune::Key::Command(digit) = event.key
-        && let Some(pane) = Pane::from_shortcut(digit)
+        && let Some(pane) = Pane::from_shortcut(digit, ui.doc.labs())
     {
         ui.select_pane(pane);
         return true;
@@ -461,6 +532,7 @@ fn on_key(ui: &mut Ui, event: &KeyEvent, _tx: &mut Tx) -> bool {
 fn on_close(ui: &mut Ui, _tx: &mut Tx) {
     ui.drag = None;
     ui.menu = None;
+    ui.sheet = None;
     ui.flush_pending_reload();
     // Closing the setup window dismisses the tour, so a first-run tour starts
     // tiling now rather than holding it behind a window nobody can see.
@@ -500,8 +572,8 @@ fn on_open_url(ui: &mut Ui, link: &str, _tx: &mut Tx) {
 fn spec() -> AppSpec<Ui> {
     AppSpec {
         title: "Spaceman",
-        size: WINDOW_SIZE,
-        min_size: Some(WINDOW_SIZE),
+        size: controls::WINDOW.size,
+        min_size: Some(controls::WINDOW.min),
         init: playground::blank_fixture,
         view: view::view,
         scenes: playground::scenes(),
@@ -513,6 +585,16 @@ fn spec() -> AppSpec<Ui> {
     }
 }
 
+/// Settings resizes freely, but never below `WINDOW.min`: a titlebar double click or a
+/// dragged edge can then make the window bigger, while every row keeps fitting.
+fn window_options() -> rune::WindowOptions {
+    rune::WindowOptions {
+        min_size: Some(controls::WINDOW.min),
+        resizable: true,
+        ..Default::default()
+    }
+}
+
 fn base_app() -> rune::App<Ui> {
     let app = playground::attach(
         rune::App::new(spec())
@@ -521,12 +603,7 @@ fn base_app() -> rune::App<Ui> {
                 traffic_lights: Some((18.0, 18.0)),
                 drag_regions: true,
             })
-            .window_options(rune::WindowOptions {
-                min_size: Some(WINDOW_SIZE),
-                max_size: Some(WINDOW_SIZE),
-                resizable: false,
-                ..Default::default()
-            })
+            .window_options(window_options())
             .on_close(on_close)
             .dev_stats(activity::process_vitals)
             .standard_menus(),
@@ -603,6 +680,23 @@ mod tests {
     use spaceman::deep_link::parse_url;
 
     #[test]
+    fn the_settings_window_grows_but_never_below_the_panes() {
+        // Issue 338: a titlebar double click shrank the window to 800×600, which clipped the
+        // Workspaces rows. It resizes freely now, with a floor every pane fits in.
+        let options = window_options();
+        assert!(options.resizable, "a bigger window shows more of a pane");
+        assert_eq!(options.min_size, Some(controls::WINDOW.min));
+        assert_eq!(options.max_size, None, "no ceiling to grow into");
+        assert!(
+            !options.borderless,
+            "a titled window keeps its traffic lights"
+        );
+        // It opens at 920 × 660, where General, Layout and Rules show whole.
+        assert_eq!(spec().size, (920.0, 660.0));
+        assert_eq!(spec().min_size, Some((860.0, 580.0)));
+    }
+
+    #[test]
     fn open_target_selects_pane_and_preserves_highlights_without_mutating_config() {
         let mut ui = playground::blank_fixture();
         let initial_hud = ui.doc.hud();
@@ -651,5 +745,56 @@ mod tests {
         // Security invariant: config doc is untouched.
         assert_eq!(ui.doc.hud(), initial_hud);
         assert_eq!(ui.doc.rules().len(), initial_rules);
+    }
+
+    fn doc_with_activity_lab() -> Doc {
+        Doc::parse(concat!(
+            include_str!("../fixtures/config.toml"),
+            "\n[labs]\nactivity = true\n"
+        ))
+    }
+
+    #[test]
+    fn activity_deep_link_opens_its_pane_only_with_the_lab_on() {
+        let activity = parse_url("spaceman://settings/activity").unwrap().resolve();
+
+        let mut ui = playground::blank_fixture();
+        ui.open_target(activity.clone());
+        assert_eq!(ui.pane, Pane::General, "hidden until the Lab is on");
+        // Security invariant: opening a deep link never turns a Lab on.
+        assert!(!ui.doc.labs().activity);
+
+        ui.doc = doc_with_activity_lab();
+        ui.open_target(activity);
+        assert_eq!(ui.pane, Pane::Activity);
+    }
+
+    #[test]
+    fn turning_the_activity_lab_off_leaves_the_pane_for_general() {
+        let mut ui = playground::blank_fixture();
+        ui.doc = doc_with_activity_lab();
+        ui.select_pane(Pane::Activity);
+        ui.leave_hidden_lab_pane();
+        assert_eq!(ui.pane, Pane::Activity, "still open while the Lab is on");
+
+        ui.doc = Doc::parse(include_str!("../fixtures/config.toml"));
+        ui.leave_hidden_lab_pane();
+        assert_eq!(ui.pane, Pane::General);
+    }
+
+    #[test]
+    fn labs_are_read_from_the_edited_document_not_a_reload() {
+        let mut ui = playground::blank_fixture();
+        assert!(!ui.doc.labs().activity);
+        assert!(!ui.doc.labs().scratchpad);
+
+        let doc = Doc::parse(concat!(
+            include_str!("../fixtures/config.toml"),
+            "\n[labs]\nscratchpad = true\nactivity = true\n"
+        ));
+        assert!(doc.lab(spaceman::config::LabFeature::Scratchpad));
+        assert!(doc.lab(spaceman::config::LabFeature::Activity));
+        ui.doc = doc;
+        assert!(ui.doc.labs().activity);
     }
 }

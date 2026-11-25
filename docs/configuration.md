@@ -55,6 +55,8 @@ scrolling_strip_shortcut = "alt+shift+s" # optional; the strip's toggle, in [sho
 scrolling_strip_duration_ms = 180     # optional; how long a strip glide takes, 80 through 900
 scrolling_strip_damping = 1.0         # optional; glide spring damping, 0.6 through 1.3
 scrolling_strip_shared_edge = "tuck"  # optional; "tuck" or "slide" at an edge shared with a display
+scratchpad = false                    # the i3/sway-style Scratchpad and its two shortcuts
+activity = false                      # Settings › Activity
 
 [[rules]]
 bundle_id = "com.example.Application" # optional exact match
@@ -109,8 +111,9 @@ built-in shortcuts; a `[shortcuts]` binding on the same chord still wins. The de
 named workspace S's move shortcut. With every switch off Spaceman behaves exactly as without Labs. See
 [Scrolling Strip](features/scrolling-strip.md).
 
-The strip's glide tuning is also on its Settings › Labs card while the strip is on, and each key is
-left out of the file at its default:
+The strip's glide tuning is also in Settings › Labs: while the strip is on, `Customize…` on its row
+opens a sheet with the three settings and the strip's keys as the file has them. Each key is left out
+of the file at its default:
 
 - `scrolling_strip_duration_ms` (default `180`, 80 through 900) is how long a critically damped
   glide across half a 2,560-point display takes to arrive within a point of its rest; shorter
@@ -146,8 +149,10 @@ spaceman config get settings.hud_position
 spaceman config reset settings.hud_position
 ```
 
-Settings › General shows **Position** under **Workspace HUD** while the HUD is not **Off**, and
-`spaceman config reset` removes any settings key, back to its default.
+In Settings › General, **Workspace HUD** picks `Off`, `Icons` or `Layouts`. While it is not
+`Off`, **Customize…** beside it opens a sheet: a live miniature of the capsule over **Position**
+(`Bottom` or `Top`) and a link to Settings › Workspaces, which decides the workspaces each display's
+capsule lists. `spaceman config reset` removes any settings key, back to its default.
 
 ## New-Window Layout
 
@@ -156,7 +161,12 @@ Settings › General shows **Position** under **Workspace HUD** while the HUD is
 - `"dwindle"` (the default): binary space partition. The first window fills the display, the second
   splits along the display's longer side (side by side on landscape, top and bottom on portrait),
   and each further window splits the focused (or most recently added) tile along that tile's longer
-  side. Closing any window collapses its split so the surviving sibling re-expands.
+  side. Closing, moving away, or floating a window collapses its split so the surviving tiles
+  re-expand, and any auto-chosen splits inside the space that grew re-orient outermost first to
+  match their new longer side while keeping tile order and weights. Splits arranged by the user
+  (`Option+/`, pointer drops, or perpendicular moves) keep their direction across closes and
+  restarts; splits loaded from earlier saved state without a recorded origin are treated as
+  user-arranged and keep their direction.
 - `"columns"`: each new window joins the focused tile's split as an equal sibling.
 
 ```sh
@@ -198,7 +208,8 @@ tiles exactly as before.
 
 Settings › Layout edits the same keys over a live miniature of the result. One **Window gaps**
 slider sets `inner` and all four edges together; **Customize separately** (open on its own when the
-file's gaps differ) sets between windows, all screen edges, and each edge on its own. It shows the
+file's gaps differ) sets between windows, all screen edges, and each edge on its own (**Top edge**, **Bottom edge**,
+**Left edge**, **Right edge**). It shows the
 padding each edge resolves to and leaves `outer` as the file has it: an edge you move there gets its
 own key, and the rest keep following `outer`.
 
@@ -298,32 +309,51 @@ Shortcut changes apply live: saving `config.toml` registers the new chords withi
 seconds, without a restart. If the new table can't be registered, the previous shortcuts keep working
 and Settings shows `Shortcuts not applied` with the reason. Workspaces enabled by a config edit still
 get their shortcuts on the next start. The menu-bar workspace list keeps showing the built-in
-`Option`+number/letter hints next to each workspace.
+`Option`+number/letter hints next to each workspace. Settings › Workspaces names workspace 10's
+keys from `[shortcuts]` (`Workspace 10 (⌃⌥0)` with a `ctrl+alt` base), and none when no shortcut
+switches to it.
 
 Settings › Shortcuts edits the same table. Click a shortcut's keys and press a new chord: it is saved
 to `[shortcuts.bindings]` and registered at once, and the built-in chord it replaces gets `none`.
 While Settings records, every global shortcut is held off so the chord reaches it (for at most a
 minute). `esc` cancels, `⌫` or `Delete` on its own clears the shortcut (`none`), a chord without
 `⌥`, `⌃`, or `⌘` is refused, and so is a chord another shortcut uses, naming it. Base modifier
-sets `modifier`, and Reset to Defaults removes the `[shortcuts]` table. Comments and other bindings
+sets `modifier`, and Reset to defaults removes the `[shortcuts]` table. Comments and other bindings
 in the file are kept.
 
 ## Labs
 
 `[labs]` turns on experimental features one by one. Every switch is off by default, and with all of
 them off Spaceman behaves exactly as if Labs did not exist: no extra shortcuts register and no
-command changes behavior. Unknown keys are config errors.
+command changes behavior. Unknown keys are config errors. Settings › Labs has a switch for each one,
+and `spaceman config set|get|reset labs.<key>` does the same from a terminal.
 
 ```toml
 [labs]
+scrolling_strip = false               # optional (default: false); the Scrolling Strip layout
 scratchpad = false                    # optional (default: false); the i3/sway-style Scratchpad
+activity = false                      # optional (default: false); Settings › Activity
 ```
+
+`scrolling_strip = true` enables the [Scrolling Strip](features/scrolling-strip.md) and registers its
+toggle shortcut; its other keys are described under [Configuration](#configuration) above.
 
 `scratchpad = true` enables the Scratchpad (see [Controls › Scratchpad](controls.md#scratchpad-lab)) and
 registers its two shortcuts, `Option+\` and `Option+Shift+\`, live without a restart (or on the next
 hotkey registration if tiling is paused); a `[shortcuts]` binding on either chord takes it instead. The
 `spaceman ctl scratchpad` commands follow the switch live. Turning the switch off while windows are
 hidden in the scratchpad brings them back on screen, where they tile again.
+
+`activity = true` adds Settings › Activity, the live arrangement log, journal health, process vitals,
+and Save snapshot (see [Restarts and Recovery](features/restarts-and-recovery.md)). With it off the pane
+stays out of the Settings sidebar and `⌘6` opens Labs, the last pane (`⌘7` while Activity is listed); `spaceman doctor` and the journal
+keep recording either way. Turning it off while the pane is open returns Settings to General.
+
+```sh
+spaceman config set labs.activity true
+spaceman config get labs.activity
+spaceman config reset labs.activity
+```
 
 ## Remembered Placements
 
@@ -381,10 +411,18 @@ A missing `secondary`, UUID, or name falls back to the main display. Spaceman re
 assignment as its own active lane; reconnecting that display makes its assigned active workspace
 visible again.
 
-Settings › Workspaces offers every connected display: `Main`, `Secondary`, then each further
-display, whose assignment it writes as that display's UUID (the same selector
-`Option+Shift+Tab` persists). A saved UUID renders back as its display's name, and a saved display
-that is unplugged keeps a `Disconnected displays` card so its assignment is never lost.
+Settings › Workspaces offers every connected display. With two displays the choices are `Main`
+and `Secondary`; with three or more, Main stays `Main` and every other display is named after
+itself, numbered when two share a name (`Studio Display 1`, `Studio Display 2`). A display's card
+always carries its own name. Its picker segment says `Display 3` instead, by its position, when the
+name is longer than 16 characters (`Built-in Retina Display`) or four or more displays share the
+picker, and the card's caption repeats that number. Assigning a
+display past Secondary writes its UUID (the same selector `Option+Shift+Tab` persists), and a
+saved UUID renders back as that display's name, in the same words as its picker segment and
+card. A row set to a display other than its built-in default says which default it differs
+from (`Default: Studio Display 1`); a row already on its default says nothing, including one
+saved by the UUID of the display that is also Secondary. A saved display that is unplugged
+keeps a `Disconnected displays` card so its assignment is never lost.
 
 Named workspaces are opt-in: reference a letter in a route or `[[workspaces]]` entry to enable it.
 They default to `main`. An enabled letter registers `Option+letter` to switch and

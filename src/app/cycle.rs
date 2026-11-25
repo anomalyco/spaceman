@@ -97,6 +97,9 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
         if cancelled.load(Ordering::Acquire) {
             return Err("workspace operation cancelled".into());
         }
+        if let Some(until) = self.space_transition_until() {
+            return Ok(self.defer_for_space_transition(until, &outputs));
+        }
         self.note_outputs(&outputs);
         // Parking is durable before workspace ownership. A crash between those
         // writes must not strand an unowned window behind an otherwise valid state.
@@ -138,6 +141,7 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
         // Suppression lasts until Accessibility reports a different focus. When
         // the focused window is missing or lags the frontmost app, the app is
         // the evidence; with neither reported nothing has changed.
+        self.retry_follow_after_space_change();
         let suppressed = if focused_is_frontmost {
             focused.as_ref() == self.suppressed_focus.as_ref()
         } else if let Some(frontmost) = frontmost.as_ref() {
@@ -163,14 +167,24 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
                         workspace,
                         input
                     );
-                    let followed = self.switch(workspace, outputs, cancelled);
+                    let follow_started = Instant::now();
+                    let followed = self.switch(workspace, outputs.clone(), cancelled);
                     // An activation (or a finished drag) cancels background
                     // cycles, often the very one this follow answers (a
                     // notification click). A cancelled follow lets the next cycle
                     // follow again; a switch that fails for any other reason keeps
-                    // focus suppressed so it can't loop.
+                    // focus suppressed so it can't loop, unless a macOS Space
+                    // slide explains the failure.
                     if matches!(&followed, Err(error) if error.ends_with("cancelled")) {
                         self.clear_suppressed_focus();
+                    } else if followed.is_err() {
+                        self.failed_follow_at = Some(follow_started);
+                        if self.retry_follow_after_space_change() {
+                            let until = self
+                                .space_transition_until()
+                                .unwrap_or_else(|| Instant::now() + SPACE_TRANSITION_SETTLE);
+                            return Ok(self.defer_for_space_transition(until, &outputs));
+                        }
                     }
                     return followed;
                 }
@@ -440,10 +454,17 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
                     }
                 }
             }
+            let source_canvas = self.layout_settings(output).canvas();
             let target_canvas = self.layout_settings(target_output).canvas();
             if self
                 .workspaces
-                .move_window_with(window, *target, self.config.layout(), target_canvas)
+                .move_window_with(
+                    window,
+                    *target,
+                    self.config.layout(),
+                    source_canvas,
+                    target_canvas,
+                )
                 .is_none()
             {
                 continue;

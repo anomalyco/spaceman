@@ -62,6 +62,10 @@ pub(super) trait WorkspaceBackend {
     fn recent_input(&mut self) -> Option<macos::RecentInput> {
         None
     }
+    /// When macOS last changed the active Space (a desktop or fullscreen slide).
+    fn active_space_changed_at(&mut self) -> Option<Instant> {
+        None
+    }
     fn raise_window(&mut self, window: &crate::PhysicalWindowId) -> bool;
     fn focus_window(&mut self, window: &crate::PhysicalWindowId) -> bool;
     fn pointer_location(&mut self) -> Option<(i32, i32)> {
@@ -209,6 +213,10 @@ impl WorkspaceBackend for MacWorkspaceBackend {
 
     fn recent_input(&mut self) -> Option<macos::RecentInput> {
         Some(macos::recent_input())
+    }
+
+    fn active_space_changed_at(&mut self) -> Option<Instant> {
+        macos::last_active_space_change()
     }
 
     fn raise_window(&mut self, window: &crate::PhysicalWindowId) -> bool {

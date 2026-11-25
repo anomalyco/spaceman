@@ -175,7 +175,7 @@ pub enum UiUpdateStatus {
     Checking,
     UpToDate,
     Downloading,
-    /// A verified update waits for Install & Restart.
+    /// A verified update waits for Install & restart.
     Ready {
         version: String,
     },

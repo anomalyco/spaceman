@@ -1,27 +1,18 @@
-//! Hex's keycaps: low-profile scissor keys after Apple's Magic Keyboard, a flat face on a cap
-//! whose skirt shows below it, resting in a tray recessed into the card. A held key sinks its
-//! face into the skirt; the key's bounds never change.
+//! The one drawing of a shortcut's keys, as Hex's: low-profile scissor keys after Apple's Magic
+//! Keyboard, a flat face on a cap whose skirt shows below it, resting in a tray recessed into
+//! the card. A held key sinks its face into the skirt; the key's bounds never change. Sizes are
+//! `KEYS` (`tokens.rs`).
 
 use rune::{Color, Edge, El, Shadow, Spring, TextStyle, Transition, col, row, text};
 use rune_kit::Kit;
+use spaceman::shortcuts::Chord;
 
-use crate::controls::Paint;
+use super::{KEYS, Paint};
 
-/// Height, skirt included.
-pub const KEY_HEIGHT: f32 = 22.0;
-/// The skirt showing below a key at rest.
-const SKIRT: f32 = 1.5;
-/// The cap's rim beside and above the face.
-const RIM: f32 = 0.5;
 /// A press sinks the face most of the way, leaving a hairline of skirt.
-const TRAVEL: f32 = SKIRT - RIM;
-const FACE_RADIUS: f32 = 4.0;
-const FACE_PADDING: f32 = 6.0;
+const TRAVEL: f32 = KEYS.skirt - KEYS.rim;
+/// The legend on a key.
 const LEGEND: TextStyle = TextStyle::new(11.0, 400.0).lh(14.0);
-/// Between the keycaps of a chord.
-pub const KEY_GAP: f32 = 3.0;
-/// Between a tray's edge and its keys: a tray is as tall as a button.
-pub const TRAY_PADDING: f32 = 3.0;
 /// A face sinks fast and comes back up a little slower, both without bounce.
 const KEY_DOWN: Spring = Spring::new(0.08, 0.0);
 const KEY_UP: Spring = Spring::new(0.18, 0.0);
@@ -72,7 +63,7 @@ pub fn keycap(p: Paint, index: usize, label: &str, down: bool) -> El {
     let m = Material::new(k);
     let pressed = if down { 1.0 } else { 0.0 };
     let travel = TRAVEL * pressed;
-    let face_height = KEY_HEIGHT - RIM - SKIRT;
+    let face_height = KEYS.key_h - KEYS.rim - KEYS.skirt;
     // Shadow offsets never spring, so the resting and pressed casts are two layers that
     // trade strength.
     let cast = |y: f32, blur: f32, strength: f32| Shadow {
@@ -83,24 +74,24 @@ pub fn keycap(p: Paint, index: usize, label: &str, down: bool) -> El {
     };
     let cap = col()
         .key("cap")
-        .px(RIM)
-        .pt(RIM)
-        .pb(SKIRT - travel)
-        .radius(FACE_RADIUS + RIM)
+        .px(KEYS.rim)
+        .pt(KEYS.rim)
+        .pb(KEYS.skirt - travel)
+        .radius(KEYS.cap_radius())
         .continuous_corners()
         .fill(m.cap_bottom)
         .gradient(m.cap_top, m.cap_bottom)
         .shadow(0.5, 0.5, k.dark_a(m.contact))
-        .box_shadow(cast(SKIRT, 2.0 * SKIRT, 1.0 - pressed))
-        .box_shadow(cast(RIM, 2.0, pressed))
+        .box_shadow(cast(KEYS.skirt, 2.0 * KEYS.skirt, 1.0 - pressed))
+        .box_shadow(cast(KEYS.rim, 2.0, pressed))
         .child(
             row()
                 .key("face")
-                .min_w(KEY_HEIGHT - 2.0 * RIM)
+                .min_w(KEYS.key_h - 2.0 * KEYS.rim)
                 .h(face_height)
-                .px(FACE_PADDING)
+                .px(KEYS.face_px)
                 .center()
-                .radius(FACE_RADIUS)
+                .radius(KEYS.face_radius)
                 .continuous_corners()
                 .fill(m.face)
                 .gradient(
@@ -116,7 +107,7 @@ pub fn keycap(p: Paint, index: usize, label: &str, down: bool) -> El {
         );
     col()
         .key(format!("keycap{index}"))
-        .h(KEY_HEIGHT)
+        .h(KEYS.key_h)
         .pt(travel)
         .motion(if down { KEY_DOWN } else { KEY_UP })
         .child(cap)
@@ -143,11 +134,11 @@ pub fn tray(p: Paint, key: &str, caps: &[String]) -> El {
         )
     };
     // Concentric with the caps inside it.
-    let radius = FACE_RADIUS + RIM + TRAY_PADDING;
+    let radius = KEYS.tray_radius();
     row()
         .key(key)
-        .padding(TRAY_PADDING)
-        .gap(KEY_GAP)
+        .padding(KEYS.tray_pad)
+        .gap(KEYS.gap)
         .center_y()
         .radius(radius)
         .continuous_corners()
@@ -172,4 +163,26 @@ pub fn tray(p: Paint, key: &str, caps: &[String]) -> El {
 /// In from the bottom, out through the top, inside the parent's clip.
 pub fn roll() -> Transition {
     Transition::push(Edge::Bottom)
+}
+
+/// A shortcut's chords as trays joined by "or" (two at most), or "Not set" in the same slot.
+pub fn chords(p: Paint, chords: &[Chord]) -> El {
+    let mut keys = row().key("keys").gap(6.0).center_y();
+    if chords.is_empty() {
+        keys = keys.child(
+            row().key("off").h(KEYS.tray_h()).px(8.0).center().child(
+                text("Not set")
+                    .key("label")
+                    .font(p.row_title())
+                    .color(p.faint()),
+            ),
+        );
+    }
+    for (index, chord) in chords.iter().take(2).enumerate() {
+        if index > 0 {
+            keys = keys.child(text("or").key("or").font(p.meta()).color(p.faint()));
+        }
+        keys = keys.child(tray(p, &format!("tray{index}"), &chord.keycaps()));
+    }
+    keys
 }

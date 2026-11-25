@@ -2,8 +2,7 @@
 //! shortcut's keys records a new chord (`recorder`), the base modifier moves every built-in
 //! shortcut at once, and each change is saved to `config.toml` and registered live.
 
-mod catalog;
-mod keycap;
+pub(crate) mod catalog;
 mod recorder;
 mod workspaces;
 
@@ -15,17 +14,15 @@ use spaceman::{
 };
 
 pub use recorder::Capture;
+pub(crate) use recorder::enabled_named_workspaces;
+pub(crate) use workspaces::switch_keys;
 
 use crate::{
     Ui,
-    controls::{self, ButtonKind, Paint},
+    controls::{self, ButtonKind, KEYS, Paint, keycap, roll, tray},
     view::scroll_body,
 };
 use catalog::Action;
-use keycap::{KEY_GAP, keycap, roll, tray};
-
-/// The recorder is as tall as a tray of keys, so a row never jumps when it starts listening.
-const RECORDER_HEIGHT: f32 = keycap::KEY_HEIGHT + 2.0 * keycap::TRAY_PADDING;
 
 pub fn pane(ui: &Ui, p: Paint) -> El {
     let shortcuts = ui.doc.shortcuts();
@@ -46,33 +43,19 @@ pub fn pane(ui: &Ui, p: Paint) -> El {
     ));
     scroll_body(
         "shortcuts-body",
-        col()
-            .key("sections")
-            .gap(24.0)
-            .child(controls::section(
-                p,
-                "modifier",
-                "Modifier",
-                modifier_rows(ui, p, &shortcuts),
-            ))
-            .child(
-                col()
-                    .key("workspaces")
-                    .gap(8.0)
-                    .child(controls::heading(
-                        p,
-                        "header",
-                        "Workspaces",
-                        Some("Click a shortcut to record · esc cancels · ⌫ clears"),
-                    ))
-                    .child(controls::card(p, "card", workspace_rows)),
-            )
-            .child(controls::section(
-                p,
-                "windows-layout",
-                "Windows & Layout",
-                action_rows(ui, p, &shortcuts, &named, catalog::LAYOUT_ACTIONS),
-            )),
+        controls::page(
+            "sections",
+            vec![
+                controls::section(p, "modifier", "Modifier", modifier_rows(ui, p, &shortcuts)),
+                controls::section(p, "workspaces", "Workspaces", workspace_rows),
+                controls::section(
+                    p,
+                    "windows-layout",
+                    "Windows & layout",
+                    action_rows(ui, p, &shortcuts, &named, catalog::LAYOUT_ACTIONS),
+                ),
+            ],
+        ),
     )
 }
 
@@ -98,7 +81,7 @@ fn modifier_rows(ui: &Ui, p: Paint, shortcuts: &Shortcuts) -> Vec<El> {
             p,
             "base-modifier",
             "Base modifier",
-            Some(("Move shortcuts add ⇧.".into(), p.muted())),
+            Some(("Moves add ⇧".into(), p.muted())),
             picker,
         ));
     } else {
@@ -107,7 +90,7 @@ fn modifier_rows(ui: &Ui, p: Paint, shortcuts: &Shortcuts) -> Vec<El> {
             "defaults-off",
             "Built-in shortcuts are off",
             Some((
-                "defaults = false in config.toml: only your bindings run.".into(),
+                "defaults = false in config.toml: only your bindings run".into(),
                 p.muted(),
             )),
             row().key("none"),
@@ -122,7 +105,7 @@ fn modifier_rows(ui: &Ui, p: Paint, shortcuts: &Shortcuts) -> Vec<El> {
             controls::button(
                 p,
                 "reset-button",
-                "Reset to Defaults",
+                "Reset to defaults",
                 ButtonKind::Secondary,
                 |ui: &mut Ui, _| reset(ui),
             ),
@@ -149,26 +132,25 @@ fn family_rows(p: Paint, shortcuts: &Shortcuts, named: &[WorkspaceId]) -> Vec<El
         .into_iter()
         .map(|entry| match entry.keys {
             workspaces::RowKeys::Range(caps) => fixed_row(p, &entry.key, &entry.title, caps),
-            workspaces::RowKeys::Chords(chords) => {
-                let keys = row()
-                    .key("keys")
-                    .padding(2.0)
-                    .mr(-3.0)
-                    .child(keys_face(p, &chords, false));
-                controls::setting_row(p, &format!("{}-row", entry.key), &entry.title, None, keys)
-            }
+            workspaces::RowKeys::Chords(chords) => controls::setting_row(
+                p,
+                &format!("{}-row", entry.key),
+                &entry.title,
+                None,
+                keys_face(p, &chords, false),
+            ),
         })
         .collect()
 }
 
 fn fixed_row(p: Paint, key: &str, title: &str, caps: Vec<String>) -> El {
-    // Inset like a shortcut button, so every tray lines up at the card's edge.
-    let keys = row()
-        .key("keys")
-        .padding(2.0)
-        .mr(-3.0)
-        .child(tray(p, "tray", &caps));
-    controls::setting_row(p, &format!("{key}-row"), title, None, keys)
+    controls::setting_row(
+        p,
+        &format!("{key}-row"),
+        title,
+        None,
+        tray(p, "tray", &caps),
+    )
 }
 
 fn action_rows(
@@ -234,9 +216,11 @@ pub(crate) fn recorder_button(ui: &Ui, p: Paint, id: &'static str, chords: &[Cho
         .role("button")
         .label(label)
         .center_y()
-        .padding(2.0)
-        .mr(-3.0)
-        .radius(p.k.radius.md)
+        // The tray, not the pad round it, lands on the control rail; the pad's corner is the
+        // tray's plus the pad, so the hover fill is concentric with it.
+        .padding(KEYS.focus_pad)
+        .mr(-KEYS.focus_pad)
+        .radius(KEYS.button_radius())
         .focusable(true)
         .focus_ring(2.0, 0.0, c.border_focus)
         .on_press(move |ui: &mut Ui| recorder::begin(ui, id))
@@ -256,23 +240,7 @@ pub(crate) fn recorder_button(ui: &Ui, p: Paint, id: &'static str, chords: &[Cho
 }
 
 fn keys_face(p: Paint, chords: &[Chord], saved: bool) -> El {
-    let mut keys = row().key("keys").gap(6.0).center_y();
-    if chords.is_empty() {
-        keys = keys.child(
-            row().key("off").h(RECORDER_HEIGHT).px(8.0).center().child(
-                text("Not set")
-                    .key("label")
-                    .font(p.k.ty.ui)
-                    .color(p.faint()),
-            ),
-        );
-    }
-    for (index, chord) in chords.iter().take(2).enumerate() {
-        if index > 0 {
-            keys = keys.child(text("or").key("or").font(p.k.ty.small).color(p.faint()));
-        }
-        keys = keys.child(tray(p, &format!("tray{index}"), &chord.keycaps()));
-    }
+    let keys = controls::chords(p, chords);
     row()
         .key("face")
         .gap(4.0)
@@ -286,9 +254,9 @@ fn keys_face(p: Paint, chords: &[Chord], saved: bool) -> El {
 }
 
 /// Listening: a breathing dot, then the held modifiers sunk into their keys (or why the last
-/// chord was refused), then Esc.
+/// chord was refused), then the two keys that end it: ⌫ clears the shortcut, esc keeps it.
 fn recorder_face(p: Paint, held: Modifiers, message: Option<&str>) -> El {
-    let style = p.k.ty.ui_medium.lh(16.0);
+    let style = p.label();
     let held = held.keycaps();
     let prompt = match message {
         Some(message) => text(message.to_owned())
@@ -304,7 +272,7 @@ fn recorder_face(p: Paint, held: Modifiers, message: Option<&str>) -> El {
             .gap(4.0)
             .center_y()
             .child(
-                row().key("keys").gap(KEY_GAP).children(
+                row().key("keys").gap(KEYS.gap).children(
                     held.iter()
                         .enumerate()
                         .map(|(index, cap)| keycap(p, index, cap, true)),
@@ -314,19 +282,29 @@ fn recorder_face(p: Paint, held: Modifiers, message: Option<&str>) -> El {
     };
     row()
         .key("listening")
-        .h(RECORDER_HEIGHT)
+        .h(KEYS.tray_h())
         .gap(8.0)
         .center_y()
-        .pl(11.0)
-        .pr(keycap::TRAY_PADDING)
+        .pl(12.0)
+        .pr(KEYS.tray_pad)
         // The prompt rolls in from below and out through the top, inside the recorder.
-        .clip_rounded(p.k.radius.md)
+        .clip_rounded(KEYS.tray_radius())
         .child(controls::pulsing_dot(p.danger()))
         .child(prompt.transition(roll()))
         .child(
-            keycap(p, 0, "esc", false)
-                .key("escape")
-                .label("Esc to cancel"),
+            row()
+                .key("ends")
+                .gap(KEYS.gap)
+                .child(
+                    keycap(p, 0, "⌫", false)
+                        .key("clear")
+                        .label("Delete to clear"),
+                )
+                .child(
+                    keycap(p, 1, "esc", false)
+                        .key("escape")
+                        .label("Esc to cancel"),
+                ),
         )
 }
 

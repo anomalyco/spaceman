@@ -40,11 +40,55 @@ fn dragging_to_a_tile_edge_previews_a_nested_insertion() {
     bind(&mut runtime, WorkspaceId::ONE, &target);
     bind(&mut runtime, WorkspaceId::ONE, &third);
 
+    let before = runtime.workspaces.engine(WorkspaceId::ONE).layout().clone();
+
     runtime
         .drop_window(
             moving.clone(),
             (500, 10),
             true,
+            outputs(),
+            &AtomicBool::new(false),
+        )
+        .unwrap();
+
+    // Preview moves the siblings on screen without mutating the committed layout (#340).
+    assert_eq!(
+        runtime.workspaces.engine(WorkspaceId::ONE).layout(),
+        &before
+    );
+    assert_eq!(
+        runtime.backend.frames[&target],
+        crate::Rect {
+            x: 0,
+            y: 400,
+            width: 500,
+            height: 400
+        }
+    );
+    assert_eq!(
+        runtime.backend.frames[&third],
+        crate::Rect {
+            x: 500,
+            y: 0,
+            width: 500,
+            height: 800
+        }
+    );
+    assert!(
+        !runtime
+            .backend
+            .calls
+            .iter()
+            .any(|call| matches!(call, BackendCall::Apply(window, _) if window == &moving))
+    );
+
+    // Mouse-up at the same point commits the nested insertion.
+    runtime
+        .drop_window(
+            moving.clone(),
+            (500, 10),
+            false,
             outputs(),
             &AtomicBool::new(false),
         )
@@ -107,12 +151,13 @@ fn dragging_a_tiled_window_over_its_sibling_live_previews_the_swap() {
         )
         .unwrap();
 
+    // Preview slides the sibling into the first slot without mutating the committed order (#340).
     assert_eq!(
         runtime.workspaces.engine(WorkspaceId::ONE).bound_windows(),
-        vec![second.clone(), first.clone()]
+        vec![first.clone(), second.clone()]
     );
     assert!(runtime.backend.calls.contains(&BackendCall::Apply(
-        second,
+        second.clone(),
         crate::Rect {
             x: 0,
             y: 0,
@@ -126,6 +171,21 @@ fn dragging_a_tiled_window_over_its_sibling_live_previews_the_swap() {
             .calls
             .iter()
             .any(|call| matches!(call, BackendCall::Apply(window, _) if window == &first))
+    );
+
+    // Releasing over the sibling commits the swap.
+    runtime
+        .drop_window(
+            first.clone(),
+            (750, 400),
+            false,
+            outputs(),
+            &AtomicBool::new(false),
+        )
+        .unwrap();
+    assert_eq!(
+        runtime.workspaces.engine(WorkspaceId::ONE).bound_windows(),
+        vec![second, first]
     );
 }
 
@@ -273,7 +333,7 @@ fn releasing_resize_or_drop_after_workspace_switch_keeps_outgoing_workspace_park
     let before_drop = rt.backend.calls.len();
     dispatch(
         &mut rt,
-        QueuedInput::Gesture(FinalGesture::Drop(window(20), (250, 400))),
+        QueuedInput::Gesture(FinalGesture::drop(window(20), (250, 400))),
     );
     assert!(rt.backend.calls[before_drop..].iter().all(
         |call| !matches!(call, BackendCall::Apply(w, _) if w == &window(10) || w == &window(20))

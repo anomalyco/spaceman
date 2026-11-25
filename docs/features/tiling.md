@@ -11,7 +11,8 @@ Automatic tiling                                        // tile.auto
 │   ├── dwindle -> splits the focused (or last) tile along its longer side (landscape: 1 | (2 / (3 | 4)); portrait: 1 / (2 | (3 / 4)))
 │   ├── columns -> joins the last focused tile’s split as a sibling, or the root without a surviving focus
 │   └── Creation or activation before the first visible frame -> briefly recheck for the foreground window
-├── Window closes -> its slot retires, siblings reflow
+├── Window closes, moves away, or floats -> its slot retires, siblings reflow
+│   ├── In dwindle -> auto-chosen splits inside the space that grew re-orient outermost first to their new longer side (order and weights kept; user-arranged splits and legacy splits without a recorded origin keep their direction)
 │   ├── Last app window closes but its surface lingers -> siblings reflow when the app confirms closure
 │   └── App keeps its ordered-out window alive -> slot settles for two seconds
 └── Ghostty native tab replaces its window -> same slot, order, weight, nesting
@@ -26,10 +27,11 @@ Reorder                                                 // tile.reorder
 ├── Option+Shift+H/J/K/L / ctl move-direction <dir> -> swap/move within the tree
 │   ├── At the workspace edge -> moves to the adjacent display's active workspace, even an empty one
 │   └── Perpendicular move    -> re-orients or creates a mixed split
-└── Pointer drag
+└── Pointer drag (non-destructive previews against drag-start layout; committed only on mouse-up)
+    ├── Display left/right edge band -> full-height half-width column on that side (includes outer gap, armed once the pointer has been outside the band; lone tile unchanged; saved layout edited even while temporarily stacked)
     ├── Over a sibling     -> live-previewed swap, applied on mouse-up
     ├── Near a tile edge   -> nested split (in the saved layout, even while tiles are temporarily stacked)
-    └── Onto another display -> moved to that display's active workspace
+    └── Onto another display -> moved to that display's active workspace (restoring siblings left behind)
 
 Size                                                    // tile.size
 ├── Option+- / Option+= / ctl resize shrink|grow -> 50 px at the immediate split
@@ -59,7 +61,7 @@ Keyboard: Option+H/J/K/L, Option+Shift+H/J/K/L, Option+`, Option+-, Option+=, Op
 Pointer:  drag a managed window (reorder/nest/move display), drag its edge (resize)
 CLI:      spaceman ctl focus | move-direction | resize shrink|grow|width|height | balance | layout | retile
 Shortcut: [shortcuts.bindings] can bind any of those, e.g. "ctrl+alt+w" = "resize width 1200"
-Settings: Settings › Layout -> New windows (Dwindle | Columns), Window gaps (Customize separately: Between windows, Screen edges, Top/Bottom/Left/Right), Single-window width
+Settings: Settings › Layout -> New windows (Dwindle | Columns), Window gaps (Customize separately: Between windows, Screen edges, Top/Bottom/Left/Right edge), Single-window width
 Config:   spaceman config set layout dwindle|columns; spaceman config set gaps.inner|gaps.outer|gaps.top|gaps.bottom|gaps.left|gaps.right|single_window_max_width <points>
 ```
 
@@ -85,14 +87,20 @@ pause, quit, or hotkey loss.
   `columns_mode_preserves_flat_sibling_insertion`, `new_window_joins_the_focused_nested_split`,
   `dwindle_splits_the_focused_tile_along_its_longer_side`, and
   `corner_drag_moves_both_nested_boundaries` cover Dwindle/Columns insertion and diagonal resizing;
-  `src/app/tests/dwindle.rs` covers live landscape/portrait Dwindle tiling, close re-expansion,
+  `src/app/tests/dwindle.rs` covers live landscape/portrait Dwindle tiling, close/move/float
+  re-orientation of auto-chosen splits (3 and 4 windows), preservation of manual `Option+/` /
+  drop / move splits across restarts, untouched sibling splits and weights, legacy state loading,
   live config reload between Dwindle and Columns, cross-workspace moves, axis toggle, and Fullscreen Layout;
   `resize_to_*` in `src/layout_tree/tests.rs` cover the nearest split on each axis, proportional
   sharing, recursive minimums, and lone tiles.
-- Unit (FakeBackend), `src/app/tests/gestures.rs`: drag swap preview, edge-nesting preview,
+- Unit (FakeBackend), `src/app/tests/gestures.rs` and `src/app/tests/drag_path.rs`:
+  non-destructive drag previews (path-independent side drops, fast cross-display drops, cancel
+  restoration), display outer left/right edge column drop bands (full edge sweep, outer gaps,
+  band arming after leaving the band, temporary stacks, Fullscreen Layout), edge-nesting preview,
   cross-display drop; `startup.rs` covers gesture classification and `src/app/input.rs` covers
-  queued final gestures and edge drags grabbed from outside the window (in a gap or over the
-  neighbor), which `src/macos/tests.rs` hit-tests by resize-border reach.
+  queued final gestures, pointer bounds tracking while busy, and edge drags grabbed from outside
+  the window (in a gap or over the neighbor), which `src/macos/tests.rs` hit-tests by resize-border
+  reach.
 - Unit (FakeBackend), `src/app/tests/reconciliation.rs`:
   `early_open_event_rechecks_until_the_new_window_can_split_its_sibling`,
   `closed_window_its_app_keeps_ordered_out_gives_up_its_tile` (an app closes its window by ordering it out),
@@ -106,7 +114,7 @@ pause, quit, or hotkey loss.
   `an_app_keeps_its_tiles_while_one_of_its_windows_is_still_settling`,
   `a_parked_window_keeps_its_tile_through_the_settle`.
 - Unit (FakeBackend), `src/app/tests/minimums.rs`: a window that refuses its tile width gets a wider
-  tile (middle, last, several at once, and observation-cycle cases); a three-window row that cannot fit stacks two neighbors, and a wider display restores the requested row; Fullscreen Layout ignores minimums. `src/app/tests/stacked_resize.rs`: a resize (issue 197), swap, or drag-nest (with or without a preview) while a pair is stacked never saves the temporary stack; a drag-nest through a fit that only reweights keeps the requested weights; a perpendicular move through a stack saves A above `B | C`; and a drop held on the other stacked tile follows the preview. `src/layout_tree.rs`:
+  tile (middle, last, several at once, and observation-cycle cases); a three-window row that cannot fit stacks two neighbors, and a wider display restores the requested row; Fullscreen Layout ignores minimums. `src/app/tests/stacked_resize.rs`: a resize (issue 197), swap, or drag-nest (with or without a preview) while a pair is stacked never saves the temporary stack; a drag-nest through a fit that only reweights keeps the requested weights; a perpendicular move through a stack saves A above `B | C`; and repeated previews held on a stacked tile keep evaluating against the gesture-start layout. `src/layout_tree.rs`:
   `fitting_minimums_reaches_into_nested_splits_and_leaves_impossible_splits_alone`.
 - Window classification (`src/macos/classify.rs`), `src/macos/tests.rs`:
   `primary_windows_without_a_working_fullscreen_button_still_tile` (FaceTime, Phone, News, Podcasts,
@@ -153,12 +161,12 @@ pause, quit, or hotkey loss.
   pair is stacked changes only the stack shown, never the saved split. If no pair solves the shortage,
   windows may overlap. A sustained overlap involving a constrained tile appears in `spaceman doctor`
   as `constrained_overlap`.
-- A swap, a drag-nest or a perpendicular move while tiles are temporarily stacked edits the saved
-  layout; the stack is then recomputed from it, so the result shown can differ from the stack the
-  tile was dropped on or moved across. Dropping A on the top edge of C in `| A | B/C |`, stacked
-  only to fit, saves `| B | A/C |`. While dragging, each preview re-lays out the tiles, so a drop
-  near the edge of a temporarily stacked tile can land beside the tile that has moved under the
-  pointer: holding A on B's top edge there also ends as `| B | A/C |`.
+- A swap, a drag-nest, a display-edge column drop, or a perpendicular move while tiles are
+  temporarily stacked edits the saved layout; the stack is then recomputed from it, so the result
+  shown can differ from the stack the tile was dropped on or moved across. Dropping A on the top
+  edge of C in `| A | B/C |`, stacked only to fit, saves `| B | A/C |`. Drag previews evaluate
+  non-destructively against the layout at drag start and commit only on mouse-up, so repeated
+  previews never compound into intermediate swaps.
 - Some apps (many SwiftUI apps) close a window by ordering it out; the window server keeps
   listing it. When a sibling stays visible and the app had one tile on this workspace, an empty
   Accessibility window list can confirm the close immediately. An inconclusive check gets one

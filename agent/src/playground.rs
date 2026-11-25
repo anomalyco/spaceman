@@ -9,7 +9,9 @@ use spaceman::{
     app::{UiAgentSnapshot, UiLaunchAtLogin, UiUpdateStatus},
 };
 
-use crate::{Pane, Ui, WINDOW_SIZE, activity, apps, hud, labs, map, onboarding, panes, rules::Doc};
+use crate::{
+    Pane, Ui, activity, apps, controls::WINDOW, hud, labs, map, onboarding, panes, rules::Doc,
+};
 
 pub(crate) type Scene = (&'static str, fn(&mut Ui));
 
@@ -27,7 +29,11 @@ pub fn attach(app: App<Ui>) -> App<Ui> {
         .enabled(true)
         .bar(false)
         .scenes(|name| name.contains('/'))
-        .sizes(&[("Spaceman window", WINDOW_SIZE)]);
+        .sizes(&[
+            ("Spaceman window", WINDOW.size),
+            ("Smallest window", WINDOW.min),
+            ("Wide window", (1200.0, 840.0)),
+        ]);
     app.playground(hud::triggers(playground))
 }
 
@@ -71,6 +77,8 @@ pub(crate) fn blank_fixture() -> Ui {
         tour: None,
         drag: None,
         menu: None,
+        sheet: None,
+        card_w: WINDOW.card_w(render_width()),
         running: Vec::new(),
         displays: panes::workspaces::fixture_pair(),
         displays_at: None,
@@ -81,16 +89,31 @@ pub(crate) fn blank_fixture() -> Ui {
         per_edge: None,
         shortcut_capture: panes::shortcuts::Capture::Idle,
         fixture: true,
-        labs: labs::LabsView::default(),
     };
     reset_fixture(&mut ui, Pane::Rules);
     ui
+}
+
+/// The window width a headless render asked for (`--size 1200x840`), else the width Settings
+/// opens at. A snap draws one frame, before the pane's layout has reported its cards' width.
+fn render_width() -> f32 {
+    let mut args = std::env::args().skip(1);
+    while let Some(arg) = args.next() {
+        if arg == "--size" {
+            let width = args
+                .next()
+                .and_then(|size| size.split_once('x')?.0.parse::<f32>().ok());
+            return width.unwrap_or(WINDOW.size.0).max(WINDOW.min.0);
+        }
+    }
+    WINDOW.size.0
 }
 
 pub(crate) fn reset_fixture(ui: &mut Ui, pane: Pane) {
     ui.fixture = true;
     ui.pane = pane;
     ui.tour = None;
+    ui.sheet = None;
     ui.hud_preview = None;
     ui.spacing_draft = None;
     ui.per_edge = None;
@@ -98,7 +121,6 @@ pub(crate) fn reset_fixture(ui: &mut Ui, pane: Pane) {
     ui.displays_at = None;
     ui.highlight_lab = None;
     ui.highlight_feature = None;
-    ui.labs = labs::LabsView::default();
     ui.shortcut_capture = panes::shortcuts::Capture::Idle;
     ui.doc = Doc::parse(include_str!("../fixtures/config.toml"));
     ui.look_up_apps();
@@ -153,6 +175,9 @@ mod tests {
             "Onboarding/onboarding-sandbox-complete",
             "General/general",
             "General/general-setup",
+            "General/general-hud-off",
+            "General/hud-customize",
+            "General/hud-customize-top",
             "Layout/layout",
             "Layout/layout-spaced",
             "Rules/rules",
@@ -160,6 +185,8 @@ mod tests {
             "Rules/rules-add",
             "Workspaces/workspaces",
             "Workspaces/workspaces-three-displays",
+            "Workspaces/workspaces-long-name",
+            "Workspaces/workspaces-custom-modifier",
             "Workspaces/workspaces-four-displays",
             "Workspaces/workspaces-unplugged",
             "Shortcuts/shortcuts",
@@ -169,7 +196,9 @@ mod tests {
             "Activity/activity",
             "Labs/labs",
             "Labs/labs-on",
-            "Labs/labs-how-it-works",
+            "Labs/labs-all-on",
+            "Labs/labs-customize",
+            "Labs/labs-custom-keys",
             "HUD/hud-switch",
             "HUD/hud-empty",
             "HUD/hud-fullscreen",
@@ -184,11 +213,16 @@ mod tests {
 
     #[test]
     fn command_shortcuts_follow_sidebar_pane_order() {
-        assert_eq!(Pane::from_shortcut('0'), None);
+        // Every pane is registered; a Lab pane takes a digit only while its switch is on.
+        let labs = spaceman::config::LabsConfig {
+            activity: true,
+            ..spaceman::config::LabsConfig::default()
+        };
+        assert_eq!(Pane::from_shortcut('0', labs), None);
         for (index, expected) in Pane::ALL.into_iter().enumerate() {
             let digit = char::from_digit((index + 1) as u32, 10).unwrap();
-            assert_eq!(Pane::from_shortcut(digit), Some(expected));
+            assert_eq!(Pane::from_shortcut(digit, labs), Some(expected));
         }
-        assert_eq!(Pane::from_shortcut('8'), None);
+        assert_eq!(Pane::from_shortcut('8', labs), None);
     }
 }

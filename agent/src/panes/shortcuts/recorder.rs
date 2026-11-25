@@ -295,9 +295,8 @@ pub fn on_input(ui: &mut Ui, event: &PhysicalInput) -> bool {
 /// Saves what a press recorded, or keeps listening with why it was refused.
 pub fn record(ui: &mut Ui, id: &'static str, outcome: Press) {
     if let Some(feature) = LabFeature::ALL
-        .iter()
-        .copied()
-        .find(|feature| feature.shortcut_id() == id)
+        .into_iter()
+        .find(|feature| feature.shortcut_key() == Some(id))
     {
         record_lab(ui, feature, outcome);
         return;
@@ -343,10 +342,11 @@ pub fn record(ui: &mut Ui, id: &'static str, outcome: Press) {
 
 /// A Labs feature that is on keeps its chord: a built-in shortcut can't take it from it.
 fn lab_check(ui: &Ui, chord: Chord) -> Result<(), String> {
-    match LabFeature::ALL
-        .iter()
-        .find(|feature| ui.doc.lab(**feature) && ui.doc.lab_shortcut(**feature).0 == chord)
-    {
+    match LabFeature::ALL.into_iter().find(|feature| {
+        feature.shortcut_key().is_some()
+            && ui.doc.lab(*feature)
+            && ui.doc.lab_shortcut(*feature).0 == chord
+    }) {
         Some(feature) => Err(format!("Used by {}", feature.name())),
         None => Ok(()),
     }
@@ -357,7 +357,10 @@ fn lab_check(ui: &Ui, chord: Chord) -> Result<(), String> {
 /// another shortcut out. ⌫ puts the default back. Only the shortcut's own key in `[labs]`
 /// changes; the feature's switch stays as it is.
 fn record_lab(ui: &mut Ui, feature: LabFeature, outcome: Press) {
-    let id = feature.shortcut_id();
+    let Some(id) = feature.shortcut_key() else {
+        cancel(ui);
+        return;
+    };
     let refused = match outcome {
         Press::Ignore => return,
         Press::Cancel => {

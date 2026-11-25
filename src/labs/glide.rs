@@ -173,10 +173,7 @@ mod tests {
         assert_eq!(toml::to_string(&labs).unwrap(), source);
         let whole: LabsConfig = toml::from_str("scrolling_strip_damping = 1").unwrap();
         assert!(whole.is_default());
-        assert_eq!(
-            toml::to_string(&LabsConfig::default()).unwrap(),
-            "scrolling_strip = false\n"
-        );
+        assert_eq!(toml::to_string(&LabsConfig::default()).unwrap(), "");
     }
 
     #[test]

@@ -32,6 +32,20 @@ impl MainThreadAgent {
                 self.cancelled.store(true, Ordering::Release);
             }
         }
+        if macos::take_active_space_changed() {
+            // A desktop or fullscreen slide: a background cycle under way
+            // would lay out both Spaces' windows together, so stop it, and
+            // retile once the slide settles (#334).
+            self.last_activity = Instant::now();
+            if self.worker.is_interruptible_busy() {
+                self.cancelled.store(true, Ordering::Release);
+            }
+            let settled = Instant::now() + SPACE_TRANSITION_SETTLE;
+            self.observation_recheck = Some(
+                self.observation_recheck
+                    .map_or(settled, |recheck| recheck.min(settled)),
+            );
+        }
         let activation_ready = self
             .activation_refresh_at
             .is_none_or(|refresh_at| Instant::now() >= refresh_at);
@@ -42,14 +56,21 @@ impl MainThreadAgent {
         if mouse_down {
             self.last_activity = Instant::now();
         }
+        let pointer = (mouse_down || self.mouse_was_down)
+            .then(macos::mouse_position)
+            .flatten();
         if !self.mouse_was_down && mouse_down {
             // Core Graphics hit-testing and readback do not send synchronous
             // AX messages to another app from the main-thread input loop.
-            self.gesture_tracker.begin(
-                macos::mouse_position()
-                    .map(macos::windows_at_point)
-                    .unwrap_or_default(),
+            self.gesture_tracker.begin_at(
+                pointer.map(macos::windows_at_point).unwrap_or_default(),
+                pointer,
             );
+        } else if mouse_down
+            && self.gesture_tracker.is_active()
+            && let Some(point) = pointer
+        {
+            self.gesture_tracker.observe_point(point);
         }
         if self.mouse_was_down && !mouse_down {
             let frames = self
@@ -59,7 +80,7 @@ impl MainThreadAgent {
                 .flatten();
             if let Some(gesture) = self.gesture_tracker.finish(
                 |window| frames.as_ref()?.get(&window.window_id).copied(),
-                macos::mouse_position(),
+                pointer,
             ) {
                 if self.worker.is_interruptible_busy() {
                     self.cancelled.store(true, Ordering::Release);
@@ -75,7 +96,7 @@ impl MainThreadAgent {
             && let Some(frames) = macos::window_server_frames()
             && let Some(gesture) = self.gesture_tracker.preview(
                 |window| frames.get(&window.window_id).copied(),
-                macos::mouse_position(),
+                pointer,
             )
         {
             self.worker

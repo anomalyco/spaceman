@@ -274,7 +274,7 @@ fn sentence(description: &str) -> String {
 pub const PRESETS: [(&str, Modifiers); 3] = [
     ("⌥ Option", Modifiers::OPTION),
     (
-        "⌃⌥ Control",
+        "⌃⌥ Control-Option",
         Modifiers {
             command: false,
             control: true,

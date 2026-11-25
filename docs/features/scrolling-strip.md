@@ -9,20 +9,26 @@ edge and are recorded like an inactive workspace's windows. An experiment: off b
 ## Sub-features
 
 ```ts
-Lab switch (Settings › Labs card / [labs] scrolling_strip / config set labs.scrolling_strip)
+Lab switch (Settings › Labs row / [labs] scrolling_strip / config set labs.scrolling_strip)
 ├── Off (default) -> the strip's shortcut not registered; ctl strip answers
 │                    "Scrolling Strip is off (enable it in Settings › Labs)"; every workspace tiles as usual
 ├── On  -> hot-reloads: worker gate opens, the strip's shortcut registers     // strip.lab
-├── Shortcut (card recorder / [labs] scrolling_strip_shortcut, default alt+shift+s)
+├── Shortcut (the card's second row, only while the switch is on / [labs] scrolling_strip_shortcut,
+│   default alt+shift+s)
 │   └── hot-reloads; claims its chord ahead of built-ins, [shortcuts] bindings still win;
 │       Backspace in the recorder puts the default back                       // strip.shortcut
-├── Glide tuning (card, only while the switch is on / [labs] / config set labs.…)  // strip.tuning
+├── Customize… (quiet button beside the switch, only while it is on) -> sheet     // strip.sheet
+│   ├── the strip under the display
+│   ├── Glide tuning (below; also [labs] / config set labs.…)
+│   ├── Shortcuts: toggle, glide, move, width; every chord read from the file, so the base
+│   │   modifier, a rebound shortcut and the strip's own chord show as they are ("Not set" if unbound)
+│   └── Done, Escape or a press outside closes; switching the strip off closes it too
+├── Glide tuning (the sheet / [labs] / config set labs.…)                        // strip.tuning
 │   ├── Glide 120 · 180 · 280 · 400 ms   -> scrolling_strip_duration_ms (80-900, default 180)
 │   ├── Feel Bouncy · Snappy · Soft      -> scrolling_strip_damping 0.78 · 1.0 · 1.18 (0.6-1.3)
 │   ├── Next to another display Tuck · Slide -> scrolling_strip_shared_edge "tuck" | "slide"
 │   └── a value the file holds that isn't a preset shows as an extra segment; all hot-reload
 │       before the next key press, and a running glide is retuned in place
-└── How it works (card button) -> dialog: the strip under the display, and its keys
 
 Toggle (focused workspace) Option+Shift+S / ctl strip                         // strip.toggle
 ├── On : columns at their widths from the left edge, no glide; the rest peek or park durably
@@ -118,7 +124,9 @@ tuning: `the_defaults_are_the_default_spring`, `a_shorter_glide_is_a_proportiona
 (`src/labs/glide.rs`), `retuning_a_spring_keeps_its_motion_continuous`,
 `strip_glide_tuning_round_trips_and_leaves_defaults_out` (CLI, `src/cli/tests/labs.rs`),
 `glide_tuning_round_trips_and_leaves_its_defaults_out` (Settings, `agent/src/rules/glide.rs`) and
-`pickers_offer_the_presets_and_a_custom_value_from_the_file` (`agent/src/labs/tuning.rs`). Ribbon,
+`pickers_offer_the_presets_and_a_custom_value_from_the_file` (`agent/src/labs/tuning.rs`). Customize
+sheet: `customize_opens_the_strip_sheet_and_only_while_the_strip_is_on` (`agent/src/labs.rs`) and
+`every_key_in_the_sheet_follows_the_file` (`agent/src/labs/customize.rs`). Ribbon,
 camera and glide math: `src/strip/tests.rs`
 (minimal scroll, peeks, seams, 120 Hz intermediate frames, retarget continuity). Enhanced UI hand-off:
 `a_restore_owed_during_a_hold_is_paid_when_the_last_sink_closes` (`src/macos/presenter/holds.rs`).
@@ -128,7 +136,7 @@ Persistence: `persisted_strip_round_trips_and_excludes_fullscreen_layout`. Confi
 `scrolling_strip_shortcut_registers_only_while_its_lab_is_on` (also a picked chord),
 `the_strip_shortcut_defaults_to_option_shift_s_and_reads_any_chord`,
 `chords_print_back_in_config_syntax_and_as_menu_symbols`, and the recorder's
-`recorded_chords_round_trip_through_the_config_syntax` (`agent/src/labs/shortcut.rs`).
+`recording_the_strip_shortcut_keeps_its_lab_on` (`agent/src/panes/shortcuts/recorder/tests.rs`).
 
 ## How To Get To It (User POV)
 
@@ -136,8 +144,7 @@ Persistence: `persisted_strip_round_trips_and_excludes_fullscreen_layout`. Confi
 Settings › Labs -> Scrolling Strip switch on
 Focus a window on the workspace
 └── Option+Shift+S (or the shortcut picked on the card) / spaceman ctl strip -> toggle
-Settings › Labs -> How it works -> the strip and its keys
-Settings › Labs -> Scrolling Strip card -> Glide / Feel / Next to another display
+Settings › Labs -> Customize… -> the strip, Glide / Feel / Next to another display, and its keys
 └── spaceman config set labs.scrolling_strip_duration_ms 380   (likewise _damping, _shared_edge)
 ```
 

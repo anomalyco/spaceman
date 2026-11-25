@@ -123,7 +123,17 @@ impl Engine {
         self.commit_layout();
     }
 
+    #[cfg(test)]
     pub(crate) fn take_slot(&mut self, window: &PhysicalWindowId) -> Option<Slot> {
+        self.take_slot_with(window, LayoutMode::Columns, crate::Rect::default())
+    }
+
+    pub(crate) fn take_slot_with(
+        &mut self,
+        window: &PhysicalWindowId,
+        mode: LayoutMode,
+        output: crate::Rect,
+    ) -> Option<Slot> {
         let index = self
             .model
             .workspace
@@ -131,15 +141,26 @@ impl Engine {
             .iter()
             .position(|slot| slot.bound_window() == Some(window))?;
         let slot = self.model.workspace.slots.remove(index);
-        self.layout
-            .sync(self.model.workspace.axis, &self.model.workspace.slots);
+        self.layout.sync_near(
+            self.model.workspace.axis,
+            &self.model.workspace.slots,
+            None,
+            mode,
+            output,
+        );
+        self.model.workspace.axis = self.layout.root_axis();
         self.evidence.previous_placements.remove(&slot.id);
         self.invalidate_layout();
         Some(slot)
     }
 
     /// Remove every slot, bound or unresolved, whose identity belongs to `app`.
-    pub(crate) fn forget_app(&mut self, app: &crate::AppInstanceId) -> bool {
+    pub(crate) fn forget_app_with(
+        &mut self,
+        app: &crate::AppInstanceId,
+        mode: LayoutMode,
+        output: crate::Rect,
+    ) -> bool {
         let before = self.model.workspace.slots.len();
         self.model
             .workspace
@@ -153,8 +174,14 @@ impl Engine {
         self.evidence
             .previous_placements
             .retain(|id, _| slots.iter().any(|slot| slot.id == *id));
-        self.layout
-            .sync(self.model.workspace.axis, &self.model.workspace.slots);
+        self.layout.sync_near(
+            self.model.workspace.axis,
+            &self.model.workspace.slots,
+            None,
+            mode,
+            output,
+        );
+        self.model.workspace.axis = self.layout.root_axis();
         self.invalidate_layout();
         true
     }
@@ -228,19 +255,17 @@ impl Engine {
 
     /// Re-evaluate even without a new refusal: a removed sibling or a larger
     /// display can make the original split usable again.
-    pub(crate) fn fit_minimums(
-        &mut self,
+    fn slot_minimums(
+        &self,
         settings: &Settings,
         minimums: &std::collections::HashMap<PhysicalWindowId, (i32, i32)>,
-    ) -> bool {
-        let output = settings.canvas();
+    ) -> std::collections::HashMap<crate::SlotId, (i32, i32)> {
+        if minimums.is_empty() {
+            return std::collections::HashMap::new();
+        }
         // Every cell gives one whole gap to the space around its window.
         let gap = settings.spacing.inner;
-        if minimums.is_empty() {
-            return self.fit.take().is_some_and(|fit| fit.tree.is_some());
-        }
-        let slots: std::collections::HashMap<_, _> = self
-            .model
+        self.model
             .workspace
             .slots
             .iter()
@@ -248,7 +273,37 @@ impl Engine {
                 let (width, height) = *minimums.get(slot.bound_window()?)?;
                 Some((slot.id, (width + gap, height + gap)))
             })
-            .collect();
+            .collect()
+    }
+
+    /// Compute placements for a candidate layout tree (including any temporary
+    /// minimum-size fit) without mutating the committed workspace layout.
+    pub(crate) fn placements_for_tree(
+        &self,
+        layout: &LayoutTree,
+        settings: &Settings,
+        minimums: &std::collections::HashMap<PhysicalWindowId, (i32, i32)>,
+    ) -> Vec<Placement> {
+        let slots = self.slot_minimums(settings, minimums);
+        let fitted = (!slots.is_empty())
+            .then(|| layout.fitted(settings.canvas(), &slots))
+            .flatten();
+        placements_for(fitted.as_ref().unwrap_or(layout), &self.model, settings)
+    }
+
+    /// Commit an already-edited layout tree as the workspace's requested layout.
+    pub(crate) fn commit_layout_tree(&mut self, layout: LayoutTree) {
+        self.layout = layout;
+        self.commit_layout();
+    }
+
+    pub(crate) fn fit_minimums(
+        &mut self,
+        settings: &Settings,
+        minimums: &std::collections::HashMap<PhysicalWindowId, (i32, i32)>,
+    ) -> bool {
+        let output = settings.canvas();
+        let slots = self.slot_minimums(settings, minimums);
         if slots.is_empty() {
             return self.fit.take().is_some_and(|fit| fit.tree.is_some());
         }
@@ -326,6 +381,7 @@ impl Engine {
         })
     }
 
+    #[cfg(test)]
     pub(crate) fn move_window_relative(
         &mut self,
         moved: &PhysicalWindowId,

@@ -82,8 +82,8 @@ it. Next to another display, a column crossing the shared edge waits at the edge
 neighbor, which slides over or off it, so nothing shows on the other display (with `[labs]
 scrolling_strip_shared_edge = "slide"` it glides up to halfway past the edge first). The column a
 key moves to takes focus as the key lands, so typing reaches it during the glide, and it shows on
-top. The Labs card's How it works dialog shows the strip and
-its keys. Turning on Fullscreen Layout or pressing `Option+/` leaves the
+top. In Settings › Labs, `Customize…` beside the strip's switch shows the strip, its glide settings and
+its keys as you have them set. Turning on Fullscreen Layout or pressing `Option+/` leaves the
 strip. Pointer dragging and resizing are ignored on a strip.
 
 `Option+Shift+Space` floats the focused window: it leaves the tiles, keeps its exact frame and
@@ -94,10 +94,15 @@ other window. Press `Option+Shift+Space` again to put it back on the tiles, wher
 stable order. Windows that a `float` rule keeps floating, or that their application will not let
 Spaceman resize, stay floating; toggle them after removing the rule instead.
 
-Dragging a managed tile over a sibling swaps it. Dropping near a tile edge can create a nested split;
-dropping onto another display can move it to that display's active workspace. Resizing a managed
-window with the pointer updates the relevant split weights. Spaceman previews the rest of the layout
-during the gesture and applies the final result on mouse-up.
+Dragging a managed tile over a sibling swaps it. Dropping near a tile edge creates a nested split;
+dropping inside a band along the display's left or right edge (including any outer gap, once the
+pointer has been outside that band since the drag began) docks the window into a full-height,
+half-width column on that side and keeps the remaining tiles' arrangement in the other half.
+Dropping onto another display moves the window to that display's active workspace. Resizing a
+managed window with the pointer updates the relevant split weights. Spaceman previews the rest of
+the layout non-destructively against the layout at drag start and commits only on mouse-up, so
+crossing a sibling or leaving a drop zone restores the preview and never leaves an intermediate edit
+behind.
 
 While the worker is busy, keyboard commands and completed pointer gestures are queued in arrival
 order. Repeated relative commands (resize, focus, move, and toggles) are not discarded. The queue holds
@@ -150,9 +155,10 @@ The menu-bar control shows active workspace/layout glyphs and runtime errors. It
 - `Pause Tiling`, or `Resume Tiling` while paused;
 - `Workspace HUD`, checked while the non-activating workspace capsule (`[settings] hud = true`) is enabled;
   `Settings > General > Workspace HUD` picks `Off`, `Icons`, or `Layouts` (`[settings] hud` and `hud_style`, default `Icons`),
-  and its `Position` picks `Bottom` or `Top` (`[settings] hud_position`, default `Bottom`) while the HUD is on;
+  and, while the HUD is on, `Customize…` beside it opens a sheet whose `Position` picks `Bottom` or `Top`
+  (`[settings] hud_position`, default `Bottom`) under a live miniature of the capsule;
 - `Launch at Login`, shown checked when macOS has enabled the signed app bundle;
-- `Settings...` (`⌘,`), opening the Rune Settings window (`General`, `Layout`, `Rules`, `Workspaces`, `Shortcuts`, and `Activity`, plus `⇧⌘D` Playground);
+- `Settings...` (`⌘,`), opening the Rune Settings window (`General`, `Layout`, `Rules`, `Workspaces`, `Shortcuts`, with `[labs] activity = true` `Activity`, and `Labs`, plus `⇧⌘D` Playground);
 - `Check for Updates...`, which checks and opens Settings (its sidebar and `General > Updates` show
   the result), or `Install Spaceman <version> and Restart` once an update is downloaded and verified;
 - `Quit Spaceman` (`⌘Q`).
@@ -269,7 +275,7 @@ Spaceman registers the `spaceman://` URL scheme (and clickable web bounce links 
 `https://anoma.ly/spaceman/open/?to=...`) to open Settings directly onto a pane, feature, or Lab:
 
 - `spaceman://settings` — open Settings
-- `spaceman://settings/<pane>` — open `general`, `rules`, `workspaces`, `shortcuts`, `labs`, `layout`, or `activity` (plus optional `/<focus>`)
+- `spaceman://settings/<pane>` — open `general`, `rules`, `workspaces`, `shortcuts`, `labs`, `layout`, or `activity` (plus optional `/<focus>`); `activity` falls back to `general` while `[labs] activity` is off
 - `spaceman://labs` / `spaceman://labs/<slug>` — open Settings › Labs and highlight `<slug>` (e.g. `scrolling-strip`, `playground`)
 - `spaceman://features/<slug>` — open the Settings pane and highlight for a feature (e.g. `workspaces`, `rules`, `shortcuts`, `gaps`, `hud`)
 

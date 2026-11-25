@@ -7,9 +7,9 @@ pub use write::{
     ConfigLock, lock_config, resolve_write_target, save_workspace_monitor_at, write_config_atomic,
 };
 
+pub use crate::labs::{LabFeature, LabsConfig};
 use crate::{
     DisplaySelector, ObservedWindow, WorkspaceId, Workspaces,
-    labs::LabsConfig,
     shortcuts::{RawShortcuts, Shortcuts},
     spacing::{Spacing, SpacingKey, check_outer},
 };
@@ -993,6 +993,38 @@ monitor = "main"
         );
         assert!(Config::parse("version = 1\n[labs]\nwarp_drive = true\n").is_err());
         assert!(Config::parse("version = 1\n[labs]\nscratchpad = 1\n").is_err());
+    }
+
+    #[test]
+    fn parses_labs_with_activity_off_by_default() {
+        for source in ["version = 1", "version = 1\n[labs]\n"] {
+            let config = Config::parse(source).unwrap();
+            assert!(!config.labs().activity);
+            assert!(!config.labs().enabled(LabFeature::Activity));
+        }
+        assert!(!Config::default().labs().activity);
+        let config = Config::parse("version = 1\n[labs]\nactivity = true\n").unwrap();
+        assert!(config.labs().activity);
+        assert!(config.labs().enabled(LabFeature::Activity));
+        assert!(
+            !config.labs().enabled(LabFeature::Scratchpad),
+            "each switch stands alone"
+        );
+        // Both switches share the table.
+        let both =
+            Config::parse("version = 1\n[labs]\nscratchpad = true\nactivity = true\n").unwrap();
+        assert!(both.labs().enabled(LabFeature::Scratchpad));
+        assert!(both.labs().enabled(LabFeature::Activity));
+    }
+
+    #[test]
+    fn lab_features_round_trip_their_keys() {
+        for feature in LabFeature::ALL {
+            assert_eq!(LabFeature::parse(feature.key()), Some(feature));
+        }
+        assert_eq!(LabFeature::parse("activity").unwrap().key(), "activity");
+        assert_eq!(LabFeature::parse("scroll"), None);
+        assert_eq!(LabFeature::parse(""), None);
     }
 
     #[test]
