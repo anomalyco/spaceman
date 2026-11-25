@@ -88,7 +88,9 @@ is re-parked against the new arrangement before focus follow or reappearance han
 write is retried each cycle), and a recovery frame whose display is gone is restored onto the main
 display. Empty gaps between
 staggered displays are not treated as a window reappearing on screen. Native clamping and application
-behavior still require live qualification on a particular display arrangement.
+behavior still require live qualification on a particular display arrangement. Mission Control
+still shows parked windows; with **Group windows by application** off it can shrink every thumbnail
+to fit them (see [Known Limitations](limitations.md)).
 
 Spaceman uses the private `_AXUIElementGetWindow` symbol. It requires no SIP change, but an OS update
 could remove or alter that symbol. Mac App Store distribution is not supported.
