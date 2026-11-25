@@ -325,6 +325,26 @@ impl WorkspaceBackend for FakeBackend {
             .collect()
     }
 
+    fn set_restore_frame(
+        &mut self,
+        window: &crate::PhysicalWindowId,
+        target: crate::Rect,
+    ) -> macos::ApplyOutcome {
+        let outcome = self.set_position(window, target);
+        if outcome == macos::ApplyOutcome::Applied {
+            let server = if self.frozen_server_frames {
+                None
+            } else {
+                self.server_frames.get_mut(window)
+            };
+            for frame in [self.frames.get_mut(window), server].into_iter().flatten() {
+                frame.width = target.width;
+                frame.height = target.height;
+            }
+        }
+        outcome
+    }
+
     fn set_parked_position(
         &mut self,
         window: &crate::PhysicalWindowId,
