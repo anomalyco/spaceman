@@ -134,7 +134,8 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
     }
 
     /// The visible workspace a toggle acts on: the focused window's, else the display it is on,
-    /// else the last focused workspace, else the main display's.
+    /// else the last focused workspace, else the main display's. A pinned float keeps its
+    /// owner when dragged to another display, so it is judged by where it is (#556).
     fn scratchpad_target(
         &mut self,
         outputs: &macos::DisplayOutputs,
@@ -152,6 +153,20 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
             })
         };
         let focused = self.current_focus();
+        let pinned = focused
+            .as_ref()
+            .is_some_and(|window| self.workspaces.is_pinned(window));
+        let frame = focused
+            .as_ref()
+            .and_then(|window| self.backend.window_server_frame(window));
+        let on_display = |frame: crate::Rect| {
+            visible
+                .iter()
+                .find(|resolved| resolved.output.contains_center(frame))
+        };
+        if pinned && let Some(resolved) = frame.and_then(on_display) {
+            return Ok(resolved.clone());
+        }
         if let Some(resolved) = find(
             focused
                 .as_ref()
@@ -159,15 +174,8 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
         ) {
             return Ok(resolved.clone());
         }
-        let frame = focused
-            .as_ref()
-            .and_then(|window| self.backend.window_server_frame(window));
         frame
-            .and_then(|frame| {
-                visible
-                    .iter()
-                    .find(|resolved| resolved.output.contains_center(frame))
-            })
+            .and_then(on_display)
             .or_else(|| find(self.focus.history().current))
             .or_else(|| {
                 visible

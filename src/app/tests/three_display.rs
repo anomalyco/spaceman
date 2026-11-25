@@ -504,3 +504,36 @@ fn a_rule_floated_window_dragged_to_another_display_stays_floating_on_its_new_wo
     floats_on_six(&rt, "6 shown again");
     assert_eq!(rt.backend.frames[&win(10)], FLOAT_ON_LEFT, "6 shown again");
 }
+
+/// #556: Scratchpad Toggle summons onto the display the focused window is on, even when a
+/// pinned float there still belongs to another display's workspace; a focused tile still
+/// summons onto its own display.
+#[test]
+fn scratchpad_toggle_summons_onto_the_display_a_focused_pin_was_dragged_to() {
+    let labs = "[labs]\nfloat_follows_display = true\nscratchpad = true\n";
+    for (case, focus, right) in [("pinned float", 10, true), ("left tile", 60, false)] {
+        let mut rt = float_rig(labs, "right", FLOAT_START);
+        rt.backend.focused = Some(win(11));
+        act(
+            &mut rt,
+            WorkerAction::Scratchpad(crate::scratchpad::ScratchpadCommand::Mark),
+        );
+        assert!(rt.workspaces.scratchpad().contains(&win(11)), "{case}");
+        assert!(rt.workspaces.pin(win(10)));
+        release_float(&mut rt, FLOAT_ON_RIGHT);
+        assert_eq!(rt.workspaces.floating_workspace_of(&win(10)), Some(ws(1)));
+
+        rt.backend.focused = Some(win(focus));
+        rt.backend.frontmost = Some(win(focus).app);
+        act(
+            &mut rt,
+            WorkerAction::Scratchpad(crate::scratchpad::ScratchpadCommand::Toggle),
+        );
+        let display = if right { RIGHT } else { LEFT };
+        assert!(
+            display.contains_center(rt.backend.frames[&win(11)]),
+            "{case}: {:?}",
+            rt.backend.frames[&win(11)]
+        );
+    }
+}
