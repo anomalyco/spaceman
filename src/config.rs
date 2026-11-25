@@ -214,6 +214,10 @@ pub struct LabsConfig {
     /// arrangement: left to right, portrait displays drawn tall, same-named displays told apart.
     #[serde(default)]
     pub physical_displays: bool,
+    /// Directional focus prefers the most recently focused of the tiles that
+    /// border the focused one on the side pressed.
+    #[serde(default)]
+    pub recent_focus: bool,
 }
 
 impl LabsConfig {
@@ -225,6 +229,7 @@ impl LabsConfig {
             LabFeature::Activity => self.activity,
             LabFeature::PortraitEdgeRows => self.portrait_edge_rows,
             LabFeature::PhysicalDisplays => self.physical_displays,
+            LabFeature::RecentFocus => self.recent_focus,
         }
     }
 }
@@ -240,15 +245,18 @@ pub enum LabFeature {
     PortraitEdgeRows,
     /// The menu bar, its menu and the HUD's Layouts style in physical display order and shape.
     PhysicalDisplays,
+    /// Directional focus prefers the most recently focused bordering tile.
+    RecentFocus,
 }
 
 impl LabFeature {
     /// Every switch, in the order `[labs]` lists them.
-    pub const ALL: [Self; 4] = [
+    pub const ALL: [Self; 5] = [
         Self::Scratchpad,
         Self::Activity,
         Self::PortraitEdgeRows,
         Self::PhysicalDisplays,
+        Self::RecentFocus,
     ];
 
     /// The `[labs]` key that turns this feature on.
@@ -259,6 +267,7 @@ impl LabFeature {
             Self::Activity => "activity",
             Self::PortraitEdgeRows => "portrait_edge_rows",
             Self::PhysicalDisplays => "physical_displays",
+            Self::RecentFocus => "recent_focus",
         }
     }
 
@@ -1191,6 +1200,24 @@ monitor = "main"
         );
         assert!(Config::parse("version = 1\n[labs]\nwarp_drive = true\n").is_err());
         assert!(Config::parse("version = 1\n[labs]\nscratchpad = 1\n").is_err());
+    }
+
+    #[test]
+    fn parses_labs_with_recent_focus_off_by_default() {
+        assert!(!Config::default().labs().recent_focus);
+        assert!(
+            !Config::parse("version = 1\n[labs]\n")
+                .unwrap()
+                .labs()
+                .recent_focus
+        );
+        let config = Config::parse("version = 1\n[labs]\nrecent_focus = true\n").unwrap();
+        assert!(config.labs().enabled(LabFeature::RecentFocus));
+        assert_eq!(
+            LabFeature::parse("recent_focus"),
+            Some(LabFeature::RecentFocus)
+        );
+        assert!(!config.labs().enabled(LabFeature::Scratchpad));
     }
 
     #[test]

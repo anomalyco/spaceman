@@ -180,6 +180,7 @@ pub(crate) fn config_help(executable: &str) -> String {
         "  labs.activity            true | false  Settings › Activity: arrangement log and diagnostics",
         "  labs.portrait_edge_rows  true | false  Top/bottom edge drops make rows on portrait displays",
         "  labs.physical_displays   true | false  Menu bar and HUD in physical display order and shape",
+        "  labs.recent_focus        true | false  Option+H/J/K/L prefers the last-used bordering tile",
         "",
         "Notes:",
         "  - Respects SPACEMAN_CONFIG and SPACEMAN_APPLICATION_SUPPORT.",

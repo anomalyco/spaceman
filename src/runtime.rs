@@ -29,6 +29,9 @@ pub struct Engine {
     // placement, navigation and HUD previews until its inputs change.
     fit: Option<DisplayFit>,
     insertion_focus: Option<crate::SlotId>,
+    /// Slots in the order they last had focus, most recent first, kept only in
+    /// memory. A native tab keeps its slot, so it keeps its place here.
+    focus_order: Vec<crate::SlotId>,
     evidence: ReconciliationEvidence,
     revision: u64,
     next_cycle: u64,
@@ -94,6 +97,7 @@ impl Engine {
             .map(|placement| (placement.slot, placement.frame))
             .collect();
         self.model = result.model.clone();
+        self.prune_focus_order();
         Ok(result)
     }
 
@@ -200,6 +204,8 @@ impl Engine {
             slot.id = crate::SlotId(self.model.next_slot_id);
         }
         self.model.next_slot_id = self.model.next_slot_id.max(slot.id.0.saturating_add(1));
+        // A tile arriving here has not had focus here, whatever its ID ranked before.
+        self.focus_order.retain(|&id| id != slot.id);
         self.model.workspace.slots.push(slot);
         self.sync_layout(anchor, mode, output);
         self.invalidate_layout();
@@ -238,6 +244,25 @@ impl Engine {
 
     pub(crate) fn remember_insertion_focus(&mut self, window: &PhysicalWindowId) {
         self.insertion_focus = self.slot_for_window(window);
+        if let Some(slot) = self.insertion_focus {
+            self.focus_order.retain(|&id| id != slot);
+            self.focus_order.insert(0, slot);
+        }
+        self.prune_focus_order();
+    }
+
+    /// Drops closed or moved-out tiles, so an ID reused later starts unranked.
+    fn prune_focus_order(&mut self) {
+        let model = &self.model;
+        self.focus_order.retain(|&id| model.slot(id).is_some());
+    }
+
+    /// How recently `window`'s tile had focus: 0 for the most recent, None for
+    /// a tile not focused since Spaceman started (or not on this workspace).
+    #[must_use]
+    pub(crate) fn focus_recency(&self, window: &PhysicalWindowId) -> Option<usize> {
+        let slot = self.slot_for_window(window)?;
+        self.focus_order.iter().position(|&id| id == slot)
     }
 
     fn display_layout(&self) -> &LayoutTree {
@@ -543,6 +568,7 @@ impl Engine {
         self.insertion_focus = self
             .insertion_focus
             .filter(|&id| self.model.slot(id).is_some());
+        self.prune_focus_order();
         self.invalidate();
     }
 
@@ -642,6 +668,63 @@ mod tests {
                 ..output
             }
         );
+    }
+
+    #[test]
+    fn focus_recency_orders_tiles_and_ignores_floats() {
+        let mut engine = Engine::default();
+        for i in 1..=3 {
+            engine.insert_slot(slot(i));
+        }
+        let windows = engine.bound_windows();
+        assert_eq!(engine.focus_recency(&windows[1]), None);
+        engine.remember_insertion_focus(&windows[2]);
+        engine.remember_insertion_focus(&windows[1]);
+        engine.remember_insertion_focus(&windows[0]);
+        let float = PhysicalWindowId {
+            app: AppInstanceId {
+                pid: 9,
+                launched_at: 1,
+            },
+            window_id: 99,
+        };
+        engine.remember_insertion_focus(&float);
+        assert_eq!(engine.focus_recency(&windows[0]), Some(0));
+        assert_eq!(engine.focus_recency(&windows[1]), Some(1));
+        assert_eq!(engine.focus_recency(&windows[2]), Some(2));
+        engine.remember_insertion_focus(&windows[2]);
+        assert_eq!(engine.focus_recency(&windows[2]), Some(0));
+        assert_eq!(engine.focus_recency(&windows[0]), Some(1));
+    }
+
+    #[test]
+    fn a_reused_slot_id_starts_unranked() {
+        let mut engine = Engine::default();
+        for i in 1..=2 {
+            engine.insert_slot(slot(i));
+        }
+        let windows = engine.bound_windows();
+        engine.remember_insertion_focus(&windows[1]);
+        engine.remember_insertion_focus(&windows[0]);
+        assert_eq!(engine.focus_recency(&windows[1]), Some(1));
+        assert!(engine.take_slot(&windows[1]).is_some());
+
+        // A tile moved in from another workspace keeps its ID, here the closed tile's.
+        let arriving = Slot {
+            id: crate::SlotId(2),
+            binding: crate::BindingState::Bound(PhysicalWindowId {
+                app: AppInstanceId {
+                    pid: 7,
+                    launched_at: 1,
+                },
+                window_id: 70,
+            }),
+        };
+        let window = arriving.bound_window().cloned().unwrap();
+        engine.insert_slot(arriving);
+        assert_eq!(engine.slot_for_window(&window), Some(crate::SlotId(2)));
+        assert_eq!(engine.focus_recency(&window), None);
+        assert_eq!(engine.focus_recency(&windows[0]), Some(0));
     }
 
     #[test]

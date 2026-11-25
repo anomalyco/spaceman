@@ -25,6 +25,7 @@ secondary-display workspaces ships in the notarized preview at
 | --- | --- |
 | Workspaces, tiling, Fullscreen Layout, parking/restoration | Preview artifact and source builds |
 | Parking exemption, remembered placements (`window-memory.json`), arrangement journal, `spaceman doctor` | Preview artifact and source builds |
+| Settings › Labs | One off-by-default switch per `[labs]` feature, written to `config.toml`; `spaceman://labs/<slug>` highlights a row. Covered by `agent/src/panes/labs.rs` and `agent/src/panes/tests.rs` |
 | Single-process Rune Settings, four-step [setup tour](setup-tour.md), non-activating Workspace HUD (`[settings] hud`) | Preview artifact and source builds |
 | Named workspaces A-Z | Opt-in: enabled by a `route` rule or `[[workspaces]]` entry |
 | Custom shortcuts (`[shortcuts]`) | Preview artifact and source builds; rebind, unbind, or replace the built-in keys in `config.toml` or by recording a chord in Settings › Shortcuts, with a base `modifier` for the built-ins, applied live without a restart. Covered by unit tests in `src/shortcuts.rs`, `src/hotkeys.rs`, `src/config.rs`, `src/app/app_loop/live_shortcuts.rs`, `agent/src/rules/shortcuts/tests.rs`, and `agent/src/panes/shortcuts/`; no live harness exercises a rebound chord or live re-registration yet |
@@ -32,6 +33,7 @@ secondary-display workspaces ships in the notarized preview at
 | Settings › Activity (`[labs] activity`) | Opt-in Lab in source builds; off by default, the pane stays out of the sidebar while `spaceman doctor` and the journal keep recording |
 | Portrait edge rows (`[labs] portrait_edge_rows`) | Opt-in Lab in source builds; off by default, top/bottom display edge drop bands on portrait displays only when on |
 | Physical display order and shape (`[labs] physical_displays`) | Opt-in Lab in source builds; off by default, switched in Settings › Labs › Menu bar & HUD. Menu-bar glyphs and menu sections left to right, portrait glyphs and HUD Layouts previews tall, same-named displays labelled by position. Covered by `src/app/tests/physical_displays.rs`, `src/macos/displays.rs` and `src/status_item.rs` unit tests; no live harness checks the drawn glyphs |
+| Recent focus (`[labs] recent_focus`) | Opt-in Lab, switched in Settings › Labs or `config.toml`; off by default, `Option+H/J/K/L` picks the most recently focused of several bordering tiles |
 | Secondary-display workspaces 6-10 | Require a second display; with one display they fall back to `main` |
 | Three or more displays | Assign workspaces in Settings › Workspaces (each display past `secondary` by UUID) or with `[[workspaces]] monitor = "<uuid>"` |
 

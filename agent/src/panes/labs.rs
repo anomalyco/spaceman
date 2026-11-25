@@ -26,6 +26,11 @@ const GROUPS: [(&str, &str, &[Lab]); 3] = [
                 "Portrait edge rows",
                 "Drop a window on a portrait display's top or bottom edge for a row",
             ),
+            (
+                LabFeature::RecentFocus,
+                "Recent focus",
+                "⌥H/J/K/L goes to the bordering tile you used last",
+            ),
         ],
     ),
     (
@@ -97,5 +102,6 @@ mod tests {
             assert_eq!(rows, 1, "{}", feature.key());
         }
         assert_eq!(slug(LabFeature::PhysicalDisplays), "physical-displays");
+        assert_eq!(slug(LabFeature::RecentFocus), "recent-focus");
     }
 }

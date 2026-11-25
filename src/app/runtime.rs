@@ -474,8 +474,19 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
         outputs: &macos::DisplayOutputs,
     ) -> Option<(WorkspaceId, crate::PhysicalWindowId)> {
         let tiles = self.navigation_tiles(outputs);
-        crate::navigation::target(&tiles, focused, direction)
-            .map(|target| (target.workspace, target.window.clone()))
+        // `[labs] recent_focus`: among tiles bordering the focused one, the
+        // most recently focused wins (#374).
+        let engine = if self.config.labs().recent_focus {
+            self.workspaces
+                .workspace_of(focused)
+                .map(|workspace| self.workspaces.engine(workspace))
+        } else {
+            None
+        };
+        crate::navigation::target_by_recency(&tiles, focused, direction, |window| {
+            engine.and_then(|engine| engine.focus_recency(window))
+        })
+        .map(|target| (target.workspace, target.window.clone()))
     }
 
     pub(super) fn navigation_tiles(&self, outputs: &macos::DisplayOutputs) -> Vec<NavigationTile> {

@@ -259,7 +259,7 @@ Commands:
 | `move-tab WORKSPACE [--follow]` | Send the focused window's active tab there as its own window (and switch with `--follow`); a single-tab window moves whole ([Controls](controls.md#send-tab-to-workspace)) |
 | `back-and-forth` | Return to the previous workspace |
 | `move-workspace [next\|prev\|DISPLAY]` | Move the focused workspace to another display |
-| `focus left\|down\|up\|right` | Focus the nearest tile in that direction |
+| `focus left\|down\|up\|right` | Focus the nearest tile in that direction (see `recent_focus` under [Labs](#labs)) |
 | `focus next` | Focus the next window in the workspace: tiles in stable order, then floating windows |
 | `focus prev` | Focus the previous window in that same order |
 | `move-direction left\|down\|up\|right` | Move the focused tile in that direction |
@@ -316,8 +316,8 @@ in the file are kept.
 `[labs]` turns on experimental features one by one. Every switch is off by default, and with all of
 them off Spaceman behaves exactly as if Labs did not exist: no extra shortcuts register and no
 command changes behavior. Unknown keys are config errors. Settings › Labs lists every switch,
-grouped by what it changes (`Windows`: Scratchpad and Portrait edge rows; `Menu bar & HUD`: Physical
-display order; `Settings`: Activity), and flipping one there writes the same key.
+grouped by what it changes (`Windows`: Scratchpad, Portrait edge rows and Recent focus; `Menu bar &
+HUD`: Physical display order; `Settings`: Activity), and flipping one there writes the same key.
 
 ```toml
 [labs]
@@ -325,6 +325,7 @@ scratchpad = false                    # optional (default: false); the i3/sway-s
 activity = false                      # optional (default: false); Settings › Activity
 portrait_edge_rows = false            # optional (default: false); top/bottom drop bands on portrait displays
 physical_displays = false             # optional (default: false); menu bar in physical display order and shape
+recent_focus = false                  # optional (default: false); Option+H/J/K/L returns where you were
 ```
 
 `scratchpad = true` enables the Scratchpad (see [Controls › Scratchpad](controls.md#scratchpad-lab)) and
@@ -351,6 +352,17 @@ drawn tall; when displays share a product name, each section says which one it i
 glyph's workspace with its display. Rearranging, rotating, connecting or disconnecting a display
 updates them on the next refresh. With it off, or with one landscape display, the menu bar is
 unchanged. In Settings it is `Labs › Menu bar & HUD › Physical display order`.
+
+`recent_focus = true` changes which tile `Option+H/J/K/L` and `spaceman ctl focus` pick when several
+tiles on the focused tile's workspace border it on the side pressed: those that share part of its
+row or column with no nearer edge between. Of those, the one focused most recently wins, so pressing
+one way and back returns to where you were (with `1 | (2 / 3)`, left from 3 and right again lands on
+3, not 2). Every way a tile gets focus counts (keys, clicks, `Cmd+Tab`); focusing a floating window
+changes nothing, and a native tab keeps its tile's place. The order lives only in memory, and tiles
+not focused since Spaceman started rank last; with none of them focused, the nearest choice stands.
+A further tile never wins for being more recent. Crossing displays, focus from a floating window or
+an empty workspace, Fullscreen Layout, and `Option+Shift+H/J/K/L` are unchanged. It applies live. In Settings it is
+`Labs › Windows › Recent focus`.
 
 ```sh
 spaceman config set labs.activity true
