@@ -512,7 +512,11 @@ fn fingers_swiping_between_desktops_hold_layout_before_any_space_change() {
     runtime.cycle(outputs(), &cancelled).unwrap();
     assert_eq!(runtime.workspaces.workspace_of(&other), None);
     assert_eq!(runtime.backend.frames[&left], full);
-    assert!(writes_to(&runtime, &left).iter().all(|frame| *frame == full));
+    assert!(
+        writes_to(&runtime, &left)
+            .iter()
+            .all(|frame| *frame == full)
+    );
 }
 
 /// #572: macOS reports the Space change a swipe makes about a second after

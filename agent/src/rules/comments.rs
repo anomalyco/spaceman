@@ -188,7 +188,10 @@ impl Doc {
             return;
         };
         for name in rest {
-            let Some(next) = item.as_table_like_mut().and_then(|table| table.get_mut(name)) else {
+            let Some(next) = item
+                .as_table_like_mut()
+                .and_then(|table| table.get_mut(name))
+            else {
                 return;
             };
             item = next;

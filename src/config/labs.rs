@@ -61,6 +61,27 @@ pub struct LabsConfig {
 }
 
 impl LabsConfig {
+    /// Builds a [`LabsConfig`] by asking `enabled` for each [`LabFeature`].
+    #[must_use]
+    pub fn from_fn(mut enabled: impl FnMut(LabFeature) -> bool) -> Self {
+        Self {
+            scratchpad: enabled(LabFeature::Scratchpad),
+            activity: enabled(LabFeature::Activity),
+            portrait_edge_rows: enabled(LabFeature::PortraitEdgeRows),
+            physical_displays: enabled(LabFeature::PhysicalDisplays),
+            recent_focus: enabled(LabFeature::RecentFocus),
+            swipe_switch: enabled(LabFeature::SwipeSwitch),
+            empty_workspace_focus: enabled(LabFeature::EmptyWorkspaceFocus),
+            float_follows_display: enabled(LabFeature::FloatFollowsDisplay),
+            workspace_steps: enabled(LabFeature::WorkspaceSteps),
+            four_finger_swipe: enabled(LabFeature::FourFingerSwipe),
+            single_window_height: enabled(LabFeature::SingleWindowHeight),
+            route_all_windows: enabled(LabFeature::RouteAllWindows),
+            menu_bar_icon_style: enabled(LabFeature::MenuBarIconStyle),
+            focus_follows_mouse: enabled(LabFeature::FocusFollowsMouse),
+        }
+    }
+
     /// Whether `feature`'s switch is on.
     #[must_use]
     pub const fn enabled(self, feature: LabFeature) -> bool {
@@ -161,5 +182,25 @@ impl LabFeature {
     #[must_use]
     pub fn parse(key: &str) -> Option<Self> {
         Self::ALL.into_iter().find(|feature| feature.key() == key)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn from_fn_sets_every_lab_feature_independently() {
+        assert_eq!(LabsConfig::from_fn(|_| false), LabsConfig::default());
+        for target in LabFeature::ALL {
+            let labs = LabsConfig::from_fn(|feature| feature == target);
+            for feature in LabFeature::ALL {
+                assert_eq!(
+                    labs.enabled(feature),
+                    feature == target,
+                    "target={target:?}, checked={feature:?}"
+                );
+            }
+        }
     }
 }

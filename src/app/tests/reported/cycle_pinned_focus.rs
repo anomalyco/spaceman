@@ -106,7 +106,11 @@ fn pinned_away_from_home(
     report(&mut rt, 10);
     execute(&mut rt, &displays, WorkerAction::Retile);
     for workspace in [7, 1, 6] {
-        execute(&mut rt, &displays, WorkerAction::SwitchWorkspace(ws(workspace)));
+        execute(
+            &mut rt,
+            &displays,
+            WorkerAction::SwitchWorkspace(ws(workspace)),
+        );
     }
     report(&mut rt, 70);
     execute(&mut rt, &displays, WorkerAction::Retile);
@@ -118,7 +122,11 @@ fn pinned_away_from_home(
 fn cycling_from_a_pin_enters_the_shown_workspaces_ring() {
     let (mut rt, displays) = pinned_away_from_home(1);
     execute(&mut rt, &displays, WorkerAction::CycleFocus);
-    assert_eq!(rt.backend.focused, Some(win(60)), "forward enters at the first tile");
+    assert_eq!(
+        rt.backend.focused,
+        Some(win(60)),
+        "forward enters at the first tile"
+    );
     assert_eq!(visible(&rt, &displays), [1, 6, 9], "7 stays hidden");
     assert!(!rt.parked.contains_key(&win(70)), "the pin stays on screen");
 }
@@ -127,7 +135,11 @@ fn cycling_from_a_pin_enters_the_shown_workspaces_ring() {
 fn reverse_cycling_from_a_pin_enters_at_the_last_tile() {
     let (mut rt, displays) = pinned_away_from_home(1);
     execute(&mut rt, &displays, WorkerAction::CycleFocusPrevious);
-    assert_eq!(rt.backend.focused, Some(win(61)), "backward enters at the last tile");
+    assert_eq!(
+        rt.backend.focused,
+        Some(win(61)),
+        "backward enters at the last tile"
+    );
     assert_eq!(visible(&rt, &displays), [1, 6, 9], "7 stays hidden");
 }
 

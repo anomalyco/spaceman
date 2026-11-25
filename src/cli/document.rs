@@ -166,35 +166,15 @@ impl Default for ConfigDoc {
 pub(crate) struct SettingsDoc {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub hud: Option<bool>,
-    #[serde(
-        default,
-        skip_serializing_if = "Option::is_none",
-        serialize_with = "serialize_optional_hud_style"
-    )]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub hud_style: Option<HudStyle>,
-    #[serde(
-        default,
-        skip_serializing_if = "Option::is_none",
-        serialize_with = "serialize_optional_hud_position"
-    )]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub hud_position: Option<HudPosition>,
-    #[serde(
-        default,
-        skip_serializing_if = "Option::is_none",
-        serialize_with = "serialize_optional_layout"
-    )]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub layout: Option<LayoutMode>,
-    #[serde(
-        default,
-        skip_serializing_if = "Option::is_none",
-        serialize_with = "serialize_optional_update_channel"
-    )]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub update_channel: Option<UpdateChannel>,
-    #[serde(
-        default,
-        skip_serializing_if = "Option::is_none",
-        serialize_with = "serialize_optional_mouse_follows_focus"
-    )]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub mouse_follows_focus: Option<MouseFollowsFocus>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub trackpad_swipe: Option<bool>,
@@ -364,56 +344,6 @@ impl SettingsDoc {
 
     pub(crate) fn effective_pause_on_builtin_display(&self) -> bool {
         self.pause_on_builtin_display.unwrap_or(false)
-    }
-}
-
-fn serialize_optional_hud_style<S: serde::Serializer>(
-    style: &Option<HudStyle>,
-    serializer: S,
-) -> Result<S::Ok, S::Error> {
-    match style {
-        Some(style) => serializer.serialize_str(style.as_str()),
-        None => serializer.serialize_none(),
-    }
-}
-
-fn serialize_optional_hud_position<S: serde::Serializer>(
-    position: &Option<HudPosition>,
-    serializer: S,
-) -> Result<S::Ok, S::Error> {
-    match position {
-        Some(position) => serializer.serialize_str(position.as_str()),
-        None => serializer.serialize_none(),
-    }
-}
-
-fn serialize_optional_layout<S: serde::Serializer>(
-    layout: &Option<LayoutMode>,
-    serializer: S,
-) -> Result<S::Ok, S::Error> {
-    match layout {
-        Some(layout) => serializer.serialize_str(layout.as_str()),
-        None => serializer.serialize_none(),
-    }
-}
-
-fn serialize_optional_update_channel<S: serde::Serializer>(
-    channel: &Option<UpdateChannel>,
-    serializer: S,
-) -> Result<S::Ok, S::Error> {
-    match channel {
-        Some(channel) => serializer.serialize_str(channel.as_str()),
-        None => serializer.serialize_none(),
-    }
-}
-
-fn serialize_optional_mouse_follows_focus<S: serde::Serializer>(
-    mode: &Option<MouseFollowsFocus>,
-    serializer: S,
-) -> Result<S::Ok, S::Error> {
-    match mode {
-        Some(mode) => serializer.serialize_str(mode.as_str()),
-        None => serializer.serialize_none(),
     }
 }
 

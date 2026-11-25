@@ -38,7 +38,7 @@ Spaceman currently:
   (`spaceman ctl move-tab 2`) through the app's own `Move Tab to New Window`;
 - keeps movable non-resizable and rule-floated windows with their logical workspace without tiling
   or resizing them, floats small utilities such as Stickies and Calculator by default, and can pin
-  a floating window on every workspace (`action = "pin"` or `spaceman ctl pin`);
+  a floating window on every workspace of its display (`action = "pin"` or `spaceman ctl pin`);
 - exposes a local CLI over a user-only Unix socket.
 
 Spaceman uses Accessibility APIs to observe, focus, move, and resize eligible windows. It requires no

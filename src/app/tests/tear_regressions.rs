@@ -368,7 +368,10 @@ fn restore_all_command_moves_recovery_frames_onto_the_current_displays() {
         &AtomicBool::new(false),
     );
 
-    assert!(matches!(result, Some(WorkerResult::Restored { failed: 0, .. })));
+    assert!(matches!(
+        result,
+        Some(WorkerResult::Restored { failed: 0, .. })
+    ));
     assert!(runtime.parked.is_empty());
     let at = runtime.backend.frames[&window];
     assert_eq!(at, crate::Rect { x: 600, ..normal });

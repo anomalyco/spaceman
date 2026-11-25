@@ -47,7 +47,8 @@ Settings › Shortcuts shows each shortcut's current chord: click its keys and p
 rebind it (`esc` cancels, `⌫` clears it), or pick a Base modifier (`⌥`, `⌃⌥`, or `⌃⌥⌘`) to move
 every built-in shortcut at once. Changes register live, with no restart. If a saved table can't be
 registered, the pane still lists it; while the last working shortcuts stay registered it is marked
-**Previous shortcuts still run** and names each action's running chord where it differs.
+**Previous shortcuts still run** and names each modifier, workspace, or action row's running
+shortcut where it differs.
 
 Named workspace shortcuts are registered only when referenced by config. If a configured letter
 overlaps a built-in shortcut, the workspace shortcut takes precedence. A `[shortcuts]` binding claims
@@ -275,7 +276,7 @@ spaceman doctor 24
 Directions are `left`, `down`, `up`, and `right`. `focus next` is Option-backtick,
 `focus prev` is Option-Shift-backtick, `fullscreen` toggles the focused workspace's Fullscreen Layout, like `Option+Shift+F`, and `float`
 toggles the focused window's floating, like `Option+Shift+Space`. `pin` floats the focused window
-and shows it on every workspace, or unpins it (no built-in shortcut). `scratchpad toggle` and
+and shows it on every workspace of its display, or unpins it (no built-in shortcut). `scratchpad toggle` and
 `scratchpad mark` are `Option+\` and `Option+Shift+\`; while `[labs] scratchpad` is off they report
 `Scratchpad is off`. `switch next|prev` and `move next|prev [--follow]` need
 `[labs] workspace_steps = true` and have no built-in shortcut: `switch` steps through the focused
@@ -328,9 +329,9 @@ Spaceman registers the `spaceman://` URL scheme (and clickable web bounce links 
 `https://anoma.ly/spaceman/open/?to=...`) to open Settings directly onto a pane, feature, or Lab:
 
 - `spaceman://settings` — open Settings
-- `spaceman://settings/<pane>` — open `general`, `rules`, `workspaces`, `shortcuts`, `labs`, `layout`, or `activity` (plus optional `/<focus>`); `activity` falls back to `general` while `[labs] activity` is off
-- `spaceman://labs` / `spaceman://labs/<slug>` — open Settings › Labs and highlight `<slug>`, a switch's key with `-` for `_` (`scratchpad`, `activity`, `portrait-edge-rows`, `physical-displays`, `recent-focus`, `swipe-switch`, `empty-workspace-focus`)
-- `spaceman://features/<slug>` — open the Settings pane and highlight for a feature (e.g. `workspaces`, `rules`, `shortcuts`, `gaps`, `hud`)
+- `spaceman://settings/<pane>` — open `general`, `rules`, `workspaces`, `shortcuts`, `labs`, `layout`, `activity`, or `whats-new` (plus optional `/<focus>`); `activity` falls back to `general` while `[labs] activity` is off
+- `spaceman://labs` / `spaceman://labs/<slug>` — open Settings › Labs and highlight `<slug>`, a switch's key with `-` for `_` (`scratchpad`, `activity`, `portrait-edge-rows`, `physical-displays`, `recent-focus`, `swipe-switch`, `empty-workspace-focus`, `float-follows-display`, `workspace-steps`, `four-finger-swipe`, `single-window-height`, `route-all-windows`, `menu-bar-icon-style`, `focus-follows-mouse`)
+- `spaceman://features/<slug>` — open the Settings pane and highlight for a feature (e.g. `workspaces`, `rules`, `shortcuts`, `gaps`, `hud`, `menu-bar-icon`, `mouse-follows-focus`, `single-window-height`)
 
 Deep links only open Settings and highlight the requested pane or card. They never modify
 `config.toml`, never enable a Lab, and never run window-tiling or destructive commands.

@@ -298,6 +298,9 @@ Workspace HUD ([settings] hud, on by default)               // ws.hud
 │   leaves one workspace and appears in the other; the marker stays with you
 ├── The same workspace's layout changes -> its tiles move to their new frames
 ├── More workspaces than fit -> the row scrolls to keep the visible one in view, its cut edge fades
+├── Status toast (e.g. `Tiling paused — built-in display` / `Tiling resumed — external display`) ->
+│   reuses the same non-activating capsule on each display even when `settings.hud = false`, holds
+│   for 2.5 s before leaving in about 0.17 s, and updates in place when another toast arrives
 └── Reduce Motion -> the same changes as a short fade, with nothing travelling or scaling
 ```
 

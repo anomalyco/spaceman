@@ -17,7 +17,7 @@ docs/features/
 
 ## Availability
 
-Baseline: `dev` at 0.3.2 (`93897a4`). Everything below except named workspaces and
+Baseline: `dev` at 0.3.5 (`0d1b39f`). Everything below except named workspaces and
 secondary-display workspaces ships in the notarized preview at
 <https://anoma.ly/spaceman/download/macos-arm64> and in source builds.
 

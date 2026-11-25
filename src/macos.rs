@@ -384,9 +384,7 @@ pub fn window_owners(window_ids: &HashSet<u32>) -> HashMap<u32, AppInstanceId> {
         };
         windows
             .into_iter()
-            .filter(|window| {
-                window.pid > 0 && window.layer == 0 && window_ids.contains(&window.id)
-            })
+            .filter(|window| window.pid > 0 && window.layer == 0 && window_ids.contains(&window.id))
             .filter_map(|window| {
                 let application =
                     NSRunningApplication::runningApplicationWithProcessIdentifier(window.pid)?;

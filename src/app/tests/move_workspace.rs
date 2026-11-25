@@ -498,8 +498,9 @@ fn cycle_records_a_click_on_another_display_for_option_tab() {
     runtime
         .switch(WorkspaceId::SIX, outputs(), &cancelled)
         .unwrap();
-    // Click workspace 1's other window on Main. No switch happens; the cycle
-    // only watches the focus move.
+    // Click workspace 1's other window on Main, after the switch's focus request has settled:
+    // while one is in flight a sibling taking focus is the app's doing and is reclaimed (#591).
+    runtime.backend.advance(Duration::from_millis(300));
     runtime.backend.focused = Some(clicked.clone());
     runtime.cycle(outputs(), &cancelled).unwrap();
     assert_eq!(runtime.focus.history().current, Some(WorkspaceId::ONE));
