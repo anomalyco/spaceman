@@ -117,7 +117,9 @@ pub fn snapshot_in_outputs(
     cycle: u64,
     outputs: &DisplayOutputs,
 ) -> Result<NativeObservation, SnapshotError> {
-    snapshot_in_output(cycle, outputs.union()).map(|(observation, _)| observation)
+    // Full bounds: a new window centered over the topmost display's menu bar strip is on
+    // screen, though above every usable frame (#586).
+    snapshot_in_output(cycle, outputs.screen_union()).map(|(observation, _)| observation)
 }
 
 pub fn snapshot_for_window(

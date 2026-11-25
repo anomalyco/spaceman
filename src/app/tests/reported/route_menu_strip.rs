@@ -68,3 +68,63 @@ fn route_rule_owns_a_new_window_centered_in_the_menu_strip() {
         );
     }
 }
+
+/// #586: the reporter's layout, a landscape main display between two portraits whose physical
+/// tops sit above it. The left portrait's usable top is the highest of any display, so a window
+/// centered in its menu bar strip lay above every usable frame and was never observed.
+#[test]
+fn route_rule_owns_a_new_window_centered_in_the_topmost_menu_strip() {
+    let outputs = macos::DisplayOutputs::with_bounds(
+        vec![
+            macos::DisplayOutput {
+                id: "main-id".into(),
+                name: "Main".into(),
+                frame: rect(0, 30, 2560, 1410),
+                is_main: true,
+            },
+            macos::DisplayOutput {
+                id: "left-id".into(),
+                name: "Left".into(),
+                frame: rect(-1440, -583, 1440, 2530),
+                is_main: false,
+            },
+            macos::DisplayOutput {
+                id: "right-id".into(),
+                name: "Right".into(),
+                frame: rect(2560, -539, 1440, 2530),
+                is_main: false,
+            },
+        ],
+        vec![
+            rect(0, 0, 2560, 1440),
+            rect(-1440, -613, 1440, 2560),
+            rect(2560, -569, 1440, 2560),
+        ],
+    )
+    .unwrap();
+    let target = WorkspaceId::new(9).unwrap();
+    // Centers 8 points above and below the left portrait's usable top.
+    for y in [-623, -607] {
+        let created = window(10);
+        let frame = rect(-930, y, 420, 64);
+        let backend = FakeBackend {
+            observation: Some(observation(&created, frame)),
+            frames: [(created.clone(), frame)].into(),
+            ..FakeBackend::default()
+        };
+        let config = Config::parse(
+            "version = 1\n[settings]\nlayout = 'columns'\n\
+             [[workspaces]]\nworkspace = 5\nmonitor = 'left-id'\n\
+             [[workspaces]]\nworkspace = 8\nmonitor = 'right-id'\n\
+             [[workspaces]]\nworkspace = 9\nmonitor = 'right-id'\n\
+             [[rules]]\nbundle_id = 'com.example.Test'\naction = 'route'\nworkspace = 9",
+        )
+        .unwrap();
+        let mut runtime = runtime_with_config(backend, config);
+
+        runtime.cycle(outputs.clone(), &AtomicBool::new(false)).unwrap();
+
+        assert_eq!(runtime.workspaces.workspace_of(&created), Some(target), "y={y}");
+        assert!(runtime.parked.contains_key(&created), "y={y}");
+    }
+}
