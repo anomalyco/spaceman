@@ -140,10 +140,11 @@ pause, quit, or hotkey loss.
   on that display (#393, #394), a lost mouse-up sample restores the previews (#395), a width cap
   does not hide an adjacent display from directional focus and moves (#396), an emptied named
   workspace keeps its split direction across a restart (#402), absolute and keyboard resizes keep
-  the 50-point floor past gaps and every known minimum (#407, #408, #409) and write a 1–2 point
-  change exactly (#412), Dwindle splits the tile it shows (#410), and a retile learns every minimum a
-  row reveals (#413). `src/app/input.rs` classifies a title-bar drag whose window changes size as it
-  lands as a drop (#429).
+  the 50-point floor past gaps and every known minimum (#407, #408, #409), reach an absolute width
+  that fits on the first try even when a sibling first reveals its minimum during it (#492), and
+  write a 1–2 point change exactly (#412), Dwindle splits the tile it shows (#410), and a retile
+  learns every minimum a row reveals (#413). `src/app/input.rs` classifies a title-bar drag whose
+  window changes size as it lands as a drop (#429).
 - Unit (FakeBackend), `src/app/tests/reconciliation.rs`:
   `early_open_event_rechecks_until_the_new_window_can_split_its_sibling`,
   `closed_window_its_app_keeps_ordered_out_gives_up_its_tile` (an app closes its window by ordering it out),
