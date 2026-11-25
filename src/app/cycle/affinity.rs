@@ -8,6 +8,9 @@ pub(super) enum FrozenWindowAffinity {
     AmbiguousReplacement,
     Floating,
     ExplicitRoute(WorkspaceId),
+    /// The window a `move-tab` detach opened, sent to its target ahead of any
+    /// route rule.
+    DetachedTab(WorkspaceId),
     /// The app's existing workspace, or a remembered placement a relaunched
     /// application's window claimed.
     Inferred(WorkspaceId),
@@ -73,6 +76,7 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
                 }
             }
             self.prepare_recall(app, windows);
+            let detached_tab = self.claim_detached_tab(app, windows);
             let mut app_owns_window = self.workspaces.app_owns_windows(&app.id);
             let mut app_owns_tiled = self.workspaces.app_owns_tiled_windows(&app.id);
             for window in windows {
@@ -125,6 +129,18 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
                 }
                 let affinity = if let Some(owner) = self.workspaces.workspace_of(&window.id) {
                     FrozenWindowAffinity::Owned(owner)
+                } else if let Some((_, target)) = detached_tab
+                    .as_ref()
+                    .filter(|(detached, _)| *detached == window.id)
+                {
+                    app_owns_window = true;
+                    if floating {
+                        self.workspaces.own_floating(window.id.clone(), *target);
+                        FrozenWindowAffinity::Floating
+                    } else {
+                        app_owns_tiled = true;
+                        FrozenWindowAffinity::DetachedTab(*target)
+                    }
                 } else if !floating
                     && let Some(affinity) = {
                         let mut reserved = self.workspaces.replacement_workspaces(&window.id);

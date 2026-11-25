@@ -34,6 +34,8 @@ Spaceman currently:
 - can register its signed app bundle with macOS to launch automatically at login;
 - supports directional focus and movement across displays, drag-to-reorder/nest, mouse and keyboard
   resizing, balancing, and a workspace-wide Fullscreen Layout;
+- sends a browser, Finder, or terminal tab to another workspace as its own window
+  (`spaceman ctl move-tab 2`) through the app's own `Move Tab to New Window`;
 - keeps movable non-resizable and rule-floated windows with their logical workspace without tiling
   or resizing them;
 - exposes a local CLI over a user-only Unix socket.
@@ -170,6 +172,7 @@ display, including middle displays in three-display arrangements.
 spaceman ctl status
 spaceman ctl switch 2
 spaceman ctl move 7
+spaceman ctl move-tab 2
 spaceman ctl layout
 spaceman ctl float
 spaceman ctl balance

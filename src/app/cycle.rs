@@ -291,7 +291,7 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
         let mut status = self.status_for_visible(failed, &visible, &outputs);
         status.close_recheck = close_recheck;
         status.missing_frontmost_window = missing_frontmost_window;
-        Ok(status)
+        self.settle_tab_detach(status, &outputs, cancelled)
     }
 
     /// Bookkeeping shared by every path that moves a window between workspaces.
@@ -359,6 +359,7 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
                             target == workspace
                         }
                         FrozenWindowAffinity::ExplicitRoute(_)
+                        | FrozenWindowAffinity::DetachedTab(_)
                         | FrozenWindowAffinity::Inferred(_)
                         | FrozenWindowAffinity::CurrentDisplay => {
                             output.contains_center(window.frame)
@@ -412,6 +413,7 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
                     .copied()
                     .and_then(|affinity| match affinity {
                         FrozenWindowAffinity::ExplicitRoute(target)
+                        | FrozenWindowAffinity::DetachedTab(target)
                         | FrozenWindowAffinity::Inferred(target)
                             if target != workspace =>
                         {

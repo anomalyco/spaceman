@@ -113,7 +113,8 @@ This file is the current engineering contract. README and `docs/` describe curre
 ## Privacy And Security Invariants
 
 - Accessibility is used only for window observation, focus, movement, resizing, and required input/
-  display context. Never require SIP to be disabled.
+  display context, plus pressing the focused app's own "Move Tab to New Window" menu item when the
+  user runs `move-tab`. Never require SIP to be disabled.
 - Window titles may be used for matching in memory but must never enter persistence, serialized
   snapshots, debug output, HUD output, fixtures, logs, or control responses.
 - No telemetry, network access, or update checks without explicit product and security review.
