@@ -99,6 +99,11 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
         // (#423). Only a workspace a display shows qualifies: a hidden one
         // that is still its own selector's last workspace stays hidden (#542).
         let known = self.displays.known_outputs().cloned();
+        let homes_before: Vec<_> = known.as_ref().map_or_else(Vec::new, |outputs| {
+            WorkspaceId::all()
+                .map(|workspace| output_for(&self.workspaces, workspace, outputs))
+                .collect()
+        });
         let shown: HashSet<WorkspaceId> = known
             .iter()
             .flat_map(|outputs| self.visible_workspaces(outputs))
@@ -114,6 +119,9 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
                 })
         });
         self.config = config;
+        if let Some(outputs) = &known {
+            self.carry_parked_floats_to_new_homes(&homes_before, outputs);
+        }
     }
 
     pub(super) fn execute(

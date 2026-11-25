@@ -145,6 +145,51 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
         }
     }
 
+    /// A config reload can assign a workspace to another display while its
+    /// floats are parked. Tiles are laid out on the new display when it shows;
+    /// a parked float restores to its recovery frame, so that frame moves from
+    /// the display the workspace left onto its new one, same size and place
+    /// (#543). The float stays parked until the workspace is shown.
+    /// `homes_before` holds each workspace's display, in `WorkspaceId::all`
+    /// order, before the reload.
+    pub(super) fn carry_parked_floats_to_new_homes(
+        &mut self,
+        homes_before: &[crate::Rect],
+        outputs: &macos::DisplayOutputs,
+    ) {
+        let displays: Vec<_> = outputs.frames().collect();
+        for (workspace, &from) in WorkspaceId::all().zip(homes_before) {
+            let to = output_for(&self.workspaces, workspace, outputs);
+            if to == from {
+                continue;
+            }
+            let floats: Vec<_> = self
+                .workspaces
+                .floating_entries()
+                .filter(|(window, owner)| {
+                    *owner == workspace
+                        && !self.workspaces.is_pinned(window)
+                        && self.parked.contains_key(window)
+                })
+                .map(|(window, _)| window.clone())
+                .collect();
+            for window in floats {
+                let Some(&recovery) = self.parked.get(&window) else {
+                    continue;
+                };
+                if Self::display_for_frame(recovery, &displays) != Some(from) {
+                    continue;
+                }
+                let relocated =
+                    super::move_workspace::translate_frame_to_output(recovery, from, to);
+                let recorded = self.record_recovery(&window, relocated);
+                log_event!(
+                    "config reload: workspace {workspace} moved displays; parked floating {window:?} restores at {relocated:?} (recorded {recorded})"
+                );
+            }
+        }
+    }
+
     /// Note the displays, then re-park each hidden window still due one. Runs
     /// before focus follow and heal, which would otherwise take a window the
     /// new display uncovered for one the user brought back. A write that fails
