@@ -409,7 +409,8 @@ impl Workspaces {
     }
 
     /// The one enabled workspace holding the app's windows, tiled or floating;
-    /// none when they are spread over several.
+    /// none when they are spread over several. A pinned window shows on every
+    /// workspace, so its home workspace does not count (#465).
     #[must_use]
     pub fn workspace_for_app(&self, app: &crate::AppInstanceId) -> Option<WorkspaceId> {
         let mut matches = WorkspaceId::all().filter(|workspace| {
@@ -423,7 +424,9 @@ impl Workspaces {
                     .any(|slot| slot.belongs_to(app))
                     || self
                         .floating_entries()
-                        .any(|(window, owner)| owner == *workspace && &window.app == app))
+                        .any(|(window, owner)| {
+                            owner == *workspace && &window.app == app && !self.is_pinned(window)
+                        }))
         });
         let workspace = matches.next()?;
         matches.next().is_none().then_some(workspace)

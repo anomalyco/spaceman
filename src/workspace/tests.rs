@@ -665,3 +665,32 @@ fn workspace_steps_stop_at_either_end_of_the_list() {
     assert_eq!(WorkspaceStep::parse("prev"), Some(WorkspaceStep::Prev));
     assert_eq!(WorkspaceStep::parse("previous"), None);
 }
+
+#[test]
+fn pinned_floats_do_not_place_their_app_on_a_workspace() {
+    let pinned = window(40);
+    let mut workspaces = Workspaces::default();
+    workspaces.own_floating(pinned.clone(), WorkspaceId::TWO);
+    assert_eq!(
+        workspaces.workspace_for_app(&pinned.app),
+        Some(WorkspaceId::TWO)
+    );
+    // A pinned window shows on every workspace, so activating its app never
+    // follows it to its home workspace (#465).
+    workspaces.set_rule_pinned(&pinned, true);
+    assert_eq!(workspaces.workspace_for_app(&pinned.app), None);
+
+    // The app's other, unpinned windows still place it.
+    let tiled = PhysicalWindowId {
+        window_id: 41,
+        ..pinned.clone()
+    };
+    workspaces.engine_mut(WorkspaceId::SIX).insert_slot(Slot {
+        id: SlotId(1),
+        binding: BindingState::Bound(tiled),
+    });
+    assert_eq!(
+        workspaces.workspace_for_app(&pinned.app),
+        Some(WorkspaceId::SIX)
+    );
+}

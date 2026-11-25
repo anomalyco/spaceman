@@ -196,6 +196,34 @@ fn a_pinned_float_stays_visible_across_switches_and_never_pulls_focus() {
 }
 
 #[test]
+fn activating_an_app_whose_only_window_is_pinned_never_switches_to_its_owner() {
+    let window = sticky(1);
+    let mut runtime = runtime_with_config(
+        stickies_backend(&[(window.clone(), note(600))]),
+        pin_config(),
+    );
+    let cancelled = AtomicBool::new(false);
+    runtime.cycle(outputs(), &cancelled).unwrap();
+    assert_eq!(
+        runtime.workspaces.floating_workspace_of(&window),
+        Some(WorkspaceId::ONE)
+    );
+    assert!(runtime.workspaces.is_pinned(&window));
+    runtime
+        .switch(WorkspaceId::TWO, outputs(), &cancelled)
+        .unwrap();
+    runtime.cycle(outputs(), &cancelled).unwrap();
+
+    // Clicking the app in the Dock (or unminimizing it) makes it frontmost
+    // before Accessibility reports its window as focused (#465).
+    runtime.backend.focused = None;
+    runtime.backend.frontmost = Some(window.app.clone());
+    runtime.cycle(outputs(), &cancelled).unwrap();
+    assert_eq!(active(&runtime), Some(WorkspaceId::TWO));
+    assert!(!runtime.parked.contains_key(&window));
+}
+
+#[test]
 fn a_pin_rule_added_while_a_note_is_parked_brings_it_back() {
     let window = sticky(1);
     let mut runtime = runtime(stickies_backend(&[(window.clone(), note(600))]));
