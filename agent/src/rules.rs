@@ -115,6 +115,7 @@ impl Doc {
         LabsConfig {
             scratchpad: self.lab(LabFeature::Scratchpad),
             activity: self.lab(LabFeature::Activity),
+            center_floats: self.lab(LabFeature::CenterFloats),
         }
     }
 

@@ -1,5 +1,6 @@
 use super::*;
 
+mod centered_floats;
 mod drag;
 mod float;
 mod gesture;

@@ -113,7 +113,10 @@ monitor = "main"
 # Option+\ summons it centred on the focused display (or hides it again).
 # activity = true adds Settings › Activity, the live arrangement log and
 # doctor diagnostics; with it off the pane stays out of Settings.
+# center_floats = true centres a window you float (Option+Shift+Space) at three
+# quarters of its display, and Option+- / Option+= resize a focused float.
 #
 # [labs]
 # scratchpad = false
 # activity = false
+# center_floats = false

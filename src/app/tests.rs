@@ -1,5 +1,6 @@
 mod arrange;
 mod benchmarks;
+mod centered_floats;
 mod cross_display;
 mod dispatch;
 mod display_disconnect;

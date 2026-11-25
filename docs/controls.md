@@ -19,7 +19,7 @@ fails after the old registrations are released, it pauses and reports `Hotkeys u
 | `Option+H/J/K/L` | Focus the nearest tile left/down/up/right, including across displays |
 | `Option+Shift+H/J/K/L` | Move the focused tile in that direction |
 | `Option+/` | Toggle the active workspace layout's root horizontal/vertical axis |
-| `Option+-` / `Option+=` | Shrink/grow the focused tile by 50 pixels at its immediate split |
+| `Option+-` / `Option+=` | Shrink/grow the focused tile by 50 pixels at its immediate split (or a focused float, with the [Center Floats Lab](#center-floats-lab) on) |
 | `Option+Shift+F` | Toggle the workspace-wide Fullscreen Layout without entering native fullscreen |
 | `Option+Shift+Space` | Float the focused window above the tiles, or tile it again |
 | Three-finger swipe left/right | Next/previous workspace on the display under the pointer |
@@ -73,6 +73,17 @@ when the window closes. A floating window moves, resizes, and moves between work
 other window. Press `Option+Shift+Space` again to put it back on the tiles, where it joins them in
 stable order. Windows that a `float` rule keeps floating, or that their application will not let
 Spaceman resize, stay floating; toggle them after removing the rule instead.
+
+### Center Floats (Lab)
+
+With `[labs] center_floats = true` (see [Configuration › Labs](configuration.md#labs)),
+`Option+Shift+Space` centres the window it floats on its workspace's display at three quarters of the
+display's width and height, instead of leaving it where its tile was. While a floating window is
+focused, `Option+-` / `Option+=` (`resize shrink|grow`) shrink or grow it by 50 points in width and
+height around its centre, and `resize width|height N` sets that side, keeping its centre; a float
+never grows past its display or shrinks below 320 x 240 points. Windows floated by a rule, and
+tiling a window again, are unchanged. With the switch off, floating keeps the exact frame and the
+resize keys do nothing on a float.
 
 Dragging a managed tile over a sibling swaps it. Dropping near a tile edge creates a nested split;
 dropping inside a band along the display's left or right edge (including any outer gap, once the

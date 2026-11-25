@@ -1,5 +1,5 @@
 //! Keyboard edits of the focused tile's split: `resize shrink|grow`, `resize width|height`, and
-//! `balance`.
+//! `balance`. With the Center Floats Lab on, `resize` sizes a focused float instead.
 
 use super::*;
 
@@ -12,6 +12,9 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
         outputs: macos::DisplayOutputs,
         cancelled: &AtomicBool,
     ) -> Result<CycleStatus, String> {
+        if let Some(window) = self.focused_centered_float(&outputs) {
+            return self.resize_float(&window, direction, &outputs, cancelled);
+        }
         self.edit_focused_split(
             "resizing",
             outputs,
@@ -35,6 +38,9 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
         outputs: macos::DisplayOutputs,
         cancelled: &AtomicBool,
     ) -> Result<CycleStatus, String> {
+        if let Some(window) = self.focused_centered_float(&outputs) {
+            return self.resize_float_to(&window, axis, points, &outputs, cancelled);
+        }
         self.edit_focused_split(
             "resizing",
             outputs,

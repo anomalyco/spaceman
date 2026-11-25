@@ -19,7 +19,8 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
     ///
     /// Floating is workspace ownership, not a rule: the window keeps its exact
     /// frame, follows its workspace across switches, parks and restores with
-    /// it, and reconciliation leaves it alone until the user toggles it back.
+    /// it, and reconciliation leaves it alone until the user toggles it back. With the Center
+    /// Floats Lab on, a newly floated window is centred at three quarters of its display instead.
     pub(in crate::app) fn toggle_float(
         &mut self,
         outputs: macos::DisplayOutputs,
@@ -44,7 +45,10 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
             return Err("Focused window is not on an active workspace".into());
         }
         if self.workspaces.workspace_of(&window).is_some() {
-            self.float_window(window, workspace, outputs, cancelled)
+            let mut status =
+                self.float_window(window.clone(), workspace, outputs.clone(), cancelled)?;
+            status.failed += self.center_new_float(&window, workspace, &outputs, cancelled);
+            Ok(status)
         } else {
             self.tile_window(window, workspace, outputs, cancelled)
         }
