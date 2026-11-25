@@ -46,6 +46,7 @@ mod backend;
 mod bridge;
 mod commands;
 mod cycle;
+mod detach_tab;
 mod displays;
 mod hud_event;
 mod input;
@@ -241,6 +242,12 @@ pub(crate) enum WorkerAction {
     MoveFocused(WorkspaceId),
     MoveFocusedFollow(WorkspaceId),
     MoveApp(String, WorkspaceId),
+    /// Send the focused window's active tab to a workspace through the app's
+    /// own "Move Tab to New Window"; a single-tab window moves whole.
+    MoveTab {
+        target: WorkspaceId,
+        follow: bool,
+    },
     CycleFocus,
     /// Option-Shift-backtick: the same ring as `CycleFocus`, walked backward.
     CycleFocusPrevious,
@@ -278,6 +285,14 @@ impl WorkerAction {
                 format!("move and switch to workspace {workspace} queued")
             }
             Self::MoveApp(_, workspace) => format!("move app to workspace {workspace} queued"),
+            Self::MoveTab {
+                target,
+                follow: false,
+            } => format!("move tab to workspace {target} queued"),
+            Self::MoveTab {
+                target,
+                follow: true,
+            } => format!("move tab and switch to workspace {target} queued"),
             Self::CycleFocus => "focus cycle queued".into(),
             Self::CycleFocusPrevious => "reverse focus cycle queued".into(),
             Self::Focus(_) => "focus queued".into(),

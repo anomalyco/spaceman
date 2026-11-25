@@ -52,6 +52,20 @@ Move window without switching                              // ws.move-window
 │   frame moves onto the target's display, so showing the workspace brings it up there
 └── ctl move-app <bundle-id> <ws>     -> every current window of that app, tiled or floating, in one request
 
+Send tab to workspace                                      // ws.move-tab
+├── ctl move-tab <ws> [--follow] / a [shortcuts.bindings] chord (no default chord)
+├── Presses the focused app's "Move Tab to New Window" (AXIdentifier moveTabToNewWindow:, else its
+│   title: English, Chromium's plural, or any of AppKit's MenuCommands.loctable translations)
+├── Disabled or missing (one tab, or no native tabs) -> moves the whole window, exactly like move
+├── Pressed -> PendingTabDetach (800 ms): the app's first window not on screen before the press is
+│   routed straight to <ws> ahead of any route rule (parked when hidden, never tiled on the source)
+│   ├── Chromium: the new window is the tab; the source window keeps its slot
+│   └── AppKit tab group: the moved tab keeps its window and the group's next tab appears in place,
+│       so that window takes over the source slot (told apart by which one left the old frame)
+├── Without --follow -> focus goes back to the window that stays; with --follow -> switches to <ws>
+│   and focuses the tab
+└── No window within 800 ms -> dropped; later windows open normally
+
 Mouse follows focus ([settings] mouse_follows_focus)       // ws.mouse-follows-focus
 ├── "off" (default) -> never moves the pointer
 ├── "display"       -> on explicit keyboard/ctl focus changes (switch, back-and-forth,
@@ -159,7 +173,7 @@ Keyboard (while tiling is enabled)
 └── Option+Shift+Tab            -> move focused workspace to next display
 Trackpad: three-finger swipe left/right -> next/previous workspace (turn macOS's three-finger
           "Swipe between full-screen applications" off or move it to four fingers)
-CLI: spaceman ctl switch | back-and-forth | move-workspace | move | move-app
+CLI: spaceman ctl switch | back-and-forth | move-workspace | move | move-tab | move-app
 Config: ~/Library/Application Support/Spaceman/config.toml -> [[rules]], [[workspaces]],
         [settings] workspace_order (edits apply when the file changes; new named-workspace shortcuts register on the next app start)
 Menu bar: shows the active workspace glyphs; its menu lists each display's visible workspace (checked)
@@ -314,6 +328,14 @@ on the same letter.
   focus to a remaining visible tile or float on the current workspace (and remembers it in
   Fullscreen Layout), while `move --follow` switches straight to the target workspace without an
   intermediate handoff.
+- Unit (FakeBackend), `src/app/tests/move_tab.rs`: a detached tab goes straight to a hidden
+  workspace (never tiled on the source) ahead of a route rule while focus stays on the source,
+  `--follow` switches to it, a visible target on another display tiles it, an AppKit tab group's
+  next tab keeps the source slot, a single-tab window moves whole (with and without `--follow`), a
+  late window is claimed by a prompt re-observation, expiry and a failed press leave nothing pending,
+  and another app's new window is never claimed. `src/macos/tabs.rs` covers menu-item matching and
+  loading AppKit's translations; `src/control.rs`, `src/shortcuts.rs` and `src/hotkeys.rs` cover
+  parsing and bindings. Pressing the real menu item in Safari, Chromium or Ghostty is not covered.
 - Live gauntlet, `scripts/gauntlet.sh`: `ctl switch` parks every window to at most a one-point strip,
   records each original frame in `parked-windows.json`, restores the exact frames on the way back and
   empties the file; `ctl move` parks the window with its frame recorded and hands keyboard focus to

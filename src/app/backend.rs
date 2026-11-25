@@ -68,6 +68,8 @@ pub(super) trait WorkspaceBackend {
     }
     fn raise_window(&mut self, window: &crate::PhysicalWindowId) -> bool;
     fn focus_window(&mut self, window: &crate::PhysicalWindowId) -> bool;
+    /// Presses the app's "Move Tab to New Window" for its focused `window`.
+    fn detach_tab(&mut self, window: &crate::PhysicalWindowId) -> macos::TabDetachResult;
     fn pointer_location(&mut self) -> Option<(i32, i32)> {
         None
     }
@@ -225,6 +227,10 @@ impl WorkspaceBackend for MacWorkspaceBackend {
 
     fn focus_window(&mut self, window: &crate::PhysicalWindowId) -> bool {
         macos::focus_window(window)
+    }
+
+    fn detach_tab(&mut self, window: &crate::PhysicalWindowId) -> macos::TabDetachResult {
+        macos::detach_tab(window)
     }
 
     fn pointer_location(&mut self) -> Option<(i32, i32)> {

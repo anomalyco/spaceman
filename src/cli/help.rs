@@ -258,6 +258,8 @@ pub(crate) fn ctl_help(executable: &str) -> String {
         "  move-workspace [next|prev|<display>]",
         "                             Move the focused workspace to another display (default: next)",
         "  move <workspace> [--follow] Move the focused window to a workspace (and switch with --follow)",
+        "  move-tab <workspace> [--follow]",
+        "                             Send the focused window's active tab to a workspace as its own window",
         "  move-app <bundle-id> <ws>  Move an application's windows to a workspace",
         "",
         "Windows & layout:",

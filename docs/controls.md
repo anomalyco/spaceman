@@ -117,6 +117,20 @@ cannot be confirmed by the window server within the bounded reveal wait, the swi
 the outgoing workspace stays active and pending incoming reveals are re-parked. Retry once the slow
 application is responsive. Successful Accessibility writes alone do not confirm arrival.
 
+## Send Tab to Workspace
+
+`spaceman ctl move-tab WORKSPACE` sends the focused window's active tab to a workspace as a window of
+its own; the rest of the tabs stay where they are. It presses the app's own `Move Tab to New Window`
+menu command through Accessibility (found by AppKit's `moveTabToNewWindow:` identifier, which works
+in every language, or by its title, including Chromium's `Move Tabs to New Window`), so it works in
+Safari, Finder, Terminal, Ghostty, TextEdit, Preview, Chrome, Brave, and other apps with native tabs,
+with no page reloading and no extra permission. The new window goes straight to the target workspace,
+ahead of any `route` rule for the app, and focus stays on the window you were in. Add `--follow` to
+switch to the target with the tab. If the window has a single tab, or the app has no such command,
+`move-tab` moves the whole window, exactly like `move`. A tab whose window has not appeared within
+800 ms is left where the app put it. `move-tab` has no default shortcut; bind one in
+[`[shortcuts.bindings]`](configuration.md#shortcuts), such as `"ctrl+alt+shift+2" = "move-tab 2"`.
+
 ## Scratchpad (Lab)
 
 With `[labs] scratchpad = true` (see [Configuration › Labs](configuration.md#labs)), Spaceman keeps an
@@ -195,6 +209,8 @@ spaceman ctl move-workspace prev
 spaceman ctl move-workspace secondary
 spaceman ctl move 7
 spaceman ctl move 7 --follow
+spaceman ctl move-tab 2
+spaceman ctl move-tab 2 --follow
 spaceman ctl move-app com.tinyspeck.slackmacgap 6
 spaceman ctl focus left
 spaceman ctl focus next

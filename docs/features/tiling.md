@@ -26,7 +26,7 @@ Focus                                                   // tile.focus
 Reorder                                                 // tile.reorder
 ├── Option+Shift+H/J/K/L / ctl move-direction <dir> -> swap/move within the tree
 │   ├── At the workspace edge -> moves to the adjacent display's active workspace, even an empty one
-│   └── Perpendicular move    -> re-orients or creates a mixed split
+│   └── Perpendicular move    -> re-orients or creates a mixed split (falls through to the adjacent display if the saved split would not change)
 └── Pointer drag (non-destructive previews against drag-start layout; committed only on mouse-up)
     ├── Display left/right edge band -> full-height half-width column on that side (includes outer gap, armed once the pointer has been outside the band; lone tile unchanged; saved layout edited even while temporarily stacked)
     ├── Over a sibling     -> live-previewed swap, applied on mouse-up
@@ -118,7 +118,7 @@ pause, quit, or hotkey loss.
   `an_app_keeps_its_tiles_while_one_of_its_windows_is_still_settling`,
   `a_parked_window_keeps_its_tile_through_the_settle`.
 - Unit (FakeBackend), `src/app/tests/minimums.rs`: a window that refuses its tile width gets a wider
-  tile (middle, last, several at once, and observation-cycle cases); a three-window row that cannot fit stacks two neighbors, and a wider display restores the requested row; Fullscreen Layout ignores minimums. `src/app/tests/stacked_resize.rs`: a resize (issue 197), swap, or drag-nest (with or without a preview) while a pair is stacked never saves the temporary stack; a drag-nest through a fit that only reweights keeps the requested weights; a perpendicular move through a stack saves A above `B | C`; and repeated previews held on a stacked tile keep evaluating against the gesture-start layout. `src/layout_tree.rs`:
+  tile (middle, last, several at once, and observation-cycle cases); a three-window row that cannot fit stacks two neighbors, and a wider display restores the requested row; Fullscreen Layout ignores minimums. `src/app/tests/stacked_resize.rs`: a resize (issue 197), swap, or drag-nest (with or without a preview) while a pair is stacked never saves the temporary stack; a drag-nest through a fit that only reweights keeps the requested weights; a perpendicular move through a stack saves A above `B | C` (even with an adjacent display above), while an outward move that would recreate the same saved split crosses to an empty or occupied adjacent display (#373); and repeated previews held on a stacked tile keep evaluating against the gesture-start layout. `src/layout_tree.rs`:
   `fitting_minimums_reaches_into_nested_splits_and_leaves_impossible_splits_alone`.
 - Window classification (`src/macos/classify.rs`), `src/macos/tests.rs`:
   `primary_windows_without_a_working_fullscreen_button_still_tile` (FaceTime, Phone, News, Podcasts,
@@ -167,7 +167,9 @@ pause, quit, or hotkey loss.
   as `constrained_overlap`.
 - A swap, a drag-nest, a display-edge column drop, or a perpendicular move while tiles are
   temporarily stacked edits the saved layout; the stack is then recomputed from it, so the result
-  shown can differ from the stack the tile was dropped on or moved across. Dropping A on the top
+  shown can differ from the stack the tile was dropped on or moved across. When a perpendicular move
+  would recreate the same saved split (such as moving the first tile left or last tile right out of
+  a temporarily stacked row), it crosses to the adjacent display instead. Dropping A on the top
   edge of C in `| A | B/C |`, stacked only to fit, saves `| B | A/C |`. Drag previews evaluate
   non-destructively against the layout at drag start and commit only on mouse-up, so repeated
   previews never compound into intermediate swaps.

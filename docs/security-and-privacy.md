@@ -13,7 +13,10 @@ other presses are ignored and nothing is stored.
 The permission is broad because macOS grants Accessibility at application scope. Spaceman limits its
 own writes to eligible standard, non-minimized, non-fullscreen windows whose position is settable.
 Resizable windows may be moved and resized; movable non-resizable windows may be parked off-screen
-and restored without changing their size. It does not require disabling System Integrity Protection.
+and restored without changing their size. The one action Spaceman performs inside another app is
+`move-tab`: when you run it, Spaceman reads the focused app's trailing menu-bar menus (item
+identifiers, titles, and enabled state, never stored) to find its own `Move Tab to New Window`
+command and presses it. It does not require disabling System Integrity Protection.
 
 ## Data Handling
 

@@ -16,6 +16,7 @@ mod layout;
 mod memory;
 mod minimums;
 mod move_handoff;
+mod move_tab;
 mod move_workspace;
 mod ordered_out;
 mod parking;
@@ -52,6 +53,23 @@ enum BackendCall {
     Raise(crate::PhysicalWindowId),
     Focus(crate::PhysicalWindowId),
     WarpPointer((i32, i32)),
+    DetachTab(crate::PhysicalWindowId),
+}
+
+/// What pressing "Move Tab to New Window" does in the fake app.
+#[derive(Clone, Debug)]
+enum FakeTabDetach {
+    /// Chromium: the tab opens in a new window at this frame, which takes focus.
+    NewWindow(crate::PhysicalWindowId, crate::Rect),
+    /// AppKit tab group: the tab's own window moves to `moved_to` and keeps
+    /// focus; the group's next tab, `next`, shows in its old place.
+    TabGroup {
+        next: crate::PhysicalWindowId,
+        moved_to: crate::Rect,
+    },
+    /// Pressed, but no window has appeared yet.
+    Silent,
+    Failed,
 }
 
 #[derive(Default)]
@@ -108,6 +126,30 @@ struct FakeBackend {
     /// The next position write starts a Space slide (Cmd+Tab out of a
     /// native fullscreen app while a focus follow runs).
     space_change_on_position: bool,
+    /// "Move Tab to New Window"; `None` when the window has one tab.
+    tab_detach: Option<FakeTabDetach>,
+}
+
+impl FakeBackend {
+    /// A window the app opens: on screen at `frame` and in its next snapshot.
+    fn open_window(&mut self, window: &crate::PhysicalWindowId, frame: crate::Rect) {
+        self.frames.insert(window.clone(), frame);
+        let Some(observation) = self.observation.as_mut() else {
+            return;
+        };
+        for app in &mut observation.applications {
+            if let crate::AppObservation::Complete { app, windows, .. } = app
+                && app.id == window.app
+            {
+                windows.push(crate::ObservedWindow {
+                    id: window.clone(),
+                    frame,
+                    resizable: true,
+                    title: None,
+                });
+            }
+        }
+    }
 }
 
 impl WorkspaceBackend for FakeBackend {
@@ -283,6 +325,28 @@ impl WorkspaceBackend for FakeBackend {
         self.focused = Some(window.clone());
         self.frontmost = Some(window.app.clone());
         true
+    }
+
+    fn detach_tab(&mut self, window: &crate::PhysicalWindowId) -> macos::TabDetachResult {
+        self.calls.push(BackendCall::DetachTab(window.clone()));
+        match self.tab_detach.take() {
+            None => return macos::TabDetachResult::SingleTabOrUnsupported,
+            Some(FakeTabDetach::NewWindow(new, frame)) => {
+                self.open_window(&new, frame);
+                self.focused = Some(new);
+            }
+            Some(FakeTabDetach::TabGroup { next, moved_to }) => {
+                let Some(old) = self.frames.insert(window.clone(), moved_to) else {
+                    return macos::TabDetachResult::Error("window is gone".into());
+                };
+                self.open_window(&next, old);
+            }
+            Some(FakeTabDetach::Silent) => {}
+            Some(FakeTabDetach::Failed) => {
+                return macos::TabDetachResult::Error("AXPress: Failure".into());
+            }
+        }
+        macos::TabDetachResult::Detached
     }
 
     fn pointer_location(&mut self) -> Option<(i32, i32)> {

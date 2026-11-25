@@ -98,6 +98,8 @@ pub(super) struct WorkspaceRuntime<B = MacWorkspaceBackend> {
     pub(super) displays: super::displays::DisplayWatch,
     /// Scrolling Strip cameras and the glides waiting for the main thread.
     pub(super) strip_views: super::strip::StripViews,
+    /// A pressed "Move Tab to New Window" awaiting its new window.
+    pub(super) tab_detach: Option<super::detach_tab::PendingTabDetach>,
 }
 
 impl WorkspaceRuntime<MacWorkspaceBackend> {
@@ -235,6 +237,7 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
                 WorkerAction::MoveFocused(_)
                     | WorkerAction::MoveFocusedFollow(_)
                     | WorkerAction::MoveApp(..)
+                    | WorkerAction::MoveTab { .. }
             ) {
                 self.pending_focus = None;
             }
@@ -262,6 +265,7 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
                 | WorkerAction::Focus(_)
                 | WorkerAction::MoveFocused(_)
                 | WorkerAction::MoveFocusedFollow(_)
+                | WorkerAction::MoveTab { .. }
         ) {
             super::commands::WarpContext::Explicit
         } else {
@@ -313,6 +317,9 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
                 }
                 WorkerAction::MoveApp(bundle_id, workspace) => {
                     rt.move_app(&bundle_id, workspace, outputs, cancelled)
+                }
+                WorkerAction::MoveTab { target, follow } => {
+                    rt.move_tab(target, follow, outputs, cancelled)
                 }
                 WorkerAction::CycleFocus => rt.cycle_focus(outputs, cancelled),
                 WorkerAction::CycleFocusPrevious => rt.cycle_focus_previous(outputs, cancelled),
@@ -436,6 +443,7 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
             journal: JournalState::default(),
             displays: super::displays::DisplayWatch::default(),
             strip_views: super::strip::StripViews::default(),
+            tab_detach: None,
         }
     }
 

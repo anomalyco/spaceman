@@ -286,6 +286,9 @@ pub enum Command {
     Switch(WorkspaceId),
     Move(WorkspaceId),
     MoveFollow(WorkspaceId),
+    /// Send the focused window's active tab to a workspace (`move-tab`).
+    MoveTab(WorkspaceId),
+    MoveTabFollow(WorkspaceId),
     BackAndForth,
     MoveWorkspace(DisplayTarget),
     Focus(Direction),
@@ -302,7 +305,7 @@ pub enum Command {
     Retile,
 }
 
-pub const COMMAND_USAGE: &str = "switch WORKSPACE|move WORKSPACE [--follow]|back-and-forth|move-workspace [next|prev|DISPLAY]|focus DIR|focus next|focus prev|move-direction DIR|layout|fullscreen|float|resize shrink|resize grow|resize width|height POINTS|balance|retile|none";
+pub const COMMAND_USAGE: &str = "switch WORKSPACE|move WORKSPACE [--follow]|move-tab WORKSPACE [--follow]|back-and-forth|move-workspace [next|prev|DISPLAY]|focus DIR|focus next|focus prev|move-direction DIR|layout|fullscreen|float|resize shrink|resize grow|resize width|height POINTS|balance|retile|none";
 
 /// `[shortcuts]` as written.
 #[derive(Deserialize)]
@@ -481,6 +484,10 @@ pub fn parse_command(source: &str) -> Result<Option<Command>, String> {
         ["move", workspace, "--follow"] | ["move", "--follow", workspace] => {
             Command::MoveFollow(WorkspaceId::parse(workspace)?)
         }
+        ["move-tab", workspace] => Command::MoveTab(WorkspaceId::parse(workspace)?),
+        ["move-tab", workspace, "--follow"] | ["move-tab", "--follow", workspace] => {
+            Command::MoveTabFollow(WorkspaceId::parse(workspace)?)
+        }
         ["back-and-forth"] => Command::BackAndForth,
         ["focus", "next"] => Command::FocusNext,
         ["focus", "prev"] => Command::FocusPrev,
@@ -511,9 +518,11 @@ impl Command {
     #[must_use]
     pub const fn workspace(&self) -> Option<WorkspaceId> {
         match self {
-            Self::Switch(workspace) | Self::Move(workspace) | Self::MoveFollow(workspace) => {
-                Some(*workspace)
-            }
+            Self::Switch(workspace)
+            | Self::Move(workspace)
+            | Self::MoveFollow(workspace)
+            | Self::MoveTab(workspace)
+            | Self::MoveTabFollow(workspace) => Some(*workspace),
             _ => None,
         }
     }
@@ -526,6 +535,10 @@ impl Command {
             Self::Move(workspace) => format!("move window to workspace {workspace}"),
             Self::MoveFollow(workspace) => {
                 format!("move window to workspace {workspace} and follow")
+            }
+            Self::MoveTab(workspace) => format!("move tab to workspace {workspace}"),
+            Self::MoveTabFollow(workspace) => {
+                format!("move tab to workspace {workspace} and follow")
             }
             Self::BackAndForth => "workspace back-and-forth".into(),
             Self::MoveWorkspace(DisplayTarget::Next) => "move workspace to next display".into(),
@@ -631,6 +644,9 @@ mod tests {
             ("move S", Some(Command::Move(s))),
             ("move S --follow", Some(Command::MoveFollow(s))),
             ("move --follow 3", Some(Command::MoveFollow(three))),
+            ("move-tab 3", Some(Command::MoveTab(three))),
+            ("move-tab S --follow", Some(Command::MoveTabFollow(s))),
+            ("move-tab --follow 3", Some(Command::MoveTabFollow(three))),
             ("focus left", Some(Command::Focus(Direction::Left))),
             ("focus next", Some(Command::FocusNext)),
             ("focus prev", Some(Command::FocusPrev)),
