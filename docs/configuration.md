@@ -28,6 +28,10 @@ The parser rejects unknown fields. The root must contain `version = 1` and may c
 `[settings]` table, an optional `[shortcuts]` table (see [Shortcuts](#shortcuts)), an optional
 `[labs]` table (see [Labs](#labs)), plus repeated `[[rules]]` and `[[workspaces]]` tables.
 
+Settings edits the file in place. A setting returned to its default leaves the file, and so does
+a table it empties; a comment set off from that key or table by a blank line stays, while a comment
+directly above it goes with it.
+
 ```toml
 version = 1
 

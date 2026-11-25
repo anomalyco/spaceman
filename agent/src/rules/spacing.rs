@@ -68,20 +68,8 @@ impl Doc {
     /// Sets `name` in `[settings.gaps]`, or removes it (and the tables it empties) for `None`.
     fn set_gap(&mut self, name: &str, item: Option<Item>) {
         let Some(item) = item else {
-            let Some(settings) = self
-                .doc
-                .get_mut("settings")
-                .and_then(Item::as_table_like_mut)
-            else {
-                return;
-            };
-            let emptied = settings
-                .get_mut("gaps")
-                .and_then(Item::as_table_like_mut)
-                .is_some_and(|gaps| {
-                    gaps.remove(name);
-                    gaps.is_empty()
-                });
+            self.remove_key_in_table(&["settings", "gaps"], name);
+            let emptied = self.gaps().is_some_and(TableLike::is_empty);
             if emptied {
                 self.remove_subtable("settings", "gaps");
             }

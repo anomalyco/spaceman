@@ -178,13 +178,12 @@ impl Doc {
     /// Sets `key` in the `[name]` table, or removes it (and an emptied table) for `None`.
     fn set_table_key(&mut self, name: &str, key: &str, item: Option<Item>) {
         let Some(item) = item else {
-            let empty =
-                if let Some(table) = self.doc.get_mut(name).and_then(Item::as_table_like_mut) {
-                    table.remove(key);
-                    table.is_empty()
-                } else {
-                    false
-                };
+            self.remove_key_in_table(&[name], key);
+            let empty = self
+                .doc
+                .get(name)
+                .and_then(Item::as_table_like)
+                .is_some_and(toml_edit::TableLike::is_empty);
             if empty {
                 self.remove_table(name);
             }
@@ -202,3 +201,7 @@ impl Doc {
         }
     }
 }
+
+#[cfg(test)]
+#[path = "settings_tests.rs"]
+mod tests;
