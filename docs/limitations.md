@@ -28,6 +28,11 @@ Spaceman is an experimental public preview, not a broadly qualified release.
   layout the same way. A Space change made from the keyboard (Control+arrow) is held only from
   when macOS reports it. Accessibility cannot reach a parked window on a Space that isn't showing,
   so pausing or quitting there waits, with its recovery entry kept, until that Space is shown.
+- Hidden workspaces' windows are parked just past a display's bottom corner. With Mission Control's
+  **Group windows by application** off (the macOS default), Mission Control lays windows out by
+  position, so parked windows can shrink every thumbnail in the overview (#555). Turn it on in
+  System Settings › Desktop & Dock › Mission Control, or run
+  `defaults write com.apple.dock expose-group-apps -bool true && killall Dock`.
 - `secondary` selects the first non-main display; display ordering and duplicate names may surprise.
 - Global shortcuts may collide with other applications or fail on keyboard layouts that cannot
   produce required characters.
