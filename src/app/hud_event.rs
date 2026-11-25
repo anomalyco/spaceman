@@ -49,7 +49,8 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
 
     /// The menu-bar glyphs: each managed display's visible workspace. With `[labs]
     /// physical_displays` they go left to right, a portrait display's glyph is tall, and each
-    /// names its display for VoiceOver.
+    /// names its display for VoiceOver. A compact menu bar icon (`settings.menu_bar_icon`, with
+    /// `[labs] menu_bar_icon_style`) keeps only the focused workspace's glyph.
     pub(super) fn status_layouts(
         &self,
         visible: &[ResolvedWorkspace],
@@ -68,6 +69,15 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
                     .position(|display| display.id == resolved.display_id)
                     .unwrap_or(usize::MAX)
             });
+        }
+        if self.config.menu_bar_icon() == crate::config::MenuBarIcon::Compact {
+            // One glyph: the focused workspace's display, or the first one before any focus.
+            let focused = self.focus.history().current;
+            let keep = shown
+                .iter()
+                .position(|resolved| Some(resolved.workspace) == focused)
+                .unwrap_or(0);
+            shown = shown.into_iter().skip(keep).take(1).collect();
         }
         shown
             .into_iter()

@@ -107,7 +107,7 @@ impl Target {
 }
 
 struct Controller {
-    _item: Retained<NSStatusItem>,
+    item: Retained<NSStatusItem>,
     menu: Retained<NSMenu>,
     target: Retained<Target>,
     button: Retained<NSStatusBarButton>,
@@ -190,7 +190,7 @@ pub fn install(sender: Sender<Action>) -> Result<(), String> {
 
     CONTROLLER.with(|controller| {
         *controller.borrow_mut() = Some(Controller {
-            _item: item,
+            item,
             menu,
             target,
             button,
@@ -226,6 +226,18 @@ pub fn set_update(ready: Option<&str>) {
             controller.update.setTitle(&NSString::from_str(&title));
             // SAFETY: Both selectors are methods on `Target`, the item's retained target.
             unsafe { controller.update.setAction(Some(action)) };
+        }
+    });
+}
+
+/// Shows or hides the whole menu bar icon: hidden for `settings.menu_bar_icon = "off"`
+/// (with `[labs] menu_bar_icon_style`). Settings stays reachable by opening Spaceman again.
+pub fn set_visible(visible: bool) {
+    CONTROLLER.with(|controller| {
+        if let Some(controller) = controller.borrow().as_ref()
+            && controller.item.isVisible() != visible
+        {
+            controller.item.setVisible(visible);
         }
     });
 }

@@ -8,8 +8,8 @@ use serde::{Deserialize, Serialize};
 use spaceman::{
     DisplaySelector, WorkspaceId, Workspaces,
     config::{
-        Config, HudPosition, HudStyle, LabFeature, LayoutMode, MouseFollowsFocus, RouteWindows,
-        UpdateChannel, config_path, lock_config, write_config_atomic,
+        Config, HudPosition, HudStyle, LabFeature, LayoutMode, MenuBarIcon, MouseFollowsFocus,
+        RouteWindows, UpdateChannel, config_path, lock_config, write_config_atomic,
     },
     spacing::{Spacing, SpacingKey, check_outer},
 };
@@ -59,6 +59,8 @@ pub(crate) struct LabsDoc {
     pub single_window_height: Option<bool>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub route_all_windows: Option<bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub menu_bar_icon_style: Option<bool>,
 }
 
 impl LabsDoc {
@@ -75,6 +77,7 @@ impl LabsDoc {
             && self.four_finger_swipe.is_none()
             && self.single_window_height.is_none()
             && self.route_all_windows.is_none()
+            && self.menu_bar_icon_style.is_none()
     }
 
     /// The switch as the file asks for it: off while unset.
@@ -106,6 +109,7 @@ impl LabsDoc {
             LabFeature::FourFingerSwipe => self.four_finger_swipe,
             LabFeature::SingleWindowHeight => self.single_window_height,
             LabFeature::RouteAllWindows => self.route_all_windows,
+            LabFeature::MenuBarIconStyle => self.menu_bar_icon_style,
         }
     }
 
@@ -123,6 +127,7 @@ impl LabsDoc {
             LabFeature::FourFingerSwipe => &mut self.four_finger_swipe,
             LabFeature::SingleWindowHeight => &mut self.single_window_height,
             LabFeature::RouteAllWindows => &mut self.route_all_windows,
+            LabFeature::MenuBarIconStyle => &mut self.menu_bar_icon_style,
         }
     }
 }
@@ -189,6 +194,8 @@ pub(crate) struct SettingsDoc {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub trackpad_swipe: Option<bool>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub menu_bar_icon: Option<MenuBarIcon>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub single_window_max_width: Option<i64>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub single_window_max_height: Option<i64>,
@@ -236,6 +243,7 @@ impl SettingsDoc {
             && self.update_channel.is_none()
             && self.mouse_follows_focus.is_none()
             && self.trackpad_swipe.is_none()
+            && self.menu_bar_icon.is_none()
             && self.single_window_max_width.is_none()
             && self.single_window_max_height.is_none()
             && self.workspace_order.is_none()
@@ -339,6 +347,12 @@ impl SettingsDoc {
     pub(crate) fn effective_trackpad_swipe(&self) -> bool {
         self.trackpad_swipe.unwrap_or(true)
     }
+
+    /// The file's `menu_bar_icon`, `full` while unset. The menu bar follows it only with
+    /// `[labs] menu_bar_icon_style` on; `config get` and `config show` report the file's value.
+    pub(crate) fn effective_menu_bar_icon(&self) -> MenuBarIcon {
+        self.menu_bar_icon.unwrap_or_default()
+    }
 }
 
 fn serialize_optional_hud_style<S: serde::Serializer>(
@@ -424,6 +438,7 @@ pub(crate) struct EffectiveSettings {
     pub update_channel: &'static str,
     pub mouse_follows_focus: &'static str,
     pub trackpad_swipe: bool,
+    pub menu_bar_icon: &'static str,
     pub single_window_max_width: i32,
     pub single_window_max_height: i32,
     pub workspace_order: Vec<WorkspaceId>,
@@ -522,6 +537,7 @@ impl ConfigDoc {
             update_channel: self.settings.effective_update_channel().as_str(),
             mouse_follows_focus: self.settings.effective_mouse_follows_focus().as_str(),
             trackpad_swipe: self.settings.effective_trackpad_swipe(),
+            menu_bar_icon: self.settings.effective_menu_bar_icon().as_str(),
             single_window_max_width: spacing.single_window_max_width,
             single_window_max_height: spacing.single_window_max_height,
             workspace_order: self.settings.workspace_order.clone().unwrap_or_default(),

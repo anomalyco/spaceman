@@ -439,6 +439,7 @@ pub struct PreparedAgent {
     shortcuts: crate::shortcuts::Shortcuts,
     hud: bool,
     swipe_fingers: Fingers,
+    menu_bar_icon: crate::config::MenuBarIcon,
     controls: Receiver<ControlRequest>,
     control_server: control::Server,
     bridge: UiBridge,
@@ -457,6 +458,7 @@ pub fn prepare() -> Result<(PreparedAgent, UiBridge), String> {
         recover_startup_metadata(Config::load(), load_workspace_state());
     let hud = config.hud();
     let swipe_fingers = config.swipe_fingers();
+    let menu_bar_icon = config.menu_bar_icon();
     let shortcuts = config.shortcuts().clone();
     let mut configured_workspaces = Workspaces::default();
     config.configure_workspaces(&mut configured_workspaces);
@@ -507,6 +509,7 @@ pub fn prepare() -> Result<(PreparedAgent, UiBridge), String> {
             shortcuts,
             hud,
             swipe_fingers,
+            menu_bar_icon,
             controls,
             control_server,
             bridge: bridge.clone(),
@@ -540,6 +543,7 @@ impl PreparedAgent {
             return Err(format!("failed to install Spaceman status item: {error}"));
         }
         status_item::set_hud(self.hud);
+        status_item::set_visible(self.menu_bar_icon != crate::config::MenuBarIcon::Off);
         let launch_status = login_item::status();
         match &launch_status {
             Ok(status) => status_item::set_launch_at_login(*status),

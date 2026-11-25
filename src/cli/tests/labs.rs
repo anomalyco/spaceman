@@ -2,7 +2,7 @@
 //! removed back to their default, and guarded against unknown Lab keys.
 
 use serde_json::Value;
-use spaceman::config::Config;
+use spaceman::config::{Config, MenuBarIcon};
 
 use super::TempConfig;
 
@@ -150,4 +150,45 @@ fn rules_add_windows_flag_writes_the_route_key_and_keeps_it() {
     assert!(listed["rules"][1].get("windows").is_none());
     let config = Config::parse(&temp.read()).unwrap();
     assert!(config.labs().route_all_windows);
+}
+
+#[test]
+fn config_gets_sets_and_resets_menu_bar_icon() {
+    let temp = TempConfig::new("config-menu-bar-icon");
+    temp.write("version = 1\n");
+    assert_eq!(
+        temp.run(&["config", "get", "menu_bar_icon"])
+            .stdout
+            .as_deref(),
+        Some("full")
+    );
+    let set = temp.run(&["config", "set", "settings.menu_bar_icon", "compact"]);
+    assert_eq!(set.exit_code, 0, "{:?}", set.stderr);
+    assert_eq!(set.stdout.as_deref(), Some("set menu_bar_icon = compact"));
+    // The file keeps the choice, but the menu bar waits for its Lab.
+    assert_eq!(
+        Config::parse(&temp.read()).unwrap().menu_bar_icon(),
+        MenuBarIcon::Full
+    );
+    let lab = temp.run(&["config", "set", "labs.menu_bar_icon_style", "true"]);
+    assert_eq!(lab.exit_code, 0, "{:?}", lab.stderr);
+    assert_eq!(
+        Config::parse(&temp.read()).unwrap().menu_bar_icon(),
+        MenuBarIcon::Compact
+    );
+    let show: Value = serde_json::from_str(
+        temp.run(&["config", "show", "--json"])
+            .stdout
+            .as_deref()
+            .unwrap(),
+    )
+    .unwrap();
+    assert_eq!(show["settings"]["menu_bar_icon"], "compact");
+
+    let bad = temp.run(&["config", "set", "menu_bar_icon", "tiny"]);
+    assert_eq!(bad.exit_code, 1);
+    assert!(bad.stderr.unwrap().contains("expected 'full', 'compact', or 'off'"));
+    let reset = temp.run(&["config", "reset", "menu_bar_icon"]);
+    assert_eq!(reset.exit_code, 0, "{:?}", reset.stderr);
+    assert!(!temp.read().contains("menu_bar_icon ="), "{}", temp.read());
 }

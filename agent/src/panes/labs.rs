@@ -77,11 +77,18 @@ const GROUPS: [(&str, &str, &[Lab]); 4] = [
     (
         "menu-bar",
         "Menu bar & HUD",
-        &[(
-            LabFeature::PhysicalDisplays,
-            "Physical display order",
-            "Workspaces left to right as your displays sit, portrait ones drawn tall",
-        )],
+        &[
+            (
+                LabFeature::PhysicalDisplays,
+                "Physical display order",
+                "Workspaces left to right as your displays sit, portrait ones drawn tall",
+            ),
+            (
+                LabFeature::MenuBarIconStyle,
+                "Menu bar icon style",
+                "Adds a choice in General for a compact or hidden menu bar icon",
+            ),
+        ],
     ),
     (
         "settings",

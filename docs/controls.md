@@ -163,7 +163,11 @@ saved across agent restarts.
 
 ## Menu
 
-The menu-bar control shows active workspace/layout glyphs and runtime errors. Its actions are:
+The menu-bar control shows active workspace/layout glyphs and runtime errors. With
+`[labs] menu_bar_icon_style = true` (Settings › Labs › `Menu bar icon style`), `Settings > General >
+Menu bar icon` picks `Full` (a glyph per display, the default), `Compact` (one glyph, the focused
+workspace's) or `Off` (no icon; open Spaceman again for Settings), `[settings] menu_bar_icon`
+(see [Configuration › Labs](configuration.md#labs)). Its actions are:
 
 - `Setup Tour…`, shown while Accessibility permission is missing;
 - while tiling, the workspaces of each display (under the display's name when there are several):

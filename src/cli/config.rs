@@ -3,7 +3,8 @@ use std::path::{Path, PathBuf};
 use serde::Serialize;
 use spaceman::{
     config::{
-        HudPosition, HudStyle, LabFeature, LayoutMode, MouseFollowsFocus, UpdateChannel, load_path,
+        HudPosition, HudStyle, LabFeature, LayoutMode, MenuBarIcon, MouseFollowsFocus,
+        UpdateChannel, load_path,
     },
     spacing::{self, SpacingKey},
 };
@@ -61,6 +62,7 @@ enum SettingKey {
     UpdateChannel,
     MouseFollowsFocus,
     TrackpadSwipe,
+    MenuBarIcon,
     Outer,
     Spacing(SpacingKey),
 }
@@ -75,13 +77,14 @@ impl SettingKey {
             "update_channel" => Ok(Self::UpdateChannel),
             "mouse_follows_focus" => Ok(Self::MouseFollowsFocus),
             "trackpad_swipe" => Ok(Self::TrackpadSwipe),
+            "menu_bar_icon" => Ok(Self::MenuBarIcon),
             spacing::OUTER => Ok(Self::Outer),
             other => SpacingKey::parse(other).map(Self::Spacing).ok_or_else(|| {
                 format!(
                     "unknown setting {raw:?}; valid keys: hud, hud_style, hud_position, layout, \
-                     update_channel, mouse_follows_focus, trackpad_swipe, gaps.inner, gaps.outer, \
-                     gaps.top, gaps.bottom, gaps.left, gaps.right, single_window_max_width, \
-                     single_window_max_height"
+                     update_channel, mouse_follows_focus, trackpad_swipe, menu_bar_icon, \
+                     gaps.inner, gaps.outer, gaps.top, gaps.bottom, gaps.left, gaps.right, \
+                     single_window_max_width, single_window_max_height"
                 )
             }),
         }
@@ -96,6 +99,7 @@ impl SettingKey {
             Self::UpdateChannel => "update_channel",
             Self::MouseFollowsFocus => "mouse_follows_focus",
             Self::TrackpadSwipe => "trackpad_swipe",
+            Self::MenuBarIcon => "menu_bar_icon",
             Self::Outer => spacing::OUTER,
             Self::Spacing(key) => key.path(),
         }
@@ -144,6 +148,10 @@ impl SettingKey {
                 let on = settings.effective_trackpad_swipe();
                 (on.to_string(), serde_json::Value::Bool(on))
             }
+            Self::MenuBarIcon => {
+                let icon = settings.effective_menu_bar_icon().as_str();
+                (icon.to_owned(), serde_json::Value::String(icon.to_owned()))
+            }
             Self::Outer => {
                 let value = settings.effective_outer();
                 (value.to_string(), serde_json::Value::from(value))
@@ -165,6 +173,7 @@ impl SettingKey {
             Self::UpdateChannel => settings.update_channel.is_some(),
             Self::MouseFollowsFocus => settings.mouse_follows_focus.is_some(),
             Self::TrackpadSwipe => settings.trackpad_swipe.is_some(),
+            Self::MenuBarIcon => settings.menu_bar_icon.is_some(),
             Self::Outer => settings.gaps.outer.is_some(),
             Self::Spacing(key) => settings.has_spacing(key),
         }
@@ -180,6 +189,7 @@ impl SettingKey {
             Self::UpdateChannel => settings.update_channel = None,
             Self::MouseFollowsFocus => settings.mouse_follows_focus = None,
             Self::TrackpadSwipe => settings.trackpad_swipe = None,
+            Self::MenuBarIcon => settings.menu_bar_icon = None,
             Self::Outer => settings.gaps.outer = None,
             Self::Spacing(key) => settings.clear_spacing(key),
         }
@@ -223,6 +233,7 @@ impl Key {
             Self::Lab(LabFeature::FourFingerSwipe) => "labs.four_finger_swipe",
             Self::Lab(LabFeature::SingleWindowHeight) => "labs.single_window_height",
             Self::Lab(LabFeature::RouteAllWindows) => "labs.route_all_windows",
+            Self::Lab(LabFeature::MenuBarIconStyle) => "labs.menu_bar_icon_style",
         }
     }
 
@@ -358,6 +369,7 @@ enum SettingValue {
     UpdateChannel(UpdateChannel),
     MouseFollowsFocus(MouseFollowsFocus),
     TrackpadSwipe(bool),
+    MenuBarIcon(MenuBarIcon),
     Outer(i64),
     Spacing(SpacingKey, i64),
     Lab(LabFeature, bool),
@@ -415,6 +427,13 @@ impl SettingValue {
                     "invalid value for trackpad_swipe: expected 'true' or 'false', got {raw_value:?}"
                 )),
             },
+            SettingKey::MenuBarIcon => MenuBarIcon::parse(raw_value)
+                .map(Self::MenuBarIcon)
+                .ok_or_else(|| {
+                    format!(
+                        "invalid value for menu_bar_icon: expected 'full', 'compact', or 'off', got {raw_value:?}"
+                    )
+                }),
             SettingKey::Outer => {
                 let parsed = parse_points(key, raw_value)?;
                 spacing::check_outer(parsed)?;
@@ -490,6 +509,13 @@ fn run_set(args: &[&str], path_override: Option<&Path>) -> Result<String, String
                 (
                     format!("set trackpad_swipe = {parsed}"),
                     serde_json::Value::Bool(parsed),
+                )
+            }
+            SettingValue::MenuBarIcon(parsed) => {
+                doc.settings.menu_bar_icon = Some(parsed);
+                (
+                    format!("set menu_bar_icon = {}", parsed.as_str()),
+                    serde_json::Value::String(parsed.as_str().to_owned()),
                 )
             }
             SettingValue::Outer(parsed) => {

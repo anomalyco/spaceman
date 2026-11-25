@@ -51,6 +51,10 @@ pub struct LabsConfig {
     /// the first one.
     #[serde(default)]
     pub route_all_windows: bool,
+    /// `settings.menu_bar_icon`: the menu bar icon can be one glyph (`compact`) or hidden
+    /// (`off`), and Settings › General shows its picker.
+    #[serde(default)]
+    pub menu_bar_icon_style: bool,
 }
 
 impl LabsConfig {
@@ -70,6 +74,7 @@ impl LabsConfig {
             LabFeature::FourFingerSwipe => self.four_finger_swipe,
             LabFeature::SingleWindowHeight => self.single_window_height,
             LabFeature::RouteAllWindows => self.route_all_windows,
+            LabFeature::MenuBarIconStyle => self.menu_bar_icon_style,
         }
     }
 }
@@ -102,11 +107,13 @@ pub enum LabFeature {
     SingleWindowHeight,
     /// `windows = "all"` on a `route` rule routes every new window of its app.
     RouteAllWindows,
+    /// `settings.menu_bar_icon`: a compact or hidden menu bar icon.
+    MenuBarIconStyle,
 }
 
 impl LabFeature {
     /// Every switch, in the order `[labs]` lists them.
-    pub const ALL: [Self; 12] = [
+    pub const ALL: [Self; 13] = [
         Self::Scratchpad,
         Self::Activity,
         Self::PortraitEdgeRows,
@@ -119,6 +126,7 @@ impl LabFeature {
         Self::FourFingerSwipe,
         Self::SingleWindowHeight,
         Self::RouteAllWindows,
+        Self::MenuBarIconStyle,
     ];
 
     /// The `[labs]` key that turns this feature on.
@@ -137,6 +145,7 @@ impl LabFeature {
             Self::FourFingerSwipe => "four_finger_swipe",
             Self::SingleWindowHeight => "single_window_height",
             Self::RouteAllWindows => "route_all_windows",
+            Self::MenuBarIconStyle => "menu_bar_icon_style",
         }
     }
 
