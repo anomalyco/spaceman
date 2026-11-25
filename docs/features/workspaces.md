@@ -74,7 +74,8 @@ Empty workspace chosen on another display (Lab)            // ws.empty-choice
 ├── Showing an empty workspace focuses nothing, so the window on the display you came from keeps
 │   keyboard input and stays reported as focused; with the Lab off, commands follow that window
 ├── Chosen with Option+<ws>, ctl switch, the menu or the HUD, on a display other than the focused
-│   window's -> it is the focused workspace for commands, wherever it shows:
+│   window's (a window Spaceman does not manage, such as one an ignore rule matches, counts by the
+│   display it is on) -> it is the focused workspace for commands, wherever it shows:
 │   ├── Option+Shift+Tab moves it; the other display's workspace stays and nothing about it is saved
 │   ├── Commands that need a window (Option+Shift+F, Option+Shift+H/J/K/L, Option+Shift+<ws>,
 │   │   Option+Shift+Space) report there is none, as on an empty workspace on the display in use

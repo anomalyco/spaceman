@@ -176,3 +176,29 @@ fn an_observation_cycle_keeps_the_choice() {
     assert!(rt.focus.empty_choice().is_some());
     assert_eq!(moved(&mut rt), Some(ws(7)));
 }
+
+#[test]
+fn an_unmanaged_window_keeping_focus_counts_by_its_display() {
+    // #532: the window that keeps focus belongs to no workspace (an `ignore`
+    // rule), so the display it is on decides where it is.
+    let (unmanaged, tile, secondary) = (window(12), window(MAIN_WINDOW), window(60));
+    let mut backend = FakeBackend {
+        focused: Some(unmanaged.clone()),
+        frontmost: Some(unmanaged.app.clone()),
+        ..FakeBackend::default()
+    };
+    backend.frames.insert(unmanaged.clone(), frame(300));
+    backend.frames.insert(tile.clone(), frame(50));
+    backend.frames.insert(secondary.clone(), frame(1050));
+    let config = Config::parse("version = 1\n[labs]\nempty_workspace_focus = true\n").unwrap();
+    let mut rt = runtime_with_config(backend, config);
+    bind(&mut rt, ws(1), &tile);
+    bind(&mut rt, ws(6), &secondary);
+    rt.workspaces.switch(ws(6));
+    rt.workspaces.switch(ws(1));
+    assert_eq!(rt.workspaces.workspace_of_any(&unmanaged), None);
+    act(&mut rt, WorkerAction::SwitchWorkspace(ws(7))).unwrap();
+    assert_eq!(rt.backend.focused, Some(unmanaged));
+    assert!(rt.focus.empty_choice().is_some());
+    assert_eq!(moved(&mut rt), Some(ws(7)));
+}
