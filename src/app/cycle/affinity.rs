@@ -105,9 +105,11 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
                 // agent restart seeds every restored float as manual because the
                 // saved state does not say why it floated, so hand it back to the
                 // rule: removing the rule then tiles it again (#160).
-                if disposition == WindowDisposition::Floating
-                    && !self.scratchpad.contains(&window.id)
-                {
+                let float_rule = matches!(
+                    disposition,
+                    WindowDisposition::Floating | WindowDisposition::Pinned
+                );
+                if float_rule && !self.scratchpad.contains(&window.id) {
                     self.manual_floating.remove(&window.id);
                 }
                 // A window that already holds a tile keeps it while it temporarily
@@ -116,7 +118,7 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
                 // and a tile rule tiles it whatever it looks like. A float rule or
                 // Toggle Float still releases the tile immediately.
                 let tiled = self.workspaces.workspace_of(&window.id).is_some();
-                let floating = disposition == WindowDisposition::Floating
+                let floating = float_rule
                     || self.manual_floating.contains(&window.id)
                     || (!window.resizable && !tiled && disposition != WindowDisposition::Tiled);
                 if floating {
@@ -239,9 +241,13 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
                                 })
                                 .unwrap_or(FrozenWindowAffinity::CurrentDisplay)
                         }
-                        WindowDisposition::Floating | WindowDisposition::Ignored => unreachable!(),
+                        WindowDisposition::Floating
+                        | WindowDisposition::Pinned
+                        | WindowDisposition::Ignored => unreachable!(),
                     }
                 };
+                self.workspaces
+                    .set_rule_pinned(&window.id, disposition == WindowDisposition::Pinned);
                 affinities.insert(window.id.clone(), affinity);
             }
         }

@@ -502,7 +502,7 @@ fn the_board_lays_out_one_display_two_displays_and_one_window() {
 }
 
 #[test]
-fn arrange_and_start_saves_only_float_rules_for_small_utilities() {
+fn arrange_and_start_saves_no_rules_for_utilities_that_float_by_default() {
     let mut ui = crate::playground::blank_fixture();
     super::tour_scene(&mut ui, Step::Arrange, true, false);
     let before = ui.doc.rules();
@@ -519,15 +519,9 @@ fn arrange_and_start_saves_only_float_rules_for_small_utilities() {
         .into_iter()
         .filter(|rule| !before.iter().any(|old| old.bundle_id == rule.bundle_id))
         .collect();
-    let mut floated: Vec<_> = added
-        .iter()
-        .filter_map(|rule| rule.bundle_id.clone())
-        .collect();
-    floated.sort();
-    assert_eq!(floated, [STICKIES, CALCULATOR]);
-    // No browser, terminal, mail or notes app got a home: every new rule floats.
-    assert!(added.iter().all(|rule| rule.place == Place::Float));
-    assert!(added.iter().all(|rule| rule.title.is_none()));
+    // Stickies and Calculator float by default, so nothing needed a rule, and no browser,
+    // terminal, mail or notes app got a home.
+    assert!(added.is_empty(), "{added:?}");
 
     // Arranging again writes nothing new.
     let rules = ui.doc.rules().len();
@@ -589,4 +583,27 @@ fn every_tour_scene_draws() {
         let light = crate::controls::Paint::new(false, 1.0);
         assert!(super::overlay(&ui, light).is_some(), "{name}");
     }
+}
+
+#[test]
+fn tiling_a_built_in_float_on_the_board_saves_a_tile_rule() {
+    let mut ui = crate::playground::blank_fixture();
+    super::tour_scene(&mut ui, Step::Arrange, true, false);
+    let before = ui.doc.rules();
+    ui.tour
+        .as_mut()
+        .unwrap()
+        .board
+        .set_floating(STICKIES, false);
+
+    super::input(&mut ui, Input::Continue);
+
+    let added: Vec<_> = ui
+        .doc
+        .rules()
+        .into_iter()
+        .filter(|rule| !before.iter().any(|old| old.bundle_id == rule.bundle_id))
+        .map(|rule| (rule.bundle_id, rule.place))
+        .collect();
+    assert_eq!(added, [(Some(STICKIES.to_owned()), Place::Tile)]);
 }

@@ -315,6 +315,7 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
             WorkerAction::Balance => rt.balance_focused(outputs, cancelled),
             WorkerAction::ToggleFullscreenLayout => rt.toggle_fullscreen_layout(outputs, cancelled),
             WorkerAction::ToggleFloat => rt.toggle_float(outputs, cancelled),
+            WorkerAction::TogglePin => rt.toggle_pin(outputs, cancelled),
             WorkerAction::Scratchpad(command) => rt.scratchpad_command(command, outputs, cancelled),
             WorkerAction::MarkWrong => {
                 rt.mark_wrong();

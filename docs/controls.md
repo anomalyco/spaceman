@@ -203,6 +203,7 @@ spaceman ctl move-direction right
 spaceman ctl layout
 spaceman ctl fullscreen
 spaceman ctl float
+spaceman ctl pin
 spaceman ctl resize shrink
 spaceman ctl resize grow
 spaceman ctl resize width 1200
@@ -226,7 +227,8 @@ spaceman doctor 24
 
 Directions are `left`, `down`, `up`, and `right`. `focus next` is Option-backtick,
 `focus prev` is Option-Shift-backtick, `fullscreen` toggles the focused workspace's Fullscreen Layout, like `Option+Shift+F`, and `float`
-toggles the focused window's floating, like `Option+Shift+Space`. `scratchpad toggle` and
+toggles the focused window's floating, like `Option+Shift+Space`. `pin` floats the focused window
+and shows it on every workspace, or unpins it (no built-in shortcut). `scratchpad toggle` and
 `scratchpad mark` are `Option+\` and `Option+Shift+\`; while `[labs] scratchpad` is off they report
 `Scratchpad is off`. `resize width|height POINTS` resizes the focused window to that width or
 height (its own frame, gaps excluded) by moving its boundary at the nearest split along that axis;

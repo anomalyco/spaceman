@@ -24,6 +24,7 @@ mod parking;
 mod reconciliation;
 mod reconnect_unsettled;
 mod reliability;
+mod restart_recall;
 mod rules;
 mod scratchpad;
 mod space_transitions;
@@ -34,6 +35,7 @@ mod switch_repeat;
 mod switching;
 mod tear_regressions;
 mod three_display;
+mod utility_floats;
 mod workspace_order;
 use crate::{BindingState, Slot, SlotId};
 
@@ -250,6 +252,14 @@ impl WorkspaceBackend for FakeBackend {
 
     fn onscreen_window_order(&mut self) -> Option<Vec<u32>> {
         self.stacking.clone()
+    }
+
+    fn window_owners(&mut self, window_ids: &HashSet<u32>) -> HashMap<u32, AppInstanceId> {
+        self.frames
+            .keys()
+            .filter(|window| window_ids.contains(&window.window_id))
+            .map(|window| (window.window_id, window.app.clone()))
+            .collect()
     }
 
     fn set_parked_position(

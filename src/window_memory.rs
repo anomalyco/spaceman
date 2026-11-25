@@ -5,7 +5,8 @@
 //! ownership across one. This memory keys on the bundle identifier instead and
 //! records, per application, each managed window's workspace, tiling kind, and
 //! last on-screen frame. A relaunched application's new windows claim those
-//! placements in order: exact frame matches first, then window creation order.
+//! placements in order: exact frame matches first, then matching sizes (a note
+//! reopened somewhere else keeps its size), then window creation order.
 //!
 //! Normally only a relaunch (an update or restart) recalls these placements;
 //! an app the user opens mid-session opens where they are. Once the user moves one of an
@@ -179,39 +180,47 @@ impl WindowMemory {
 /// Assign remembered placements to newly observed windows.
 ///
 /// `windows` are `(window, frame)` pairs whose keys order by creation. Each
-/// remembered placement is claimed at most once: first by a window whose frame
-/// matches it within [`FRAME_MATCH_TOLERANCE`], then in creation order by the
-/// remaining windows. Returns `(window, index into remembered)` pairs; windows
-/// beyond the remembered count receive nothing.
+/// remembered placement is claimed at most once, tier by tier: first by a window
+/// whose frame matches it within [`FRAME_MATCH_TOLERANCE`], then by one whose
+/// size alone matches (a float reopened at a parked or rescued position), then
+/// in creation order by the remaining windows. Returns `(window, index into
+/// remembered)` pairs; windows beyond the remembered count receive nothing.
 #[must_use]
 pub fn assign<K: Ord + Clone>(
     remembered: &[RememberedWindow],
     windows: &[(K, Rect)],
 ) -> Vec<(K, usize)> {
-    let mut ordered = windows.to_vec();
-    ordered.sort_by(|(left, _), (right, _)| left.cmp(right));
+    let tiers: [fn(Rect, Rect) -> bool; 2] = [
+        |remembered, frame| remembered.approximately_equals(frame, FRAME_MATCH_TOLERANCE),
+        |remembered, frame| {
+            (remembered.width - frame.width).abs() <= FRAME_MATCH_TOLERANCE
+                && (remembered.height - frame.height).abs() <= FRAME_MATCH_TOLERANCE
+        },
+    ];
+    let mut pending = windows.to_vec();
+    pending.sort_by(|(left, _), (right, _)| left.cmp(right));
     let mut claimed = vec![false; remembered.len()];
     let mut assignments = Vec::new();
-    let mut unmatched = Vec::new();
-    for (id, frame) in ordered {
-        let exact = claimed
-            .iter()
-            .zip(remembered)
-            .position(|(&is_claimed, candidate)| {
-                !is_claimed
-                    && candidate
-                        .frame
-                        .approximately_equals(frame, FRAME_MATCH_TOLERANCE)
-            });
-        match exact {
-            Some(index) => {
-                claimed[index] = true;
-                assignments.push((id, index));
+    for matches in tiers {
+        let mut unmatched = Vec::new();
+        for (id, frame) in pending {
+            let found = claimed
+                .iter()
+                .zip(remembered)
+                .position(|(&is_claimed, candidate)| {
+                    !is_claimed && matches(candidate.frame, frame)
+                });
+            match found {
+                Some(index) => {
+                    claimed[index] = true;
+                    assignments.push((id, index));
+                }
+                None => unmatched.push((id, frame)),
             }
-            None => unmatched.push(id),
         }
+        pending = unmatched;
     }
-    for id in unmatched {
+    for (id, _) in pending {
         let Some(index) = claimed.iter().position(|claimed| !claimed) else {
             break;
         };
@@ -253,6 +262,38 @@ mod tests {
             &[(20, frame(502)), (30, frame(0)), (10, frame(1500))],
         );
         assert_eq!(assignments, vec![(10, 2), (20, 1), (30, 0)]);
+    }
+
+    #[test]
+    fn sizes_match_before_creation_order() {
+        // Three notes of different sizes on workspaces 1, 2 and 3, reopened at one rescued
+        // position, in a different creation order.
+        let note = |workspace, width, height| RememberedWindow {
+            workspace: WorkspaceId::new(workspace).unwrap(),
+            frame: Rect {
+                x: 40 * i32::from(workspace),
+                y: 60,
+                width,
+                height,
+            },
+            floating: true,
+        };
+        let remembered = [note(1, 220, 180), note(2, 300, 240), note(3, 180, 400)];
+        let at_origin = |width, height| Rect {
+            x: 0,
+            y: 0,
+            width,
+            height,
+        };
+        let assignments = assign(
+            &remembered,
+            &[
+                (7, at_origin(180, 400)),
+                (8, at_origin(222, 178)),
+                (9, at_origin(300, 240)),
+            ],
+        );
+        assert_eq!(assignments, vec![(7, 2), (8, 0), (9, 1)]);
     }
 
     #[test]

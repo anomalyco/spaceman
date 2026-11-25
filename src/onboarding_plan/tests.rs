@@ -248,15 +248,10 @@ fn utilities_and_fixed_size_windows_float_beside_the_tiles() {
     assert_eq!(tiles(&plan)[0], (1, vec!["com.google.Chrome"]));
     assert_eq!(tiles(&plan)[1], (2, vec!["com.apple.Terminal"]));
     assert_eq!(plan.tile_count(), 2);
-    // Only a floating app Spaceman would otherwise tile needs a rule.
-    assert_eq!(
-        plan.float_rules(&inventory),
-        vec![
-            "com.1password.1password",
-            "com.apple.Stickies",
-            "anomaly.hex"
-        ]
-    );
+    // Only a floating app Spaceman would otherwise tile needs a rule: these utilities float by
+    // default, and the panel can't be resized.
+    assert!(plan.float_rules(&inventory).is_empty());
+    assert!(plan.tile_rules(&inventory).is_empty());
 }
 
 #[test]
@@ -427,10 +422,8 @@ fn floating_toggles_both_ways_and_tiling_returns_to_the_roles_workspace() {
     plan.set_floating("com.apple.Notes", true, &inventory);
     assert_eq!(plan.floating, vec!["com.apple.Stickies", "com.apple.Notes"]);
     assert_eq!(tiles(&plan)[3], (4, vec![]));
-    assert_eq!(
-        plan.float_rules(&inventory),
-        vec!["com.apple.Stickies", "com.apple.Notes"]
-    );
+    // Stickies floats by default; only Notes needs a rule.
+    assert_eq!(plan.float_rules(&inventory), vec!["com.apple.Notes"]);
 
     plan.set_floating("com.apple.Notes", false, &inventory);
     assert_eq!(plan.floating, vec!["com.apple.Stickies"]);
@@ -440,6 +433,8 @@ fn floating_toggles_both_ways_and_tiling_returns_to_the_roles_workspace() {
     plan.set_floating("com.apple.Stickies", false, &inventory);
     assert!(plan.floating.is_empty());
     assert!(plan.float_rules(&inventory).is_empty());
+    // It floats by default, so tiling it takes a tile rule.
+    assert_eq!(plan.tile_rules(&inventory), vec!["com.apple.Stickies"]);
     assert_eq!(plan.workspaces[3].tiles.len(), 4);
 
     // Asking for what is already so, or for an app that isn't open, changes nothing.
@@ -483,9 +478,10 @@ fn the_arrangement_lists_each_apps_windows_in_plan_order_and_never_a_route_rule(
             },
         ]
     );
-    // The plan moves open windows. The only rules it asks for keep utilities floating; a
+    // The plan moves open windows and asks for no rule here: Stickies floats by default, and a
     // browser or a terminal is never pinned to a workspace.
-    assert_eq!(plan.float_rules(&inventory), vec!["com.apple.Stickies"]);
+    assert!(plan.float_rules(&inventory).is_empty());
+    assert!(plan.tile_rules(&inventory).is_empty());
 }
 
 #[test]

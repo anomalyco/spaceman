@@ -4,6 +4,7 @@ pub mod config;
 #[cfg(target_os = "macos")]
 pub mod control;
 pub mod deep_link;
+pub mod defaults;
 pub mod geometry;
 #[cfg(target_os = "macos")]
 #[allow(unsafe_code)]

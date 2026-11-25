@@ -39,9 +39,16 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
         if self.parked.is_empty() {
             return;
         }
+        // A window pinned while it was parked (a pin rule reloaded) shows wherever it lives.
         let windows: Vec<_> = visible
             .iter()
             .flat_map(|resolved| self.workspaces.windows(resolved.workspace))
+            .chain(
+                self.parked
+                    .keys()
+                    .filter(|window| self.workspaces.is_pinned(window))
+                    .cloned(),
+            )
             .collect();
         for window in windows {
             if cancelled.load(Ordering::Acquire) {
@@ -118,9 +125,11 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
                 .as_ref()
                 .is_none_or(|frontmost| &focused.app == frontmost)
         });
+        // A pinned window shows on every workspace, so focusing it never switches.
         let focus_workspace = if focused_is_frontmost {
             focused
                 .as_ref()
+                .filter(|focused| !self.workspaces.is_pinned(focused))
                 .and_then(|focused| self.workspaces.workspace_of_any(focused))
         } else {
             frontmost
@@ -191,12 +200,8 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
         let server_snapshot = self.backend.window_server_frames();
         let empty_server_frames = HashMap::new();
         let server_frames = server_snapshot.as_ref().unwrap_or(&empty_server_frames);
-        self.recover_frontmost_stale_parked_window(
-            &outputs,
-            frontmost.as_ref(),
-            focused.as_ref(),
-            server_frames,
-        );
+        self.recover_stale_parked_windows(&outputs, server_frames);
+        self.pin_parked_floats_by_rule();
         self.restore_visible(&visible, cancelled, &mut failed);
         self.park_inactive(&outputs, &visible, server_frames, cancelled, &mut failed);
         self.recover_stranded_visible(&outputs, &visible, server_frames, cancelled, &mut failed);

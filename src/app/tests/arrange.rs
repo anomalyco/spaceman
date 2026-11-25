@@ -152,14 +152,15 @@ fn an_arrangement_spreads_open_windows_over_workspaces_without_cramming_one() {
     assert_eq!(left.width + right.width, 1000);
     assert_eq!((left.height, right.height), (800, 800));
 
-    // The sticky note floats where it was, on the workspace it was showing on.
+    // The sticky note floats where it was, on the workspace it was showing on. Stickies
+    // floats by default, so the default (not a hand float) keeps it floating.
     let note = app_window(12, 6);
     assert_eq!(runtime.workspaces.workspace_of(&note), None);
     assert_eq!(
         runtime.workspaces.floating_workspace_of(&note),
         Some(WorkspaceId::ONE)
     );
-    assert!(runtime.manual_floating.contains(&note));
+    assert!(!runtime.manual_floating.contains(&note));
     assert_eq!(runtime.backend.frames[&note].width, 200);
 
     // The arrangement was for these windows once. A window opened later is adopted as usual.
@@ -206,7 +207,7 @@ fn undoing_an_arrangement_puts_every_window_back_and_forgets_it() {
 fn arranging_again_moves_windows_a_workspace_already_owns() {
     let (backend, _) = first_run();
     let mut runtime = runtime(backend);
-    // Tiling was already on: everything was adopted onto workspace 1.
+    // Tiling was already on: everything was adopted onto workspace 1, the note floating.
     runtime.cycle(outputs(), &AtomicBool::new(false)).unwrap();
     let terminal = app_window(11, 5);
     let note = app_window(12, 6);
@@ -215,7 +216,7 @@ fn arranging_again_moves_windows_a_workspace_already_owns() {
         Some(WorkspaceId::ONE)
     );
     assert_eq!(
-        runtime.workspaces.workspace_of(&note),
+        runtime.workspaces.floating_workspace_of(&note),
         Some(WorkspaceId::ONE)
     );
 

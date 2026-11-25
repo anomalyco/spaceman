@@ -129,62 +129,6 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
         }
     }
 
-    /// Recover a newly identified frontmost window that was relaunched at the
-    /// exact one-pixel edge position produced by Spaceman parking. Its former
-    /// physical identity (and recovery entry) no longer exists, so revealing it
-    /// lets normal reconciliation adopt and tile it again.
-    pub(super) fn recover_frontmost_stale_parked_window(
-        &mut self,
-        outputs: &macos::DisplayOutputs,
-        frontmost: Option<&AppInstanceId>,
-        focused: Option<&crate::PhysicalWindowId>,
-        server_frames: &HashMap<u32, crate::Rect>,
-    ) {
-        let Some(window) = focused.filter(|window| frontmost == Some(&window.app)) else {
-            return;
-        };
-        if self.parked.contains_key(window) || self.workspaces.workspace_of_any(window).is_some() {
-            return;
-        }
-        let Some(frame) = server_frames.get(&window.window_id).copied() else {
-            return;
-        };
-        if outputs
-            .frames()
-            .any(|display| display.contains_center(frame))
-        {
-            return;
-        }
-        let displays = outputs.frames().collect::<Vec<_>>();
-        let screens = outputs.screens();
-        let Some(output) = outputs.displays().iter().find_map(|display| {
-            let parked =
-                crate::geometry::parked_frame_clear_of(display.frame, &displays, &screens, frame);
-            crate::geometry::parked_at(frame, parked, 1).then_some(display.frame)
-        }) else {
-            return;
-        };
-        let target = crate::Rect {
-            x: output.x,
-            y: output.y,
-            ..frame
-        };
-        log_event!(
-            "recover stale parked focus: {:?} from {:?} to {:?}",
-            window,
-            frame,
-            target
-        );
-        let outcome = self.backend.set_position(window, target);
-        if !matches!(outcome, macos::ApplyOutcome::Applied) {
-            log_event!(
-                "stale parked focus recovery incomplete for {:?}: {:?}",
-                window,
-                outcome
-            );
-        }
-    }
-
     pub(super) fn park_inactive(
         &mut self,
         outputs: &macos::DisplayOutputs,
@@ -212,7 +156,7 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
             if cancelled.load(Ordering::Acquire) {
                 return;
             }
-            if self.parking_exempt.contains(&window) {
+            if self.stays_on_screen(&window) {
                 continue;
             }
             if let Some(original) = self.parked.get(&window).copied() {
@@ -224,7 +168,9 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
             if cancelled.load(Ordering::Acquire) {
                 return;
             }
-            if self.parking_exempt.contains(&window) {
+            // Pinned windows show on every workspace; restore_visible brings back one pinned
+            // while it was parked.
+            if self.stays_on_screen(&window) {
                 continue;
             }
             let output = output_for(&self.workspaces, workspace, outputs);
@@ -626,7 +572,7 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
         relocate: Option<(crate::Rect, crate::Rect)>,
         outputs: &macos::DisplayOutputs,
     ) -> macos::ApplyOutcome {
-        if self.parking_exempt.contains(window) {
+        if self.stays_on_screen(window) {
             return macos::ApplyOutcome::Applied;
         }
         let ax_frame = match self.backend.frame(window) {

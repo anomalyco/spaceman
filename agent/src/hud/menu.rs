@@ -82,7 +82,8 @@ impl HudSink for LiveHudSink {
 /// Builds the compact native context menu for right-clicking an app icon inside a HUD slot.
 #[must_use]
 pub fn build_app_menu(app_name: &str, workspace: WorkspaceId, current: Option<Place>) -> PopupMenu {
-    let float_item = if current == Some(Place::Float) {
+    // A pin rule floats too, on every workspace: its toggle tiles the app again.
+    let float_item = if matches!(current, Some(Place::Float | Place::Pin)) {
         PopupItem::new(ID_TOGGLE_FLOAT, format!("Tile {app_name}")).symbol("rectangle.split.2x1")
     } else {
         PopupItem::new(ID_TOGGLE_FLOAT, format!("Float {app_name}"))
@@ -139,7 +140,7 @@ pub fn resolve_app_menu_pick(
 ) -> Option<Option<Place>> {
     match picked {
         ID_TOGGLE_FLOAT => {
-            if current == Some(Place::Float) {
+            if matches!(current, Some(Place::Float | Place::Pin)) {
                 Some(None)
             } else {
                 Some(Some(Place::Float))

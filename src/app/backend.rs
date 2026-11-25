@@ -43,6 +43,9 @@ pub(super) trait WorkspaceBackend {
     fn onscreen_window_frames(&mut self) -> Option<HashMap<u32, crate::Rect>>;
     /// On-screen window-server IDs, front-most first.
     fn onscreen_window_order(&mut self) -> Option<Vec<u32>>;
+    /// The running application instance owning each of `window_ids`, per the window server.
+    /// For the rare window no observation covers; windows it cannot attribute are left out.
+    fn window_owners(&mut self, window_ids: &HashSet<u32>) -> HashMap<u32, AppInstanceId>;
     fn set_position(
         &mut self,
         window: &crate::PhysicalWindowId,
@@ -182,6 +185,10 @@ impl WorkspaceBackend for MacWorkspaceBackend {
 
     fn onscreen_window_order(&mut self) -> Option<Vec<u32>> {
         macos::onscreen_window_order()
+    }
+
+    fn window_owners(&mut self, window_ids: &HashSet<u32>) -> HashMap<u32, AppInstanceId> {
+        macos::window_owners(window_ids)
     }
 
     fn set_position(

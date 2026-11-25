@@ -34,13 +34,17 @@ struct RuleRemovedOutput {
 enum ActionArg {
     Workspace(WorkspaceId),
     Float,
+    Pin,
     Tile,
     Ignore,
 }
 
+const ONE_ACTION: &str = "specify only one of --workspace, --float, --pin, --tile, or --ignore";
+
 struct AddOptions {
     app: Option<String>,
     title: Option<String>,
+    title_contains: Option<String>,
     action: ActionArg,
     position: Option<usize>,
     json: bool,
@@ -121,7 +125,7 @@ fn add_requests_help(args: &[&str]) -> bool {
         }
         if matches!(
             arg,
-            "--app" | "--bundle-id" | "--title" | "--workspace" | "--position"
+            "--app" | "--bundle-id" | "--title" | "--title-contains" | "--workspace" | "--position"
         ) {
             index += 2;
         } else {
@@ -134,6 +138,7 @@ fn add_requests_help(args: &[&str]) -> bool {
 fn parse_add_options(args: &[&str]) -> Result<AddOptions, String> {
     let mut app: Option<String> = None;
     let mut title: Option<String> = None;
+    let mut title_contains: Option<String> = None;
     let mut action: Option<ActionArg> = None;
     let mut position: Option<usize> = None;
     let mut json = false;
@@ -177,11 +182,19 @@ fn parse_add_options(args: &[&str]) -> Result<AddOptions, String> {
                 }
                 title = Some(value);
             }
+            "--title-contains" => {
+                if title_contains.is_some() {
+                    return Err("--title-contains specified more than once".into());
+                }
+                let value = next_value(flag, inline_value, &mut index)?;
+                if value.is_empty() {
+                    return Err("--title-contains cannot be empty".into());
+                }
+                title_contains = Some(value);
+            }
             "--workspace" => {
                 if action.is_some() {
-                    return Err(
-                        "specify only one of --workspace, --float, --tile, or --ignore".into(),
-                    );
+                    return Err(ONE_ACTION.into());
                 }
                 let value = next_value(flag, inline_value, &mut index)?;
                 let workspace = WorkspaceId::parse(&value)?;
@@ -192,20 +205,25 @@ fn parse_add_options(args: &[&str]) -> Result<AddOptions, String> {
                     return Err("--float does not take a value".into());
                 }
                 if action.is_some() {
-                    return Err(
-                        "specify only one of --workspace, --float, --tile, or --ignore".into(),
-                    );
+                    return Err(ONE_ACTION.into());
                 }
                 action = Some(ActionArg::Float);
+            }
+            "--pin" => {
+                if inline_value.is_some() {
+                    return Err("--pin does not take a value".into());
+                }
+                if action.is_some() {
+                    return Err(ONE_ACTION.into());
+                }
+                action = Some(ActionArg::Pin);
             }
             "--tile" => {
                 if inline_value.is_some() {
                     return Err("--tile does not take a value".into());
                 }
                 if action.is_some() {
-                    return Err(
-                        "specify only one of --workspace, --float, --tile, or --ignore".into(),
-                    );
+                    return Err(ONE_ACTION.into());
                 }
                 action = Some(ActionArg::Tile);
             }
@@ -214,9 +232,7 @@ fn parse_add_options(args: &[&str]) -> Result<AddOptions, String> {
                     return Err("--ignore does not take a value".into());
                 }
                 if action.is_some() {
-                    return Err(
-                        "specify only one of --workspace, --float, --tile, or --ignore".into(),
-                    );
+                    return Err(ONE_ACTION.into());
                 }
                 action = Some(ActionArg::Ignore);
             }
@@ -245,18 +261,20 @@ fn parse_add_options(args: &[&str]) -> Result<AddOptions, String> {
         index += 1;
     }
 
-    if app.is_none() && title.is_none() {
+    if app.is_none() && title.is_none() && title_contains.is_none() {
         return Err("rules add requires --app <bundle-id> (or --title <title>)".into());
     }
     let Some(action) = action else {
         return Err(
-            "rules add requires one of --workspace <ws>, --float, --tile, or --ignore".into(),
+            "rules add requires one of --workspace <ws>, --float, --pin, --tile, or --ignore"
+                .into(),
         );
     };
 
     Ok(AddOptions {
         app,
         title,
+        title_contains,
         action,
         position,
         json,
@@ -269,12 +287,14 @@ fn run_add(args: &[&str], path_override: Option<&Path>) -> Result<String, String
     let (action, workspace) = match options.action {
         ActionArg::Workspace(workspace) => ("route".to_owned(), Some(workspace)),
         ActionArg::Float => ("float".to_owned(), None),
+        ActionArg::Pin => ("pin".to_owned(), None),
         ActionArg::Tile => ("tile".to_owned(), None),
         ActionArg::Ignore => ("ignore".to_owned(), None),
     };
     let rule = RuleDoc {
         bundle_id: options.app,
         title: options.title,
+        title_contains: options.title_contains,
         action,
         workspace,
     };
@@ -439,6 +459,7 @@ fn run_remove(args: &[&str], path_override: Option<&Path>) -> Result<String, Str
         let rule = RuleDoc {
             bundle_id: entry.bundle_id.clone(),
             title: entry.title.clone(),
+            title_contains: entry.title_contains.clone(),
             action: entry.action.clone(),
             workspace: entry.workspace,
         };

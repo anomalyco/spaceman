@@ -64,7 +64,8 @@ Local files live under `~/Library/Application Support/Spaceman/`:
 
 - `config.toml`: user-authored configuration;
 - `workspace-state.json`: active workspace selectors, previous-workspace history, logical slots,
-  last-focused tile intent, Fullscreen Layout state, floating-window ownership, and layout trees;
+  last-focused tile intent, Fullscreen Layout state, floating-window ownership, hand-pinned floating
+  windows, and layout trees;
 - `parked-windows.json`: physical process/window identifiers and original frames needed for recovery;
 - `window-memory.json`: per-application bundle identifiers with each remembered window's workspace,
   floating state, and last frame, used to restore placements after relaunches and reboots;

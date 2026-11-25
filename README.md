@@ -37,7 +37,8 @@ Spaceman currently:
 - sends a browser, Finder, or terminal tab to another workspace as its own window
   (`spaceman ctl move-tab 2`) through the app's own `Move Tab to New Window`;
 - keeps movable non-resizable and rule-floated windows with their logical workspace without tiling
-  or resizing them;
+  or resizing them, floats small utilities such as Stickies and Calculator by default, and can pin
+  a floating window on every workspace (`action = "pin"` or `spaceman ctl pin`);
 - exposes a local CLI over a user-only Unix socket.
 
 Spaceman uses Accessibility APIs to observe, focus, move, and resize eligible windows. It requires no
@@ -121,8 +122,9 @@ maintainer workflow.
 Automatic tiling starts with `Arrange & start`. A fresh install holds it until then, so granting
 Accessibility never rearranges your windows behind the setup window; `Skip`, or closing the tour
 once Accessibility is granted, leaves Spaceman paused until you choose `Resume Tiling` or it next
-launches. The arrangement moves the windows that are open and writes no `route` rule: the only
-rules it saves are `float` rules for small utilities such as Calculator and Stickies. Without
+launches. The arrangement moves the windows that are open and writes no `route` rule. Small
+utilities such as Calculator and Stickies float by default with no rule; it saves a `float` rule
+only for another app you float on the board, and a `tile` rule for a utility you tile. Without
 Accessibility permission, the menu reports the permission error and tiling remains paused. While
 tiling, the menu lists each display's workspaces (the visible one checked, plus any holding windows,
 with their apps' icons); choosing one switches to it. The menu actions are `Setup Tour…` (while
@@ -185,6 +187,7 @@ spaceman ctl move 7
 spaceman ctl move-tab 2
 spaceman ctl layout
 spaceman ctl float
+spaceman ctl pin
 spaceman ctl balance
 spaceman ctl pause
 spaceman ctl resume

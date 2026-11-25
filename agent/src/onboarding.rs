@@ -297,8 +297,9 @@ fn apply(ui: &mut Ui, effect: Effect) {
 }
 
 /// Arrange & start: the open windows move to the plan's workspaces and tiling starts. The
-/// only thing saved is a `float` rule for each small utility the plan floats; no window is
-/// routed by rule, so a browser's or a terminal's next window opens where you are.
+/// only things saved are a `float` rule for each app the plan floats that Spaceman would tile,
+/// and a `tile` rule for each built-in floating utility the plan tiles; no window is routed by
+/// rule, so a browser's or a terminal's next window opens where you are.
 fn arrange_and_start(ui: &mut Ui) {
     let Some(tour) = &mut ui.tour else {
         return;
@@ -306,19 +307,24 @@ fn arrange_and_start(ui: &mut Ui) {
     tour.started = true;
     tour.lessons = Lessons::default();
     let arrangement = tour.board.plan.arrangement();
-    let floats = tour
+    let (floats, tiles) = tour
         .board
         .inventory()
-        .map(|inventory| tour.board.plan.float_rules(inventory))
+        .map(|inventory| {
+            let plan = &tour.board.plan;
+            (plan.float_rules(inventory), plan.tile_rules(inventory))
+        })
         .unwrap_or_default();
-    let unsaved: Vec<String> = floats
+    let unsaved: Vec<(String, Place)> = floats
         .into_iter()
-        .filter(|bundle_id| !floats_by_rule(ui, bundle_id))
+        .map(|bundle_id| (bundle_id, Place::Float))
+        .chain(tiles.into_iter().map(|bundle_id| (bundle_id, Place::Tile)))
+        .filter(|(bundle_id, place)| !placed_by_rule(ui, bundle_id, *place))
         .collect();
     if !unsaved.is_empty() {
         ui.edit(|doc| {
-            for bundle_id in &unsaved {
-                doc.set_app_place(bundle_id, Some(Place::Float));
+            for (bundle_id, place) in &unsaved {
+                doc.set_app_place(bundle_id, Some(*place));
             }
         });
     }
@@ -326,11 +332,9 @@ fn arrange_and_start(ui: &mut Ui) {
     set_fixture_tiling(ui, true);
 }
 
-fn floats_by_rule(ui: &Ui, bundle_id: &str) -> bool {
+fn placed_by_rule(ui: &Ui, bundle_id: &str, place: Place) -> bool {
     ui.doc.rules().iter().any(|rule| {
-        rule.title.is_none()
-            && rule.bundle_id.as_deref() == Some(bundle_id)
-            && rule.place == Place::Float
+        rule.app_wide() && rule.bundle_id.as_deref() == Some(bundle_id) && rule.place == place
     })
 }
 

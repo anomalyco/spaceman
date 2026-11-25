@@ -123,7 +123,7 @@ impl Layout {
                         routed[index].push(rule);
                     }
                 }
-                Place::Float | Place::Ignore => floating.push(rule),
+                Place::Float | Place::Pin | Place::Ignore => floating.push(rule),
                 // Tiling is the default, so a tile rule has no place on the map.
                 // `spaceman rules` and config.toml edit it; the HUD's Float and Pin
                 // replace it.
@@ -420,10 +420,10 @@ impl MapView<'_> {
             .fill(c.layer_02)
             .child(self.app_icon(rule, CHIP_ICON))
             .child(
-                text(if rule.place == Place::Ignore {
-                    format!("{name} · ignored")
-                } else {
-                    name
+                text(match rule.place {
+                    Place::Ignore => format!("{name} · ignored"),
+                    Place::Pin => format!("{name} · pinned"),
+                    _ => name,
                 })
                 .key("name")
                 .font(self.p.row_title())
@@ -481,7 +481,7 @@ impl MapView<'_> {
         };
         let key = match place {
             Place::Workspace(workspace) => format!("add-{workspace}-menu"),
-            Place::Float | Place::Tile | Place::Ignore => "add-menu".into(),
+            Place::Float | Place::Pin | Place::Tile | Place::Ignore => "add-menu".into(),
         };
         self.add_menu(&key, trigger, place, layer)
     }
@@ -601,26 +601,27 @@ impl MapView<'_> {
     }
 
     fn rule_name(self, rule: &Rule) -> String {
-        match (self.rule_app(rule), &rule.bundle_id, &rule.title) {
+        match (self.rule_app(rule), &rule.bundle_id, rule.title_filter()) {
             (Some(app), _, _) => app.name.clone(),
             (None, Some(bundle_id), _) => apps::fallback_name(bundle_id),
-            (None, None, Some(title)) => title.clone(),
+            (None, None, Some(title)) => title.to_owned(),
             (None, None, None) => "Any app".into(),
         }
     }
 
     fn rule_help(self, rule: &Rule) -> String {
         let name = self.rule_name(rule);
-        match &rule.title {
-            Some(title) => format!("{name}, windows titled “{title}”"),
-            None => name,
+        match (&rule.title, &rule.title_contains) {
+            (Some(title), _) => format!("{name}, windows titled “{title}”"),
+            (None, Some(part)) => format!("{name}, windows whose title contains “{part}”"),
+            (None, None) => name,
         }
     }
 
     fn app_icon(self, rule: &Rule, size: f32) -> El {
         let icon =
             controls::icon_or_initial(self.p, self.rule_app(rule), &self.rule_name(rule), size);
-        if rule.title.is_none() {
+        if rule.app_wide() {
             return icon;
         }
         // A rule for some of an app's windows wears a dot.
@@ -707,8 +708,8 @@ fn drag_step(
                 return;
             };
             let current = drag.snapshot.place;
-            let unchanged =
-                current == target || (target == Place::Float && current == Place::Ignore);
+            let unchanged = current == target
+                || (target == Place::Float && matches!(current, Place::Ignore | Place::Pin));
             if unchanged {
                 ui.flush_pending_reload();
             } else {
@@ -968,5 +969,27 @@ mod tests {
         assert!(!ui.doc.hud());
 
         drop(std::fs::remove_dir_all(dir));
+    }
+
+    #[test]
+    fn pin_and_title_contains_rules_round_trip_as_non_app_wide_floats() {
+        let mut doc = Doc::parse(
+            "version = 1\n\n[[rules]]\nbundle_id = \"com.apple.Stickies\"\naction = \"pin\"\n\n[[rules]]\nbundle_id = \"com.apple.Safari\"\ntitle_contains = \"Work\"\naction = \"route\"\nworkspace = 2\n",
+        );
+        assert!(doc.error.is_none(), "{:?}", doc.error);
+        let rules = doc.rules();
+        assert_eq!(rules[0].place, Place::Pin);
+        assert!(rules[0].app_wide());
+        assert_eq!(rules[1].title_contains.as_deref(), Some("Work"));
+        assert!(!rules[1].app_wide());
+        assert_eq!(doc.app_place("com.apple.Safari"), None);
+        assert_eq!(Layout::new(&doc, WIDTH).floating.len(), 1);
+
+        // An app-wide Safari rule is added beside the title rule, never over it.
+        doc.set_app_place("com.apple.Safari", Some(Place::Workspace(WorkspaceId::ONE)));
+        let source = doc.source();
+        assert!(source.contains("title_contains = \"Work\""), "{source}");
+        assert!(source.contains("action = \"pin\""), "{source}");
+        spaceman::config::Config::parse(&source).unwrap();
     }
 }

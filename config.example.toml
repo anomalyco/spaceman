@@ -37,11 +37,27 @@ outer = 0
 # right = 0
 
 # Rules are optional, ordered, and first-match wins. Every matcher present in a
-# rule must match exactly. Valid actions are "float", "tile", "route", and
-# "ignore". "tile" tiles a window Spaceman would otherwise float as a dialog.
+# rule must match: bundle_id and title exactly, title_contains as a
+# case-insensitive part of the title. Valid actions are "float", "pin",
+# "tile", "route", and "ignore". "tile" tiles a window Spaceman would otherwise
+# float as a dialog or a built-in floating utility; "pin" floats a window and
+# shows it on every workspace.
+#
+# Without a rule, a short list of utilities (Stickies, Calculator, System
+# Settings, 1Password and others in src/defaults.rs) floats at its own size.
 [[rules]]
-bundle_id = "com.apple.systempreferences"
-action = "float"
+bundle_id = "com.apple.Stickies"
+action = "tile"
+
+[[rules]]
+bundle_id = "pl.maketheweb.cleanshotx"
+action = "pin"
+
+[[rules]]
+bundle_id = "com.apple.Safari"
+title_contains = "Work —"
+action = "route"
+workspace = 3
 
 # Applications that insist on positioning their own windows are best ignored:
 # never tiled, never owned by a workspace, never moved or parked.

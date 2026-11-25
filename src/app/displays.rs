@@ -104,7 +104,7 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
             .as_ref()
             .map(|previous| (previous.frames().collect::<Vec<_>>(), previous.screens()));
         for window in std::mem::take(&mut self.displays.repark_pending) {
-            if !self.parked.contains_key(&window) || self.parking_exempt.contains(&window) {
+            if !self.parked.contains_key(&window) || self.stays_on_screen(&window) {
                 continue;
             }
             // Hidden scratchpad windows intentionally have no workspace owner, but still need to

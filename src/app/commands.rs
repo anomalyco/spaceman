@@ -643,7 +643,7 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
         }
     }
 
-    fn float_window(
+    pub(super) fn float_window(
         &mut self,
         window: crate::PhysicalWindowId,
         workspace: WorkspaceId,

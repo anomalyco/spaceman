@@ -85,18 +85,39 @@ Focus follows                                              // ws.focus-follow
 │   └── Activation slides macOS to another Space (Cmd+Tab out of a native fullscreen app)
 │       -> follows once the slide settles; a follow the slide made fail is retried, not re-homed
 ├── Focusing a window on another display's visible workspace -> no switch; Option+Tab remembers it
+├── Focusing a pinned window (`action = "pin"`, `ctl pin`) -> never switches: it shows everywhere
 └── No focused window reported -> follows the frontmost app only when all its windows, tiled
     or floating, are on one workspace
 
 Where a new window goes (first match wins)                 // ws.adoption
+├── Disposition: the first matching [[rules]] entry (bundle_id, title, title_contains), else the
+│   built-in default (Stickies, Calculator, 1Password and other utilities float; src/defaults.rs),
+│   else managed. action = "tile" tiles a built-in float again
 ├── ignore rule        -> never managed
 ├── route rule         -> that workspace (parked if hidden); bundle-only route rules apply to the
 │                         app's initial window while secondary windows stay on the active workspace
-├── remembered placement (startup window, first 60 s, or the app relaunched within 30 s of
-│   quitting) -> remembered workspace (floating if matched by a float rule, dialog/non-resizable
-│   without a tile rule, or remembered as floating)
-├── float rule / dialog / non-resizable (no tile rule) -> floating on the active workspace under the window's center
+├── remembered placement (startup window, first 60 s, the app relaunched within 30 s of
+│   quitting, a returning app, or a new process presenting 2+ windows at once whose memory spans
+│   2+ workspaces) -> remembered workspace, matched by frame, then size, then creation order
+│   (floating if matched by a float rule, dialog/non-resizable without a tile rule, or remembered
+│   as floating)
+├── float / pin rule, built-in float, dialog / non-resizable (no tile rule) -> floating on the
+│   active workspace under the window's center; each float belongs to its own workspace, so two
+│   Stickies notes can live on workspaces 1 and 2
 └── otherwise          -> tiled on the active workspace of the display under the window's center
+
+Pinned floats                                              // ws.pin
+├── action = "pin" rule, or spaceman ctl pin on the focused window (floats it first; again unpins)
+├── Never parked by a switch, a move or a display change: shows on every workspace of its display
+├── Keeps its owning workspace for memory and the HUD; unpinning hands it to the workspace showing it
+├── A pin rule added while the float is parked brings it back (matched by bundle; title rules wait
+│   until it is observed)
+└── Hand pins persist in workspace-state.json (`pinned`); pause, quit and restart restore as usual
+
+Reopened at a parking spot                                 // ws.stale-parked
+├── An app quit while some windows were parked reopens them one pixel inside a display corner
+└── Every such window Spaceman neither parked nor owns (not only the focused one) is brought onto
+    that display, cascaded 24 pt apart, then recalled or adopted like any new window
 
 Displays                                                    // ws.displays
 ├── Default: 1-5 main, 6-10 secondary; [[workspaces]] monitor = main | secondary | UUID | name
@@ -173,7 +194,7 @@ Keyboard (while tiling is enabled)
 └── Option+Shift+Tab            -> move focused workspace to next display
 Trackpad: three-finger swipe left/right -> next/previous workspace (turn macOS's three-finger
           "Swipe between full-screen applications" off or move it to four fingers)
-CLI: spaceman ctl switch | back-and-forth | move-workspace | move | move-tab | move-app
+CLI: spaceman ctl switch | back-and-forth | move-workspace | move | move-tab | move-app | pin
 Config: ~/Library/Application Support/Spaceman/config.toml -> [[rules]], [[workspaces]],
         [settings] workspace_order (edits apply when the file changes; new named-workspace shortcuts register on the next app start)
 Menu bar: shows the active workspace glyphs; its menu lists each display's visible workspace (checked)
@@ -295,6 +316,25 @@ on the same letter.
   `new_window_opens_on_active_workspace_even_when_app_has_window_on_inactive_workspace`), display fallback
   (`missing_preferred_display_falls_back_without_double_visibility`,
   `active_preferred_workspace_falls_back_and_returns_after_hotplug`).
+- Unit (FakeBackend), `src/app/tests/utility_floats.rs`:
+  `stickies_float_at_their_own_size_and_live_on_their_own_workspaces`,
+  `a_tile_rule_overrides_the_built_in_stickies_default`,
+  `title_contains_routes_matching_windows_without_persisting_titles`,
+  `a_pinned_float_stays_visible_across_switches_and_never_pulls_focus` (pause restores nothing
+  extra), `a_pin_rule_added_while_a_note_is_parked_brings_it_back`, and
+  `ctl_pin_floats_and_pins_the_focused_window_then_unpins_where_it_is_seen`. Unit,
+  `src/config.rs`: `built_in_float_defaults_apply_only_after_user_rules`,
+  `pin_rule_parses_and_rejects_a_workspace`, `title_contains_matches_case_insensitively_in_memory`;
+  `src/workspace/tests.rs`: `hand_pins_persist_for_floating_windows_and_rule_pins_do_not`;
+  `agent/src/map.rs`: `pin_and_title_contains_rules_round_trip_as_non_app_wide_floats`.
+- Unit (FakeBackend), `src/app/tests/restart_recall.rs`:
+  `every_window_reopened_at_a_parking_spot_is_rescued_and_recalled` (three Safari windows on
+  workspaces 1-3, reopened minutes later in the background),
+  `a_window_parked_by_spaceman_is_never_rescued`,
+  `a_single_window_cold_launch_still_opens_on_the_active_workspace`, and
+  `reopened_notes_find_their_workspaces_by_size`; `src/window_memory.rs`:
+  `sizes_match_before_creation_order`. Whether AppKit restores a quit app's windows in creation
+  order on real hardware is not covered.
 - Unit (FakeBackend), `src/app/tests/parking.rs`: parking without minimizing, re-parking windows that
   drift back, honoring windows that keep un-parking (parking exemption, working tree), and keeping
   slots when Accessibility briefly cannot find a hidden window.
@@ -378,6 +418,9 @@ on the same letter.
 - Some apps (Arc) answer `AXFrontmost` with success and still stay behind the app focus left.
   After focusing, Spaceman polls the frontmost app every 10 ms and repeats the focus every 50 ms,
   at most three times (200 ms bound).
+- Restored-arrangement recall needs the app's first observation to list two or more windows. An app
+  that macOS restores one window at a time, slowly enough that Spaceman sees a lone window first,
+  opens on the active workspace as before.
 - Panels and non-standard windows are never parked, so they show on every workspace; an empty
   workspace exposes whatever unmanaged windows sit behind managed ones.
 - macOS can stop delivering Carbon hotkeys to a running agent (seen twice on Nov 9, 2026, cause

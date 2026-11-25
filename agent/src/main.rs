@@ -444,7 +444,7 @@ impl Ui {
             .doc
             .rules()
             .into_iter()
-            .filter(|rule| rule.title.is_none())
+            .filter(|rule| rule.app_wide())
             .filter_map(|rule| rule.bundle_id)
             .collect();
         self.running = apps::running()

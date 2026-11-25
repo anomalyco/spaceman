@@ -333,6 +333,8 @@ pub(crate) struct RuleDoc {
     pub bundle_id: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub title: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub title_contains: Option<String>,
     pub action: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub workspace: Option<WorkspaceId>,
@@ -374,6 +376,8 @@ pub(crate) struct RuleView {
     pub bundle_id: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub title: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub title_contains: Option<String>,
     pub action: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub workspace: Option<WorkspaceId>,
@@ -385,6 +389,7 @@ impl RuleView {
             index,
             bundle_id: rule.bundle_id.clone(),
             title: rule.title.clone(),
+            title_contains: rule.title_contains.clone(),
             action: rule.action.clone(),
             workspace: rule.workspace,
         }
@@ -558,6 +563,9 @@ pub(crate) fn format_rule_summary(rule: &RuleDoc) -> String {
     }
     if let Some(title) = &rule.title {
         matchers.push(format!("title={title:?}"));
+    }
+    if let Some(part) = &rule.title_contains {
+        matchers.push(format!("title_contains={part:?}"));
     }
     let target = match (rule.action.as_str(), rule.workspace) {
         ("route", Some(workspace)) => format!("workspace {workspace}"),

@@ -229,18 +229,6 @@ const MEDIA: &[&str] = &[
     "com.colliderli.iina",
 ];
 
-/// Small utilities that float wherever they are, even though some have resizable windows
-/// (a Stickies note tiled to half a display is nobody's intent).
-const UTILITIES: &[&str] = &[
-    "com.apple.calculator",
-    "com.apple.Stickies",
-    "com.apple.systempreferences",
-    "com.apple.DigitalColorMeter",
-    "com.1password.1password",
-    "com.agilebits.onepassword7",
-    "anomaly.hex",
-];
-
 fn listed(list: &[&str], bundle_id: &str) -> bool {
     list.iter()
         .any(|known| known.eq_ignore_ascii_case(bundle_id))
@@ -291,11 +279,12 @@ pub fn role(bundle_id: &str, category: Option<&str>) -> Role {
         .unwrap_or(Role::Other)
 }
 
-/// Whether the plan starts `app` floating: a known utility, an app with no resizable window,
-/// or an app the role table doesn't know whose windows are all small.
+/// Whether the plan starts `app` floating: a utility Spaceman floats by default
+/// ([`crate::defaults`]; a Stickies note tiled to half a display is nobody's intent), an app
+/// with no resizable window, or an app the role table doesn't know whose windows are all small.
 #[must_use]
 pub fn floats(app: &OpenApp) -> bool {
-    listed(UTILITIES, &app.bundle_id)
+    crate::defaults::floats_by_default(&app.bundle_id)
         || app.windows.iter().all(|window| !window.resizable)
         || (known_role(&app.bundle_id).is_none() && app.windows.iter().all(|window| window.small()))
 }
@@ -638,15 +627,33 @@ impl Plan {
     }
 
     /// The floating apps that need a `float` rule to stay floating: those with a resizable
-    /// window, which Spaceman would otherwise tile. The only rules a plan ever asks for.
+    /// window, which Spaceman would otherwise tile. A utility that floats by default
+    /// ([`crate::defaults`]) needs none.
     #[must_use]
     pub fn float_rules(&self, inventory: &Inventory) -> Vec<String> {
         self.floating
             .iter()
             .filter(|bundle_id| {
-                inventory
-                    .app(bundle_id)
-                    .is_some_and(|app| app.windows.iter().any(|window| window.resizable))
+                !crate::defaults::floats_by_default(bundle_id)
+                    && inventory
+                        .app(bundle_id)
+                        .is_some_and(|app| app.windows.iter().any(|window| window.resizable))
+            })
+            .cloned()
+            .collect()
+    }
+
+    /// The open utilities that float by default but this plan tiles: each needs a `tile` rule,
+    /// or Spaceman floats it again. With [`Self::float_rules`], the only rules a plan asks for.
+    #[must_use]
+    pub fn tile_rules(&self, inventory: &Inventory) -> Vec<String> {
+        inventory
+            .apps
+            .iter()
+            .map(|app| &app.bundle_id)
+            .filter(|bundle_id| {
+                crate::defaults::floats_by_default(bundle_id)
+                    && !self.floating.iter().any(|floating| floating == *bundle_id)
             })
             .cloned()
             .collect()

@@ -112,7 +112,7 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
         }
         if self.memory.considered.insert(app.id.clone()) {
             let first_seen = self.memory.seen_bundles.insert(app.bundle_id.clone());
-            self.open_recall(app, first_seen);
+            self.open_recall(app, first_seen, windows.len());
         }
         let Some(recall) = self.memory.recalls.get_mut(&app.id) else {
             return;
@@ -292,8 +292,14 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
 
     /// Open a recall for an instance that owns no windows yet and whose bundle
     /// has remembered placements it may claim: one seen for the first time
-    /// during startup, a relaunch, or any new instance of a returning app.
-    fn open_recall(&mut self, app: &crate::ObservedApplication, first_seen: bool) {
+    /// during startup, a relaunch, any new instance of a returning app, or one
+    /// restoring a multi-workspace arrangement however long it was closed.
+    fn open_recall(
+        &mut self,
+        app: &crate::ObservedApplication,
+        first_seen: bool,
+        presented: usize,
+    ) {
         if !is_rememberable_bundle_id(&app.bundle_id) {
             return;
         }
@@ -303,7 +309,8 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
                 .started_at
                 .is_some_and(|started| started.elapsed() < RECALL_WINDOW);
         let returning = self.memory.memory.returns(&app.bundle_id);
-        if !(startup || returning || self.relaunched(app))
+        let restoring = self.restores_arrangement(&app.bundle_id, presented);
+        if !(startup || returning || restoring || self.relaunched(app))
             || self.config.has_bundle_route(&app.bundle_id)
         {
             return;
@@ -343,6 +350,23 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
                 claimed: HashMap::new(),
             },
         );
+    }
+
+    /// Whether a new instance presenting `presented` windows at once is macOS restoring a
+    /// multi-workspace arrangement: it opened two or more windows together and its memory spans
+    /// two or more workspaces. A cold launch opens one window, which stays on the active
+    /// workspace.
+    fn restores_arrangement(&self, bundle_id: &str, presented: usize) -> bool {
+        presented >= 2
+            && self.memory.memory.get(bundle_id).is_some_and(|remembered| {
+                let mut workspaces = remembered
+                    .windows
+                    .iter()
+                    .map(|placement| placement.workspace);
+                workspaces
+                    .next()
+                    .is_some_and(|first| workspaces.any(|workspace| workspace != first))
+            })
     }
 
     fn can_recall_to(&self, workspace: WorkspaceId) -> bool {

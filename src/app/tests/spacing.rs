@@ -137,6 +137,9 @@ impl WorkspaceBackend for ToleranceAwareBackend {
     fn onscreen_window_order(&mut self) -> Option<Vec<u32>> {
         self.0.onscreen_window_order()
     }
+    fn window_owners(&mut self, window_ids: &HashSet<u32>) -> HashMap<u32, AppInstanceId> {
+        self.0.window_owners(window_ids)
+    }
     fn set_position(
         &mut self,
         window: &crate::PhysicalWindowId,

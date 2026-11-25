@@ -194,17 +194,19 @@ pub(crate) fn rules_help(executable: &str) -> String {
         "Usage:",
         &format!("  {executable} rules list [--json]"),
         &format!(
-            "  {executable} rules add --app <bundle-id> (--workspace <ws> | --float | --tile | --ignore)"
+            "  {executable} rules add --app <bundle-id> (--workspace <ws> | --float | --pin | --tile | --ignore)"
         ),
-        "                         [--title <title>] [--position <index>] [--json]",
+        "                         [--title <title> | --title-contains <text>] [--position <index>] [--json]",
         &format!("  {executable} rules remove <index-or-bundle-id> [--json]"),
         &format!("  {executable} rules remove --app <bundle-id> [--json]"),
         "",
         "Options for 'add':",
         "  --app <bundle-id>          Match windows by macOS bundle identifier (alias: --bundle-id)",
         "  --title <title>            Require an exact window title match",
+        "  --title-contains <text>    Require the window title to contain <text>, ignoring case",
         "  --workspace <ws>           Route matching windows to workspace 1-10 or A-Z",
         "  --float                    Float matching windows without tiling",
+        "  --pin                      Float matching windows and show them on every workspace",
         "  --tile                     Tile matching windows even if they look like dialogs",
         "  --ignore                   Ignore matching windows completely",
         "  --position <index>         Insert at 1-based rule index (default: append)",

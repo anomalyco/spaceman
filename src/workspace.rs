@@ -5,6 +5,7 @@ use serde::{Deserialize, Serialize};
 use crate::{Engine, PhysicalWindowId};
 
 mod id;
+mod pins;
 pub use id::WorkspaceId;
 
 #[derive(Clone, Debug, Deserialize, Eq, Hash, Ord, PartialEq, PartialOrd, Serialize)]
@@ -33,6 +34,9 @@ pub(crate) struct WorkspaceState {
     slots: Vec<Vec<crate::Slot>>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     floating: Vec<(crate::PhysicalWindowId, WorkspaceId)>,
+    /// Floating windows pinned by hand (`spaceman ctl pin`) to show on every workspace.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pinned: Vec<crate::PhysicalWindowId>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     last_focused: Vec<Option<crate::SlotId>>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
@@ -120,6 +124,15 @@ impl WorkspaceState {
                 return Err("floating window is owned by multiple workspaces".into());
             }
         }
+        let mut pinned = HashSet::new();
+        for window in &self.pinned {
+            if !floating.contains(window) {
+                return Err("pinned window is not floating".into());
+            }
+            if !pinned.insert(window) {
+                return Err("pinned window is listed more than once".into());
+            }
+        }
         Ok(())
     }
 
@@ -169,6 +182,10 @@ pub struct Workspaces {
     active: HashMap<DisplaySelector, WorkspaceId>,
     previous: HashMap<DisplaySelector, WorkspaceId>,
     floating_owners: HashMap<PhysicalWindowId, WorkspaceId>,
+    /// Floats pinned by hand to every workspace; persisted. Always a subset of `floating_owners`.
+    pinned: HashSet<PhysicalWindowId>,
+    /// Floats a `pin` rule matched on their latest observation; recomputed, never persisted.
+    rule_pinned: HashSet<PhysicalWindowId>,
     enabled: HashSet<WorkspaceId>,
     last_focused: [Option<crate::SlotId>; WorkspaceId::COUNT],
     last_focused_float: [Option<PhysicalWindowId>; WorkspaceId::COUNT],
@@ -188,6 +205,8 @@ impl Default for Workspaces {
             ]),
             previous: HashMap::new(),
             floating_owners: HashMap::new(),
+            pinned: HashSet::new(),
+            rule_pinned: HashSet::new(),
             enabled: WorkspaceId::numbered().collect(),
             last_focused: std::array::from_fn(|_| None),
             last_focused_float: std::array::from_fn(|_| None),
@@ -222,6 +241,7 @@ impl Workspaces {
                 .map(|engine| engine.model().workspace.slots.clone())
                 .collect(),
             floating: sorted(self.floating_owners.clone()),
+            pinned: sorted(self.pinned.clone()),
             last_focused: trimmed(&self.last_focused, Option::is_some),
             fullscreen_layout: trimmed(&self.fullscreen_layout, |enabled| *enabled),
             maximized: Vec::new(),
@@ -237,6 +257,7 @@ impl Workspaces {
             layouts,
             slots,
             floating,
+            pinned,
             last_focused,
             fullscreen_layout,
             maximized,
@@ -276,6 +297,11 @@ impl Workspaces {
                 self.floating_owners.insert(window, workspace);
             }
         }
+        self.pinned.extend(
+            pinned
+                .into_iter()
+                .filter(|window| self.floating_owners.contains_key(window)),
+        );
         for index in 0..WorkspaceId::COUNT {
             let workspace = WorkspaceId::from_index(index);
             let valid_slot = |slots: &[Option<crate::SlotId>]| {
@@ -598,6 +624,8 @@ impl Workspaces {
     }
 
     pub(crate) fn forget_floating(&mut self, window: &PhysicalWindowId) {
+        self.pinned.remove(window);
+        self.rule_pinned.remove(window);
         if let Some(workspace) = self.floating_owners.remove(window)
             && self.last_focused_float[workspace.index()].as_ref() == Some(window)
         {

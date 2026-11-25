@@ -25,7 +25,9 @@ Your workspaces                                                      // tour.arr
 │   └── Unknown app -> its LSApplicationCategoryType, else the Docs workspace
 ├── Click an icon -> next workspace; drag it -> any other card, or the Floating line
 ├── "Floating: Calculator · Stickies" only when such utilities are open; press a name to tile it
-├── Arrange & start -> the open windows move, tiling starts; saves float rules only, no routes
+├── Arrange & start -> the open windows move, tiling starts; no routes. Saves a float rule only
+│   for a floated app Spaceman would tile, and a tile rule for a tiled built-in float
+│   (src/defaults.rs, the same table the board floats by)
 ├── Skip -> tour ends, every window where it was, tiling paused until Resume or next launch
 └── One window or none -> "Nothing to arrange yet", primary reads Start tiling
 
@@ -56,7 +58,8 @@ Unit, `agent/src/onboarding/tests.rs` (flow, board and fixtures):
 `the_permission_step_has_no_launch_at_login_and_try_it_holds_it`,
 `try_it_never_advances_by_itself`,
 `skip_leaves_the_windows_alone_and_undo_goes_back_to_the_plan`,
-`arrange_and_start_saves_only_float_rules_for_small_utilities`,
+`arrange_and_start_saves_no_rules_for_utilities_that_float_by_default`,
+`tiling_a_built_in_float_on_the_board_saves_a_tile_rule`,
 `the_board_moves_a_tile_by_click_or_drag_and_floats_by_drop`,
 `lessons_tick_on_the_real_shortcuts_and_coming_back_needs_going_there`,
 `a_conflict_shows_only_when_its_switch_is_on`.

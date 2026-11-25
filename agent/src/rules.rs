@@ -21,6 +21,8 @@ const EMPTY: &str = "# Spaceman configuration.\nversion = 1\n";
 pub enum Place {
     Workspace(WorkspaceId),
     Float,
+    /// Floating, and shown on every workspace.
+    Pin,
     /// Tiled even when the window looks like a dialog.
     Tile,
     /// Never tiled, moved or parked.
@@ -33,7 +35,21 @@ pub struct Rule {
     pub index: usize,
     pub bundle_id: Option<String>,
     pub title: Option<String>,
+    /// A case-insensitive title substring the rule requires, as written in config.toml.
+    pub title_contains: Option<String>,
     pub place: Place,
+}
+
+impl Rule {
+    /// Whether the rule covers every window of its app rather than only some titles.
+    pub fn app_wide(&self) -> bool {
+        self.title.is_none() && self.title_contains.is_none()
+    }
+
+    /// The title filter as written, exact or substring, for display.
+    pub fn title_filter(&self) -> Option<&str> {
+        self.title.as_deref().or(self.title_contains.as_deref())
+    }
 }
 
 #[derive(Clone)]
@@ -181,6 +197,7 @@ impl Doc {
         let same_rule = |rule: &Rule| {
             rule.bundle_id == expected.bundle_id
                 && rule.title == expected.title
+                && rule.title_contains == expected.title_contains
                 && rule.place == expected.place
         };
         if rules.get(expected.index).is_some_and(same_rule) {
@@ -209,7 +226,7 @@ impl Doc {
     pub fn app_place(&self, bundle_id: &str) -> Option<Place> {
         self.rules()
             .into_iter()
-            .find(|rule| rule.title.is_none() && rule.bundle_id.as_deref() == Some(bundle_id))
+            .find(|rule| rule.app_wide() && rule.bundle_id.as_deref() == Some(bundle_id))
             .map(|rule| rule.place)
     }
 
@@ -218,7 +235,7 @@ impl Doc {
         let existing = self
             .rules()
             .into_iter()
-            .find(|rule| rule.title.is_none() && rule.bundle_id.as_deref() == Some(bundle_id))
+            .find(|rule| rule.app_wide() && rule.bundle_id.as_deref() == Some(bundle_id))
             .map(|rule| rule.index);
         match (existing, place) {
             (Some(index), Some(place)) => self.place(index, place),
@@ -401,7 +418,7 @@ impl Doc {
             .into_iter()
             .filter_map(|rule| match rule.place {
                 Place::Workspace(workspace) => Some(workspace),
-                Place::Float | Place::Tile | Place::Ignore => None,
+                Place::Float | Place::Pin | Place::Tile | Place::Ignore => None,
             })
             .chain(WorkspaceId::all().filter(|workspace| self.monitor(*workspace).is_some()))
             .collect();
@@ -611,6 +628,7 @@ impl Doc {
 fn read_rule(index: usize, table: &dyn TableLike) -> Option<Rule> {
     let place = match table.get("action").and_then(Item::as_str)? {
         "float" => Place::Float,
+        "pin" => Place::Pin,
         "tile" => Place::Tile,
         "ignore" => Place::Ignore,
         "route" => Place::Workspace(workspace(table.get("workspace")?)?),
@@ -620,6 +638,7 @@ fn read_rule(index: usize, table: &dyn TableLike) -> Option<Rule> {
         index,
         bundle_id: string(table, "bundle_id"),
         title: string(table, "title"),
+        title_contains: string(table, "title_contains"),
         place,
     })
 }
@@ -684,9 +703,10 @@ fn set_place(table: &mut dyn TableLike, place: Place) {
             set_table_item(table, "action", value("route"));
             set_table_item(table, "workspace", workspace_value(workspace));
         }
-        Place::Float | Place::Tile | Place::Ignore => {
+        Place::Float | Place::Pin | Place::Tile | Place::Ignore => {
             let action = match place {
                 Place::Float => "float",
+                Place::Pin => "pin",
                 Place::Tile => "tile",
                 _ => "ignore",
             };

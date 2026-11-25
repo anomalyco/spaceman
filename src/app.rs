@@ -56,9 +56,11 @@ mod memory;
 mod minimums;
 mod move_workspace;
 mod parking;
+mod pins;
 mod runtime;
 mod scratchpad;
 mod space_transition;
+mod stale_parked;
 mod state_writer;
 mod switching;
 mod worker;
@@ -270,6 +272,8 @@ pub(crate) enum WorkerAction {
     ToggleFullscreenLayout,
     /// Float the focused window above the workspace's tiles, or tile it again.
     ToggleFloat,
+    /// Pin the focused window (floating it first) on every workspace, or unpin it.
+    TogglePin,
     /// Kit noticed something wrong: mark the journal and snapshot it.
     MarkWrong,
     /// Move the open windows onto the workspaces the setup tour's plan gives them.
@@ -311,6 +315,7 @@ impl WorkerAction {
             Self::Balance => "balance queued".into(),
             Self::ToggleFullscreenLayout => "fullscreen layout toggle queued".into(),
             Self::ToggleFloat => "float toggle queued".into(),
+            Self::TogglePin => "pin toggle queued".into(),
             Self::MarkWrong => "marking the journal".into(),
             Self::Arrange(_) => "arrangement queued".into(),
             Self::Scratchpad(command) => format!("scratchpad {} queued", command.as_str()),
