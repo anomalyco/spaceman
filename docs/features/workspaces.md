@@ -63,7 +63,10 @@ Back-and-forth                                             // ws.back-and-forth
 Move workspace to another display                          // ws.move-workspace
 ├── Option+Shift+Tab / ctl move-workspace [next|prev|<display>]
 ├── Orders displays left-to-right; wraps around for next/prev; persists assignment to config.toml
-│   (rules are kept, including title_contains)
+│   in place, keeping its rules (including title_contains), comments and formatting; removing an
+│   entry follows the same comment rule as Settings (see docs/configuration.md): a comment set off
+│   by a blank line stays, one directly above the entry goes with it, and an emptied inline
+│   `workspaces = [...]` is dropped with its remaining comments moved out
 ├── With no visible window focused (an empty workspace), moves the workspace switched to last
 ├── [labs] empty_workspace_focus: also after choosing an empty workspace on another display while
 │   a window elsewhere keeps focus (see "Empty workspace chosen on another display" below)
@@ -407,7 +410,8 @@ on the same letter.
   `src/app/tests/empty_workspace_move.rs` (an empty workspace on a non-main display, issue 201);
   `src/app/tests/empty_workspace_choice.rs` (`[labs] empty_workspace_focus`: an empty workspace
   chosen on another display is the focused one, issue 360);
-  `src/app/tests/dual_selector_move.rs` (a display with a UUID and a `secondary` selector, issue 202).
+  `src/app/tests/dual_selector_move.rs` (a display with a UUID and a `secondary` selector, issue 202);
+  `src/config/write.rs` tests (the saved assignment keeps config.toml's comments, inline or `[[workspaces]]`, issue 577).
 - Unit (FakeBackend), `src/app/tests/reported/`, one file per report: two selectors naming one
   display across a restart (`restart_dual_selector.rs`, issue 386), a reconnect
   (`reconnect_dual_selector.rs`, issue 404) and a config edit (`config_same_display_alias.rs`,
