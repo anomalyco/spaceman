@@ -187,7 +187,12 @@ impl Key {
     fn parse(raw: &str) -> Result<Self, String> {
         if let Some(lab) = raw.strip_prefix("labs.") {
             return LabFeature::parse(lab).map(Self::Lab).ok_or_else(|| {
-                format!("unknown Lab {raw:?}; valid Labs: labs.scratchpad, labs.activity")
+                let valid = LabFeature::ALL
+                    .iter()
+                    .map(|feature| format!("labs.{}", feature.key()))
+                    .collect::<Vec<_>>()
+                    .join(", ");
+                format!("unknown Lab {raw:?}; valid Labs: {valid}")
             });
         }
         SettingKey::parse(raw).map(Self::Setting)
@@ -198,6 +203,7 @@ impl Key {
             Self::Setting(key) => key.as_str(),
             Self::Lab(LabFeature::Scratchpad) => "labs.scratchpad",
             Self::Lab(LabFeature::Activity) => "labs.activity",
+            Self::Lab(LabFeature::PortraitEdgeRows) => "labs.portrait_edge_rows",
         }
     }
 

@@ -115,6 +115,7 @@ impl Doc {
         LabsConfig {
             scratchpad: self.lab(LabFeature::Scratchpad),
             activity: self.lab(LabFeature::Activity),
+            portrait_edge_rows: self.lab(LabFeature::PortraitEdgeRows),
         }
     }
 

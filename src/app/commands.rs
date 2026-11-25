@@ -5,7 +5,7 @@ mod float;
 mod gesture;
 mod sizing;
 #[cfg(test)]
-pub(super) use drag::{DISPLAY_EDGE_DROP_BAND, display_edge_bands};
+pub(super) use drag::{DISPLAY_EDGE_DROP_BAND, display_edge_bands, display_row_bands};
 pub(super) use gesture::GestureOverlay;
 
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
