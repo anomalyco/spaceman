@@ -185,7 +185,7 @@ impl Ui {
         self.flush_pending_reload();
         self.highlight_lab = None;
         self.highlight_feature = None;
-        if pane == Pane::Workspaces {
+        if panes::workspaces::shows_displays(self) {
             // Read the displays before the next frame paints them.
             self.displays_at = None;
         }

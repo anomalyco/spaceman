@@ -182,6 +182,7 @@ mod tests {
             "Shortcuts/shortcuts-refused",
             "Shortcuts/shortcuts-custom",
             "Shortcuts/shortcuts-swipe-off",
+            "Shortcuts/shortcuts-displays",
             "Activity/activity",
             "HUD/hud-switch",
             "HUD/hud-empty",

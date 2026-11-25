@@ -281,4 +281,9 @@ pub(crate) const SCENES: &[Scene] = &[
         reset_fixture(ui, Pane::Shortcuts);
         shortcuts::fixture_custom(ui);
     }),
+    // The Display shortcuts Lab with three displays: previous display and a row per display.
+    ("shortcuts-displays", |ui| {
+        reset_fixture(ui, Pane::Shortcuts);
+        shortcuts::fixture_displays(ui);
+    }),
 ];

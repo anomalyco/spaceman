@@ -1223,6 +1223,10 @@ monitor = "main"
         assert!(!both.labs().enabled(LabFeature::PortraitEdgeRows));
         let rows = Config::parse("version = 1\n[labs]\nportrait_edge_rows = true\n").unwrap();
         assert!(rows.labs().portrait_edge_rows);
+        assert!(!both.labs().enabled(LabFeature::DisplayShortcuts));
+        let displays = Config::parse("version = 1\n[labs]\ndisplay_shortcuts = true\n").unwrap();
+        assert!(displays.labs().enabled(LabFeature::DisplayShortcuts));
+        assert!(!displays.labs().enabled(LabFeature::Activity));
     }
 
     #[test]

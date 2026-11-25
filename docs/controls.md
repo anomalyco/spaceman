@@ -291,7 +291,7 @@ Spaceman registers the `spaceman://` URL scheme (and clickable web bounce links 
 
 - `spaceman://settings` — open Settings
 - `spaceman://settings/<pane>` — open `general`, `rules`, `workspaces`, `shortcuts`, `labs`, `layout`, or `activity` (plus optional `/<focus>`); `activity` falls back to `general` while `[labs] activity` is off
-- `spaceman://labs` / `spaceman://labs/<slug>` — open Settings › Labs and highlight `<slug>`, a switch's key with `-` for `_` (`scratchpad`, `activity`, `portrait-edge-rows`, `physical-displays`, `recent-focus`, `swipe-switch`, `empty-workspace-focus`)
+- `spaceman://labs` / `spaceman://labs/<slug>` — open Settings › Labs and highlight `<slug>`, a switch's key with `-` for `_` (`scratchpad`, `activity`, `portrait-edge-rows`, `physical-displays`, `recent-focus`, `swipe-switch`, `empty-workspace-focus`, `display-shortcuts`)
 - `spaceman://features/<slug>` — open the Settings pane and highlight for a feature (e.g. `workspaces`, `rules`, `shortcuts`, `gaps`, `hud`)
 
 Deep links only open Settings and highlight the requested pane or card. They never modify

@@ -340,7 +340,7 @@ them off Spaceman behaves exactly as if Labs did not exist: no extra shortcuts r
 command changes behavior. Unknown keys are config errors. Settings › Labs lists every switch,
 grouped by what it changes (`Windows`: Scratchpad, Portrait edge rows and Recent focus;
 `Workspaces`: Swipe switch and Focus empty workspaces on other displays; `Menu bar & HUD`: Physical
-display order; `Settings`: Activity), and flipping one there writes the same key.
+display order; `Settings`: Activity and Display shortcuts), and flipping one there writes the same key.
 
 ```toml
 [labs]
@@ -351,6 +351,7 @@ physical_displays = false             # optional (default: false); menu bar in p
 recent_focus = false                  # optional (default: false); Option+H/J/K/L returns where you were
 swipe_switch = false                  # optional (default: false); lets trackpad_swipe turn swipes off
 empty_workspace_focus = false         # optional (default: false); see below
+display_shortcuts = false             # optional (default: false); display rows in Settings › Shortcuts
 ```
 
 `scratchpad = true` enables the Scratchpad (see [Controls › Scratchpad](controls.md#scratchpad-lab)) and
@@ -401,6 +402,17 @@ came from keeps keyboard input and, with the switch off, commands such as `Optio
 you chose, wherever it shows, until another window takes focus (see
 [Workspaces](features/workspaces.md)). The switch takes effect live. In Settings it is
 `Labs › Workspaces › Focus empty workspaces on other displays`.
+
+`display_shortcuts = true` (Settings › Labs › Settings › Display shortcuts) adds rows to Settings ›
+Shortcuts, under Move workspace to next display.
+Move workspace to previous display records `move-workspace prev`. With three or more displays connected,
+each display gets a Move workspace to row too, named as Settings › Workspaces names it (two monitors of
+the same model read "Studio Display 1" and "Studio Display 2"); recording one writes
+`move-workspace <display UUID>`, so the chord stays with that screen. None of them has a built-in chord.
+A `move-workspace DISPLAY` binding already in `[shortcuts.bindings]` gets its row whatever the number
+of displays, noted "Not connected" while that display is unplugged; pressing its chord then reports
+that the display is not connected and moves nothing. With the switch off Settings › Shortcuts shows only
+Move workspace to next display, and every binding keeps working from the file.
 
 ```sh
 spaceman config set labs.activity true

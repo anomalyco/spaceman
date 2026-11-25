@@ -130,6 +130,8 @@ monitor = "main"
 # empty_workspace_focus = true makes an empty workspace chosen on another display
 # the focused one for commands such as Option+Shift+Tab, until another window
 # takes focus.
+# display_shortcuts = true adds rows to Settings › Shortcuts for moving a
+# workspace to the previous display or to one particular display.
 #
 # [labs]
 # scratchpad = false
@@ -139,3 +141,4 @@ monitor = "main"
 # recent_focus = false
 # swipe_switch = false
 # empty_workspace_focus = false
+# display_shortcuts = false

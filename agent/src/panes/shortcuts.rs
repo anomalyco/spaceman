@@ -3,6 +3,7 @@
 //! shortcut at once, and each change is saved to `config.toml` and registered live.
 
 mod catalog;
+mod displays;
 mod recorder;
 #[cfg(test)]
 mod tests;
@@ -61,6 +62,7 @@ pub fn pane(ui: &Ui, p: Paint) -> El {
         &named,
         catalog::WORKSPACE_ACTIONS,
     ));
+    workspace_rows.extend(action_rows(ui, p, &shortcuts, &named, &lab_actions(ui)));
     workspace_rows.push(swipe_row(ui, p));
     scroll_body(
         "shortcuts-body",
@@ -175,6 +177,16 @@ fn fixed_row(p: Paint, key: &str, title: &str, caps: Vec<String>) -> El {
     )
 }
 
+/// The Display shortcuts Lab's rows (Move workspace to previous display, then the displays),
+/// or none while its `[labs]` switch is off.
+fn lab_actions(ui: &Ui) -> Vec<Action> {
+    if ui.doc.lab(LabFeature::DisplayShortcuts) {
+        displays::actions(&ui.doc.shortcuts(), &ui.displays)
+    } else {
+        Vec::new()
+    }
+}
+
 /// What the three-finger swipe's row shows.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum SwipeRow {
@@ -230,7 +242,7 @@ fn action_rows(
     p: Paint,
     shortcuts: &Shortcuts,
     named: &[WorkspaceId],
-    actions: &'static [Action],
+    actions: &[Action],
 ) -> Vec<El> {
     actions
         .iter()
@@ -238,8 +250,11 @@ fn action_rows(
             controls::setting_row(
                 p,
                 &format!("{}-row", action.id),
-                action.title,
-                None,
+                &action.title,
+                action
+                    .note
+                    .as_ref()
+                    .map(|note| (note.to_string(), p.muted())),
                 shortcut_button(ui, p, shortcuts, named, action),
             )
         })
@@ -253,10 +268,10 @@ fn shortcut_button(
     p: Paint,
     shortcuts: &Shortcuts,
     named: &[WorkspaceId],
-    action: &'static Action,
+    action: &Action,
 ) -> El {
     let c = &p.k.c;
-    let id = action.id;
+    let id = action.id.to_string();
     let (content, label) = match &ui.shortcut_capture {
         Capture::Listening {
             action: active,
@@ -267,7 +282,7 @@ fn shortcut_button(
             message.clone().unwrap_or_else(|| "Press shortcut".into()),
         ),
         capture => {
-            let saved = *capture == Capture::Saved { action: id };
+            let saved = capture.saved(&id);
             let chords = action.chords(shortcuts, named);
             let label = chords
                 .first()
@@ -278,7 +293,7 @@ fn shortcut_button(
             )
         }
     };
-    let listening = ui.shortcut_capture.listening() == Some(id);
+    let listening = ui.shortcut_capture.listening() == Some(id.as_str());
     let button = row()
         .key(format!("{id}-shortcut"))
         .role("button")
@@ -291,7 +306,7 @@ fn shortcut_button(
         .radius(KEYS.button_radius())
         .focusable(true)
         .focus_ring(2.0, 0.0, c.border_focus)
-        .on_press(move |ui: &mut Ui| recorder::begin(ui, id))
+        .on_press(move |ui: &mut Ui| recorder::begin(ui, &id))
         .on_physical_input(|ui: &mut Ui, event, _| recorder::on_input(ui, event))
         .child(col().key("content").child(content));
     if listening {
@@ -379,7 +394,7 @@ fn recorder_face(p: Paint, held: Modifiers, message: Option<&str>) -> El {
 /// Playground: Previous workspace listening, holding ⌃⌥, or refused with `message`.
 pub(crate) fn fixture_recording(ui: &mut Ui, message: Option<&str>) {
     ui.shortcut_capture = Capture::Listening {
-        action: "back-and-forth",
+        action: "back-and-forth".to_owned(),
         held: catalog::PRESETS[1].1,
         message: message.map(str::to_owned),
     };
@@ -397,10 +412,21 @@ pub(crate) fn fixture_custom(ui: &mut Ui) {
         if let Some(action) = catalog::find(id) {
             let chord = source.and_then(|source| spaceman::shortcuts::parse_chord(source).ok());
             let default = action.default_chord(shortcuts.modifier);
-            ui.edit(|doc| doc.set_shortcut(action.command, default, chord));
+            ui.edit(|doc| doc.set_shortcut(&action.command, default, chord));
         }
     }
     ui.shortcut_capture = Capture::Saved {
-        action: "back-and-forth",
+        action: "back-and-forth".to_owned(),
     };
+}
+
+/// Playground: the Display shortcuts Lab on with three displays, Move workspace to previous
+/// display on ⌃⌥⇧Tab, and a binding for a display that is unplugged.
+pub(crate) fn fixture_displays(ui: &mut Ui) {
+    let source = format!(
+        "{}\n[labs]\ndisplay_shortcuts = true\n\n[shortcuts.bindings]\n\"ctrl+alt+shift+tab\" = \"move-workspace prev\"\n\"ctrl+alt+4\" = \"move-workspace LG UltraFine 5K\"\n",
+        ui.doc.source()
+    );
+    ui.doc = crate::rules::Doc::parse(&source);
+    ui.displays = super::workspaces::fixture_three();
 }

@@ -42,6 +42,8 @@ Back-and-forth                                             // ws.back-and-forth
 
 Move workspace to another display                          // ws.move-workspace
 ├── Option+Shift+Tab / ctl move-workspace [next|prev|<display>]
+├── [labs] display_shortcuts (Settings › Labs › Settings): Settings › Shortcuts records prev and, with 3+ displays, one row per
+│   display (written by UUID); a bound display's row stays, "Not connected" while it is unplugged
 ├── Orders displays left-to-right; wraps around for next/prev; persists assignment to config.toml
 ├── With no visible window focused (an empty workspace), moves the workspace switched to last
 ├── [labs] empty_workspace_focus: also after choosing an empty workspace on another display while

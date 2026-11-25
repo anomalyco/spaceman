@@ -1,26 +1,31 @@
 //! The shortcuts Settings › Shortcuts can rebind, each with its built-in chord, and what a
 //! chord does now under `[shortcuts]`.
 
+use std::borrow::Cow;
+
 use spaceman::{
     WorkspaceId,
     shortcuts::{self, Chord, Command, Key, Modifiers, Shortcuts},
 };
 
-/// One rebindable shortcut.
-#[derive(Debug, PartialEq, Eq)]
+/// One rebindable shortcut: a fixed one from this catalog, or one the Display shortcuts Lab
+/// builds from the connected displays (`displays`).
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Action {
     /// Stable, for element keys and the recorder.
-    pub id: &'static str,
-    pub title: &'static str,
+    pub id: Cow<'static, str>,
+    pub title: Cow<'static, str>,
     /// In `spaceman ctl` syntax, as `[shortcuts.bindings]` writes it.
-    pub command: &'static str,
+    pub command: Cow<'static, str>,
     /// The built-in chord's key, and whether it adds Shift to the base modifier.
     pub default: Option<(bool, Key)>,
+    /// A note under the title, such as why the shortcut can't run now.
+    pub note: Option<Cow<'static, str>>,
 }
 
 impl Action {
     pub fn parsed(&self) -> Option<Command> {
-        shortcuts::parse_command(self.command).ok().flatten()
+        shortcuts::parse_command(&self.command).ok().flatten()
     }
 
     /// The built-in chord under `modifier`, if this shortcut has one.
@@ -67,17 +72,18 @@ impl Action {
     }
 }
 
-const fn action(
+pub const fn action(
     id: &'static str,
     title: &'static str,
     command: &'static str,
     default: Option<(bool, Key)>,
 ) -> Action {
     Action {
-        id,
-        title,
-        command,
+        id: Cow::Borrowed(id),
+        title: Cow::Borrowed(title),
+        command: Cow::Borrowed(command),
         default,
+        note: None,
     }
 }
 
@@ -180,7 +186,7 @@ pub enum Occupant {
 impl Occupant {
     pub fn title(&self) -> &str {
         match self {
-            Self::Action(action) => action.title,
+            Self::Action(action) => &action.title,
             Self::Other(title) => title,
         }
     }
@@ -310,7 +316,7 @@ mod tests {
 
     #[test]
     fn every_action_command_parses_and_ids_are_unique() {
-        let mut ids = all().map(|action| action.id).collect::<Vec<_>>();
+        let mut ids = all().map(|action| action.id.as_ref()).collect::<Vec<_>>();
         for action in all() {
             assert!(action.parsed().is_some(), "{}", action.command);
         }

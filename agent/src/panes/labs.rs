@@ -61,11 +61,18 @@ const GROUPS: [(&str, &str, &[Lab]); 4] = [
     (
         "settings",
         "Settings",
-        &[(
-            LabFeature::Activity,
-            "Activity",
-            "Adds the Activity pane: arrangement log and diagnostics",
-        )],
+        &[
+            (
+                LabFeature::Activity,
+                "Activity",
+                "Adds the Activity pane: arrangement log and diagnostics",
+            ),
+            (
+                LabFeature::DisplayShortcuts,
+                "Display shortcuts",
+                "Shortcuts for moving a workspace to the previous or a chosen display",
+            ),
+        ],
     ),
 ];
 

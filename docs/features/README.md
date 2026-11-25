@@ -36,6 +36,7 @@ secondary-display workspaces ships in the notarized preview at
 | Physical display order and shape (`[labs] physical_displays`) | Opt-in Lab in source builds; off by default, switched in Settings › Labs › Menu bar & HUD. Menu-bar glyphs and menu sections left to right, portrait glyphs and HUD Layouts previews tall, same-named displays labelled by position. Covered by `src/app/tests/physical_displays.rs`, `src/macos/displays.rs` and `src/status_item.rs` unit tests; no live harness checks the drawn glyphs |
 | Recent focus (`[labs] recent_focus`) | Opt-in Lab, switched in Settings › Labs or `config.toml`; off by default, `Option+H/J/K/L` picks the most recently focused of several bordering tiles |
 | Swipe switch (`[labs] swipe_switch`) | Opt-in Lab; off by default, switched in Settings › Labs › Workspaces. With it on, `[settings] trackpad_swipe = false` (or Settings › Shortcuts › Swipe to switch workspace) stops the three-finger swipe; with it off the setting is ignored |
+| Display shortcuts (`[labs] display_shortcuts`) | Opt-in Lab; off by default (Settings › Labs › Settings › Display shortcuts), adds Move workspace to previous display and per-display rows to Settings › Shortcuts |
 | Secondary-display workspaces 6-10 | Require a second display; with one display they fall back to `main` |
 | Three or more displays | Assign workspaces in Settings › Workspaces (each display past `secondary` by UUID) or with `[[workspaces]] monitor = "<uuid>"` |
 

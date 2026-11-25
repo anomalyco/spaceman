@@ -20,20 +20,25 @@ pub enum Capture {
     /// Listening for `action`'s new chord, with the modifiers held so far and why the last
     /// chord was refused.
     Listening {
-        action: &'static str,
+        action: String,
         held: Modifiers,
         message: Option<String>,
     },
     /// `action` just took a new chord (or none).
-    Saved { action: &'static str },
+    Saved { action: String },
 }
 
 impl Capture {
-    pub fn listening(&self) -> Option<&'static str> {
+    pub fn listening(&self) -> Option<&str> {
         match self {
             Self::Listening { action, .. } => Some(action),
             _ => None,
         }
+    }
+
+    /// Whether `action` just took a new chord.
+    pub fn saved(&self, id: &str) -> bool {
+        matches!(self, Self::Saved { action } if action == id)
     }
 }
 
@@ -237,13 +242,24 @@ pub fn enabled_named_workspaces(ui: &Ui) -> Vec<WorkspaceId> {
     named
 }
 
-/// Whether `action` may take `chord`: refused while another shortcut runs it.
+/// Whether `action` may take `chord`: refused while another shortcut runs it. `rows` are the
+/// shortcuts Settings lists beyond the fixed catalog, so a chord one of them holds is named
+/// by its row.
 pub fn check(
     shortcuts: &Shortcuts,
     named_workspaces: &[WorkspaceId],
+    rows: &[Action],
     action: &Action,
     chord: Chord,
 ) -> Result<(), String> {
+    if let Some(Some(bound)) = shortcuts.binding(chord) {
+        if action.parsed().as_ref() == Some(bound) {
+            return Ok(());
+        }
+        if let Some(row) = rows.iter().find(|row| row.parsed().as_ref() == Some(bound)) {
+            return Err(format!("Used by {}", row.title));
+        }
+    }
     match catalog::occupant(shortcuts, named_workspaces, chord) {
         Some(Occupant::Action(other)) if other.id == action.id => Ok(()),
         Some(occupant) => Err(format!("Used by {}", occupant.title())),
@@ -251,13 +267,13 @@ pub fn check(
     }
 }
 
-pub fn begin(ui: &mut Ui, action: &'static str) {
+pub fn begin(ui: &mut Ui, action: &str) {
     if ui.shortcut_capture.listening() == Some(action) {
         cancel(ui);
         return;
     }
     ui.shortcut_capture = Capture::Listening {
-        action,
+        action: action.to_owned(),
         held: Modifiers::default(),
         message: None,
     };
@@ -273,7 +289,7 @@ pub fn cancel(ui: &mut Ui) {
 
 /// The recorder's physical input while it listens; everything else passes by.
 pub fn on_input(ui: &mut Ui, event: &PhysicalInput) -> bool {
-    let Some(id) = ui.shortcut_capture.listening() else {
+    let Some(id) = ui.shortcut_capture.listening().map(str::to_owned) else {
         return false;
     };
     match *event {
@@ -293,7 +309,7 @@ pub fn on_input(ui: &mut Ui, event: &PhysicalInput) -> bool {
             repeat: false,
         } => {
             let outcome = press(key, mods, layout_character);
-            record(ui, id, outcome);
+            record(ui, &id, outcome);
         }
         PhysicalInput::Key { .. } => {}
     }
@@ -301,8 +317,12 @@ pub fn on_input(ui: &mut Ui, event: &PhysicalInput) -> bool {
 }
 
 /// Saves what a press recorded, or keeps listening with why it was refused.
-pub fn record(ui: &mut Ui, id: &'static str, outcome: Press) {
-    let Some(action) = catalog::find(id) else {
+pub fn record(ui: &mut Ui, id: &str, outcome: Press) {
+    let rows = super::lab_actions(ui);
+    let Some(action) = catalog::find(id)
+        .cloned()
+        .or_else(|| rows.iter().find(|row| row.id == id).cloned())
+    else {
         cancel(ui);
         return;
     };
@@ -319,14 +339,14 @@ pub fn record(ui: &mut Ui, id: &'static str, outcome: Press) {
         }
         Press::Unbind => {
             save(ui, id, |doc| {
-                doc.set_shortcut(action.command, default, None)
+                doc.set_shortcut(&action.command, default, None);
             });
             return;
         }
-        Press::Chord(chord) => match check(&shortcuts, &named, action, chord) {
+        Press::Chord(chord) => match check(&shortcuts, &named, &rows, &action, chord) {
             Ok(()) => {
                 save(ui, id, |doc| {
-                    doc.set_shortcut(action.command, default, Some(chord));
+                    doc.set_shortcut(&action.command, default, Some(chord));
                 });
                 return;
             }
@@ -339,11 +359,13 @@ pub fn record(ui: &mut Ui, id: &'static str, outcome: Press) {
     }
 }
 
-fn save(ui: &mut Ui, id: &'static str, edit: impl FnOnce(&mut crate::rules::Doc)) {
+fn save(ui: &mut Ui, id: &str, edit: impl FnOnce(&mut crate::rules::Doc)) {
     edit_shortcuts(ui, edit);
     let listening = ui.shortcut_capture.listening().is_some();
     ui.shortcut_capture = if ui.error.is_none() {
-        Capture::Saved { action: id }
+        Capture::Saved {
+            action: id.to_owned(),
+        }
     } else {
         Capture::Idle
     };

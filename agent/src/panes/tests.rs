@@ -1,4 +1,5 @@
 //! Which panes Settings lists: every pane, minus the Lab panes whose `[labs]` switch is off.
+//! Settings › Labs itself is always listed, last.
 
 use super::*;
 

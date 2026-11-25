@@ -3,8 +3,8 @@
 mod displays;
 
 pub(crate) use displays::{
-    ConnectedDisplay, THIRD_FIXTURE_ID, fixture_long_name, fixture_pair, fixture_quad,
-    fixture_three,
+    Choice, ConnectedDisplay, THIRD_FIXTURE_ID, choices, fixture_long_name, fixture_pair,
+    fixture_quad, fixture_three, index_of,
 };
 
 use rune::{El, Tx, text};
@@ -19,7 +19,7 @@ use crate::{
     view::scroll_body,
 };
 
-use displays::{Choice, MAIN, SECONDARY};
+use displays::{MAIN, SECONDARY};
 
 /// How often the pane reads the connected displays while it is on screen, in seconds.
 const DISPLAY_REFRESH_SECONDS: f64 = 1.0;
@@ -42,10 +42,11 @@ fn effective_monitor(doc: &Doc, workspace: WorkspaceId) -> String {
         .unwrap_or_else(|| default_monitor(workspace).to_owned())
 }
 
-/// Reads the connected displays when Settings › Workspaces is on screen, about once a second, so
-/// plugging a display in shows its segment without reopening Settings.
+/// Reads the connected displays when Settings › Workspaces (or Settings › Shortcuts, while the
+/// Display shortcuts Lab names displays there) is on screen, about once a second, so plugging a
+/// display in shows its segment or row without reopening Settings.
 pub(crate) fn poll_displays(ui: &mut Ui, clock: f64) -> bool {
-    if ui.fixture || ui.pane != Pane::Workspaces {
+    if ui.fixture || !shows_displays(ui) {
         return false;
     }
     if ui
@@ -63,6 +64,13 @@ pub(crate) fn poll_displays(ui: &mut Ui, clock: f64) -> bool {
     }
     ui.displays = connected;
     true
+}
+
+/// Whether the pane on screen lists the connected displays.
+pub(crate) fn shows_displays(ui: &Ui) -> bool {
+    ui.pane == Pane::Workspaces
+        || (ui.pane == Pane::Shortcuts
+            && ui.doc.lab(spaceman::config::LabFeature::DisplayShortcuts))
 }
 
 #[cfg(target_os = "macos")]

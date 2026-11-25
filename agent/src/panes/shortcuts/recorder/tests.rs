@@ -102,7 +102,7 @@ fn recording_saves_the_chord_and_moves_the_built_in_off_its_old_one() {
     assert_eq!(
         ui.shortcut_capture,
         Capture::Saved {
-            action: "focus-left"
+            action: "focus-left".into()
         }
     );
     let shortcuts = ui.doc.shortcuts();
@@ -131,7 +131,7 @@ fn a_chord_another_shortcut_uses_is_refused_by_name() {
     assert_eq!(
         ui.shortcut_capture,
         Capture::Saved {
-            action: "focus-left"
+            action: "focus-left".into()
         }
     );
     assert!(!ui.doc.has_custom_shortcuts());
@@ -182,7 +182,7 @@ fn held_modifiers_show_and_clear_a_refusal() {
     assert_eq!(
         ui.shortcut_capture,
         Capture::Listening {
-            action: "grow",
+            action: "grow".into(),
             held: Modifiers::OPTION,
             message: None,
         }
@@ -231,7 +231,7 @@ fn recording_refuses_an_enabled_named_workspace_chord_and_accepts_it_when_absent
     assert_eq!(
         ruled.shortcut_capture,
         Capture::Saved {
-            action: "focus-left"
+            action: "focus-left".into()
         }
     );
     assert_eq!(
@@ -245,7 +245,9 @@ fn recording_refuses_an_enabled_named_workspace_chord_and_accepts_it_when_absent
     record(&mut absent, "balance", us(K::KeyA, ALT));
     assert_eq!(
         absent.shortcut_capture,
-        Capture::Saved { action: "balance" }
+        Capture::Saved {
+            action: "balance".into()
+        }
     );
     assert_eq!(
         absent
@@ -351,4 +353,66 @@ fn control_an_unrelated_chord_changes_nothing() {
         ("balance", ctrl_cmd(K::KeyB)),
     ]);
     assert_eq!(chords, Vec::<String>::new());
+}
+
+fn display_lab(on: bool) -> Ui {
+    let mut ui = crate::playground::blank_fixture();
+    ui.doc = crate::rules::Doc::parse(&format!(
+        "version = 1\n\n[labs]\ndisplay_shortcuts = {on}\n\n[shortcuts.bindings]\n# mine\n\"alt+v\" = \"float\"\n"
+    ));
+    ui.displays = crate::panes::workspaces::fixture_three();
+    ui
+}
+
+fn bound(ui: &Ui, chord: &str) -> Option<Option<spaceman::shortcuts::Command>> {
+    ui.doc
+        .shortcuts()
+        .binding(parse_chord(chord).unwrap())
+        .map(|command| command.cloned())
+}
+
+#[test]
+fn the_display_lab_records_previous_and_a_chosen_display() {
+    let mut ui = display_lab(true);
+    begin(&mut ui, "move-workspace-prev");
+    record(&mut ui, "move-workspace-prev", ctrl_cmd(K::KeyP));
+    assert_eq!(
+        bound(&ui, "ctrl+cmd+p"),
+        Some(spaceman::shortcuts::parse_command("move-workspace prev").unwrap())
+    );
+    let third = format!(
+        "move-workspace-display-{}",
+        crate::panes::workspaces::THIRD_FIXTURE_ID
+    );
+    begin(&mut ui, &third);
+    // A chord a display row holds is refused by that row's name.
+    record(&mut ui, &third, ctrl_cmd(K::KeyP));
+    assert_eq!(
+        message(&ui),
+        Some("Used by Move workspace to previous display")
+    );
+    record(&mut ui, &third, ctrl_cmd(K::Digit3));
+    assert!(ui.shortcut_capture.saved(&third));
+    let command = format!(
+        "move-workspace {}",
+        crate::panes::workspaces::THIRD_FIXTURE_ID
+    );
+    assert_eq!(
+        bound(&ui, "ctrl+cmd+3"),
+        Some(spaceman::shortcuts::parse_command(&command).unwrap())
+    );
+    // Clearing works as for every other row, and the file's comments stay.
+    begin(&mut ui, &third);
+    record(&mut ui, &third, Press::Unbind);
+    assert_eq!(bound(&ui, "ctrl+cmd+3"), None);
+    assert!(ui.doc.source().contains("# mine"));
+}
+
+#[test]
+fn with_the_display_lab_off_its_rows_record_nothing() {
+    let mut ui = display_lab(false);
+    begin(&mut ui, "move-workspace-prev");
+    record(&mut ui, "move-workspace-prev", ctrl_cmd(K::KeyP));
+    assert_eq!(bound(&ui, "ctrl+cmd+p"), None);
+    assert_eq!(ui.shortcut_capture, Capture::Idle);
 }
