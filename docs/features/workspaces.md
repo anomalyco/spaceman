@@ -63,6 +63,7 @@ Back-and-forth                                             // ws.back-and-forth
 Move workspace to another display                          // ws.move-workspace
 ├── Option+Shift+Tab / ctl move-workspace [next|prev|<display>]
 ├── Orders displays left-to-right; wraps around for next/prev; persists assignment to config.toml
+│   (rules are kept, including title_contains)
 ├── With no visible window focused (an empty workspace), moves the workspace switched to last
 ├── [labs] empty_workspace_focus: also after choosing an empty workspace on another display while
 │   a window elsewhere keeps focus (see "Empty workspace chosen on another display" below)
@@ -401,6 +402,7 @@ on the same letter.
   `move_workspace_preserves_fullscreen_layout_and_focused_tile`,
   `move_workspace_persisted_assignment_survives_config_reload`,
   `move_workspace_replaces_unplugged_assignment_and_rolls_back_on_error`;
+  `src/config/write.rs`: `saving_a_workspace_monitor_keeps_title_contains_rules` (issue 574);
   `src/app/tests/empty_workspace_move.rs` (an empty workspace on a non-main display, issue 201);
   `src/app/tests/empty_workspace_choice.rs` (`[labs] empty_workspace_focus`: an empty workspace
   chosen on another display is the focused one, issue 360);
