@@ -345,7 +345,8 @@ on the same letter.
   `with_no_window_focused_switch_steps_the_display_switched_to_last_and_move_refuses`,
   `switch_follows_the_workspace_order_and_named_workspaces`,
   `move_sends_the_focused_window_to_the_next_workspace_even_when_it_is_empty`,
-  `move_next_with_follow_twice_ends_on_three_with_the_window`, and
+  `move_next_with_follow_twice_ends_on_three_with_the_window`,
+  `switch_skips_a_hidden_workspace_whose_only_parked_window_closed`, and
   `workspace_steps_do_nothing_while_the_lab_is_off`. Unit, `src/workspace/tests.rs`:
   `workspace_steps_stop_at_either_end_of_the_list`; `src/hotkeys.rs`:
   `workspace_step_bindings_register_only_with_their_lab_on`; `src/shortcuts.rs`:

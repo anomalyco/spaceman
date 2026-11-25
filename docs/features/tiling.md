@@ -14,6 +14,7 @@ Automatic tiling                                        // tile.auto
 ├── Window closes, moves away, or floats -> its slot retires, siblings reflow
 │   ├── In dwindle -> auto-chosen splits inside the space that grew re-orient outermost first to their new longer side (order and weights kept; user-arranged splits and legacy splits without a recorded origin keep their direction, and when such a split is left with one tile the next new tile joins it in that direction, #507)
 │   ├── Last app window closes but its surface lingers -> siblings reflow when the app confirms closure
+│   ├── Window closes while parked on a hidden workspace (app still running) -> forgotten once the window server stops listing it, so the workspace no longer counts as occupied for swipes and workspace steps (#553)
 │   └── App keeps its ordered-out window alive -> slot settles for two seconds
 └── Native tab replaces its window -> same slot, order, weight, nesting
     ├── Any app (Finder, Safari, Terminal...) -> when the evidence is unambiguous (one window out, one in, focus moved to it, at the tile's frame or, for an app that caps its window size, where the old tab was)

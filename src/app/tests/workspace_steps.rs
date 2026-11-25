@@ -249,3 +249,40 @@ fn switch_follows_the_workspace_order_and_named_workspaces() {
     assert_eq!(press(WorkspaceStep::Next), named('Q'));
     assert_eq!(press(WorkspaceStep::Prev), named('W'));
 }
+
+#[test]
+fn switch_skips_a_hidden_workspace_whose_only_parked_window_closed() {
+    let hidden = window(12);
+    let parked_on_two = |runtime: &mut WorkspaceRuntime<FakeBackend>| {
+        runtime.backend.frames.insert(hidden.clone(), frame(70));
+        bind(runtime, WorkspaceId::TWO, &hidden);
+        runtime.cycle(outputs(), &AtomicBool::new(false)).unwrap();
+        assert!(runtime.parked.contains_key(&hidden));
+    };
+    let step_next = |runtime: &mut WorkspaceRuntime<FakeBackend>| {
+        runtime
+            .step_workspace(WorkspaceStep::Next, outputs(), &AtomicBool::new(false))
+            .unwrap()
+            .active
+    };
+
+    // Control: a live parked window keeps Workspace 2 a stop.
+    let mut runtime = stepping_runtime(lab(), true);
+    parked_on_two(&mut runtime);
+    assert_eq!(
+        step_next(&mut runtime),
+        [WorkspaceId::TWO, WorkspaceId::SIX]
+    );
+
+    // The parked window closes while its app keeps running (#553).
+    let mut runtime = stepping_runtime(lab(), true);
+    parked_on_two(&mut runtime);
+    runtime.backend.frames.remove(&hidden);
+    runtime.cycle(outputs(), &AtomicBool::new(false)).unwrap();
+    assert_eq!(runtime.workspaces.workspace_of(&hidden), None);
+    assert!(!runtime.parked.contains_key(&hidden));
+    assert_eq!(
+        step_next(&mut runtime),
+        [WorkspaceId::THREE, WorkspaceId::SIX]
+    );
+}
