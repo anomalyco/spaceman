@@ -162,7 +162,7 @@ pub(crate) fn choices(displays: &[ConnectedDisplay]) -> Vec<Choice> {
             id: Some(display.id.clone()),
             name: Some(display.name.clone()),
             connected: true,
-            discovery: discovery(*display),
+            discovery: discovery(display),
         });
     }
     // Past two displays the picker names every screen, so Secondary names its own too: with two
