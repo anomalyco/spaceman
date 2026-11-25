@@ -60,6 +60,7 @@ pub enum UiAction {
     DownloadUpdate,
     ToggleLaunchAtLogin,
     SetHud(bool),
+    SetPauseOnBuiltinDisplay(bool),
     SwitchWorkspace(WorkspaceId),
     Retile,
     MarkWrong,
@@ -83,6 +84,7 @@ impl From<UiAction> for Action {
             UiAction::DownloadUpdate => Self::DownloadUpdate,
             UiAction::ToggleLaunchAtLogin => Self::ToggleLaunchAtLogin,
             UiAction::SetHud(enabled) => Self::SetHud(enabled),
+            UiAction::SetPauseOnBuiltinDisplay(enabled) => Self::SetPauseOnBuiltinDisplay(enabled),
             UiAction::SwitchWorkspace(workspace) => {
                 Self::Worker(WorkerAction::SelectWorkspace(workspace))
             }
@@ -112,6 +114,32 @@ pub const HUD_MAX_DISPLAYS: usize = 8;
 pub const HUD_MAX_TILES: usize = 16;
 /// The most floating apps one HUD workspace carries.
 pub const HUD_MAX_FLOATING: usize = 8;
+
+/// Transient, title-free status toast shown in the non-activating HUD overlay, even when
+/// the Workspace HUD is turned off.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct UiHudToast {
+    pub message: String,
+    pub paused: bool,
+}
+
+impl UiHudToast {
+    #[must_use]
+    pub fn paused(message: impl Into<String>) -> Self {
+        Self {
+            message: message.into(),
+            paused: true,
+        }
+    }
+
+    #[must_use]
+    pub fn resumed(message: impl Into<String>) -> Self {
+        Self {
+            message: message.into(),
+            paused: false,
+        }
+    }
+}
 
 /// Title-free Workspace HUD event emitted on explicit user actions: every display's row of
 /// workspaces, with their layouts and the bundle IDs of the apps in them.
@@ -306,6 +334,7 @@ impl UiAgentSnapshot {
 pub struct UiNews {
     pub snapshot: Option<UiAgentSnapshot>,
     pub hud: Option<UiHudEvent>,
+    pub toast: Option<UiHudToast>,
     /// The open windows the setup tour asked for, title-free.
     pub inventory: Option<Inventory>,
     pub config_changed: bool,
@@ -316,6 +345,7 @@ struct SharedState {
     last: Option<UiAgentSnapshot>,
     pending_snapshot: Option<UiAgentSnapshot>,
     pending_hud: Option<UiHudEvent>,
+    pending_toast: Option<UiHudToast>,
     pending_inventory: Option<Inventory>,
     config_changed: bool,
     waker: Option<Arc<dyn Fn() + Send + Sync>>,
@@ -346,6 +376,7 @@ impl UiBridge {
         }
         let has_news = shared.pending_snapshot.is_some()
             || shared.pending_hud.is_some()
+            || shared.pending_toast.is_some()
             || shared.pending_inventory.is_some()
             || shared.config_changed;
         shared.waker = Some(Arc::clone(&waker));
@@ -364,6 +395,7 @@ impl UiBridge {
         UiNews {
             snapshot: shared.pending_snapshot.take(),
             hud: shared.pending_hud.take(),
+            toast: shared.pending_toast.take(),
             inventory: shared.pending_inventory.take(),
             config_changed: std::mem::take(&mut shared.config_changed),
         }
@@ -380,6 +412,20 @@ impl UiBridge {
                 .lock()
                 .unwrap_or_else(std::sync::PoisonError::into_inner);
             shared.pending_hud = Some(event);
+            shared.waker.clone()
+        };
+        if let Some(waker) = waker {
+            waker();
+        }
+    }
+
+    pub(super) fn publish_toast(&self, toast: UiHudToast) {
+        let waker = {
+            let mut shared = self
+                .shared
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
+            shared.pending_toast = Some(toast);
             shared.waker.clone()
         };
         if let Some(waker) = waker {
@@ -460,6 +506,7 @@ mod tests {
             UiNews {
                 snapshot: Some(initial.clone()),
                 hud: None,
+                toast: None,
                 inventory: None,
                 config_changed: false,
             }
@@ -477,6 +524,7 @@ mod tests {
             UiNews {
                 snapshot: None,
                 hud: None,
+                toast: None,
                 inventory: None,
                 config_changed: true,
             }
@@ -494,6 +542,20 @@ mod tests {
             UiNews {
                 snapshot: None,
                 hud: Some(hud_event),
+                toast: None,
+                inventory: None,
+                config_changed: false,
+            }
+        );
+        let toast = UiHudToast::paused("Tiling paused — built-in display");
+        bridge.publish_toast(toast.clone());
+        assert_eq!(wakes.load(Ordering::SeqCst), 4);
+        assert_eq!(
+            bridge.take_news(),
+            UiNews {
+                snapshot: None,
+                hud: None,
+                toast: Some(toast),
                 inventory: None,
                 config_changed: false,
             }
@@ -531,7 +593,7 @@ mod tests {
         bridge.send(UiAction::Quit);
         assert_eq!(receiver.try_recv().ok(), Some(Action::Quit));
         bridge.publish_inventory(Inventory::default());
-        assert_eq!(wakes.load(Ordering::SeqCst), 4);
+        assert_eq!(wakes.load(Ordering::SeqCst), 5);
         assert_eq!(bridge.take_news().inventory, Some(Inventory::default()));
         assert_eq!(bridge.take_news().inventory, None);
     }

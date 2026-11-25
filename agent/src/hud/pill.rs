@@ -24,7 +24,7 @@ use std::collections::{BTreeSet, HashMap};
 use rune::{Color, El, Pixels, Spring, Transition, el, row, text, tok::motion::pair::SETTLE};
 use spaceman::{
     WorkspaceId,
-    app::{UiHudDisplay, UiHudWorkspace},
+    app::{UiHudDisplay, UiHudToast, UiHudWorkspace},
     config::{HudPosition, HudStyle},
 };
 
@@ -61,6 +61,16 @@ const EDGE_FADE: f32 = 6.0;
 
 /// App icons by bundle ID, looked up before the view runs.
 pub type Icons = HashMap<String, Pixels>;
+
+/// One build of a transient status toast capsule.
+#[derive(Clone, Copy, Debug)]
+pub struct ToastView<'a> {
+    pub toast: &'a UiHudToast,
+    /// Up, or on its way out.
+    pub shown: bool,
+    /// Reduce Motion: fades in place with no scale or drop.
+    pub still: bool,
+}
 
 /// One build of the capsule: what it shows and how it got here.
 #[derive(Clone, Copy, Debug)]
@@ -139,6 +149,72 @@ pub const fn enter_offset(position: HudPosition, shown: bool, still: bool) -> f3
         HudPosition::Bottom => DROP,
         HudPosition::Top => -DROP,
     }
+}
+
+/// Non-activating transient status toast pill (pause / resume feedback).
+pub fn toast_slot(view: &ToastView<'_>, position: HudPosition, p: Paint) -> El {
+    let dark = Paint::new(true, 1.0 / p.hair);
+    let (spring, opacity) = if view.shown {
+        (ENTER, 1.0)
+    } else {
+        (EXIT, 0.0)
+    };
+    let scale = if view.shown || view.still {
+        1.0
+    } else {
+        REST_SCALE
+    };
+    let drop = enter_offset(position, view.shown, view.still);
+    let indicator = if view.toast.paused {
+        let bar = |key: &'static str| {
+            el().key(key)
+                .size(2.5, 10.0)
+                .radius(1.0)
+                .fill(rgba(0xffffff, 0.55))
+        };
+        row()
+            .key("hud-toast-pause")
+            .gap(2.5)
+            .center_y()
+            .child(bar("hud-toast-pause-l"))
+            .child(bar("hud-toast-pause-r"))
+    } else {
+        el().key("hud-toast-active")
+            .size(7.0, 7.0)
+            .radius(3.5)
+            .fill(dark.k.c.success.fg)
+    };
+    let mut capsule = row()
+        .key("hud-toast-pill")
+        .h(PILL_HEIGHT)
+        .px(16.0)
+        .gap(10.0)
+        .center_y()
+        .radius(PILL_HEIGHT / 2.0)
+        .fill(srgb(0x161618))
+        .border(p.hair, srgb(0x303036))
+        .child(indicator)
+        .child(
+            text(&view.toast.message)
+                .key("hud-toast-message")
+                .font(rune::TextStyle::new(13.0, 500.0))
+                .color(rgba(0xffffff, 0.92)),
+        );
+    for shadow in &dark.k.elevation.overlay {
+        capsule = capsule.box_shadow(*shadow);
+    }
+    row()
+        .key("hud-toast-slot")
+        .w_full()
+        .h(PILL_HEIGHT)
+        .center()
+        .opacity(opacity)
+        .opacity_motion(spring)
+        .scale(scale)
+        .scale_motion(spring)
+        .offset(0.0, drop)
+        .offset_motion(spring)
+        .child(capsule)
 }
 
 /// Passive capsule used by Playground previews (no `HudOverlay` event handlers).

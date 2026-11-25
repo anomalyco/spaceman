@@ -14,6 +14,7 @@ use super::SnapshotError;
 #[link(name = "ApplicationServices", kind = "framework")]
 unsafe extern "C" {
     fn CGDisplayCreateUUIDFromDisplayID(display: u32) -> *const CFUUID;
+    fn CGDisplayIsBuiltin(display: u32) -> u32;
 }
 
 pub(super) fn main_output() -> Result<Rect, SnapshotError> {
@@ -26,6 +27,43 @@ pub struct DisplayOutput {
     pub name: String,
     pub frame: Rect,
     pub is_main: bool,
+}
+
+/// Summary of connected built-in vs external displays, used for
+/// `settings.pause_on_builtin_display`.
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub struct DisplayTopology {
+    pub builtin: usize,
+    pub external: usize,
+}
+
+impl DisplayTopology {
+    /// Builds a topology from each connected display's `is_builtin` flag.
+    #[must_use]
+    pub fn from_builtin_flags(displays: impl IntoIterator<Item = bool>) -> Self {
+        let mut topology = Self::default();
+        for is_builtin in displays {
+            if is_builtin {
+                topology.builtin += 1;
+            } else {
+                topology.external += 1;
+            }
+        }
+        topology
+    }
+
+    /// True when at least one built-in display is connected and zero external displays are attached.
+    /// Desktop Macs (0 built-in displays) return `false`.
+    #[must_use]
+    pub const fn is_builtin_only(self) -> bool {
+        self.builtin > 0 && self.external == 0
+    }
+
+    /// True when at least one external display is connected.
+    #[must_use]
+    pub const fn has_external(self) -> bool {
+        self.external > 0
+    }
 }
 
 /// Maximum distance outside a display's visible tiling frame (in points) that a
@@ -277,6 +315,30 @@ pub fn outputs() -> Result<DisplayOutputs, SnapshotError> {
             bounds.push(screen_rect(frame, primary_height));
         }
         DisplayOutputs::with_bounds(displays, bounds)
+    })
+}
+
+/// Counts connected built-in and external displays via `CGDisplayIsBuiltin`. Main thread only;
+/// returns `None` outside the main thread or when no screens are reported.
+#[must_use]
+pub fn display_topology() -> Option<DisplayTopology> {
+    autoreleasepool(|_| {
+        let marker = MainThreadMarker::new()?;
+        let screens = NSScreen::screens(marker);
+        let count = screens.count();
+        if count == 0 {
+            return None;
+        }
+        let mut flags = Vec::with_capacity(count);
+        for index in 0..count {
+            let screen = screens.objectAtIndex(index);
+            let display_id = screen_display_id(&screen)?;
+            // SAFETY: `CGDisplayIsBuiltin` queries Core Graphics display metadata for a display ID
+            // and returns a `boolean_t` (0 = false, non-zero = true) without taking pointers.
+            let is_builtin = unsafe { CGDisplayIsBuiltin(display_id) != 0 };
+            flags.push(is_builtin);
+        }
+        Some(DisplayTopology::from_builtin_flags(flags))
     })
 }
 
@@ -654,5 +716,34 @@ mod tests {
                 height: 2530,
             }
         );
+    }
+
+    #[test]
+    fn display_topology_distinguishes_laptop_builtin_clamshell_and_desktop_macs() {
+        // MacBook alone: built-in only.
+        let laptop_only = DisplayTopology::from_builtin_flags([true]);
+        assert!(laptop_only.is_builtin_only());
+        assert!(!laptop_only.has_external());
+
+        // MacBook + external monitor: not built-in only, has external.
+        let laptop_docked = DisplayTopology::from_builtin_flags([true, false]);
+        assert!(!laptop_docked.is_builtin_only());
+        assert!(laptop_docked.has_external());
+
+        // MacBook in clamshell mode with one external monitor.
+        let clamshell = DisplayTopology::from_builtin_flags([false]);
+        assert!(!clamshell.is_builtin_only());
+        assert!(clamshell.has_external());
+
+        // Mac Studio / Mac mini with 1 or 2 external monitors: 0 built-in displays.
+        let studio_single = DisplayTopology::from_builtin_flags([false]);
+        let studio_dual = DisplayTopology::from_builtin_flags([false, false]);
+        assert!(!studio_single.is_builtin_only());
+        assert!(!studio_dual.is_builtin_only());
+
+        // Empty / headless: neither built-in only nor external.
+        let empty = DisplayTopology::from_builtin_flags([]);
+        assert!(!empty.is_builtin_only());
+        assert!(!empty.has_external());
     }
 }

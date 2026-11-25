@@ -201,6 +201,8 @@ pub(crate) struct SettingsDoc {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub menu_bar_icon: Option<MenuBarIcon>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub pause_on_builtin_display: Option<bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub single_window_max_width: Option<i64>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub single_window_max_height: Option<i64>,
@@ -249,6 +251,7 @@ impl SettingsDoc {
             && self.mouse_follows_focus.is_none()
             && self.trackpad_swipe.is_none()
             && self.menu_bar_icon.is_none()
+            && self.pause_on_builtin_display.is_none()
             && self.single_window_max_width.is_none()
             && self.single_window_max_height.is_none()
             && self.workspace_order.is_none()
@@ -358,6 +361,10 @@ impl SettingsDoc {
     pub(crate) fn effective_menu_bar_icon(&self) -> MenuBarIcon {
         self.menu_bar_icon.unwrap_or_default()
     }
+
+    pub(crate) fn effective_pause_on_builtin_display(&self) -> bool {
+        self.pause_on_builtin_display.unwrap_or(false)
+    }
 }
 
 fn serialize_optional_hud_style<S: serde::Serializer>(
@@ -444,6 +451,7 @@ pub(crate) struct EffectiveSettings {
     pub mouse_follows_focus: &'static str,
     pub trackpad_swipe: bool,
     pub menu_bar_icon: &'static str,
+    pub pause_on_builtin_display: bool,
     pub single_window_max_width: i32,
     pub single_window_max_height: i32,
     pub workspace_order: Vec<WorkspaceId>,
@@ -543,6 +551,7 @@ impl ConfigDoc {
             mouse_follows_focus: self.settings.effective_mouse_follows_focus().as_str(),
             trackpad_swipe: self.settings.effective_trackpad_swipe(),
             menu_bar_icon: self.settings.effective_menu_bar_icon().as_str(),
+            pause_on_builtin_display: self.settings.effective_pause_on_builtin_display(),
             single_window_max_width: spacing.single_window_max_width,
             single_window_max_height: spacing.single_window_max_height,
             workspace_order: self.settings.workspace_order.clone().unwrap_or_default(),

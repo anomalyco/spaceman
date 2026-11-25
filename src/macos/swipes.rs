@@ -234,7 +234,11 @@ unsafe extern "C-unwind" fn tap_callback(
         if let Some((swipe, fingers)) = swipe {
             let point = CGEvent::location(Some(cg_event));
             let point = (point.x.round() as i32, point.y.round() as i32);
-            (context.report)(swipe.for_scroll_direction(natural_scrolling()), fingers, point);
+            (context.report)(
+                swipe.for_scroll_direction(natural_scrolling()),
+                fingers,
+                point,
+            );
         }
     });
     event.as_ptr()

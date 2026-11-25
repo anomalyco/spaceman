@@ -25,6 +25,10 @@ update_channel = "stable"
 # one glyph for the focused workspace, and "off" hides it (open Spaceman again for Settings).
 # Read only with [labs] menu_bar_icon_style = true.
 # menu_bar_icon = "full"
+# Automatically pause tiling (and restore windows) when only a built-in laptop display is
+# connected, and resume automatically when an external display reconnects (default: false).
+# Desktop Macs with no built-in display are never auto-paused.
+pause_on_builtin_display = false
 # Center a window that is alone on its display (or in Fullscreen Layout) at this width;
 # 0 (the default) lets it fill the display. 320 through 16384 points.
 single_window_max_width = 0

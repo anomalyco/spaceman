@@ -119,7 +119,8 @@ struct Controller {
     launch_at_login: Retained<NSMenuItem>,
     update: Retained<NSMenuItem>,
     status_title: String,
-    workspace_layouts: Vec<WorkspaceLayout>,
+    button_state: ButtonState,
+    rendered_visual: Option<ButtonVisual>,
     workspace_menu: Vec<DisplayWorkspaces>,
     workspace_items: Vec<Retained<NSMenuItem>>,
 }
@@ -202,7 +203,8 @@ pub fn install(sender: Sender<Action>) -> Result<(), String> {
             launch_at_login,
             update,
             status_title: String::new(),
-            workspace_layouts: Vec::new(),
+            button_state: ButtonState::new(),
+            rendered_visual: None,
             workspace_menu: Vec::new(),
             workspace_items: Vec::new(),
         });
@@ -292,7 +294,7 @@ pub fn set_automatic(enabled: bool) {
         set_workspace_menu(&[]);
     }
     CONTROLLER.with(|controller| {
-        if let Some(controller) = controller.borrow().as_ref() {
+        if let Some(controller) = controller.borrow_mut().as_mut() {
             controller
                 .automatic
                 .setTitle(&NSString::from_str(if enabled {
@@ -300,6 +302,8 @@ pub fn set_automatic(enabled: bool) {
                 } else {
                     "Resume Tiling"
                 }));
+            controller.button_state.set_automatic(enabled);
+            apply_button_visual(controller);
         }
     });
 }
@@ -324,7 +328,51 @@ pub fn set_launch_at_login(status: login_item::Status) {
 }
 
 pub fn set_workspace_numbers(workspaces: &[u8]) {
-    let title = if workspaces.is_empty() {
+    CONTROLLER.with(|controller| {
+        if let Some(controller) = controller.borrow_mut().as_mut() {
+            controller.button_state.set_numbers(workspaces);
+            apply_button_visual(controller);
+        }
+    });
+}
+
+pub fn set_workspace_layouts(layouts: &[WorkspaceLayout]) {
+    CONTROLLER.with(|controller| {
+        if let Some(controller) = controller.borrow_mut().as_mut() {
+            controller.button_state.set_layouts(layouts);
+            apply_button_visual(controller);
+        }
+    });
+}
+
+fn apply_button_visual(controller: &mut Controller) {
+    let visual = controller.button_state.visual();
+    if controller.rendered_visual.as_ref() == Some(&visual) {
+        return;
+    }
+    controller.button.setAlphaValue(visual.alpha);
+    match &visual.content {
+        ButtonContent::Paused => {
+            let image = paused_glyph_image();
+            controller.button.setTitle(&NSString::new());
+            controller.button.setImage(Some(&image));
+        }
+        ButtonContent::Layouts(layouts) => {
+            let image = workspace_layout_image(layouts);
+            controller.button.setTitle(&NSString::new());
+            controller.button.setImage(Some(&image));
+        }
+        ButtonContent::Numbers(workspaces) => {
+            let title = format_workspace_numbers(workspaces);
+            controller.button.setImage(None);
+            controller.button.setTitle(&NSString::from_str(&title));
+        }
+    }
+    controller.rendered_visual = Some(visual);
+}
+
+fn format_workspace_numbers(workspaces: &[u8]) -> String {
+    if workspaces.is_empty() {
         String::new()
     } else {
         format!(
@@ -335,28 +383,7 @@ pub fn set_workspace_numbers(workspaces: &[u8]) {
                 .collect::<Vec<_>>()
                 .join(" · ")
         )
-    };
-    CONTROLLER.with(|controller| {
-        if let Some(controller) = controller.borrow_mut().as_mut() {
-            controller.button.setImage(None);
-            controller.button.setTitle(&NSString::from_str(&title));
-            controller.workspace_layouts.clear();
-        }
-    });
-}
-
-pub fn set_workspace_layouts(layouts: &[WorkspaceLayout]) {
-    CONTROLLER.with(|controller| {
-        let mut controller = controller.borrow_mut();
-        if let Some(controller) = controller.as_mut()
-            && controller.workspace_layouts != layouts
-        {
-            let image = workspace_layout_image(layouts);
-            controller.button.setTitle(&NSString::new());
-            controller.button.setImage(Some(&image));
-            controller.workspace_layouts = layouts.to_vec();
-        }
-    });
+    }
 }
 
 /// Lists `displays`' workspaces above the tiling toggle.
@@ -438,6 +465,141 @@ fn accessibility_description(layouts: &[WorkspaceLayout]) -> Option<String> {
     chars
         .next()
         .map(|first| first.to_uppercase().chain(chars).collect())
+}
+
+const ACTIVE_ALPHA: f64 = 1.0;
+const PAUSED_ALPHA: f64 = 0.45;
+const PAUSED_ACCESSIBILITY_DESCRIPTION: &str = "Spaceman paused";
+const PAUSE_BAR_WIDTH: f64 = 2.0;
+const PAUSE_BAR_HEIGHT: f64 = 5.5;
+const PAUSE_BAR_GAP: f64 = 2.0;
+const PAUSE_BAR_RADIUS: f64 = 0.75;
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+enum ButtonContent {
+    Paused,
+    Layouts(Vec<WorkspaceLayout>),
+    Numbers(Vec<u8>),
+}
+
+#[derive(Clone, Debug, PartialEq)]
+struct ButtonVisual {
+    alpha: f64,
+    content: ButtonContent,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+struct ButtonState {
+    automatic: bool,
+    has_layouts: bool,
+    layouts: Vec<WorkspaceLayout>,
+    numbers: Vec<u8>,
+}
+
+impl ButtonState {
+    const fn new() -> Self {
+        Self {
+            automatic: true,
+            has_layouts: false,
+            layouts: Vec::new(),
+            numbers: Vec::new(),
+        }
+    }
+
+    const fn set_automatic(&mut self, enabled: bool) {
+        self.automatic = enabled;
+    }
+
+    fn set_numbers(&mut self, workspaces: &[u8]) {
+        self.has_layouts = false;
+        self.layouts.clear();
+        self.numbers = workspaces.to_vec();
+    }
+
+    fn set_layouts(&mut self, layouts: &[WorkspaceLayout]) {
+        self.has_layouts = true;
+        self.layouts = layouts.to_vec();
+    }
+
+    fn visual(&self) -> ButtonVisual {
+        if !self.automatic {
+            return ButtonVisual {
+                alpha: PAUSED_ALPHA,
+                content: ButtonContent::Paused,
+            };
+        }
+        let content = if self.has_layouts {
+            ButtonContent::Layouts(self.layouts.clone())
+        } else {
+            ButtonContent::Numbers(self.numbers.clone())
+        };
+        ButtonVisual {
+            alpha: ACTIVE_ALPHA,
+            content,
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug)]
+struct PausedGlyphGeometry {
+    image_width: f64,
+    frame: NSRect,
+    left_bar: NSRect,
+    right_bar: NSRect,
+}
+
+fn paused_glyph_geometry() -> PausedGlyphGeometry {
+    let size = glyph_size(false);
+    let frame = NSRect::new(
+        NSPoint::new(LAYOUT_START_X, (16.0 - size.height) / 2.0),
+        size,
+    );
+    let bars_total_w = PAUSE_BAR_WIDTH * 2.0 + PAUSE_BAR_GAP;
+    let bars_x = frame.origin.x + (size.width - bars_total_w) / 2.0;
+    let bars_y = frame.origin.y + (size.height - PAUSE_BAR_HEIGHT) / 2.0;
+    PausedGlyphGeometry {
+        image_width: LAYOUT_START_X + size.width + TRAILING_PADDING,
+        frame,
+        left_bar: NSRect::new(
+            NSPoint::new(bars_x, bars_y),
+            NSSize::new(PAUSE_BAR_WIDTH, PAUSE_BAR_HEIGHT),
+        ),
+        right_bar: NSRect::new(
+            NSPoint::new(bars_x + PAUSE_BAR_WIDTH + PAUSE_BAR_GAP, bars_y),
+            NSSize::new(PAUSE_BAR_WIDTH, PAUSE_BAR_HEIGHT),
+        ),
+    }
+}
+
+fn paused_glyph_image() -> Retained<NSImage> {
+    let geometry = paused_glyph_geometry();
+    let image = NSImage::imageWithSize_flipped_drawingHandler(
+        NSSize::new(geometry.image_width, 16.0),
+        false,
+        &RcBlock::new(move |_: NSRect| {
+            draw_paused_glyph(&geometry);
+            Bool::YES
+        }),
+    );
+    image.setTemplate(true);
+    image.setAccessibilityDescription(Some(&NSString::from_str(PAUSED_ACCESSIBILITY_DESCRIPTION)));
+    image
+}
+
+fn draw_paused_glyph(geometry: &PausedGlyphGeometry) {
+    NSColor::blackColor().setStroke();
+    NSColor::blackColor().setFill();
+    let outline = NSBezierPath::bezierPathWithRoundedRect_xRadius_yRadius(geometry.frame, 2.5, 2.5);
+    outline.setLineWidth(1.25);
+    outline.stroke();
+    for bar in [geometry.left_bar, geometry.right_bar] {
+        NSBezierPath::bezierPathWithRoundedRect_xRadius_yRadius(
+            bar,
+            PAUSE_BAR_RADIUS,
+            PAUSE_BAR_RADIUS,
+        )
+        .fill();
+    }
 }
 
 // Drawing offsets shared by the image size and `draw_workspace_layouts`.
@@ -609,5 +771,112 @@ mod tests {
             .as_deref(),
             Some("Workspace 6 on DELL U2720Q (left), workspace 1 on Studio Display")
         );
+    }
+
+    #[test]
+    fn paused_state_dims_icon_with_pause_glyph_and_restores_full_brightness_on_resume() {
+        let layout = WorkspaceLayout {
+            workspace: "1".into(),
+            mode: UiHudLayout::Fullscreen,
+            portrait: false,
+            display: None,
+        };
+        let mut state = ButtonState::new();
+        state.set_numbers(&[1, 6]);
+        assert_eq!(
+            state.visual(),
+            ButtonVisual {
+                alpha: ACTIVE_ALPHA,
+                content: ButtonContent::Numbers(vec![1, 6]),
+            }
+        );
+
+        // Pausing before layouts arrive switches to the dimmed paused icon.
+        state.set_automatic(false);
+        assert_eq!(
+            state.visual(),
+            ButtonVisual {
+                alpha: PAUSED_ALPHA,
+                content: ButtonContent::Paused,
+            }
+        );
+
+        // Resuming immediately restores full brightness and the prior workspace numbers.
+        state.set_automatic(true);
+        assert_eq!(
+            state.visual(),
+            ButtonVisual {
+                alpha: ACTIVE_ALPHA,
+                content: ButtonContent::Numbers(vec![1, 6]),
+            }
+        );
+
+        // Active layouts render at full brightness; pausing switches to the paused glyph.
+        state.set_layouts(std::slice::from_ref(&layout));
+        assert_eq!(
+            state.visual(),
+            ButtonVisual {
+                alpha: ACTIVE_ALPHA,
+                content: ButtonContent::Layouts(vec![layout.clone()]),
+            }
+        );
+        state.set_automatic(false);
+        assert_eq!(
+            state.visual(),
+            ButtonVisual {
+                alpha: PAUSED_ALPHA,
+                content: ButtonContent::Paused,
+            }
+        );
+
+        // Layout updates received while paused are remembered without overriding the paused icon.
+        let compact = WorkspaceLayout {
+            workspace: "3".into(),
+            mode: UiHudLayout::Fullscreen,
+            portrait: false,
+            display: None,
+        };
+        state.set_layouts(std::slice::from_ref(&compact));
+        assert_eq!(
+            state.visual(),
+            ButtonVisual {
+                alpha: PAUSED_ALPHA,
+                content: ButtonContent::Paused,
+            }
+        );
+
+        // Resuming restores full brightness and the latest layouts immediately.
+        state.set_automatic(true);
+        assert_eq!(
+            state.visual(),
+            ButtonVisual {
+                alpha: ACTIVE_ALPHA,
+                content: ButtonContent::Layouts(vec![compact]),
+            }
+        );
+    }
+
+    #[test]
+    fn paused_glyph_bars_sit_centered_inside_the_rounded_frame() {
+        let g = paused_glyph_geometry();
+        assert_eq!(
+            g.image_width,
+            LAYOUT_START_X + GLYPH_LONG + TRAILING_PADDING
+        );
+        assert!(g.frame.origin.y >= 0.0 && g.frame.origin.y + g.frame.size.height <= 16.0);
+        assert!(g.left_bar.origin.x > g.frame.origin.x);
+        assert!(g.left_bar.origin.x + g.left_bar.size.width < g.right_bar.origin.x);
+        assert!(
+            g.right_bar.origin.x + g.right_bar.size.width < g.frame.origin.x + g.frame.size.width
+        );
+        assert!(g.left_bar.origin.y > g.frame.origin.y);
+        assert!(
+            g.left_bar.origin.y + g.left_bar.size.height < g.frame.origin.y + g.frame.size.height
+        );
+        // Symmetric horizontal margins inside the display frame.
+        let left_margin = g.left_bar.origin.x - g.frame.origin.x;
+        let right_margin = (g.frame.origin.x + g.frame.size.width)
+            - (g.right_bar.origin.x + g.right_bar.size.width);
+        assert!((left_margin - right_margin).abs() < 1e-6);
     }
 }

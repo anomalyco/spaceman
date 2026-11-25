@@ -9,7 +9,7 @@ workspaces and layouts; when something looks wrong, find out what happened.
 Spaceman restarts, apps keep running                       // recover.resume
 └── workspace-state.json valid -> same workspaces, layouts, Fullscreen Layout, last focus
 
-Pause / quit / update / macOS asks Spaceman to terminate   // recover.restore-on-exit
+Pause / auto-pause on built-in display / quit / update / macOS termination   // recover.restore-on-exit
 ├── Every parked window moved back to its original frame
 │   └── that frame's display unplugged -> moved onto the main display instead
 ├── Recovery entry removed only after the window server confirms arrival
@@ -82,6 +82,13 @@ Files:    ~/Library/Application Support/Spaceman/
 See [Recovery](../recovery.md) for the safe manual procedure; never delete `parked-windows.json` first.
 
 ## Existing Checks
+
+- Unit, `src/status_item.rs`, `src/macos/displays.rs`, `src/app/app_loop/builtin_display.rs`, `src/cli/tests/builtin_display.rs`, `agent/src/hud/tests.rs`, `agent/src/panes/general.rs`:
+  dimmed paused menu bar glyph and full-brightness restoration on resume; `CGDisplayIsBuiltin`
+  topology classification (laptop built-in, docked, clamshell, desktop Macs with 0 built-in
+  displays); auto-pause on external disconnect and auto-resume on reconnect with manual pause and
+  manual resume override safety; `pause_on_builtin_display` config/CLI/Settings round-trip; and
+  transient HUD toast display even when Workspace HUD is off.
 
 - Unit (FakeBackend): `parking.rs` `restore_all_repositions_windows_at_their_original_frames`,
   `restore_keeps_recovery_frame_until_the_window_server_confirms_arrival`,

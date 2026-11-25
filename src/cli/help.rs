@@ -171,6 +171,7 @@ pub(crate) fn config_help(executable: &str) -> String {
         "                                    read only with labs.swipe_switch on; get/show print the file's value",
         "  menu_bar_icon   full | compact | off  Menu bar icon: a glyph per display, one glyph, or none",
         "                                    (default: full); read only with labs.menu_bar_icon_style on",
+        "  pause_on_builtin_display  true | false  Auto-pause on built-in display, resume on external (default: false)",
         "  gaps.inner      0-48              Points between tiled windows (default: 0)",
         "  gaps.outer      0-128             Outer padding at every edge without its own (default: 0)",
         "  gaps.top        0-128             Outer padding at the screen's top edge (default:",

@@ -30,6 +30,7 @@ struct AppSettings {
     mouse_follows_focus: MouseFollowsFocus,
     trackpad_swipe: bool,
     menu_bar_icon: MenuBarIcon,
+    pause_on_builtin_display: bool,
     spacing: Spacing,
 }
 
@@ -44,6 +45,7 @@ impl Default for AppSettings {
             mouse_follows_focus: MouseFollowsFocus::default(),
             trackpad_swipe: true,
             menu_bar_icon: MenuBarIcon::default(),
+            pause_on_builtin_display: false,
             spacing: Spacing::default(),
         }
     }
@@ -276,6 +278,8 @@ struct RawSettings {
     #[serde(default)]
     menu_bar_icon: MenuBarIcon,
     #[serde(default)]
+    pause_on_builtin_display: bool,
+    #[serde(default)]
     single_window_max_width: i64,
     #[serde(default)]
     single_window_max_height: i64,
@@ -296,6 +300,7 @@ impl Default for RawSettings {
             mouse_follows_focus: MouseFollowsFocus::default(),
             trackpad_swipe: true,
             menu_bar_icon: MenuBarIcon::default(),
+            pause_on_builtin_display: false,
             single_window_max_width: 0,
             single_window_max_height: 0,
             workspace_order: Vec::new(),
@@ -455,6 +460,7 @@ impl Config {
                 mouse_follows_focus: raw.settings.mouse_follows_focus,
                 trackpad_swipe: raw.settings.trackpad_swipe,
                 menu_bar_icon: raw.settings.menu_bar_icon,
+                pause_on_builtin_display: raw.settings.pause_on_builtin_display,
                 spacing: raw.settings.spacing()?,
             },
             labs: raw.labs,
@@ -524,6 +530,11 @@ impl Config {
         } else {
             MenuBarIcon::Full
         }
+    }
+
+    #[must_use]
+    pub const fn pause_on_builtin_display(&self) -> bool {
+        self.settings.pause_on_builtin_display
     }
 
     /// How many fingers the workspace swipe takes: three, or four with

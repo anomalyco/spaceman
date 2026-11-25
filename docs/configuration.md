@@ -40,6 +40,7 @@ update_channel = "stable"             # optional (default: "stable"); or "dev", 
 mouse_follows_focus = "off"           # optional (default: "off"); or "display", "window"
 trackpad_swipe = true                 # optional (default: true); read only with [labs] swipe_switch
 menu_bar_icon = "full"                # optional (default: "full"); or "compact", "off"; read only with [labs] menu_bar_icon_style
+pause_on_builtin_display = false      # optional (default: false); auto-pause on built-in display, resume on external
 single_window_max_width = 0           # optional (default: 0, off); or 320 through 16384 points
 single_window_max_height = 0          # optional (default: 0, off); or 320 through 16384 points; read only with [labs] single_window_height
 workspace_order = []                  # optional (default: []); workspaces listed first, in this order
@@ -166,6 +167,29 @@ spaceman config reset trackpad_swipe
 
 With the Lab on, Settings › Shortcuts shows **Swipe to switch workspace** under Workspaces, the same
 switch; with it off, that row is the fixed `3-finger swipe` keys as before.
+
+## Built-in Display Auto-Pause
+
+`settings.pause_on_builtin_display` (default `false`) automatically pauses tiling and restores
+windows when only a built-in laptop display is connected (zero external displays, at least one
+built-in display), and automatically resumes tiling when an external display reconnects (provided
+Accessibility permission is trusted). Each transition shows a brief non-activating HUD toast
+(`Tiling paused — built-in display` / `Tiling resumed — external display`), even when the
+Workspace HUD is turned off, and the menu bar shows a dimmed paused glyph while paused.
+
+- **Manual override safety:** Manually pausing while an external display is attached is never
+  overridden by reconnecting displays. Manually resuming while on the built-in display keeps
+  tiling active until the connected displays actually change again.
+- **Desktop Macs:** Macs with no built-in display (Mac Studio, Mac mini, Mac Pro) never
+  auto-pause.
+
+```sh
+spaceman config set pause_on_builtin_display true
+spaceman config get pause_on_builtin_display
+spaceman config reset pause_on_builtin_display
+```
+
+Settings › General exposes the same toggle as **Pause on built-in display**.
 
 ## New-Window Layout
 

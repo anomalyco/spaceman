@@ -299,6 +299,12 @@ fn resolve_feature(slug: &str) -> OpenTarget {
             highlight_feature: Some("tiling".to_owned()),
             diagnostic: None,
         },
+        "pause-on-builtin-display" => OpenTarget {
+            pane: Some(DeepLinkPane::General),
+            highlight_lab: None,
+            highlight_feature: Some("pause-on-builtin-display".to_owned()),
+            diagnostic: None,
+        },
         "updates" | "update-channel" => OpenTarget {
             pane: Some(DeepLinkPane::General),
             highlight_lab: None,

@@ -63,6 +63,7 @@ enum SettingKey {
     MouseFollowsFocus,
     TrackpadSwipe,
     MenuBarIcon,
+    PauseOnBuiltinDisplay,
     Outer,
     Spacing(SpacingKey),
 }
@@ -78,13 +79,14 @@ impl SettingKey {
             "mouse_follows_focus" => Ok(Self::MouseFollowsFocus),
             "trackpad_swipe" => Ok(Self::TrackpadSwipe),
             "menu_bar_icon" => Ok(Self::MenuBarIcon),
+            "pause_on_builtin_display" => Ok(Self::PauseOnBuiltinDisplay),
             spacing::OUTER => Ok(Self::Outer),
             other => SpacingKey::parse(other).map(Self::Spacing).ok_or_else(|| {
                 format!(
                     "unknown setting {raw:?}; valid keys: hud, hud_style, hud_position, layout, \
                      update_channel, mouse_follows_focus, trackpad_swipe, menu_bar_icon, \
-                     gaps.inner, gaps.outer, gaps.top, gaps.bottom, gaps.left, gaps.right, \
-                     single_window_max_width, single_window_max_height"
+                     pause_on_builtin_display, gaps.inner, gaps.outer, gaps.top, gaps.bottom, \
+                     gaps.left, gaps.right, single_window_max_width, single_window_max_height"
                 )
             }),
         }
@@ -100,6 +102,7 @@ impl SettingKey {
             Self::MouseFollowsFocus => "mouse_follows_focus",
             Self::TrackpadSwipe => "trackpad_swipe",
             Self::MenuBarIcon => "menu_bar_icon",
+            Self::PauseOnBuiltinDisplay => "pause_on_builtin_display",
             Self::Outer => spacing::OUTER,
             Self::Spacing(key) => key.path(),
         }
@@ -152,6 +155,10 @@ impl SettingKey {
                 let icon = settings.effective_menu_bar_icon().as_str();
                 (icon.to_owned(), serde_json::Value::String(icon.to_owned()))
             }
+            Self::PauseOnBuiltinDisplay => {
+                let on = settings.effective_pause_on_builtin_display();
+                (on.to_string(), serde_json::Value::Bool(on))
+            }
             Self::Outer => {
                 let value = settings.effective_outer();
                 (value.to_string(), serde_json::Value::from(value))
@@ -174,6 +181,7 @@ impl SettingKey {
             Self::MouseFollowsFocus => settings.mouse_follows_focus.is_some(),
             Self::TrackpadSwipe => settings.trackpad_swipe.is_some(),
             Self::MenuBarIcon => settings.menu_bar_icon.is_some(),
+            Self::PauseOnBuiltinDisplay => settings.pause_on_builtin_display.is_some(),
             Self::Outer => settings.gaps.outer.is_some(),
             Self::Spacing(key) => settings.has_spacing(key),
         }
@@ -190,6 +198,7 @@ impl SettingKey {
             Self::MouseFollowsFocus => settings.mouse_follows_focus = None,
             Self::TrackpadSwipe => settings.trackpad_swipe = None,
             Self::MenuBarIcon => settings.menu_bar_icon = None,
+            Self::PauseOnBuiltinDisplay => settings.pause_on_builtin_display = None,
             Self::Outer => settings.gaps.outer = None,
             Self::Spacing(key) => settings.clear_spacing(key),
         }
@@ -371,6 +380,7 @@ enum SettingValue {
     MouseFollowsFocus(MouseFollowsFocus),
     TrackpadSwipe(bool),
     MenuBarIcon(MenuBarIcon),
+    PauseOnBuiltinDisplay(bool),
     Outer(i64),
     Spacing(SpacingKey, i64),
     Lab(LabFeature, bool),
@@ -435,6 +445,13 @@ impl SettingValue {
                         "invalid value for menu_bar_icon: expected 'full', 'compact', or 'off', got {raw_value:?}"
                     )
                 }),
+            SettingKey::PauseOnBuiltinDisplay => match raw_value {
+                "true" => Ok(Self::PauseOnBuiltinDisplay(true)),
+                "false" => Ok(Self::PauseOnBuiltinDisplay(false)),
+                _ => Err(format!(
+                    "invalid value for pause_on_builtin_display: expected 'true' or 'false', got {raw_value:?}"
+                )),
+            },
             SettingKey::Outer => {
                 let parsed = parse_points(key, raw_value)?;
                 spacing::check_outer(parsed)?;
@@ -517,6 +534,13 @@ fn run_set(args: &[&str], path_override: Option<&Path>) -> Result<String, String
                 (
                     format!("set menu_bar_icon = {}", parsed.as_str()),
                     serde_json::Value::String(parsed.as_str().to_owned()),
+                )
+            }
+            SettingValue::PauseOnBuiltinDisplay(parsed) => {
+                doc.settings.pause_on_builtin_display = Some(parsed);
+                (
+                    format!("set pause_on_builtin_display = {parsed}"),
+                    serde_json::Value::Bool(parsed),
                 )
             }
             SettingValue::Outer(parsed) => {
