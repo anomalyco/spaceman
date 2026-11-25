@@ -77,7 +77,12 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
         // Read once, and only if a Complete snapshot omits an owned float.
         let mut onscreen_frames = None;
         for application in &observation.applications {
-            let crate::AppObservation::Complete { app, windows, .. } = application else {
+            let crate::AppObservation::Complete {
+                app,
+                focused,
+                windows,
+            } = application
+            else {
                 continue;
             };
             if has_floating {
@@ -244,7 +249,15 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
                             target
                         ));
                     }
-                    if !app_owns_tiled || self.config.routes_every_window(&app.bundle_id, window) {
+                    if !app_owns_tiled
+                        || (self.config.routes_every_window(&app.bundle_id, window)
+                            && !self.replaces_native_tab(
+                                window,
+                                focused.as_ref(),
+                                windows,
+                                visible,
+                            ))
+                    {
                         app_owns_window = true;
                         app_owns_tiled = true;
                         FrozenWindowAffinity::ExplicitRoute(target)
@@ -268,6 +281,45 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
             visible_workspaces: visible.iter().map(|resolved| resolved.workspace).collect(),
             fullscreen_hud,
         })
+    }
+
+    /// Whether `window` is the incoming native tab of one of its app's tiles on the visible
+    /// workspace it opened over, so reconciling that workspace binds it to the tile's slot.
+    /// A rule that routes every new window leaves it there instead of sending it to the
+    /// rule's workspace (#509).
+    fn replaces_native_tab(
+        &self,
+        window: &crate::ObservedWindow,
+        focused: Option<&crate::PhysicalWindowId>,
+        windows: &[crate::ObservedWindow],
+        visible: &[ResolvedWorkspace],
+    ) -> bool {
+        if focused != Some(&window.id) {
+            return false;
+        }
+        let Some(resolved) = visible
+            .iter()
+            .find(|resolved| resolved.screen.contains_center(window.frame))
+        else {
+            return false;
+        };
+        // The app's windows that workspace's reconciliation would see as new.
+        let unbound: Vec<_> = windows
+            .iter()
+            .filter(|other| {
+                resolved.screen.contains_center(other.frame)
+                    && self.workspaces.workspace_of_any(&other.id).is_none()
+            })
+            .map(|other| other.id.clone())
+            .collect();
+        self.workspaces
+            .engine(resolved.workspace)
+            .replaces_native_tab(
+                &self.layout_settings(resolved.output),
+                windows,
+                &unbound,
+                focused,
+            )
     }
 
     /// Hidden workspaces are not reconciled, so an app that quit while its

@@ -111,7 +111,9 @@ overrides the default for what it decides: `action = "tile"` tiles one of these 
   `route_all_windows` Lab on, `windows = "all"` makes a bundle-level `route` rule route every new
   window of its application too (see [Labs](#labs)). Movable
   non-resizable windows remain floating on the workspace where first observed. A rule does not
-  repeatedly route existing slots, including a Ghostty native-tab physical replacement.
+  repeatedly route existing slots, including a native-tab physical replacement in any app: an
+  incoming tab that takes over its tile's slot stays on that tile's workspace, even under a
+  `windows = "all"` rule.
 - `ignore` leaves the window entirely alone: never tiled, never owned by a workspace, never moved or
   parked. Use it for applications that insist on positioning their own windows. A previously managed
   window is released the next time it is observed on screen.

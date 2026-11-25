@@ -31,6 +31,7 @@ mod reproduce_resize_temporary_stack_minimum;
 mod restart_dual_selector;
 mod restored_cross_selector_history;
 mod right_button_blocks_warp;
+mod route_all_native_tab;
 mod route_menu_strip;
 mod tall_float_round_trip;
 mod verify_drag_gap_reload;

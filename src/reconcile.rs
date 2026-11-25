@@ -390,6 +390,48 @@ fn reset_settling(model: &mut Model, cycle: u64, app: Option<&AppInstanceId>) {
     }
 }
 
+/// Whether reconciling an app's `windows` against `model` would hand the app's one
+/// missing tile to its `focused` window as an unambiguous native-tab replacement.
+/// `unbound` is the app's windows no slot holds yet, as reconciliation would see them.
+/// Routing asks first, so a rule that routes every new window doesn't take the
+/// incoming tab away from its slot (#509).
+#[must_use]
+pub fn replaces_native_tab(
+    model: &Model,
+    evidence: &ReconciliationEvidence,
+    settings: &Settings,
+    windows: &[crate::ObservedWindow],
+    unbound: &[PhysicalWindowId],
+    focused: Option<&PhysicalWindowId>,
+) -> bool {
+    let Some(app) = focused.map(|window| &window.app) else {
+        return false;
+    };
+    let slots = move || {
+        model
+            .workspace
+            .slots
+            .iter()
+            .filter(move |slot| slot.belongs_to(app))
+    };
+    if slots().any(|slot| matches!(slot.binding, BindingState::Unresolved { .. })) {
+        return false;
+    }
+    let stale: Vec<_> = slots()
+        .filter_map(Slot::bound_window)
+        .filter(|bound| !windows.iter().any(|window| &window.id == *bound))
+        .cloned()
+        .collect();
+    let context = AppReconcileContext {
+        focused,
+        windows,
+        cycle: 0,
+        evidence,
+        settings,
+    };
+    replacement_candidate(model, &stale, unbound, &context)
+}
+
 fn replacement_candidate(
     model: &Model,
     stale: &[PhysicalWindowId],
