@@ -512,14 +512,14 @@ spaceman config reset menu_bar_icon
 
 `recent_focus = true` changes which tile `Option+H/J/K/L` and `spaceman ctl focus` pick when several
 tiles on the focused tile's workspace border it on the side pressed: those that share part of its
-row or column with no nearer edge between. Of those, the one focused most recently wins, so pressing
-one way and back returns to where you were (with `1 | (2 / 3)`, left from 3 and right again lands on
-3, not 2). Every way a tile gets focus counts (keys, clicks, `Cmd+Tab`); focusing a floating window
-changes nothing, and a native tab keeps its tile's place. The order lives only in memory, and tiles
-not focused since Spaceman started rank last; with none of them focused, the nearest choice stands.
-A further tile never wins for being more recent. Crossing displays, focus from a floating window or
-an empty workspace, Fullscreen Layout, and `Option+Shift+H/J/K/L` are unchanged. It applies live. In Settings it is
-`Labs › Windows › Recent focus`.
+row or column, even a few points of it, with no nearer edge between. Of those, the one focused most
+recently wins, so pressing one way and back returns to where you were (with `1 | (2 / 3)`, left from
+3 and right again lands on 3, not 2). Every way a tile gets focus counts (keys, clicks, `Cmd+Tab`);
+focusing a floating window changes nothing, and a native tab keeps its tile's place. The order lives
+only in memory, and tiles not focused since Spaceman started rank last; with none of them focused,
+the nearest choice stands. A further tile never wins for being more recent. Crossing displays, focus
+from a floating window or an empty workspace, Fullscreen Layout, and `Option+Shift+H/J/K/L` are
+unchanged. It applies live. In Settings it is `Labs › Windows › Recent focus`.
 
 `empty_workspace_focus = true` makes an empty workspace chosen on another display the focused
 workspace for commands. Showing an empty workspace focuses nothing, so the window on the display you
