@@ -216,6 +216,8 @@ fn recalled_float_returns_to_remembered_display() {
                 workspace: ws(9),
                 frame: inset(RIGHT),
                 floating,
+                document: None,
+                title: None,
             }],
             1
         ));

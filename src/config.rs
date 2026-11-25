@@ -809,6 +809,7 @@ mod tests {
             frame: Rect::default(),
             resizable: true,
             title: title.map(std::sync::Arc::from),
+            document: None,
         }
     }
 

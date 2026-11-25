@@ -28,6 +28,7 @@ fn window(title: &str) -> ObservedWindow {
         },
         resizable: true,
         title: Some(title.into()),
+        document: None,
     }
 }
 

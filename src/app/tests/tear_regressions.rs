@@ -22,6 +22,7 @@ fn observe(windows: &[&crate::PhysicalWindowId]) -> crate::NativeObservation {
             frame: crate::Rect::default(),
             resizable: true,
             title: None,
+            document: None,
         };
         match apps.iter_mut().find(|app| app.app_id() == &window.app) {
             Some(crate::AppObservation::Complete { windows, .. }) => windows.push(observed),

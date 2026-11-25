@@ -33,6 +33,8 @@ fn remembered(bundle_id: &str, placements: &[(u8, crate::Rect, bool)]) -> Window
                     workspace: workspace(*value),
                     frame: *frame,
                     floating: *floating,
+                    document: None,
+                    title: None,
                 })
                 .collect(),
             1,
@@ -210,6 +212,67 @@ fn reopened_notes_find_their_workspaces_by_size() {
     assert!(runtime.parked.contains_key(&tall));
     let persisted = serde_json::to_string(&runtime.memory.memory).unwrap();
     assert!(!persisted.contains("title"), "{persisted}");
+    assert!(!persisted.contains("document"), "{persisted}");
+}
+
+#[test]
+fn same_size_reopened_windows_match_by_document_and_fuzzy_title_in_reverse_order() {
+    let tile = outputs().main().frame;
+    let mut memory = WindowMemory::default();
+    assert!(memory.record(
+        SAFARI,
+        vec![
+            RememberedWindow {
+                workspace: workspace(2),
+                frame: tile,
+                floating: false,
+                document: Some("file:///Users/example/code/spaceman".into()),
+                title: Some("spaceman — Cargo.toml".into()),
+            },
+            RememberedWindow {
+                workspace: workspace(3),
+                frame: tile,
+                floating: false,
+                document: None,
+                title: Some("Inbox (3) - Gmail".into()),
+            },
+        ],
+        1,
+    ));
+    let (gmail, editor) = (reopened(9, 50), reopened(9, 51));
+    let mut observation = observation_for_windows(
+        SAFARI,
+        &gmail,
+        &[(gmail.clone(), tile), (editor.clone(), tile)],
+    );
+    if let crate::AppObservation::Complete { windows, .. } = &mut observation.applications[0] {
+        windows[0].title = Some("Inbox (4) - Gmail".into());
+        windows[1].document = Some("file:///Users/example/code/spaceman".into());
+        windows[1].title = Some("spaceman — src/window_memory.rs".into());
+    }
+    let mut runtime = runtime(FakeBackend {
+        frames: HashMap::from([(gmail.clone(), tile), (editor.clone(), tile)]),
+        observation: Some(observation),
+        ..FakeBackend::default()
+    });
+    runtime.restore_window_memory(memory);
+    runtime.memory.started_at = Some(runtime.backend.now() - crate::app::memory::RECALL_WINDOW);
+
+    runtime.cycle(outputs(), &AtomicBool::new(false)).unwrap();
+
+    assert_eq!(runtime.workspaces.workspace_of(&gmail), Some(workspace(3)));
+    assert_eq!(runtime.workspaces.workspace_of(&editor), Some(workspace(2)));
+    assert_eq!(
+        recalls(&runtime),
+        vec![(50, workspace(3)), (51, workspace(2))]
+    );
+    // Journal and doctor output must never leak remembered titles or documents.
+    for event in &runtime.backend.journal {
+        let json = serde_json::to_string(event).unwrap();
+        assert!(!json.contains("Gmail"), "{json}");
+        assert!(!json.contains("spaceman —"), "{json}");
+        assert!(!json.contains("file:///Users/example"), "{json}");
+    }
 }
 
 fn position_writes(runtime: &WorkspaceRuntime<FakeBackend>, id: u32) -> usize {

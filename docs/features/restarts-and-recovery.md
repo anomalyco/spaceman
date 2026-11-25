@@ -38,7 +38,7 @@ Placement recall (reboot, fresh start, or app relaunch)     // recover.memory
 ├── During the first 60 s after Spaceman starts, each unseen bundle's first instance may claim
 │   remembered placements
 │   ├── recall closes early once every placement is claimed or the app quits
-│   ├── frame match (8 px) first, then creation order
+│   ├── exact AXDocument, then exact title, then fuzzy title, then frame (8 px), then size (8 px), then creation order
 │   ├── a placement saved floating floats again at its remembered frame, on its workspace's
 │   │   display, until Toggle Float tiles it
 │   ├── route/ignore rules win; disabled/unmanaged workspaces skipped
@@ -121,8 +121,8 @@ See [Recovery](../recovery.md) for the safe manual procedure; never delete `park
   checks startup recovery.
 - Live gauntlet, `scripts/gauntlet.sh`: SIGKILL with a window parked keeps it parked and its record on
   disk, and a relaunch keeps it on its workspace; `ctl quit` returns every parked window to its
-  recorded frame and empties `parked-windows.json`; `agent.log` has no panic or error line; no window
-  title reaches any state file, snapshot or `doctor` output; `doctor` counts every start, every clean
+  recorded frame and empties `parked-windows.json`; `agent.log` has no panic or error line; `window-memory.json` (when present) is mode `0600` and no
+  window title reaches any other state file, log, snapshot, or `doctor` output; `doctor` counts every start, every clean
   stop and no anomalies.
 - Observed (2026-10-01, two reinstalls via `scripts/install-app.sh`): restoration before exit
   succeeded both times (one retry). The first restart silently dropped five hidden-workspace slots
@@ -137,8 +137,8 @@ See [Recovery](../recovery.md) for the safe manual procedure; never delete `park
   relaunched at Spaceman's off-screen parking edge after a reboot, suggesting they saved parked
   frames; read `spaceman doctor` after the next reboot.
 - Memory restores the workspace and floating state during a recall, not tile position
-  or weight; multi-window apps reopening with identical frames are matched by creation order and can
-  swap workspaces.
+  or weight; multi-window apps reopening with identical frames match by `AXDocument` and title
+  first, falling back to creation order only when neither distinguishes them.
 - `ctl restart` exits without relaunching.
 - `doctor` only sees disagreements between the model and the screen. A window that is consistently on
   the wrong workspace looks healthy; its moves are in the journal diffs.

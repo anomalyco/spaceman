@@ -55,9 +55,10 @@ This file is the current engineering contract. README and `docs/` describe curre
   suggested arrangement — a pure, title-free classifier over the open windows (bundle ID, Launch
   Services category, size, resizability, display width), and the worker's one-shot move of those
   windows, its inventory, and its undo. It never writes a `route` rule.
-- `src/window_memory.rs`, `src/app/memory.rs`: advisory, title-free per-bundle placement memory and
-  relaunch recall. `src/journal.rs`, `src/journal/doctor.rs`, `src/app/journal.rs`: bounded
-  arrangement/anomaly journal and the `spaceman doctor` summary.
+- `src/window_memory.rs`, `src/app/memory.rs`: advisory per-bundle placement memory and relaunch
+  recall (storing local `title` and `AXDocument` in mode-`0600` `window-memory.json`).
+  `src/journal.rs`, `src/journal/doctor.rs`, `src/app/journal.rs`: bounded arrangement/anomaly
+  journal and the `spaceman doctor` summary.
 - `src/app/input.rs`: bounded ordered user input and geometry-based gesture tracking, independent
   of preview-worker availability. Main-thread pointer sampling must not make synchronous AX calls.
 - `src/status_item.rs`, `src/login_item.rs`, `src/termination.rs`: main-thread
@@ -127,8 +128,9 @@ This file is the current engineering contract. README and `docs/` describe curre
 - Accessibility is used only for window observation, focus, movement, resizing, and required input/
   display context, plus pressing the focused app's own "Move Tab to New Window" menu item when the
   user runs `move-tab`. Never require SIP to be disabled.
-- Window titles may be used for matching in memory but must never enter persistence, serialized
-  snapshots, debug output, HUD output, fixtures, logs, or control responses.
+- Window titles and `AXDocument` paths may be stored locally in mode-`0600` `window-memory.json`
+  solely for matching multi-window apps across restarts, and must never enter logs, `spaceman
+  doctor`, debug output, HUD output, fixtures, serialized snapshots, or control responses.
 - No telemetry, network access, or update checks without explicit product and security review.
   The updater (`src/updater.rs`) is the one reviewed network path: release builds only, the
   release service's manifest and `files/` only, nothing about the install beyond the User-Agent.

@@ -68,6 +68,7 @@ fn seen(id: u32, frame: crate::Rect) -> crate::AppObservation {
             frame,
             resizable: true,
             title: None,
+            document: None,
         }],
     }
 }

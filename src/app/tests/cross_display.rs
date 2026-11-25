@@ -288,6 +288,8 @@ workspace = 2",
                     workspace: target,
                     frame: frame(1050),
                     floating: false,
+                    document: None,
+                    title: None,
                 }],
                 1,
             );

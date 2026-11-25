@@ -71,6 +71,7 @@ fn sample_window(title: Option<&str>) -> ObservedWindow {
         frame: Rect::default(),
         resizable: true,
         title: title.map(std::sync::Arc::from),
+        document: None,
     }
 }
 

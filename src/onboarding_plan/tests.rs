@@ -513,6 +513,7 @@ fn nothing_built_from_an_observation_carries_a_window_title() {
                 },
                 resizable: true,
                 title: Some(Arc::from(TITLE)),
+                document: None,
             })
             .collect(),
     };

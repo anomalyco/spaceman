@@ -34,6 +34,7 @@ fn desktop(apps: &[OpenApp<'_>]) -> FakeBackend {
                 frame: *frame,
                 resizable: true,
                 title: Some(TITLE.into()),
+                document: None,
             });
         }
         applications.push(crate::AppObservation::Complete {

@@ -859,6 +859,7 @@ mod tests {
                     },
                     resizable: true,
                     title: None,
+                    document: None,
                 }],
             }],
         }

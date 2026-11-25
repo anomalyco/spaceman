@@ -27,6 +27,7 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
             frame,
             resizable: true,
             title: None,
+            document: None,
         };
         Some(self.config.patch(bundle_id, &probe))
     }

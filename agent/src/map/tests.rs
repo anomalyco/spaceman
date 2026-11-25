@@ -81,6 +81,7 @@ fn rules_map_includes_workspace_10_by_default_and_once_when_referenced() {
         },
         resizable: true,
         title: None,
+        document: None,
     };
     assert_eq!(
         config.disposition("com.example.Editor", &sample_window),
@@ -299,6 +300,7 @@ fn disposition(doc: &Doc, bundle_id: &str) -> spaceman::config::WindowDispositio
         },
         resizable: true,
         title: None,
+        document: None,
     };
     spaceman::config::Config::parse(&doc.source())
         .unwrap()

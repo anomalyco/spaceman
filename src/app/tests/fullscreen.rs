@@ -202,6 +202,7 @@ fn fullscreen_layout_activates_persisted_cross_app_focus_after_restart() {
                         frame: output,
                         resizable: true,
                         title: None,
+                        document: None,
                     }],
                 },
                 crate::AppObservation::Complete {
@@ -215,6 +216,7 @@ fn fullscreen_layout_activates_persisted_cross_app_focus_after_restart() {
                         frame: output,
                         resizable: true,
                         title: None,
+                        document: None,
                     }],
                 },
             ],
