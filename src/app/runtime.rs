@@ -55,6 +55,8 @@ pub(super) struct WorkspaceRuntime<B = MacWorkspaceBackend> {
     pub(super) inaccessible_since: HashMap<crate::PhysicalWindowId, Instant>,
     /// Smallest width and height each window has refused to shrink below.
     pub(super) minimum_sizes: HashMap<crate::PhysicalWindowId, (i32, i32)>,
+    /// Windows stale-parked recovery could not move, and when to try them again.
+    pub(super) unmovable_stale: super::stale_parked::UnmovableStale,
     pub(super) config: Config,
     /// Focus intent: a request in flight, focus left behind, and the
     /// cross-display workspace history Option+Tab reads.
@@ -358,6 +360,7 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
             omitted_windows: HashMap::new(),
             inaccessible_since: HashMap::new(),
             minimum_sizes: HashMap::new(),
+            unmovable_stale: super::stale_parked::UnmovableStale::default(),
             config,
             focus: super::focus::FocusTracker::with_fullscreen_restore(fullscreen_restore),
             gesture: None,
