@@ -17,11 +17,15 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
         point: (i32, i32),
         outputs: macos::DisplayOutputs,
     ) -> Result<CycleStatus, String> {
-        if !self.config.labs().focus_follows_mouse
-            || self.focus.warped_to(point)
+        if !self.config.labs().focus_follows_mouse {
+            return Ok(self.status(0, &outputs));
+        }
+        let pointer = self.backend.pointer_location();
+        self.focus.note_pointer(pointer);
+        if self.focus.take_warp(point)
             || self.gesture.is_some()
             || self.backend.any_mouse_button_down()
-            || self.backend.pointer_location() != Some(point)
+            || pointer != Some(point)
             || self.space_transition_until().is_some()
         {
             return Ok(self.status(0, &outputs));

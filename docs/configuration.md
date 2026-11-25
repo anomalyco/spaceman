@@ -455,7 +455,8 @@ Scratchpad, or an unmanaged window in front of the pointer keeps focus where it 
 one does not focus it. Nothing changes while a mouse button is held, a menu is open, a drag or a
 macOS Space slide is under way, or the pointer is over the menu bar, the Dock, the Workspace HUD or
 Settings. The pointer resting where `settings.mouse_follows_focus` put it is not a hover, so the
-two work together without feeding each other. In Settings it is
+two work together without feeding each other. That holds only until the pointer moves: once you
+move it away, coming back to that spot is a hover like any other. In Settings it is
 `Labs › Windows › Focus follows mouse`.
 
 `swipe_switch = true` makes Spaceman read `settings.trackpad_swipe` and turns the fixed three-finger
