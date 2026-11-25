@@ -51,12 +51,7 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
         cancelled: &AtomicBool,
     ) -> Result<CycleStatus, String> {
         self.ensure_managed_workspace(target)?;
-        if let Some(superseded) = self.tab_detach.take() {
-            log_event!(
-                "move tab: dropped the detach of {:?}: a newer move tab began",
-                superseded.source_window
-            );
-        }
+        self.finish_pending_tab_detach(&outputs, cancelled)?;
         let window = self
             .current_focus()
             .ok_or("Focused window is unavailable")?;
@@ -102,6 +97,35 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
                 self.cycle(outputs, cancelled)
             }
         }
+    }
+
+    /// A newer `move-tab` lets an earlier detach still waiting for its window
+    /// finish first: it observes until that window is claimed and sent to its
+    /// own target, or the detach expires, so the earlier tab keeps its
+    /// destination (#570).
+    fn finish_pending_tab_detach(
+        &mut self,
+        outputs: &macos::DisplayOutputs,
+        cancelled: &AtomicBool,
+    ) -> Result<(), String> {
+        while let Some(pending) = self.tab_detach.as_ref() {
+            let expires_at = pending.expires_at;
+            if cancelled.load(Ordering::Acquire) {
+                break;
+            }
+            self.cycle(outputs.clone(), cancelled)?;
+            if self.tab_detach.is_none() || self.backend.now() >= expires_at {
+                break;
+            }
+            self.backend.pause(TAB_DETACH_RECHECK);
+        }
+        if let Some(superseded) = self.tab_detach.take() {
+            log_event!(
+                "move tab: dropped the detach of {:?}: a newer move tab began",
+                superseded.source_window
+            );
+        }
+        Ok(())
     }
 
     /// Before `app`'s window affinities freeze: its first window that was not on

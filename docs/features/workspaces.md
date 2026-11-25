@@ -118,6 +118,8 @@ Send tab to workspace                                      // ws.move-tab
 │       so that window takes over the source slot (told apart by which one left the old frame)
 ├── Without --follow -> focus goes back to the window that stays; with --follow -> switches to <ws>
 │   and focuses the tab
+├── A newer move-tab while one is pending -> observes until the pending tab is claimed for its own
+│   <ws> or expires, then presses (issue 570)
 └── No window within 800 ms -> dropped; later windows open normally
 
 Mouse follows focus ([settings] mouse_follows_focus)       // ws.mouse-follows-focus
@@ -592,7 +594,8 @@ on the same letter.
   `--follow` switches to it, a visible target on another display tiles it, an AppKit tab group's
   next tab keeps the source slot, a single-tab window moves whole (with and without `--follow`), a
   late window is claimed by a prompt re-observation, expiry and a failed press leave nothing pending,
-  and another app's new window is never claimed. `src/macos/tabs.rs` covers menu-item matching and
+  a second move-tab while one is pending lets the earlier tab reach its own workspace first (#570)
+  and waits out a detach whose window never appears, and another app's new window is never claimed. `src/macos/tabs.rs` covers menu-item matching and
   loading AppKit's translations; `src/control.rs`, `src/shortcuts.rs` and `src/hotkeys.rs` cover
   parsing and bindings. Pressing the real menu item in Safari, Chromium or Ghostty is not covered.
 - Live gauntlet, `scripts/gauntlet.sh`: `ctl switch` parks every window to at most a one-point strip,
