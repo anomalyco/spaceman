@@ -678,13 +678,7 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
         CycleStatus {
             missing_frontmost_window: None,
             close_recheck: None,
-            layouts: active
-                .iter()
-                .map(|workspace| status_item::WorkspaceLayout {
-                    workspace: workspace.to_string(),
-                    mode: self.workspace_preview(*workspace),
-                })
-                .collect(),
+            layouts: self.status_layouts(visible, outputs),
             menu: self.workspace_menu(visible, outputs),
             active,
             failed,
@@ -713,11 +707,16 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
             .collect()
     }
 
-    fn workspace_preview(&self, workspace: WorkspaceId) -> UiHudLayout {
+    /// `workspace`'s menu-bar glyph, its tiles in `preview` space.
+    pub(super) fn workspace_preview(
+        &self,
+        workspace: WorkspaceId,
+        preview: crate::Rect,
+    ) -> UiHudLayout {
         if self.workspaces.deck(workspace).is_monocle() {
             UiHudLayout::Fullscreen
         } else {
-            UiHudLayout::Split(self.preview_layout(workspace, HUD_PREVIEW_RECT))
+            UiHudLayout::Split(self.preview_layout(workspace, preview))
         }
     }
 }

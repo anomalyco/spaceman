@@ -115,8 +115,12 @@ monitor = "main"
 # doctor diagnostics; with it off the pane stays out of Settings.
 # portrait_edge_rows = true makes the top and bottom edges of a display taller
 # than it is wide drop targets: drag a tiled window there for a half-height row.
+# physical_displays = true lists the menu bar's workspaces and the menu's
+# display sections left to right, draws a portrait display's glyph and HUD
+# Layouts previews tall, and tells same-named displays apart ("left", "right").
 #
 # [labs]
 # scratchpad = false
 # activity = false
 # portrait_edge_rows = false
+# physical_displays = false

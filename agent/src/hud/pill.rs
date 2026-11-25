@@ -189,7 +189,14 @@ fn render_slot(
     let drop = enter_offset(position, view.shown, view.still);
     let entries = view.entries();
     let track = match style {
-        HudStyle::Layouts => grow::track_with_mode(&entries, view.focus, icons, p, interactive),
+        HudStyle::Layouts => grow::track_with_mode(
+            &entries,
+            view.focus,
+            view.row.portrait,
+            icons,
+            p,
+            interactive,
+        ),
         HudStyle::Icons => icons::track_with_mode(&entries, view.focus, icons, p, interactive),
     };
     row()

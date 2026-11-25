@@ -13,7 +13,7 @@ use objc2_foundation::{NSObject, NSObjectProtocol, NSPoint, NSRect, NSSize, NSSt
 
 use crate::{
     WorkspaceId,
-    app::{Action, HUD_PREVIEW_RECT, UiHudLayout, WorkerAction},
+    app::{Action, UiHudLayout, WorkerAction, hud_preview_rect},
     login_item,
 };
 
@@ -25,6 +25,11 @@ pub(crate) use workspaces::{DisplayWorkspaces, MenuWorkspace};
 pub(crate) struct WorkspaceLayout {
     pub(crate) workspace: String,
     pub(crate) mode: UiHudLayout,
+    /// On a portrait display (`[labs] physical_displays`): the glyph is tall and `mode`'s tiles
+    /// are in [`crate::app::HUD_PORTRAIT_PREVIEW_RECT`] space.
+    pub(crate) portrait: bool,
+    /// The display's label for VoiceOver, with `[labs] physical_displays` on.
+    pub(crate) display: Option<String>,
 }
 
 struct TargetIvars {
@@ -380,7 +385,13 @@ fn workspace_layout_image(layouts: &[WorkspaceLayout]) -> Retained<NSImage> {
             unsafe { label.sizeWithAttributes(None) }.width.ceil()
         })
         .collect::<Vec<_>>();
-    let width = workspace_layout_image_width(&label_widths);
+    let cells = layouts
+        .iter()
+        .zip(&label_widths)
+        .map(|(layout, label_width)| (glyph_size(layout.portrait).width, *label_width))
+        .collect::<Vec<_>>();
+    let width = workspace_layout_image_width(&cells);
+    let description = accessibility_description(layouts);
     let layouts = layouts.to_vec();
     let image = NSImage::imageWithSize_flipped_drawingHandler(
         NSSize::new(width, 16.0),
@@ -391,25 +402,64 @@ fn workspace_layout_image(layouts: &[WorkspaceLayout]) -> Retained<NSImage> {
         }),
     );
     image.setTemplate(true);
+    if let Some(description) = description {
+        image.setAccessibilityDescription(Some(&NSString::from_str(&description)));
+    }
     image
+}
+
+/// What VoiceOver reads for the glyphs when they name their displays, such as
+/// "Workspace 6 on DELL U2720Q (left), workspace 1 on Studio Display".
+fn accessibility_description(layouts: &[WorkspaceLayout]) -> Option<String> {
+    if layouts.iter().all(|layout| layout.display.is_none()) {
+        return None;
+    }
+    let spoken = layouts
+        .iter()
+        .map(|layout| match &layout.display {
+            Some(display) => format!("workspace {} on {display}", layout.workspace),
+            None => format!("workspace {}", layout.workspace),
+        })
+        .collect::<Vec<_>>()
+        .join(", ");
+    let mut chars = spoken.chars();
+    chars
+        .next()
+        .map(|first| first.to_uppercase().chain(chars).collect())
 }
 
 // Drawing offsets shared by the image size and `draw_workspace_layouts`.
 const LAYOUT_START_X: f64 = 0.5;
-const LABEL_OFFSET_X: f64 = 19.0;
+/// From a glyph's right edge to its label.
+const LABEL_GAP: f64 = 4.0;
 const LAYOUT_GAP: f64 = 5.0;
 const TRAILING_PADDING: f64 = 1.0;
+/// A landscape glyph; a portrait one is the same box on its side.
+const GLYPH_LONG: f64 = 15.0;
+const GLYPH_SHORT: f64 = 11.0;
 
-/// Width that holds every layout glyph and its label, ending one point past the last label.
-fn workspace_layout_image_width(label_widths: &[f64]) -> f64 {
-    if label_widths.is_empty() {
+/// A layout glyph's size: tall on a portrait display.
+const fn glyph_size(portrait: bool) -> NSSize {
+    if portrait {
+        NSSize::new(GLYPH_SHORT, GLYPH_LONG)
+    } else {
+        NSSize::new(GLYPH_LONG, GLYPH_SHORT)
+    }
+}
+
+/// Width that holds every `(glyph width, label width)` cell, ending one point past the last
+/// label.
+fn workspace_layout_image_width(cells: &[(f64, f64)]) -> f64 {
+    if cells.is_empty() {
         return 0.0;
     }
-    let steps = label_widths.len() - 1;
+    let steps = cells.len() - 1;
     LAYOUT_START_X
-        + label_widths.iter().sum::<f64>()
-        + steps as f64 * (LABEL_OFFSET_X + LAYOUT_GAP)
-        + LABEL_OFFSET_X
+        + cells
+            .iter()
+            .map(|(glyph, label)| glyph + LABEL_GAP + label)
+            .sum::<f64>()
+        + steps as f64 * LAYOUT_GAP
         + TRAILING_PADDING
 }
 
@@ -424,7 +474,10 @@ fn draw_workspace_layouts(
     for ((layout, label), label_width) in
         layouts.iter().zip(labels).zip(label_widths.iter().copied())
     {
-        let frame = NSRect::new(NSPoint::new(x, 2.5), NSSize::new(15.0, 11.0));
+        let size = glyph_size(layout.portrait);
+        // Centred on the 16-point image: y 2.5 for a landscape glyph, 0.5 for a portrait one.
+        let frame = NSRect::new(NSPoint::new(x, (16.0 - size.height) / 2.0), size);
+        let preview = hud_preview_rect(layout.portrait);
         let outline = NSBezierPath::bezierPathWithRoundedRect_xRadius_yRadius(frame, 2.5, 2.5);
         match &layout.mode {
             UiHudLayout::Fullscreen => outline.fill(),
@@ -432,19 +485,20 @@ fn draw_workspace_layouts(
                 outline.setLineWidth(1.25);
                 outline.stroke();
                 for tile in tiles {
+                    let (preview_w, preview_h) =
+                        (f64::from(preview.width), f64::from(preview.height));
                     let tile = NSRect::new(
                         NSPoint::new(
-                            x + f64::from(tile.x) / f64::from(HUD_PREVIEW_RECT.width) * 15.0,
+                            x + f64::from(tile.x) / preview_w * size.width,
                             // Preview frames are top-down; the image is unflipped.
-                            2.5 + (f64::from(HUD_PREVIEW_RECT.height)
-                                - f64::from(tile.y)
-                                - f64::from(tile.height))
-                                / f64::from(HUD_PREVIEW_RECT.height)
-                                * 11.0,
+                            frame.origin.y
+                                + (preview_h - f64::from(tile.y) - f64::from(tile.height))
+                                    / preview_h
+                                    * size.height,
                         ),
                         NSSize::new(
-                            f64::from(tile.width) / f64::from(HUD_PREVIEW_RECT.width) * 15.0,
-                            f64::from(tile.height) / f64::from(HUD_PREVIEW_RECT.height) * 11.0,
+                            f64::from(tile.width) / preview_w * size.width,
+                            f64::from(tile.height) / preview_h * size.height,
                         ),
                     );
                     let tile = NSBezierPath::bezierPathWithRect(tile);
@@ -454,8 +508,10 @@ fn draw_workspace_layouts(
             }
         }
         // SAFETY: Called inside `NSImage` drawing handler with a active graphics context.
-        unsafe { label.drawAtPoint_withAttributes(NSPoint::new(x + LABEL_OFFSET_X, 0.5), None) };
-        x += LABEL_OFFSET_X + LAYOUT_GAP + label_width;
+        unsafe {
+            label.drawAtPoint_withAttributes(NSPoint::new(x + size.width + LABEL_GAP, 0.5), None);
+        };
+        x += size.width + LABEL_GAP + LAYOUT_GAP + label_width;
     }
 }
 
@@ -498,16 +554,48 @@ mod tests {
 
     #[test]
     fn image_width_covers_the_last_label() {
-        for widths in [vec![7.0], vec![7.0, 8.0], vec![7.0, 14.0, 8.0, 7.0]] {
+        let (long, short) = (GLYPH_LONG, GLYPH_SHORT);
+        for cells in [
+            vec![(long, 7.0)],
+            vec![(long, 7.0), (short, 8.0)],
+            vec![(short, 7.0), (long, 14.0), (long, 8.0), (short, 7.0)],
+        ] {
             let mut x = LAYOUT_START_X;
             let mut label_end = 0.0;
-            for width in &widths {
-                label_end = x + LABEL_OFFSET_X + width;
-                x += LABEL_OFFSET_X + LAYOUT_GAP + width;
+            for (glyph, width) in &cells {
+                label_end = x + glyph + LABEL_GAP + width;
+                x += glyph + LABEL_GAP + LAYOUT_GAP + width;
             }
-            assert!(workspace_layout_image_width(&widths) >= label_end);
+            assert!(workspace_layout_image_width(&cells) >= label_end);
         }
-        assert_eq!(workspace_layout_image_width(&[7.0]), 27.5);
+        assert_eq!(workspace_layout_image_width(&[(long, 7.0)]), 27.5);
         assert_eq!(workspace_layout_image_width(&[]), 0.0);
+    }
+
+    #[test]
+    fn portrait_glyphs_are_tall_and_fit_the_menu_bar_image() {
+        let tall = glyph_size(true);
+        assert!(tall.height > tall.width && tall.height <= 16.0);
+        let wide = glyph_size(false);
+        assert_eq!((wide.width, wide.height), (15.0, 11.0));
+    }
+
+    #[test]
+    fn voiceover_names_each_workspace_display_only_when_known() {
+        let layout = |workspace: &str, display: Option<&str>| WorkspaceLayout {
+            workspace: workspace.into(),
+            mode: UiHudLayout::Fullscreen,
+            portrait: false,
+            display: display.map(str::to_owned),
+        };
+        assert_eq!(accessibility_description(&[layout("1", None)]), None);
+        assert_eq!(
+            accessibility_description(&[
+                layout("6", Some("DELL U2720Q (left)")),
+                layout("1", Some("Studio Display")),
+            ])
+            .as_deref(),
+            Some("Workspace 6 on DELL U2720Q (left), workspace 1 on Studio Display")
+        );
     }
 }

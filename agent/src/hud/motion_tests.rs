@@ -228,6 +228,7 @@ fn display(
         from: from.map(id),
         workspaces,
         order: Vec::new(),
+        portrait: false,
     }
 }
 
@@ -781,7 +782,7 @@ fn the_widest_capsule_and_its_shadow_fit_the_panel() {
     }
     // Ten workspaces of layouts fit without scrolling.
     let ten: Vec<_> = (1..=10).map(|number| workspace(number, &["a"])).collect();
-    let (_, width) = grow::rest(&ten, Some(id(1)));
+    let (_, width) = grow::rest(&ten, Some(id(1)), false);
     assert!(width <= pill::max_row_width(OVERLAY_SIZE.0));
 }
 

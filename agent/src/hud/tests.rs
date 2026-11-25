@@ -83,6 +83,7 @@ fn row(visible: u8, from: Option<u8>) -> UiHudDisplay {
         from: from.map(id),
         workspaces,
         order: Vec::new(),
+        portrait: false,
     }
 }
 
@@ -213,7 +214,7 @@ fn the_layouts_row_is_as_wide_as_the_prototype_s() {
         let entries: Vec<_> = (1..=count)
             .map(|number| workspace(number, &["a"]))
             .collect();
-        let (_, width) = grow::rest(&entries, Some(id(1)));
+        let (_, width) = grow::rest(&entries, Some(id(1)), false);
         let n = f32::from(count);
         // `24 + w * (1 + (n - 1) * small) + gap * (n - 1)`, inside the capsule's border.
         let expected =
@@ -364,6 +365,7 @@ fn visited_empty_workspaces_keep_the_configured_workspace_order() {
             },
         ],
         order: order.clone(),
+        portrait: false,
     };
     let mut flow = HudFlow::new(true);
     arrived(&mut flow, row('Q', None), 0);
@@ -529,6 +531,7 @@ fn empty_display(id_: &str, visible: u8, from: Option<u8>) -> UiHudDisplay {
         from: from.map(id),
         workspaces: vec![workspace(visible, &[])],
         order: WorkspaceId::all().collect(),
+        portrait: false,
     }
 }
 

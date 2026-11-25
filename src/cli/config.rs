@@ -204,6 +204,7 @@ impl Key {
             Self::Lab(LabFeature::Scratchpad) => "labs.scratchpad",
             Self::Lab(LabFeature::Activity) => "labs.activity",
             Self::Lab(LabFeature::PortraitEdgeRows) => "labs.portrait_edge_rows",
+            Self::Lab(LabFeature::PhysicalDisplays) => "labs.physical_displays",
         }
     }
 

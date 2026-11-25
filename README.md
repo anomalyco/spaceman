@@ -137,8 +137,8 @@ Accessibility is missing), `Pause Tiling` (or `Resume Tiling` while paused), `Wo
 `Launch at Login`, `Settings...` (`⌘,`), `Check for Updates...`, and `Quit Spaceman` (`⌘Q`). Settings
 includes `General`, `Layout` (Dwindle or Columns new-window tiling, window gaps, screen-edge padding,
 and a single-window width for wide displays, over a live preview), `Rules`, `Workspaces`,
-`Shortcuts`, and, with `[labs] activity = true`, `Activity` (title-free arrangement diagnostics and
-process vitals). If macOS requires approval, the login item action opens **System
+`Shortcuts`, with `[labs] activity = true`, `Activity` (title-free arrangement diagnostics and
+process vitals), and `Labs` (a switch for each experimental feature, all off by default). If macOS requires approval, the login item action opens **System
 Settings > General > Login Items & Extensions**.
 
 ## Everyday Use

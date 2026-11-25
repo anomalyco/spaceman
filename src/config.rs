@@ -210,6 +210,10 @@ pub struct LabsConfig {
     /// Top and bottom display edge drop bands that make a half-height row on portrait displays.
     #[serde(default)]
     pub portrait_edge_rows: bool,
+    /// The menu bar, its menu and the HUD's Layouts style follow the displays' physical
+    /// arrangement: left to right, portrait displays drawn tall, same-named displays told apart.
+    #[serde(default)]
+    pub physical_displays: bool,
 }
 
 impl LabsConfig {
@@ -220,6 +224,7 @@ impl LabsConfig {
             LabFeature::Scratchpad => self.scratchpad,
             LabFeature::Activity => self.activity,
             LabFeature::PortraitEdgeRows => self.portrait_edge_rows,
+            LabFeature::PhysicalDisplays => self.physical_displays,
         }
     }
 }
@@ -233,11 +238,18 @@ pub enum LabFeature {
     Activity,
     /// Top and bottom display edge drop bands that make a half-height row on portrait displays.
     PortraitEdgeRows,
+    /// The menu bar, its menu and the HUD's Layouts style in physical display order and shape.
+    PhysicalDisplays,
 }
 
 impl LabFeature {
     /// Every switch, in the order `[labs]` lists them.
-    pub const ALL: [Self; 3] = [Self::Scratchpad, Self::Activity, Self::PortraitEdgeRows];
+    pub const ALL: [Self; 4] = [
+        Self::Scratchpad,
+        Self::Activity,
+        Self::PortraitEdgeRows,
+        Self::PhysicalDisplays,
+    ];
 
     /// The `[labs]` key that turns this feature on.
     #[must_use]
@@ -246,6 +258,7 @@ impl LabFeature {
             Self::Scratchpad => "scratchpad",
             Self::Activity => "activity",
             Self::PortraitEdgeRows => "portrait_edge_rows",
+            Self::PhysicalDisplays => "physical_displays",
         }
     }
 

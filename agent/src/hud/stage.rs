@@ -90,6 +90,7 @@ impl HudPreview {
                 .filter_map(|(workspace, number)| hud_workspace(number, workspace))
                 .collect(),
             order: Vec::new(),
+            portrait: false,
         }
     }
 
