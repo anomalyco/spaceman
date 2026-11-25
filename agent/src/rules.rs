@@ -123,6 +123,7 @@ impl Doc {
             float_follows_display: self.lab(LabFeature::FloatFollowsDisplay),
             workspace_steps: self.lab(LabFeature::WorkspaceSteps),
             four_finger_swipe: self.lab(LabFeature::FourFingerSwipe),
+            single_window_height: self.lab(LabFeature::SingleWindowHeight),
         }
     }
 

@@ -40,6 +40,7 @@ update_channel = "stable"             # optional (default: "stable"); or "dev", 
 mouse_follows_focus = "off"           # optional (default: "off"); or "display", "window"
 trackpad_swipe = true                 # optional (default: true); read only with [labs] swipe_switch
 single_window_max_width = 0           # optional (default: 0, off); or 320 through 16384 points
+single_window_max_height = 0          # optional (default: 0, off); or 320 through 16384 points; read only with [labs] single_window_height
 workspace_order = []                  # optional (default: []); workspaces listed first, in this order
 
 [settings.gaps]                       # optional; every key defaults to 0
@@ -210,6 +211,13 @@ tiled window of a workspace or any window in Fullscreen Layout. The window is ce
 inside the padded area; on a display that is narrower, it fills the area as before. It suits wide and
 ultrawide displays, where one full-width window is hard to read.
 
+`single_window_max_height` does the same for that window's height, and is read only while the
+`single_window_height` Lab is on (see [Labs](#labs)). The window is then centered on both axes: at
+the width cap when the padded area is wider, and at the height cap when it is taller. With
+`single_window_max_width = 1440` and `single_window_max_height = 900`, a browser alone on an external
+display is the size of a 1440 × 900 laptop screen. Each cap works without the other, and with the Lab
+off the height key is ignored and a lone window keeps the full height, as before.
+
 Out-of-range values are rejected with a message naming the key and its range, like any other invalid
 configuration. Every key defaults to `0` (an edge to `outer`, itself `0`), so a file without them
 tiles exactly as before.
@@ -228,6 +236,7 @@ spaceman config set gaps.inner 8
 spaceman config set gaps.outer 8
 spaceman config set gaps.top 32
 spaceman config set single_window_max_width 1680
+spaceman config set single_window_max_height 1050   # read with labs.single_window_height on
 spaceman config get gaps.inner
 ```
 
@@ -340,8 +349,8 @@ in the file are kept.
 `[labs]` turns on experimental features one by one. Every switch is off by default, and with all of
 them off Spaceman behaves exactly as if Labs did not exist: no extra shortcuts register and no
 command changes behavior. Unknown keys are config errors. Settings › Labs lists every switch,
-grouped by what it changes (`Windows`: Scratchpad, Portrait edge rows, Recent focus and Dragged
-floats follow their display; `Workspaces`: Swipe switch, Focus empty workspaces on other
+grouped by what it changes (`Windows`: Scratchpad, Portrait edge rows, Recent focus, Dragged
+floats follow their display and Single-window height; `Workspaces`: Swipe switch, Focus empty workspaces on other
 displays, Workspace steps and Four-finger swipe; `Menu bar & HUD`: Physical display order; `Settings`: Activity), and flipping one there
 writes the same key.
 
@@ -357,6 +366,7 @@ empty_workspace_focus = false         # optional (default: false); see below
 float_follows_display = false         # optional (default: false); dragged floats join that display's workspace
 workspace_steps = false               # optional (default: false); switch/move next|prev
 four_finger_swipe = false             # optional (default: false); the workspace swipe takes four fingers
+single_window_height = false          # optional (default: false); reads settings.single_window_max_height
 ```
 
 `scratchpad = true` enables the Scratchpad (see [Controls › Scratchpad](controls.md#scratchpad-lab)) and
@@ -369,6 +379,15 @@ hidden in the scratchpad brings them back on screen, where they tile again.
 and Save snapshot (see [Restarts and Recovery](features/restarts-and-recovery.md)). With it off the pane
 stays out of the Settings sidebar and `⌘6` opens Labs instead; `spaceman doctor` and the journal
 keep recording either way. Turning it off while the pane is open returns Settings to General.
+
+`single_window_height = true` makes Spaceman read `settings.single_window_max_height` (see
+[Gaps, Screen Edges, and Single-Window Width](#gaps-screen-edges-and-single-window-width)): a window
+alone on its display, or in Fullscreen Layout, is centered at that height when the padded area is
+taller, as `single_window_max_width` does for its width. It adds **Single-window height** under
+Settings › Layout › Wide displays, with Off, 900, 1050 and 1200 (the 16:10 heights of the width
+presets 1440, 1680 and 1920) and any other height `config.toml` sets. With it off, the key is
+ignored and its row is hidden. It applies live. In Settings it is
+`Labs › Windows › Single-window height`.
 
 `swipe_switch = true` makes Spaceman read `settings.trackpad_swipe` and turns the fixed three-finger
 swipe row in Settings › Shortcuts into the **Swipe to switch workspace** switch (see
@@ -557,8 +576,8 @@ normal recovery data.
 Edits saved in Spaceman Settings or in an external editor take effect automatically: rule changes,
 workspace display assignments, `settings.hud`, `settings.hud_style`,
 `settings.hud_position`, `settings.mouse_follows_focus`, `settings.trackpad_swipe`,
-`settings.workspace_order`, `settings.gaps`, and
-`settings.single_window_max_width` reload without restarting (Settings › Layout retiles at once; an
+`settings.workspace_order`, `settings.gaps`, `settings.single_window_max_width`, and
+`settings.single_window_max_height` reload without restarting (Settings › Layout retiles at once; an
 external edit applies on the next retile);
 `settings.update_channel` applies at the next update check. Global shortcuts for a
 newly added named workspace letter (`Option+A` ... `Option+Z`) register on the next app start:

@@ -1,5 +1,5 @@
-//! `[settings.gaps]` and `settings.single_window_max_width`, edited in place like the rest of
-//! the file. A value set to its default `0` leaves the file, and so does a table it empties.
+//! `[settings.gaps]`, `settings.single_window_max_width` and `settings.single_window_max_height`,
+//! edited in place like the rest of the file. A value set to its default `0` leaves the file, and so does a table it empties.
 //! `gaps.outer` is the file's own: Settings shows the edges it resolves to and never writes it.
 
 use spaceman::spacing::{Spacing, SpacingKey, check_outer};

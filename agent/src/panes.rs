@@ -220,6 +220,7 @@ pub(crate) const SCENES: &[Scene] = &[
                 left: 8,
                 right: 8,
                 single_window_max_width: 1680,
+                single_window_max_height: 0,
             });
         });
     }),

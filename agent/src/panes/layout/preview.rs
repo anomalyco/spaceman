@@ -91,7 +91,7 @@ pub(super) fn three_tiles(layout: LayoutMode, spacing: Spacing, display: Rect) -
 }
 
 /// The preview card: the three-window display, joined by an ultrawide holding one capped window
-/// while a single-window width is set.
+/// while a single-window width or height is set.
 pub(super) fn card(p: Paint, layout: LayoutMode, spacing: Spacing) -> El {
     let mut displays = row()
         .key("displays")
@@ -106,7 +106,7 @@ pub(super) fn card(p: Paint, layout: LayoutMode, spacing: Spacing) -> El {
             DISPLAY_WIDTH,
             &three_tiles(layout, spacing, DISPLAY),
         ));
-    if spacing.single_window_max_width > 0 {
+    if spacing.single_window_max_width > 0 || spacing.single_window_max_height > 0 {
         displays = displays.child(display(
             p,
             "single",

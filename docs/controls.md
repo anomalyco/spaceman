@@ -59,7 +59,8 @@ to the workspace and a second press cycles. Clicking an already-active workspace
 HUD preserves current focus.
 
 Fullscreen Layout is a workspace mode: every tiled window receives the full display frame (less any
-`settings.gaps` edge padding, and centered at `settings.single_window_max_width` when set), and the
+`settings.gaps` edge padding, and centered at `settings.single_window_max_width` when set, and at
+`settings.single_window_max_height` with the `single_window_height` Lab), and the
 focused window is raised above the others. Its menu-bar workspace glyph is filled while the mode is
 active. Option-backtick focuses the next window and wraps
 through the workspace's stable tile order, then its floating windows; it provides the same ordering in split layouts. In

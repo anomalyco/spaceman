@@ -80,7 +80,8 @@ impl SettingKey {
                 format!(
                     "unknown setting {raw:?}; valid keys: hud, hud_style, hud_position, layout, \
                      update_channel, mouse_follows_focus, trackpad_swipe, gaps.inner, gaps.outer, \
-                     gaps.top, gaps.bottom, gaps.left, gaps.right, single_window_max_width"
+                     gaps.top, gaps.bottom, gaps.left, gaps.right, single_window_max_width, \
+                     single_window_max_height"
                 )
             }),
         }
@@ -220,6 +221,7 @@ impl Key {
             Self::Lab(LabFeature::FloatFollowsDisplay) => "labs.float_follows_display",
             Self::Lab(LabFeature::WorkspaceSteps) => "labs.workspace_steps",
             Self::Lab(LabFeature::FourFingerSwipe) => "labs.four_finger_swipe",
+            Self::Lab(LabFeature::SingleWindowHeight) => "labs.single_window_height",
         }
     }
 

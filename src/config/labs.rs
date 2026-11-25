@@ -43,6 +43,10 @@ pub struct LabsConfig {
     /// gestures (such as Accessibility "Three Finger Drag") to macOS.
     #[serde(default)]
     pub four_finger_swipe: bool,
+    /// `settings.single_window_max_height`: a lone tile is centered at that height too, and
+    /// Settings › Layout shows its row.
+    #[serde(default)]
+    pub single_window_height: bool,
 }
 
 impl LabsConfig {
@@ -60,6 +64,7 @@ impl LabsConfig {
             LabFeature::FloatFollowsDisplay => self.float_follows_display,
             LabFeature::WorkspaceSteps => self.workspace_steps,
             LabFeature::FourFingerSwipe => self.four_finger_swipe,
+            LabFeature::SingleWindowHeight => self.single_window_height,
         }
     }
 }
@@ -88,11 +93,13 @@ pub enum LabFeature {
     WorkspaceSteps,
     /// The workspace swipe takes four fingers instead of three.
     FourFingerSwipe,
+    /// A lone tile's height cap, `settings.single_window_max_height`.
+    SingleWindowHeight,
 }
 
 impl LabFeature {
     /// Every switch, in the order `[labs]` lists them.
-    pub const ALL: [Self; 10] = [
+    pub const ALL: [Self; 11] = [
         Self::Scratchpad,
         Self::Activity,
         Self::PortraitEdgeRows,
@@ -103,6 +110,7 @@ impl LabFeature {
         Self::FloatFollowsDisplay,
         Self::WorkspaceSteps,
         Self::FourFingerSwipe,
+        Self::SingleWindowHeight,
     ];
 
     /// The `[labs]` key that turns this feature on.
@@ -119,6 +127,7 @@ impl LabFeature {
             Self::FloatFollowsDisplay => "float_follows_display",
             Self::WorkspaceSteps => "workspace_steps",
             Self::FourFingerSwipe => "four_finger_swipe",
+            Self::SingleWindowHeight => "single_window_height",
         }
     }
 

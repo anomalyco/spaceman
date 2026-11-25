@@ -57,8 +57,10 @@ Spacing                                                 // tile.spacing
 ├── settings.gaps.top/bottom/left/right -> outer padding; gives way above a 320×240 tiled area
 ├── settings.gaps.outer              -> padding of each of those edges the file leaves out; an edge
 │   with its own key keeps it, even at 0
-└── settings.single_window_max_width -> a lone tile (one tiled window, or Fullscreen Layout) centered
-    at that width when the padded area is wider
+├── settings.single_window_max_width -> a lone tile (one tiled window, or Fullscreen Layout) centered
+│   at that width when the padded area is wider
+└── settings.single_window_max_height -> with [labs] single_window_height, that lone tile also
+    centered at that height when the padded area is taller (both axes at once with both caps)
 ```
 
 ## How To Get To It (User POV)
@@ -68,8 +70,8 @@ Keyboard: Option+H/J/K/L, Option+Shift+H/J/K/L, Option+`, Option+-, Option+=, Op
 Pointer:  drag a managed window (reorder/nest/move display), drag its edge (resize)
 CLI:      spaceman ctl focus | move-direction | resize shrink|grow|width|height | balance | layout | retile
 Shortcut: [shortcuts.bindings] can bind any of those, e.g. "ctrl+alt+w" = "resize width 1200"
-Settings: Settings › Layout -> New windows (Dwindle | Columns), Window gaps (Customize separately: Between windows, Screen edges, Top/Bottom/Left/Right edge), Single-window width
-Config:   spaceman config set layout dwindle|columns; spaceman config set gaps.inner|gaps.outer|gaps.top|gaps.bottom|gaps.left|gaps.right|single_window_max_width <points>
+Settings: Settings › Layout -> New windows (Dwindle | Columns), Window gaps (Customize separately: Between windows, Screen edges, Top/Bottom/Left/Right edge), Wide displays: Single-window width (and, with Labs › Windows › Single-window height, Single-window height)
+Config:   spaceman config set layout dwindle|columns; spaceman config set gaps.inner|gaps.outer|gaps.top|gaps.bottom|gaps.left|gaps.right|single_window_max_width|single_window_max_height <points>
 ```
 
 Input arriving while the worker is busy queues in order (up to 64); queued input is dropped on
