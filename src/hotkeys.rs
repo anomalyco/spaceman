@@ -301,6 +301,14 @@ fn worker_action(command: &Command) -> WorkerAction {
         Command::Switch(workspace) => WorkerAction::SwitchWorkspace(*workspace),
         Command::Move(workspace) => WorkerAction::MoveFocused(*workspace),
         Command::MoveFollow(workspace) => WorkerAction::MoveFocusedFollow(*workspace),
+        Command::MoveTab(workspace) => WorkerAction::MoveTab {
+            target: *workspace,
+            follow: false,
+        },
+        Command::MoveTabFollow(workspace) => WorkerAction::MoveTab {
+            target: *workspace,
+            follow: true,
+        },
         Command::BackAndForth => WorkerAction::WorkspaceBackAndForth,
         Command::MoveWorkspace(target) => WorkerAction::MoveWorkspaceToDisplay(target.clone()),
         Command::Focus(direction) => WorkerAction::Focus(*direction),
@@ -315,6 +323,22 @@ fn worker_action(command: &Command) -> WorkerAction {
         Command::Balance => WorkerAction::Balance,
         Command::Retile => WorkerAction::Retile,
     }
+}
+
+/// The virtual key and Carbon modifiers `chord` is pressed as on the active keyboard layout: the
+/// key a shortcut with nothing else on it registers. `None` when the layout has no key for it.
+pub(crate) fn key_press(chord: shortcuts::Chord) -> Option<(u32, u32)> {
+    key_press_on(&LayoutSnapshot::current().ok()?, chord)
+}
+
+fn key_press_on(layout: &LayoutSnapshot, chord: shortcuts::Chord) -> Option<(u32, u32)> {
+    let key = layout
+        .candidates(logical_key(chord.key))
+        .ok()?
+        .into_iter()
+        .next()?;
+    let shift = if key.shift { SHIFT_KEY } else { 0 };
+    Some((key.key_code, carbon_modifiers(chord.modifiers) | shift))
 }
 
 fn logical_key(key: shortcuts::Key) -> LogicalKey {
@@ -1063,6 +1087,43 @@ mod tests {
         );
         assert!(resize.iter().any(|registration| registration.key_code == 13
             && registration.modifiers == OPTION_KEY | CONTROL_KEY));
+    }
+
+    #[test]
+    fn move_tab_bindings_queue_move_tab_with_and_without_follow() {
+        let enabled = WorkspaceId::numbered().collect::<Vec<_>>();
+        let shortcuts = shortcuts(
+            true,
+            r#"
+            "ctrl+alt+shift+2" = "move-tab 2"
+            "ctrl+alt+shift+3" = "move-tab 3 --follow"
+            "#,
+        );
+        let plan = HotkeyPlan::from_layout(&enabled, &shortcuts, &layout()).unwrap();
+        let send = registration(
+            &plan,
+            &WorkerAction::MoveTab {
+                target: WorkspaceId::TWO,
+                follow: false,
+            },
+        );
+        assert_eq!(send.len(), 1);
+        assert_eq!(send[0].modifiers, OPTION_KEY | SHIFT_KEY | CONTROL_KEY);
+        assert_eq!(send[0].description, "move tab to workspace 2");
+        let follow = registration(
+            &plan,
+            &WorkerAction::MoveTab {
+                target: WorkspaceId::THREE,
+                follow: true,
+            },
+        );
+        assert_eq!(follow.len(), 1);
+        // The built-in Move shortcut on Option+Shift+2 is untouched.
+        assert_eq!(
+            action(&plan, "move window to workspace 2"),
+            Some(&WorkerAction::MoveFocused(WorkspaceId::TWO))
+        );
+        assert!(plan.warnings.is_empty(), "{:?}", plan.warnings);
     }
 
     #[test]

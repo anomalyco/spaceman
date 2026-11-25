@@ -42,19 +42,9 @@ pub(super) struct WorkspaceRuntime<B = MacWorkspaceBackend> {
     /// target frame; past `APPLY_ATTEMPT_LIMIT` the target is frozen.
     pub(super) apply_attempts:
         [HashMap<crate::PhysicalWindowId, (crate::Rect, u8)>; WorkspaceId::COUNT],
-    pub(super) parked: HashMap<crate::PhysicalWindowId, crate::Rect>,
-    /// When each window was last parked. Apps apply position writes
-    /// asynchronously, so a fresh park must settle before an on-screen
-    /// observation may be trusted as a genuine reappearance.
-    pub(super) recently_parked: HashMap<crate::PhysicalWindowId, Instant>,
-    /// When each window last un-parked itself (confirmed by the window server).
-    pub(super) recent_heals: HashMap<crate::PhysicalWindowId, Instant>,
-    /// Consecutive re-parks undone by the app; past the limit the window's
-    /// reappearance is honored instead of fought.
-    pub(super) repark_attempts: HashMap<crate::PhysicalWindowId, u8>,
-    /// Windows that repeatedly un-park themselves. They remain managed and
-    /// tiled, but are left visible across workspace switches for the session.
-    pub(super) parking_exempt: HashSet<crate::PhysicalWindowId>,
+    /// Parked windows' recovery frames and parking phases, and the windows
+    /// exempt from parking because they keep un-parking themselves.
+    pub(super) parked: ParkTable,
     /// Bound windows omitted from the AX snapshot but still listed by CG,
     /// with their settling and close-recheck state.
     pub(super) omitted_windows: HashMap<crate::PhysicalWindowId, cycle::Omission>,
@@ -63,11 +53,6 @@ pub(super) struct WorkspaceRuntime<B = MacWorkspaceBackend> {
     pub(super) inaccessible_since: HashMap<crate::PhysicalWindowId, Instant>,
     /// Smallest width and height each window has refused to shrink below.
     pub(super) minimum_sizes: HashMap<crate::PhysicalWindowId, (i32, i32)>,
-    /// Windows the user floated with Toggle Float. They stay floating (and
-    /// survive agent restarts) until toggled back, unlike a rule's windows.
-    pub(super) manual_floating: HashSet<crate::PhysicalWindowId>,
-    /// The Scratchpad Lab's windows; hidden ones are parked and owned by no workspace.
-    pub(super) scratchpad: crate::scratchpad::ScratchpadState,
     pub(super) config: Config,
     pub(super) foreground_lanes: HashMap<String, DisplaySelector>,
     /// Global focus history across displays: the workspace focused now and the
@@ -96,6 +81,10 @@ pub(super) struct WorkspaceRuntime<B = MacWorkspaceBackend> {
     pub(super) memory: MemoryState,
     pub(super) journal: JournalState,
     pub(super) displays: super::displays::DisplayWatch,
+    /// A pressed "Move Tab to New Window" awaiting its new window.
+    pub(super) tab_detach: Option<super::detach_tab::PendingTabDetach>,
+    /// The setup tour's arrangement: where it sends unowned windows, and how to undo it.
+    pub(super) arranging: super::arrange::ArrangeState,
 }
 
 impl WorkspaceRuntime<MacWorkspaceBackend> {
@@ -183,13 +172,19 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
                 }
                 let requested = self.parked.len();
                 // Restored scratchpad windows are ordinary windows when tiling resumes.
-                self.scratchpad.clear();
+                self.clear_scratchpad();
                 let failed = self.restore_all();
                 self.journal_restore("restore all", requested, failed);
                 // Pause, quit and restart all restore first; the layout they
                 // resume from must be on disk before the process can exit.
                 self.flush_workspace_state();
                 return Some(WorkerResult::Restored { failed });
+            }
+            WorkerCommand::UndoArrangement(outputs) => {
+                return Some(self.undo_arrangement(outputs.as_ref(), cancelled));
+            }
+            WorkerCommand::Inventory(outputs) => {
+                return Some(WorkerResult::Inventory(Box::new(self.inventory(&outputs))));
             }
             WorkerCommand::Stop => {
                 self.journal_event(crate::journal::JournalEvent::Stop);
@@ -229,6 +224,7 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
                 WorkerAction::MoveFocused(_)
                     | WorkerAction::MoveFocusedFollow(_)
                     | WorkerAction::MoveApp(..)
+                    | WorkerAction::MoveTab { .. }
             ) {
                 self.pending_focus = None;
             }
@@ -244,6 +240,7 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
                 | WorkerAction::Focus(_)
                 | WorkerAction::MoveFocused(_)
                 | WorkerAction::MoveFocusedFollow(_)
+                | WorkerAction::MoveTab { .. }
         ) {
             super::commands::WarpContext::Explicit
         } else {
@@ -288,6 +285,9 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
             WorkerAction::MoveApp(bundle_id, workspace) => {
                 rt.move_app(&bundle_id, workspace, outputs, cancelled)
             }
+            WorkerAction::MoveTab { target, follow } => {
+                rt.move_tab(target, follow, outputs, cancelled)
+            }
             WorkerAction::CycleFocus => rt.cycle_focus(outputs, cancelled),
             WorkerAction::CycleFocusPrevious => rt.cycle_focus_previous(outputs, cancelled),
             WorkerAction::Focus(direction) => rt.focus_relative(direction, outputs, cancelled),
@@ -300,11 +300,13 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
             WorkerAction::Balance => rt.balance_focused(outputs, cancelled),
             WorkerAction::ToggleFullscreenLayout => rt.toggle_fullscreen_layout(outputs, cancelled),
             WorkerAction::ToggleFloat => rt.toggle_float(outputs, cancelled),
+            WorkerAction::TogglePin => rt.toggle_pin(outputs, cancelled),
             WorkerAction::Scratchpad(command) => rt.scratchpad_command(command, outputs, cancelled),
             WorkerAction::MarkWrong => {
                 rt.mark_wrong();
                 Ok(rt.status(0, &outputs))
             }
+            WorkerAction::Arrange(arrangement) => rt.arrange(&arrangement, outputs, cancelled),
         });
         if let Some(pending) = &mut self.pending_focus {
             for entry in carried_stale {
@@ -365,7 +367,6 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
                 .collect()
         });
         let persisted_workspace_state = workspaces.state();
-        let manual_floating = super::commands::restored_floating(&workspaces);
         let has_spacing = !config.spacing().is_none();
         Self {
             backend,
@@ -375,16 +376,10 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
             constrained: std::array::from_fn(|_| HashMap::new()),
             applied: std::array::from_fn(|_| HashMap::new()),
             apply_attempts: std::array::from_fn(|_| HashMap::new()),
-            parked,
-            recently_parked: HashMap::new(),
-            recent_heals: HashMap::new(),
-            repark_attempts: HashMap::new(),
-            parking_exempt: HashSet::new(),
+            parked: parked.into(),
             omitted_windows: HashMap::new(),
             inaccessible_since: HashMap::new(),
             minimum_sizes: HashMap::new(),
-            manual_floating,
-            scratchpad: crate::scratchpad::ScratchpadState::default(),
             config,
             foreground_lanes: HashMap::new(),
             last_focused_workspace: None,
@@ -401,6 +396,8 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
             memory: MemoryState::default(),
             journal: JournalState::default(),
             displays: super::displays::DisplayWatch::default(),
+            tab_detach: None,
+            arranging: super::arrange::ArrangeState::default(),
         }
     }
 
@@ -655,12 +652,9 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
         self.applied[workspace.index()].remove(window);
         self.apply_attempts[workspace.index()].remove(window);
         self.omitted_windows.remove(window);
-        self.recently_parked.remove(window);
-        self.recent_heals.remove(window);
-        self.repark_attempts.remove(window);
+        self.parked.forget_heals(window);
         self.inaccessible_since.remove(window);
         self.minimum_sizes.remove(window);
-        self.manual_floating.remove(window);
     }
 
     pub(super) fn clear_fullscreen_restore_if_inactive(&mut self, workspace: WorkspaceId) {
@@ -691,7 +685,7 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
         self.status_for_visible(failed, &self.visible_workspaces(outputs), outputs)
     }
 
-    fn flush_workspace_state(&mut self) {
+    pub(super) fn flush_workspace_state(&mut self) {
         if let Err(error) = self.persist_workspace_state_if_changed() {
             log_event!("failed to persist workspace state: {error}");
         }

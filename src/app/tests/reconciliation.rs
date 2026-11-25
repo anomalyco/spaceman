@@ -32,7 +32,7 @@ fn closing_the_only_window_of_a_running_app_reflows_surviving_windows() {
                 crate::AppObservation::Complete {
                     app: crate::ObservedApplication {
                         id: popup.app.clone(),
-                        bundle_id: "com.raycast.macos".into(),
+                        bundle_id: "com.example.Popup".into(),
                     },
                     focused: Some(popup.clone()),
                     windows: vec![crate::ObservedWindow {

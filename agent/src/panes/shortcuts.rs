@@ -16,6 +16,30 @@ use spaceman::{
 pub use recorder::Capture;
 pub(crate) use workspaces::switch_keys;
 
+/// The first chord that switches to `workspace`, as the setup tour asks for it.
+pub(crate) fn switch_chord(shortcuts: &Shortcuts, workspace: WorkspaceId) -> Option<Chord> {
+    workspaces::active_chords(shortcuts, workspaces::WorkspaceKind::Switch, workspace)
+        .into_iter()
+        .next()
+}
+
+/// The first chord that runs the catalog's action `id` ("float", "fullscreen").
+pub(crate) fn action_chord(
+    shortcuts: &Shortcuts,
+    named: &[WorkspaceId],
+    id: &str,
+) -> Option<Chord> {
+    catalog::find(id)?
+        .chords(shortcuts, named)
+        .into_iter()
+        .next()
+}
+
+/// A physical key press read as the recorder reads it: the modifiers held, and the chord it
+/// spells on the active keyboard layout.
+pub(crate) use catalog::PRESETS;
+pub(crate) use recorder::{modifiers as held_modifiers, pressed_chord};
+
 use crate::{
     Ui,
     controls::{self, ButtonKind, KEYS, Paint, keycap, roll, tray},
@@ -113,7 +137,8 @@ fn modifier_rows(ui: &Ui, p: Paint, shortcuts: &Shortcuts) -> Vec<El> {
     rows
 }
 
-fn set_modifier(ui: &mut Ui, modifier: Modifiers) {
+/// Saves the base modifier every built-in shortcut holds.
+pub(crate) fn set_modifier(ui: &mut Ui, modifier: Modifiers) {
     recorder::cancel(ui);
     ui.shortcut_capture = Capture::Idle;
     recorder::edit_shortcuts(ui, |doc| doc.set_shortcut_modifier(modifier));

@@ -564,7 +564,9 @@ fn mouse_follows_focus_never_warps_on_passive_cycle_focus_follow_or_mouse_down()
         .backend
         .frames
         .insert(other_hidden.clone(), main_parked_frame(frame(1200)));
-    runtime.parked.insert(other_hidden.clone(), frame(1200));
+    runtime
+        .parked
+        .insert(other_hidden.clone(), frame(1200), None);
     bind(&mut runtime, WorkspaceId::new(8).unwrap(), &other_hidden);
     runtime.backend.focused = Some(other_hidden.clone());
     runtime.backend.frontmost = Some(other_hidden.app);

@@ -2,7 +2,9 @@ use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
 
+mod disposition;
 mod write;
+pub use disposition::{DispositionPatch, Management};
 pub use write::{
     ConfigLock, lock_config, resolve_write_target, save_workspace_monitor_at, write_config_atomic,
 };
@@ -311,7 +313,10 @@ pub struct Config {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum WindowDisposition {
     Managed,
+    /// Native size, owned by one workspace: parks and restores with it.
     Floating,
+    /// Floating, and shown on every workspace of its display: never parked by a switch.
+    Pinned,
     /// Tiled even when the window looks like a dialog or non-resizable panel.
     Tiled,
     Route(WorkspaceId),
@@ -330,6 +335,8 @@ struct WindowRule {
 struct WindowMatcher {
     bundle_id: Option<String>,
     title: Option<String>,
+    /// Lowercased; matched case-insensitively against the live title, in memory only.
+    title_contains: Option<String>,
 }
 
 #[derive(Deserialize)]
@@ -437,6 +444,7 @@ const fn default_hud() -> bool {
 struct RawWindowRule {
     bundle_id: Option<String>,
     title: Option<String>,
+    title_contains: Option<String>,
     action: String,
     workspace: Option<WorkspaceId>,
 }
@@ -465,15 +473,20 @@ impl Config {
         }
         let mut rules = Vec::with_capacity(raw.rules.len());
         for rule in raw.rules {
-            if rule.bundle_id.is_none() && rule.title.is_none() {
+            if rule.bundle_id.is_none() && rule.title.is_none() && rule.title_contains.is_none() {
                 return Err("window rule must contain at least one matcher".into());
+            }
+            if rule.title_contains.as_deref().is_some_and(str::is_empty) {
+                return Err("title_contains cannot be empty".into());
             }
             let action = match (rule.action.as_str(), rule.workspace) {
                 ("float", None) => WindowDisposition::Floating,
+                ("pin", None) => WindowDisposition::Pinned,
                 ("ignore", None) => WindowDisposition::Ignored,
                 ("tile", None) => WindowDisposition::Tiled,
                 ("route", Some(workspace)) => WindowDisposition::Route(workspace),
                 ("float", Some(_)) => return Err("float rule cannot specify workspace".into()),
+                ("pin", Some(_)) => return Err("pin rule cannot specify workspace".into()),
                 ("ignore", Some(_)) => return Err("ignore rule cannot specify workspace".into()),
                 ("tile", Some(_)) => return Err("tile rule cannot specify workspace".into()),
                 ("route", None) => return Err("route rule requires workspace".into()),
@@ -483,6 +496,7 @@ impl Config {
                 matcher: WindowMatcher {
                     bundle_id: rule.bundle_id,
                     title: rule.title,
+                    title_contains: rule.title_contains.map(|value| value.to_lowercase()),
                 },
                 action,
             });
@@ -612,16 +626,31 @@ impl Config {
             .find(|rule| rule.matcher.matches(bundle_id, window))
     }
 
+    /// How `window` is handled: the first matching user rule, else the built-in default
+    /// ([`crate::defaults`]), else managed.
     #[must_use]
     pub fn disposition(&self, bundle_id: &str, window: &ObservedWindow) -> WindowDisposition {
-        self.matching_rule(bundle_id, window)
-            .map_or(WindowDisposition::Managed, |rule| rule.action)
+        self.matching_rule(bundle_id, window).map_or_else(
+            || crate::defaults::disposition(bundle_id),
+            |rule| rule.action,
+        )
+    }
+
+    /// What the rules and built-in defaults say about `window`: the first matching user rule
+    /// over the built-in default. Callers add the window's traits with
+    /// [`DispositionPatch::over`].
+    #[must_use]
+    pub fn patch(&self, bundle_id: &str, window: &ObservedWindow) -> DispositionPatch {
+        let rule = self
+            .matching_rule(bundle_id, window)
+            .map_or(DispositionPatch::NONE, |rule| rule.action.into());
+        rule.over(crate::defaults::patch(bundle_id))
     }
 
     #[must_use]
     pub fn route_matches_title(&self, bundle_id: &str, window: &ObservedWindow) -> bool {
         self.matching_rule(bundle_id, window).is_some_and(|rule| {
-            matches!(rule.action, WindowDisposition::Route(_)) && rule.matcher.title.is_some()
+            matches!(rule.action, WindowDisposition::Route(_)) && rule.matcher.matches_titles()
         })
     }
 
@@ -630,7 +659,7 @@ impl Config {
         self.rules
             .iter()
             .find(|rule| {
-                rule.matcher.title.is_none()
+                !rule.matcher.matches_titles()
                     && rule
                         .matcher
                         .bundle_id
@@ -706,6 +735,17 @@ impl WindowMatcher {
                 .title
                 .as_deref()
                 .is_none_or(|value| window.title.as_deref() == Some(value))
+            && self.title_contains.as_deref().is_none_or(|needle| {
+                window
+                    .title
+                    .as_deref()
+                    .is_some_and(|title| title.to_lowercase().contains(needle))
+            })
+    }
+
+    /// Whether this matcher looks at window titles, so it covers only some of an app's windows.
+    const fn matches_titles(&self) -> bool {
+        self.title.is_some() || self.title_contains.is_some()
     }
 }
 
@@ -840,6 +880,97 @@ workspace = 7
             .err()
             .as_deref(),
             Some("tile rule cannot specify workspace")
+        );
+    }
+
+    #[test]
+    fn built_in_float_defaults_apply_only_after_user_rules() {
+        let defaults = Config::parse("version = 1").unwrap();
+        assert_eq!(
+            defaults.disposition("com.apple.Stickies", &window(None)),
+            WindowDisposition::Floating
+        );
+        assert_eq!(
+            defaults.disposition("com.apple.Safari", &window(None)),
+            WindowDisposition::Managed
+        );
+        let tiled = Config::parse(
+            "version = 1\n[[rules]]\nbundle_id = 'com.apple.Stickies'\naction = 'tile'",
+        )
+        .unwrap();
+        assert_eq!(
+            tiled.disposition("com.apple.Stickies", &window(None)),
+            WindowDisposition::Tiled
+        );
+        assert_eq!(
+            tiled.disposition("com.apple.calculator", &window(None)),
+            WindowDisposition::Floating
+        );
+    }
+
+    #[test]
+    fn pin_rule_parses_and_rejects_a_workspace() {
+        let config = Config::parse(
+            "version = 1\n[[rules]]\nbundle_id = 'com.apple.Stickies'\naction = 'pin'",
+        )
+        .unwrap();
+        assert_eq!(
+            config.disposition("com.apple.Stickies", &window(None)),
+            WindowDisposition::Pinned
+        );
+        assert_eq!(
+            Config::parse("version = 1\n[[rules]]\nbundle_id = 'x'\naction = 'pin'\nworkspace = 2")
+                .err()
+                .as_deref(),
+            Some("pin rule cannot specify workspace")
+        );
+    }
+
+    #[test]
+    fn title_contains_matches_case_insensitively_in_memory() {
+        let config = Config::parse(
+            r#"
+version = 1
+
+[[rules]]
+bundle_id = "com.apple.Safari"
+title_contains = "WORK —"
+action = "route"
+workspace = 2
+
+[[rules]]
+title_contains = "Claude"
+action = "route"
+workspace = 3
+"#,
+        )
+        .unwrap();
+        let two = WorkspaceId::TWO;
+        let three = WorkspaceId::new(3).unwrap();
+        assert_eq!(
+            config.disposition("com.apple.Safari", &window(Some("Work — Pull Request #42"))),
+            WindowDisposition::Route(two)
+        );
+        assert_eq!(
+            config.disposition("com.apple.Safari", &window(Some("Fix layout - claude"))),
+            WindowDisposition::Route(three)
+        );
+        assert_eq!(
+            config.disposition("com.apple.Safari", &window(Some("Personal"))),
+            WindowDisposition::Managed
+        );
+        assert_eq!(
+            config.disposition("com.apple.Safari", &window(None)),
+            WindowDisposition::Managed
+        );
+        // A title filter covers only some windows: it is not an app-wide route.
+        assert!(!config.has_bundle_route("com.apple.Safari"));
+        assert!(config.route_matches_title("com.apple.Safari", &window(Some("work — notes"))));
+        assert_eq!(
+            Config::parse("version = 1\n[[rules]]\ntitle_contains = ''\naction = 'float'")
+                .err()
+                .as_deref(),
+            Some("title_contains cannot be empty")
         );
     }
 

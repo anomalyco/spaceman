@@ -97,6 +97,20 @@ cannot be confirmed by the window server within the bounded reveal wait, the swi
 the outgoing workspace stays active and pending incoming reveals are re-parked. Retry once the slow
 application is responsive. Successful Accessibility writes alone do not confirm arrival.
 
+## Send Tab to Workspace
+
+`spaceman ctl move-tab WORKSPACE` sends the focused window's active tab to a workspace as a window of
+its own; the rest of the tabs stay where they are. It presses the app's own `Move Tab to New Window`
+menu command through Accessibility (found by AppKit's `moveTabToNewWindow:` identifier, which works
+in every language, or by its title, including Chromium's `Move Tabs to New Window`), so it works in
+Safari, Finder, Terminal, Ghostty, TextEdit, Preview, Chrome, Brave, and other apps with native tabs,
+with no page reloading and no extra permission. The new window goes straight to the target workspace,
+ahead of any `route` rule for the app, and focus stays on the window you were in. Add `--follow` to
+switch to the target with the tab. If the window has a single tab, or the app has no such command,
+`move-tab` moves the whole window, exactly like `move`. A tab whose window has not appeared within
+800 ms is left where the app put it. `move-tab` has no default shortcut; bind one in
+[`[shortcuts.bindings]`](configuration.md#shortcuts), such as `"ctrl+alt+shift+2" = "move-tab 2"`.
+
 ## Scratchpad (Lab)
 
 With `[labs] scratchpad = true` (see [Configuration › Labs](configuration.md#labs)), Spaceman keeps an
@@ -148,6 +162,10 @@ If macOS reports that the login item requires approval, the menu label says
 `Launch at Login (Approval Required...)`; choosing it opens Login Items settings. Registration does
 not bypass macOS consent and does not affect the currently running process.
 
+`Settings > General` ends with a `Quit Spaceman` row for when the menu-bar icon is hidden (behind a
+notch, or by a menu-bar manager): `Pause & restore windows` (shown while tiling) does what
+`Pause Tiling` does, and `Quit` what `Quit Spaceman` does.
+
 Pausing, quitting, and external macOS termination requests restore parked windows before completing.
 Restoration retries are visible in the menu status. Installing an update uses the same restoration
 gate: Spaceman swaps in the new bundle and relaunches only after every parked window is restored and
@@ -176,6 +194,8 @@ spaceman ctl move-workspace prev
 spaceman ctl move-workspace secondary
 spaceman ctl move 7
 spaceman ctl move 7 --follow
+spaceman ctl move-tab 2
+spaceman ctl move-tab 2 --follow
 spaceman ctl move-app com.tinyspeck.slackmacgap 6
 spaceman ctl focus left
 spaceman ctl focus next
@@ -184,6 +204,7 @@ spaceman ctl move-direction right
 spaceman ctl layout
 spaceman ctl fullscreen
 spaceman ctl float
+spaceman ctl pin
 spaceman ctl resize shrink
 spaceman ctl resize grow
 spaceman ctl resize width 1200
@@ -207,7 +228,8 @@ spaceman doctor 24
 
 Directions are `left`, `down`, `up`, and `right`. `focus next` is Option-backtick,
 `focus prev` is Option-Shift-backtick, `fullscreen` toggles the focused workspace's Fullscreen Layout, like `Option+Shift+F`, and `float`
-toggles the focused window's floating, like `Option+Shift+Space`. `scratchpad toggle` and
+toggles the focused window's floating, like `Option+Shift+Space`. `pin` floats the focused window
+and shows it on every workspace, or unpins it (no built-in shortcut). `scratchpad toggle` and
 `scratchpad mark` are `Option+\` and `Option+Shift+\`; while `[labs] scratchpad` is off they report
 `Scratchpad is off`. `resize width|height POINTS` resizes the focused window to that width or
 height (its own frame, gaps excluded) by moving its boundary at the nearest split along that axis;

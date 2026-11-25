@@ -17,7 +17,7 @@ use rune_kit::{Button, ButtonVariant, ControlSize, Kit, Switch};
 
 use crate::{Ui, apps::App};
 
-pub use keycaps::{chords, keycap, roll, tray};
+pub use keycaps::{chords, keycap, roll, tray, tray_held};
 pub use modal::{modal_panel, modal_sheet};
 pub use tokens::{KEYS, METRICS, MODAL, ModalWidth, WINDOW};
 
@@ -296,23 +296,6 @@ pub fn toggle_row(
         .on_press(flip)
 }
 
-/// An [`icon_row`] whose whole row toggles a switch.
-pub fn icon_toggle_row(
-    p: Paint,
-    key: &str,
-    glyph: &'static Icon,
-    title: &str,
-    description: Option<(String, Color)>,
-    on: bool,
-    flip: impl Fn(&mut Ui) + 'static,
-) -> El {
-    let switch = Switch::new(on).build(p.k).key("switch").focusable(false);
-    icon_row(p, key, glyph, title, description, switch)
-        .role("toggle")
-        .focusable(true)
-        .on_press(flip)
-}
-
 /// `path` with the home directory shortened to `~`.
 pub fn home_relative(path: &std::path::Path) -> String {
     std::env::var_os("HOME")
@@ -355,12 +338,25 @@ pub fn button(
     kind: ButtonKind,
     press: impl Fn(&mut Ui, &mut Tx) + 'static,
 ) -> El {
+    button_enabled(p, key, label, kind, true, press)
+}
+
+/// A [`button`] that is dimmed and takes no press while there is nothing for it to do.
+pub fn button_enabled(
+    p: Paint,
+    key: &str,
+    label: &str,
+    kind: ButtonKind,
+    enabled: bool,
+    press: impl Fn(&mut Ui, &mut Tx) + 'static,
+) -> El {
     Button::new(label)
         .variant(match kind {
             ButtonKind::Primary => ButtonVariant::Contrast,
             ButtonKind::Secondary => ButtonVariant::Neutral,
         })
         .on_press_tx(press)
+        .disabled(!enabled)
         .control_size(ControlSize::Large)
         .build(p.k)
         .px(BUTTON_PX)

@@ -5,7 +5,7 @@ impl MainThreadAgent {
     ///
     /// Hotkeys may already be registered while a first-run setup tour holds
     /// tiling, so an installed set is kept rather than registered twice.
-    fn start_automatic(&mut self) {
+    pub(super) fn start_automatic(&mut self) {
         let trusted = macos::accessibility_trusted();
         self.accessibility = trusted;
         if !trusted {
@@ -46,6 +46,7 @@ impl MainThreadAgent {
         status_item::set_automatic(true);
         let status = automatic_started_status(&mut self.last_error, self.scope.automatic_status());
         status_item::set_status(status);
+        self.queue_arrangement();
     }
 
     pub(super) fn drain_actions(&mut self) {
@@ -87,6 +88,10 @@ impl MainThreadAgent {
                     }
                     self.ui_dirty = true;
                 }
+                Action::SkipSetup => self.skip_setup(),
+                Action::PlanSetup => self.want_inventory(),
+                Action::Arrange(arrangement) => self.arrange(arrangement),
+                Action::UndoArrangement => self.undo_arrangement(),
                 Action::OpenSettings => {
                     if let Err(error) = (self.callbacks.open_settings)() {
                         status_item::set_status(&format!("Could not open Settings: {error}"));

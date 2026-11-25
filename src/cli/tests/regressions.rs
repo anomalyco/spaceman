@@ -509,3 +509,46 @@ fn config_gets_sets_and_resets_layout() {
             .contains("expected 'dwindle' or 'columns'")
     );
 }
+
+#[test]
+fn rules_add_writes_pin_and_title_contains_rules_and_lists_them_back() {
+    let temp = TempConfig::new("rules-pin-title-contains");
+
+    let pinned = temp.run(&["rules", "add", "--app", "com.apple.Stickies", "--pin"]);
+    assert_eq!(pinned.exit_code, 0);
+    assert_eq!(
+        pinned.stdout.as_deref(),
+        Some("added rule 1: bundle_id=com.apple.Stickies -> pin")
+    );
+    let routed = temp.run(&[
+        "rules",
+        "add",
+        "--app",
+        "com.apple.Safari",
+        "--title-contains",
+        "Work",
+        "--workspace",
+        "2",
+    ]);
+    assert_eq!(routed.exit_code, 0);
+    assert_eq!(
+        routed.stdout.as_deref(),
+        Some("added rule 2: bundle_id=com.apple.Safari title_contains=\"Work\" -> workspace 2")
+    );
+
+    let config = Config::parse(&temp.read()).unwrap();
+    assert_eq!(
+        config.disposition("com.apple.Stickies", &sample_window(None)),
+        WindowDisposition::Pinned
+    );
+    assert_eq!(
+        config.disposition("com.apple.Safari", &sample_window(Some("work — PR"))),
+        WindowDisposition::Route(WorkspaceId::TWO)
+    );
+    let listed = temp.run(&["rules", "list", "--json"]);
+    let json: Value = serde_json::from_str(listed.stdout.as_deref().unwrap()).unwrap();
+    assert_eq!(json["rules"][1]["title_contains"], "Work");
+
+    let both = temp.run(&["rules", "add", "--app", "x", "--pin", "--float"]);
+    assert_ne!(both.exit_code, 0);
+}

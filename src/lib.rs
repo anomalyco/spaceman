@@ -4,6 +4,7 @@ pub mod config;
 #[cfg(target_os = "macos")]
 pub mod control;
 pub mod deep_link;
+pub mod defaults;
 pub mod geometry;
 #[cfg(target_os = "macos")]
 #[allow(unsafe_code)]
@@ -25,6 +26,7 @@ pub mod model;
 pub mod motion;
 pub mod navigation;
 pub mod observation;
+pub mod onboarding_plan;
 #[cfg(target_os = "macos")]
 #[allow(unsafe_code)]
 pub mod permission_guide;

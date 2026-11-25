@@ -13,7 +13,7 @@ use std::{
 use crate::{
     AppInstanceId, BindingState, Decision, Direction, DisplaySelector, DisplayTarget,
     NavigationTile, ResizeDirection, Settings, WorkspaceId, Workspaces,
-    config::{Config, WindowDisposition},
+    config::Config,
     control::{self, Command as ControlCommand, Request as ControlRequest},
     deep_link::OpenTarget,
     hotkeys::{DeliveryWatch, HotkeyPlan, Hotkeys},
@@ -42,10 +42,12 @@ macro_rules! log_event {
 }
 
 mod app_loop;
+mod arrange;
 mod backend;
 mod bridge;
 mod commands;
 mod cycle;
+mod detach_tab;
 mod displays;
 mod hud_event;
 mod input;
@@ -54,9 +56,11 @@ mod memory;
 mod minimums;
 mod move_workspace;
 mod parking;
+mod pins;
 mod runtime;
 mod scratchpad;
 mod space_transition;
+mod stale_parked;
 mod state_writer;
 mod switching;
 mod worker;
@@ -80,6 +84,7 @@ use backend::*;
 use input::{GestureTracker, InputQueue, QueuedInput};
 use journal::JournalState;
 use memory::MemoryState;
+use parking::{ParkRecord, ParkTable};
 use runtime::*;
 use worker::spawn_worker;
 
@@ -209,6 +214,14 @@ pub(crate) enum Action {
     ToggleAutomatic,
     /// The first-run setup tour finished, so its hold on tiling ends.
     FinishSetup,
+    /// The first-run setup tour ended without starting tiling: its hold ends, paused.
+    SkipSetup,
+    /// The setup tour wants the open windows, title-free, to suggest an arrangement.
+    PlanSetup,
+    /// Start tiling with the open windows arranged as the setup tour's plan says.
+    Arrange(crate::onboarding_plan::Arrangement),
+    /// Pause tiling and put every window back where it was before the arrangement.
+    UndoArrangement,
     OpenSettings,
     OpenTarget(OpenTarget),
     OpenSetup,
@@ -240,6 +253,12 @@ pub(crate) enum WorkerAction {
     MoveFocused(WorkspaceId),
     MoveFocusedFollow(WorkspaceId),
     MoveApp(String, WorkspaceId),
+    /// Send the focused window's active tab to a workspace through the app's
+    /// own "Move Tab to New Window"; a single-tab window moves whole.
+    MoveTab {
+        target: WorkspaceId,
+        follow: bool,
+    },
     CycleFocus,
     /// Option-Shift-backtick: the same ring as `CycleFocus`, walked backward.
     CycleFocusPrevious,
@@ -254,8 +273,12 @@ pub(crate) enum WorkerAction {
     ToggleFullscreenLayout,
     /// Float the focused window above the workspace's tiles, or tile it again.
     ToggleFloat,
+    /// Pin the focused window (floating it first) on every workspace, or unpin it.
+    TogglePin,
     /// Kit noticed something wrong: mark the journal and snapshot it.
     MarkWrong,
+    /// Move the open windows onto the workspaces the setup tour's plan gives them.
+    Arrange(crate::onboarding_plan::Arrangement),
     /// The Scratchpad Lab: summon or hide, or send a window to or from it.
     Scratchpad(crate::scratchpad::ScratchpadCommand),
 }
@@ -275,6 +298,14 @@ impl WorkerAction {
                 format!("move and switch to workspace {workspace} queued")
             }
             Self::MoveApp(_, workspace) => format!("move app to workspace {workspace} queued"),
+            Self::MoveTab {
+                target,
+                follow: false,
+            } => format!("move tab to workspace {target} queued"),
+            Self::MoveTab {
+                target,
+                follow: true,
+            } => format!("move tab and switch to workspace {target} queued"),
             Self::CycleFocus => "focus cycle queued".into(),
             Self::CycleFocusPrevious => "reverse focus cycle queued".into(),
             Self::Focus(_) => "focus queued".into(),
@@ -285,7 +316,9 @@ impl WorkerAction {
             Self::Balance => "balance queued".into(),
             Self::ToggleFullscreenLayout => "fullscreen layout toggle queued".into(),
             Self::ToggleFloat => "float toggle queued".into(),
+            Self::TogglePin => "pin toggle queued".into(),
             Self::MarkWrong => "marking the journal".into(),
+            Self::Arrange(_) => "arrangement queued".into(),
             Self::Scratchpad(command) => format!("scratchpad {} queued", command.as_str()),
         }
     }
@@ -296,6 +329,10 @@ enum WorkerCommand {
     Gesture(FinalGesture, bool, macos::DisplayOutputs),
     /// Restore every parked window, onto these displays when they are known.
     RestoreAll(Option<macos::DisplayOutputs>),
+    /// Restore every parked window, then put back the frames the last arrangement changed.
+    UndoArrangement(Option<macos::DisplayOutputs>),
+    /// Read the open windows, title-free, for the setup tour's plan.
+    Inventory(macos::DisplayOutputs),
     Stop,
 }
 
@@ -310,6 +347,8 @@ impl WorkerCommand {
             Self::Action(..) => "action",
             Self::Gesture(..) => "gesture",
             Self::RestoreAll(_) => "restore all",
+            Self::UndoArrangement(_) => "undo arrangement",
+            Self::Inventory(_) => "inventory",
             Self::Stop => "stop",
         }
     }
@@ -370,6 +409,7 @@ enum WorkerResult {
     Restored {
         failed: usize,
     },
+    Inventory(Box<crate::onboarding_plan::Inventory>),
 }
 
 /// Startup state initialized before the Rune event loop starts: single-agent

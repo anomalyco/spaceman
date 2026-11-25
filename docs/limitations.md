@@ -27,9 +27,11 @@ Spaceman is an experimental public preview, not a broadly qualified release.
 - `secondary` selects the first non-main display; display ordering and duplicate names may surprise.
 - Global shortcuts may collide with other applications or fail on keyboard layouts that cannot
   produce required characters.
-- Settings covers Accessibility, Launch at login, Workspace HUD, app-wide placement rules, workspace
-  display assignments, keyboard shortcuts, and Activity diagnostics; title-specific rules and
-  `settings.workspace_order` are edited in `config.toml`. There is no telemetry or analytics.
+- Settings covers Accessibility, Launch at login, Workspace HUD, placement rules for an app's every
+  window or for the windows a `title_contains` filter picks out, overrides for the built-in
+  floats, workspace display assignments, keyboard shortcuts, and Activity diagnostics; exact
+  `title` rules, `tile` rules for other apps and `settings.workspace_order` are edited in
+  `config.toml`. There is no telemetry or analytics.
 - The repository still lacks a concise product demo.
 
 Use the isolated live harnesses in [Development](development.md) before changing window-management,

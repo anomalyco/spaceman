@@ -50,7 +50,7 @@ pub fn view(ui: &Ui, cx: &mut Cx<Ui>) -> El {
         .child(sidebar(ui, p))
         .child(panel);
     panes::sheet(ui, p, cx.is_reduced_motion(), &mut layer);
-    if let Some(tour) = onboarding::overlay(ui, p) {
+    if let Some(tour) = onboarding::overlay(ui, p, cx.is_reduced_motion()) {
         layer.push(tour);
     }
     if let Some(hud_preview) = &ui.hud_preview {

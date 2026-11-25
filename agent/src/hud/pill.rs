@@ -5,17 +5,17 @@
 //!
 //! | What changes                     | What moves                                            | Spring (duration / bounce) |
 //! | -------------------------------- | ----------------------------------------------------- | -------------------------- |
-//! | The HUD appears                  | fades in, scales from .96 and rises 6 pt              | .14 / 0                    |
-//! | The HUD leaves                   | the same path back                                    | .11 / 0                    |
-//! | Another workspace                | the marker's leading edge, then its trailing edge     | .16 / 0, .21 / 0           |
-//! |                                  | Layouts: the cells grow and shrink, neighbours slide  | .15 / 0                    |
-//! |                                  | Icons: the groups brighten and dim                    | .14 / 0                    |
+//! | The HUD appears                  | fades in, scales from .96 and rises 6 pt              | .10 / 0                    |
+//! | The HUD leaves                   | the same path back                                    | .105 / 0                   |
+//! | Another workspace                | the marker's leading edge, then its trailing edge     | .16 / 0, .20 / 0           |
+//! |                                  | Layouts: the cells grow and shrink, neighbours slide  | .12 / 0                    |
+//! |                                  | Icons: the groups brighten and dim                    | .095 / 0                   |
 //! | Shown again after hiding         | the marker starts on the workspace you left and       | as above                   |
 //! |                                  | travels while the capsule fades in                    |                            |
 //! | A workspace joins or leaves      | it fades and scales in or out in place                | settle                     |
-//! | A layout changes                 | each tile springs to its new frame                    | .15 / 0                    |
+//! | A layout changes                 | each tile springs to its new frame                    | .12 / 0                    |
 //! | A window moves                   | its icon leaves one workspace for the other           | settle                     |
-//! | More workspaces than fit         | the row scrolls to keep yours in view, edges fade     | .15 / 0                    |
+//! | More workspaces than fit         | the row scrolls to keep yours in view, edges fade     | .12 / 0                    |
 //!
 //! Under Reduce Motion nothing travels or scales; the row cross-fades instead.
 
@@ -42,18 +42,19 @@ pub const CAPSULE_INSET: f32 = 60.0;
 /// Room each side of the capsule for its shadow's widest blur.
 pub const SHADOW_SIDE: f32 = 32.0;
 
-/// The capsule answering a shortcut: crisp in, faster out.
-const ENTER: Spring = Spring::new(0.14, 0.0);
-const EXIT: Spring = Spring::new(0.11, 0.0);
+/// The capsule answering a shortcut, crisp both ways.
+const ENTER: Spring = Spring::new(0.10, 0.0);
+const EXIT: Spring = Spring::new(0.105, 0.0);
 const REST_SCALE: f32 = 0.96;
 const DROP: f32 = 6.0;
 /// The marker's leading edge, quicker so it stretches toward where it is going, and its
-/// trailing edge catching up; with nowhere to go, one spring for both.
+/// trailing edge catching up; with nowhere to go, one spring for both. A quicker lead fails the
+/// motion gate's jerk check when a fast switch turns the marker around.
 const MARKER_LEAD: Spring = Spring::new(0.16, 0.0);
-const MARKER_TRAIL: Spring = Spring::new(0.21, 0.0);
-const MARKER: Spring = Spring::new(0.17, 0.0);
+const MARKER_TRAIL: Spring = Spring::new(0.20, 0.0);
+const MARKER: Spring = Spring::new(0.115, 0.0);
 /// The row's own layout: scrolling, and the capsule's width.
-pub const ROW: Spring = Spring::new(0.15, 0.0);
+pub const ROW: Spring = Spring::new(0.12, 0.0);
 /// The fade at an edge the row is cut at, and at an edge it fits inside.
 const CLIPPED_FADE: f32 = 24.0;
 const EDGE_FADE: f32 = 6.0;
@@ -164,7 +165,7 @@ pub fn slot(
 }
 
 /// Interactive capsule used by the live HUD overlay and its 120 Hz tests: marks the capsule as a
-/// hit region, holds on hover, switches workspaces on click, and opens the per-app Float/Pin menu
+/// hit region, holds on hover, switches workspaces on click, and opens the per-app rule menu
 /// on secondary click.
 pub fn interactive_slot(
     view: &HudView,

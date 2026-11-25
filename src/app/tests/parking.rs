@@ -61,7 +61,7 @@ fn parked_window_observed_back_on_screen_re_homes_and_drops_recovery_frame() {
     bind(&mut runtime, WorkspaceId::ONE, &tiled);
     let hidden = WorkspaceId::new(2).unwrap();
     runtime.workspaces.own_floating(overlay.clone(), hidden);
-    runtime.parked.insert(overlay.clone(), frame(70));
+    runtime.parked.insert(overlay.clone(), frame(70), None);
 
     runtime.cycle(outputs(), &AtomicBool::new(false)).unwrap();
 
@@ -100,7 +100,7 @@ fn parked_tiled_window_observed_back_on_screen_re_homes_to_the_visible_workspace
     bind(&mut runtime, WorkspaceId::ONE, &existing);
     let hidden = WorkspaceId::new(2).unwrap();
     bind(&mut runtime, hidden, &returned);
-    runtime.parked.insert(returned.clone(), frame(70));
+    runtime.parked.insert(returned.clone(), frame(70), None);
 
     runtime.cycle(outputs(), &AtomicBool::new(false)).unwrap();
 
@@ -143,7 +143,7 @@ fn stale_accessibility_observation_does_not_heal_a_genuinely_parked_window() {
     bind(&mut runtime, WorkspaceId::ONE, &tiled);
     let hidden = WorkspaceId::new(2).unwrap();
     bind(&mut runtime, hidden, &parked);
-    runtime.parked.insert(parked.clone(), frame(400));
+    runtime.parked.insert(parked.clone(), frame(400), None);
 
     runtime.cycle(outputs(), &AtomicBool::new(false)).unwrap();
 
@@ -203,7 +203,7 @@ fn second_confirmed_self_un_park_keeps_tiling_but_stops_parking_the_window() {
     bind(&mut runtime, hidden, &fighter);
 
     // First confirmed self-un-park: healed and re-homed to workspace 1.
-    runtime.parked.insert(fighter.clone(), frame(400));
+    runtime.parked.insert(fighter.clone(), frame(400), None);
     runtime.cycle(outputs(), &AtomicBool::new(false)).unwrap();
     assert_eq!(
         runtime.workspaces.workspace_of(&fighter),
@@ -213,7 +213,7 @@ fn second_confirmed_self_un_park_keeps_tiling_but_stops_parking_the_window() {
     // The user switches away (window back on a hidden workspace, parked),
     // and the window un-parks itself again shortly after: parking-exempt.
     runtime.workspaces.move_window(&fighter, hidden);
-    runtime.parked.insert(fighter.clone(), frame(400));
+    runtime.parked.insert(fighter.clone(), frame(400), None);
     runtime.backend.frames.insert(fighter.clone(), frame(400));
     runtime
         .backend
@@ -222,7 +222,7 @@ fn second_confirmed_self_un_park_keeps_tiling_but_stops_parking_the_window() {
     runtime.backend.calls.clear();
     runtime.cycle(outputs(), &AtomicBool::new(false)).unwrap();
 
-    assert!(runtime.parking_exempt.contains(&fighter));
+    assert!(runtime.parked.is_exempt(&fighter));
     assert_eq!(
         runtime.workspaces.workspace_of(&fighter),
         Some(WorkspaceId::ONE)
@@ -323,7 +323,7 @@ fn background_reappearance_is_re_parked_instead_of_re_homed() {
     bind(&mut runtime, WorkspaceId::ONE, &tiled);
     let hidden = WorkspaceId::new(2).unwrap();
     bind(&mut runtime, hidden, &drifter);
-    runtime.parked.insert(drifter.clone(), frame(400));
+    runtime.parked.insert(drifter.clone(), frame(400), None);
 
     runtime.cycle(outputs(), &AtomicBool::new(false)).unwrap();
 
@@ -359,7 +359,7 @@ fn undone_re_parks_escalate_to_honoring_the_reappearance() {
     bind(&mut runtime, WorkspaceId::ONE, &tiled);
     let hidden = WorkspaceId::new(2).unwrap();
     bind(&mut runtime, hidden, &fighter);
-    runtime.parked.insert(fighter.clone(), frame(400));
+    runtime.parked.insert(fighter.clone(), frame(400), None);
 
     for _ in 0..=REPARK_ATTEMPT_LIMIT {
         let server_frames = runtime.backend.window_server_frames().unwrap();
@@ -372,7 +372,7 @@ fn undone_re_parks_escalate_to_honoring_the_reappearance() {
             &mut 0,
         );
         // The settle grace would otherwise defer the next attempt.
-        runtime.recently_parked.remove(&fighter);
+        runtime.backend.advance(Duration::from_secs(3));
     }
 
     // The fight ended by honoring the window: recovery frame dropped and
@@ -404,10 +404,8 @@ fn heal_waits_for_a_fresh_park_to_settle_before_trusting_reappearance() {
     bind(&mut runtime, hidden, &parked);
     // The park write just happened; the app is still applying it, so both
     // Accessibility and the window server still report the old frame.
-    runtime.parked.insert(parked.clone(), frame(400));
-    runtime
-        .recently_parked
-        .insert(parked.clone(), Instant::now());
+    runtime.parked.insert(parked.clone(), frame(400), None);
+    runtime.parked.park_applied(&parked, runtime.backend.now());
 
     runtime.cycle(outputs(), &AtomicBool::new(false)).unwrap();
 
@@ -433,7 +431,7 @@ fn restore_keeps_recovery_frame_until_the_window_server_confirms_arrival() {
         .server_frames
         .insert(window.clone(), parked_position);
     let mut runtime = runtime(backend);
-    runtime.parked.insert(window.clone(), frame(50));
+    runtime.parked.insert(window.clone(), frame(50), None);
 
     // Accessibility read-back reports success, but the window server still
     // shows the window parked: the recovery frame must survive.
@@ -502,8 +500,10 @@ fn non_resizable_window_parks_and_restores_with_its_workspace() {
     assert!(!runtime.parked.contains_key(&window));
 }
 
+/// A route is applied before reconciliation: a park that fails leaves the window owned by no
+/// workspace (never tiled on the one on screen), and the next cycle routes it again.
 #[test]
-fn failed_route_parking_rolls_back_to_source_workspace() {
+fn failed_route_parking_leaves_the_window_unowned_until_a_later_cycle_routes_it() {
     let window = window(10);
     let normal = frame(50);
     let mut backend = FakeBackend {
@@ -520,11 +520,25 @@ fn failed_route_parking_rolls_back_to_source_workspace() {
 
     runtime.cycle(outputs(), &AtomicBool::new(false)).unwrap();
 
+    assert_eq!(runtime.workspaces.workspace_of_any(&window), None);
+    assert!(!runtime.parked.contains_key(&window));
+    assert_eq!(runtime.backend.frames[&window], normal);
+
+    runtime.backend.fail_persist = false;
+    runtime.cycle(outputs(), &AtomicBool::new(false)).unwrap();
+
     assert_eq!(
         runtime.workspaces.workspace_of(&window),
-        Some(WorkspaceId::ONE)
+        Some(WorkspaceId::TWO)
     );
-    assert!(!runtime.parked.contains_key(&window));
+    assert!(runtime.parked.contains_key(&window));
+    assert!(
+        runtime
+            .workspaces
+            .engine(WorkspaceId::ONE)
+            .bound_windows()
+            .is_empty()
+    );
 }
 
 #[test]
@@ -752,7 +766,7 @@ fn mission_control_thumbnail_frames_do_not_trigger_repark_or_escalation() {
         );
     }
 
-    assert!(!runtime.repark_attempts.contains_key(&parked_window));
+    assert!(runtime.parked.reparks(&parked_window) == 0);
     assert_eq!(runtime.parked.get(&parked_window), Some(&original));
     assert_eq!(
         runtime.workspaces.workspace_of(&parked_window),

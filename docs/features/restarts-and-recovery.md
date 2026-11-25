@@ -39,7 +39,8 @@ Placement recall (reboot, fresh start, or app relaunch)     // recover.memory
 │   remembered placements
 │   ├── recall closes early once every placement is claimed or the app quits
 │   ├── frame match (8 px) first, then creation order
-│   ├── a placement saved floating floats again (keeps its frame) until Toggle Float tiles it
+│   ├── a placement saved floating floats again at its remembered frame, on its workspace's
+│   │   display, until Toggle Float tiles it
 │   ├── route/ignore rules win; disabled/unmanaged workspaces skipped
 │   └── apps launched after the startup window open on the active workspace
 ├── An app relaunched mid-session (an update or restart) recalls its placements too: its new
@@ -90,6 +91,7 @@ See [Recovery](../recovery.md) for the safe manual procedure; never delete `park
   `startup.rs` `invalid_startup_metadata_falls_back_so_parked_recovery_can_start`;
   `tear_regressions.rs` `restore_all_keeps_recovery_for_a_window_the_window_server_still_lists`,
   `restore_all_after_unplugging_lands_windows_on_a_connected_display`,
+  `display_disconnect.rs` `restore_all_sends_a_window_from_an_unplugged_display_to_main` (#406),
   `restore_all_command_moves_recovery_frames_onto_the_current_displays`;
   `space_transitions.rs` `restore_keeps_recovery_for_a_parked_window_on_another_desktop` (kept
   past the Accessibility grace, restored once reachable; a closed window still lets exit finish).

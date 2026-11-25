@@ -426,3 +426,134 @@ fn perpendicular_move_through_a_temporary_stack_keeps_the_requested_row() {
     assert_eq!(frames[&c].y, 400);
     assert!(frames[&b].x < frames[&c].x, "{frames:?}");
 }
+
+/// #373: moving the first tile left or the last tile right in a temporarily
+/// stacked horizontal pair would recreate the same saved split, so it crosses
+/// to the adjacent display's active workspace (empty or occupied) in both
+/// Columns and default Dwindle layouts.
+#[test]
+fn outward_move_from_temporarily_stacked_pair_crosses_displays() {
+    let cancelled = AtomicBool::new(false);
+    let main = outputs().main().frame;
+    for mode in [
+        crate::config::LayoutMode::Columns,
+        crate::config::LayoutMode::Dwindle,
+    ] {
+        for (direction, display_x, focus_index) in
+            [(Direction::Left, -1000, 0), (Direction::Right, 1000, 1)]
+        {
+            let mut displays = outputs().displays().to_vec();
+            displays[1].frame.x = display_x;
+            let displays = macos::DisplayOutputs::new(displays).unwrap();
+            for occupied in [false, true] {
+                let pair = [window(10), window(11)];
+                let focused = &pair[focus_index];
+                let mut backend = FakeBackend {
+                    focused: Some(focused.clone()),
+                    ..FakeBackend::default()
+                };
+                for tile in &pair {
+                    backend.frames.insert(tile.clone(), frame(0));
+                    backend.minimum_widths.insert(tile.clone(), 600);
+                }
+                if occupied {
+                    backend.frames.insert(window(20), frame(display_x + 50));
+                }
+                let config = match mode {
+                    crate::config::LayoutMode::Dwindle => Config::default(),
+                    crate::config::LayoutMode::Columns => {
+                        Config::parse("version = 1\n[settings]\nlayout = \"columns\"\n").unwrap()
+                    }
+                };
+                let mut rt = runtime_with_config(backend, config);
+                for (index, tile) in pair.iter().enumerate() {
+                    let anchor = (index > 0).then_some(SlotId(u64::from(pair[0].window_id)));
+                    rt.workspaces.engine_mut(WorkspaceId::ONE).insert_slot_with(
+                        Slot {
+                            id: SlotId(u64::from(tile.window_id)),
+                            weight: 1,
+                            binding: BindingState::Bound(tile.clone()),
+                        },
+                        mode,
+                        main,
+                        anchor,
+                    );
+                }
+                if occupied {
+                    bind(&mut rt, WorkspaceId::SIX, &window(20));
+                    rt.layout_workspace(WorkspaceId::SIX, displays.displays()[1].frame, &cancelled);
+                }
+                for _ in 0..2 {
+                    rt.layout_workspace(WorkspaceId::ONE, main, &cancelled);
+                }
+                assert_eq!(
+                    rt.workspaces.engine(WorkspaceId::ONE).layout().root_axis(),
+                    crate::Axis::Horizontal
+                );
+                assert_eq!(
+                    rt.backend.frames[&pair[0]].x, rt.backend.frames[&pair[1]].x,
+                    "pair starts temporarily stacked"
+                );
+                assert!(rt.backend.frames[&pair[0]].y < rt.backend.frames[&pair[1]].y);
+
+                let Some(WorkerResult::Status { result, .. }) = rt.execute(
+                    WorkerCommand::Action(WorkerAction::Reorder(direction), displays.clone()),
+                    &cancelled,
+                ) else {
+                    panic!("missing command status");
+                };
+                assert_eq!(result.unwrap().failed, 0);
+                assert_eq!(
+                    rt.workspaces.workspace_of(focused),
+                    Some(WorkspaceId::SIX),
+                    "{mode:?} {direction:?} occupied={occupied} should cross displays on first press"
+                );
+                assert_eq!(rt.backend.focused, Some(focused.clone()));
+                let remaining = &pair[1 - focus_index];
+                assert_eq!(
+                    rt.workspaces.workspace_of(remaining),
+                    Some(WorkspaceId::ONE)
+                );
+                assert_eq!(rt.backend.frames[remaining], main);
+            }
+        }
+    }
+}
+
+/// #373 control: moving A up in `A | B | C` temporarily fitted as `A | (B / C)`
+/// changes the saved tree to `A / (B | C)`, so it stays on the source workspace
+/// even when another display sits above it.
+#[test]
+fn perpendicular_move_through_stack_stays_local_when_saved_tree_changes_even_with_adjacent_display()
+{
+    let cancelled = AtomicBool::new(false);
+    let (mut runtime, [a, b, c]) = three_with_minimums([400, 250, 450]);
+    assert_eq!(runtime.backend.frames[&b].x, runtime.backend.frames[&c].x);
+    let mut displays = outputs().displays().to_vec();
+    displays[1].frame.x = 0;
+    displays[1].frame.y = -800;
+    let displays = macos::DisplayOutputs::new(displays).unwrap();
+
+    let Some(WorkerResult::Status { result, .. }) = runtime.execute(
+        WorkerCommand::Action(WorkerAction::Reorder(Direction::Up), displays),
+        &cancelled,
+    ) else {
+        panic!("missing status");
+    };
+    assert_eq!(result.unwrap().failed, 0);
+    assert_eq!(runtime.workspaces.workspace_of(&a), Some(WorkspaceId::ONE));
+    assert!(runtime.backend.workspace_state.is_some());
+
+    runtime.layout_workspace(WorkspaceId::ONE, WIDE, &cancelled);
+    let frames = &runtime.backend.frames;
+    assert_eq!(
+        frames[&a],
+        crate::Rect {
+            height: 400,
+            ..WIDE
+        }
+    );
+    assert_eq!(frames[&b].y, 400);
+    assert_eq!(frames[&c].y, 400);
+    assert!(frames[&b].x < frames[&c].x, "{frames:?}");
+}

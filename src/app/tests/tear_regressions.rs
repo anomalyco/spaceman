@@ -149,7 +149,7 @@ fn reconnecting_a_display_keeps_parked_windows_hidden_and_owned() {
     let cancelled = AtomicBool::new(false);
 
     // Dock, then wait out the park grace.
-    runtime.recently_parked.clear();
+    runtime.backend.advance(Duration::from_secs(3));
     runtime.cycle(outputs(), &cancelled).unwrap();
     runtime.cycle(outputs(), &cancelled).unwrap();
 
@@ -169,15 +169,15 @@ fn a_failed_re_park_after_a_display_change_is_retried() {
     let (mut runtime, hidden) = parked_on_laptop();
     let cancelled = AtomicBool::new(false);
 
-    runtime.recently_parked.clear();
+    runtime.backend.advance(Duration::from_secs(3));
     runtime.backend.position_outcome = Some(macos::ApplyOutcome::Unavailable);
     drop(runtime.cycle(outputs(), &cancelled));
-    assert!(runtime.awaiting_display_repark(&hidden));
+    assert!(runtime.parked.awaits_display(&hidden));
     runtime.backend.position_outcome = None;
     runtime.cycle(outputs(), &cancelled).unwrap();
     runtime.cycle(outputs(), &cancelled).unwrap();
 
-    assert!(!runtime.awaiting_display_repark(&hidden));
+    assert!(!runtime.parked.awaits_display(&hidden));
     assert_eq!(
         runtime.workspaces.workspace_of(&hidden),
         Some(WorkspaceId::new(2).unwrap())
@@ -191,7 +191,7 @@ fn a_failed_re_park_after_a_display_change_is_retried() {
 fn a_display_change_leaves_a_held_up_parked_window_alone() {
     let (mut runtime, hidden) = parked_on_laptop();
     let cancelled = AtomicBool::new(false);
-    runtime.recently_parked.clear();
+    runtime.backend.advance(Duration::from_secs(3));
     runtime.cycle(outputs(), &cancelled).unwrap();
     runtime.cycle(outputs(), &cancelled).unwrap();
     for frames in [
@@ -203,13 +203,13 @@ fn a_display_change_leaves_a_held_up_parked_window_alone() {
         }
     }
     runtime.backend.parked_writes.clear();
-    runtime.recently_parked.clear();
+    runtime.backend.advance(Duration::from_secs(3));
 
     runtime.cycle(three_outputs(), &cancelled).unwrap();
     runtime.cycle(three_outputs(), &cancelled).unwrap();
 
     assert!(!runtime.backend.parked_writes.contains(&hidden));
-    assert!(!runtime.awaiting_display_repark(&hidden));
+    assert!(!runtime.parked.awaits_display(&hidden));
     assert_hidden(&runtime, &hidden);
 }
 
@@ -230,7 +230,7 @@ fn a_display_that_grows_at_the_bottom_re_parks_its_held_up_windows() {
             }
         }
         runtime.backend.parked_writes.clear();
-        runtime.recently_parked.clear();
+        runtime.backend.advance(Duration::from_secs(3));
         let mut grown = main_only().displays().to_vec();
         grown[0].frame.height += growth;
         let grown = macos::DisplayOutputs::new(grown).unwrap();
@@ -257,7 +257,7 @@ fn a_failed_re_park_survives_a_second_display_change() {
             frame.y -= 31;
         }
     }
-    runtime.recently_parked.clear();
+    runtime.backend.advance(Duration::from_secs(3));
     let mut grown = main_only().displays().to_vec();
     grown[0].frame.height += 40;
     runtime.backend.position_outcome = Some(macos::ApplyOutcome::Unavailable);
@@ -265,7 +265,7 @@ fn a_failed_re_park_survives_a_second_display_change() {
         macos::DisplayOutputs::new(grown.clone()).unwrap(),
         &cancelled,
     ));
-    assert!(runtime.awaiting_display_repark(&hidden));
+    assert!(runtime.parked.awaits_display(&hidden));
     runtime.backend.position_outcome = None;
     runtime.backend.parked_writes.clear();
     let mut left = outputs().displays()[1].clone();

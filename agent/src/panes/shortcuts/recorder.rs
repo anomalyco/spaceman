@@ -102,6 +102,15 @@ pub fn press(
     }
 }
 
+/// The chord pressing `key` with `mods` spells on the active keyboard layout, if it could be a
+/// shortcut.
+pub fn pressed_chord(key: PhysicalKeyCode, mods: Mods) -> Option<Chord> {
+    match press(key, mods, layout_character) {
+        Press::Chord(chord) => Some(chord),
+        _ => None,
+    }
+}
+
 fn key_name(
     key: PhysicalKeyCode,
     character: impl Fn(PhysicalKeyCode) -> Option<char>,

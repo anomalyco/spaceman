@@ -4,14 +4,13 @@
 
 use super::*;
 
-/// The displays the runtime last saw, and the hidden windows still to re-park
-/// since they changed.
+/// The displays the runtime last saw. Which hidden windows still need a re-park
+/// since they changed is the park table's to say.
 #[derive(Default)]
 pub(super) struct DisplayWatch {
     known: Option<macos::DisplayOutputs>,
     /// The displays before the last change, which pending windows were parked against.
     previous: Option<macos::DisplayOutputs>,
-    repark_pending: HashSet<crate::PhysicalWindowId>,
 }
 
 impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
@@ -66,13 +65,11 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
             log_event!("displays changed: re-parking hidden windows");
             // A window still due a re-park never reached its corner for the last
             // displays, so they are no baseline: every window is written again.
-            self.displays.previous = if self.displays.repark_pending.is_empty() {
-                self.displays.known.clone()
-            } else {
+            self.displays.previous = if self.parked.displays_changed() {
                 None
+            } else {
+                self.displays.known.clone()
             };
-            self.displays.repark_pending = self.parked.keys().cloned().collect();
-            self.repark_attempts.clear();
             // macOS moves windows off a removed display, and Spaceman parks and
             // restores them: a frame read back against a target applied before
             // the change says nothing about what the app accepts, so it must
@@ -88,7 +85,8 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
     /// (the app is briefly inaccessible) stays due and is retried next time.
     pub(super) fn follow_displays(&mut self, outputs: &macos::DisplayOutputs) {
         self.note_outputs(outputs);
-        if self.displays.repark_pending.is_empty() {
+        let due: Vec<_> = self.parked.awaiting_display().cloned().collect();
+        if due.is_empty() {
             return;
         }
         let visible: HashSet<_> = self
@@ -103,28 +101,25 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
             .previous
             .as_ref()
             .map(|previous| (previous.frames().collect::<Vec<_>>(), previous.screens()));
-        for window in std::mem::take(&mut self.displays.repark_pending) {
-            if !self.parked.contains_key(&window) || self.parking_exempt.contains(&window) {
-                continue;
-            }
+        for window in due {
             // Hidden scratchpad windows intentionally have no workspace owner, but still need to
             // stay parked off-screen when a newly connected display covers their parking edge.
-            let output = if let Some(owner) = self.workspaces.workspace_of_any(&window) {
-                if visible.contains(&owner) {
-                    continue;
+            let output = match self.workspaces.residency(&window) {
+                _ if self.stays_on_screen(&window) => None,
+                Some(crate::workspace::Residency::Scratchpad { shown_on: None, .. }) => {
+                    Some(outputs.main().frame)
                 }
-                output_for(&self.workspaces, owner, outputs)
-            } else if self
-                .scratchpad
-                .entry(&window)
-                .is_some_and(|entry| entry.shown_on.is_none())
-            {
-                outputs.main().frame
-            } else {
-                continue;
+                _ => self
+                    .workspaces
+                    .workspace_of_any(&window)
+                    .filter(|owner| !visible.contains(owner))
+                    .map(|owner| output_for(&self.workspaces, owner, outputs)),
             };
-            if !self.repark_for_displays(&window, output, &displays, &screens, previous.as_ref()) {
-                self.displays.repark_pending.insert(window);
+            // A write that fails stays due and is retried next time.
+            if output.is_none_or(|output| {
+                self.repark_for_displays(&window, output, &displays, &screens, previous.as_ref())
+            }) {
+                self.parked.display_settled(&window);
             }
         }
     }
@@ -161,14 +156,8 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
         if outcome != macos::ApplyOutcome::Applied {
             return false;
         }
-        self.recently_parked.insert(window.clone(), Instant::now());
+        self.parked.park_applied(window, self.backend.now());
         true
-    }
-
-    /// Whether `window` still awaits its re-park after a display change. Until
-    /// then a new display may show it, which is no reappearance to honor.
-    pub(super) fn awaiting_display_repark(&self, window: &crate::PhysicalWindowId) -> bool {
-        self.displays.repark_pending.contains(window)
     }
 
     /// Recover visible, non-parked owned windows whose on-screen window-server
@@ -309,6 +298,35 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
         };
         let displays: Vec<_> = outputs.frames().collect();
         crate::geometry::onto_displays(frame, &displays, outputs.main().frame)
+    }
+
+    /// Where a parked window is restored. When the display its recovery frame
+    /// was recorded on is unplugged it goes to the main display, even if
+    /// another display now covers the old position (#406).
+    pub(super) fn recovery_target(&self, window: &crate::PhysicalWindowId) -> Option<crate::Rect> {
+        let record = self.parked.record(window)?;
+        let outputs = self.displays.known.as_ref();
+        let display_gone = record.original_display.as_ref().is_some_and(|id| {
+            outputs.is_some_and(|outputs| outputs.displays().iter().all(|d| &d.id != id))
+        });
+        Some(match outputs {
+            Some(outputs) if display_gone => {
+                crate::geometry::onto_displays(record.original, &[], outputs.main().frame)
+            }
+            _ => self.restore_target(record.original),
+        })
+    }
+
+    /// The connected display a recovery frame is recorded on.
+    pub(super) fn recovery_display(&self, frame: crate::Rect) -> Option<String> {
+        let outputs = self.displays.known.as_ref()?;
+        let displays: Vec<_> = outputs.frames().collect();
+        let display = Self::display_for_frame(frame, &displays)?;
+        outputs
+            .displays()
+            .iter()
+            .find(|output| output.frame == display)
+            .map(|output| output.id.clone())
     }
 }
 

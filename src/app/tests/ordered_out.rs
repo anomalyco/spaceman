@@ -237,10 +237,8 @@ fn an_app_keeps_its_tiles_while_one_of_its_windows_is_still_settling() {
 fn a_parked_window_keeps_its_tile_through_the_settle() {
     let (mut runtime, kept, missing) = ordered_out_pair("com.example.Parked");
     let right = runtime.backend.server_frames[&missing];
-    runtime.parked.insert(missing.clone(), right);
-    runtime
-        .recently_parked
-        .insert(missing.clone(), Instant::now());
+    runtime.parked.insert(missing.clone(), right, None);
+    runtime.parked.park_applied(&missing, runtime.backend.now());
     runtime.backend.set_aside.insert(missing.clone());
 
     runtime

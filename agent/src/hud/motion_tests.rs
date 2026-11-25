@@ -27,7 +27,7 @@ use super::{
 };
 
 const HZ: f64 = 120.0;
-/// The most a spring here moves opacity in one 120 Hz frame (EXIT 0.11 s peaks near 0.18/frame);
+/// The most a spring here moves opacity in one 120 Hz frame (ENTER 0.10 s peaks near 0.19/frame);
 /// a pop is several times this.
 const OPACITY_STEP: f32 = 0.20;
 /// One 8-bit step of alpha: below it nothing is drawn.
@@ -946,7 +946,7 @@ fn clicking_a_workspace_slot_switches_it() {
 }
 
 #[test]
-fn secondary_clicking_an_app_icon_opens_float_and_pin_menu() {
+fn secondary_clicking_an_app_icon_opens_its_rule_menu() {
     let sink = Arc::new(RecordingSink::new());
     let mut hud = Hud::with_sink(HudStyle::Icons, row(1, None), false, sink.clone());
     hud.play(200);
@@ -970,7 +970,11 @@ fn secondary_clicking_an_app_icon_opens_float_and_pin_menu() {
     );
     assert_eq!(
         popup.find(menu::ID_TOGGLE_PIN).unwrap().title(),
-        "Pin Web to Workspace 1"
+        "Pin Web on all workspaces"
+    );
+    assert_eq!(
+        popup.find(menu::ID_TOGGLE_ROUTE).unwrap().title(),
+        "Always open Web on Workspace 1"
     );
 
     // Pick Float -> writes float rule through Doc, then HUD resumes dismiss.

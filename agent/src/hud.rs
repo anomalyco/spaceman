@@ -50,12 +50,12 @@ use crate::{apps, controls::Paint};
 
 /// While a panel is up, how often it checks its display is still connected.
 const DISPLAY_CHECK_MS: u64 = 250;
-/// Only the first show fades the panel itself over 150 ms: nothing has been drawn to enter from yet.
-const FIRST_FADE: Duration = Duration::from_millis(150);
+/// Only the first show fades the panel itself over 100 ms: nothing has been drawn to enter from yet.
+const FIRST_FADE: Duration = Duration::from_millis(100);
 /// Subsequent reveals use a brief fade (>= 33 ms) instead of `show()` so AppKit marks the
 /// panel visible before Rune's occlusion check runs, avoiding its 250 ms retry
 /// (anomalyco/rune#1714) while letting the capsule's own entry spring carry the motion.
-const REVEAL_FADE: Duration = Duration::from_millis(40);
+const REVEAL_FADE: Duration = Duration::from_millis(33);
 /// Room on every side of the capsule for its shadow, which the panel's edge would cut, and
 /// for ten or so workspaces before the row scrolls.
 const OVERLAY_SIZE: (f32, f32) = (860.0, pill::PILL_HEIGHT + 2.0 * pill::SHADOW_REACH);
@@ -208,13 +208,15 @@ impl HudOverlay {
             .cloned()
             .unwrap_or_else(|| apps::fallback_name(bundle));
         let current = self.sink.app_place(bundle);
-        let popup = menu::build_app_menu(&app_name, workspace, current);
+        let floats_by_default = spaceman::defaults::floats_by_default(bundle);
+        let popup = menu::build_app_menu(&app_name, workspace, current, floats_by_default);
         self.flow.set_menu_open(true, now_ms);
         let bundle_id = bundle.to_owned();
         tx.popup_menu(popup, at, move |overlay: &mut HudOverlay, picked, tx| {
             let close_ms = overlay.now_ms();
             if let Some(picked) = picked
-                && let Some(new_place) = menu::resolve_app_menu_pick(picked, workspace, current)
+                && let Some(new_place) =
+                    menu::resolve_app_menu_pick(picked, workspace, current, floats_by_default)
             {
                 drop(overlay.sink.set_app_place(&bundle_id, new_place));
             }

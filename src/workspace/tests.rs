@@ -620,3 +620,42 @@ fn moving_into_a_populated_workspace_avoids_slot_id_collisions() {
     assert_eq!(ids.len(), 2);
     workspaces.engine(target).model().validate().unwrap();
 }
+
+#[test]
+fn hand_pins_persist_for_floating_windows_and_rule_pins_do_not() {
+    let note = window(30);
+    let ruled = window(31);
+    let mut workspaces = Workspaces::default();
+    assert!(!workspaces.pin(note.clone()), "only a float can be pinned");
+    workspaces.own_floating(note.clone(), WorkspaceId::TWO);
+    workspaces.own_floating(ruled.clone(), WorkspaceId::ONE);
+    assert!(workspaces.pin(note.clone()));
+    workspaces.set_rule_pinned(&ruled, true);
+    assert!(workspaces.is_pinned(&ruled));
+
+    let state = workspaces.state();
+    state.validate().unwrap();
+    assert_eq!(state.pinned, vec![note.clone()]);
+    let json = serde_json::to_string(&state).unwrap();
+    let mut restored = Workspaces::default();
+    restored.restore(serde_json::from_str(&json).unwrap());
+    assert!(restored.is_pinned_by_hand(&note));
+    assert!(!restored.is_pinned(&ruled));
+
+    // Tiling or forgetting the float drops its pin.
+    restored.forget_floating(&note);
+    assert!(!restored.is_pinned(&note));
+    assert!(restored.state().pinned.is_empty());
+
+    let mut orphaned = state;
+    orphaned.floating.clear();
+    assert_eq!(
+        orphaned.validate().err().as_deref(),
+        Some("pinned window is not floating")
+    );
+    // State with no pins (as written before pins existed) has no `pinned` key and still loads.
+    let older = serde_json::to_string(&Workspaces::default().state()).unwrap();
+    assert!(!older.contains("pinned"), "{older}");
+    let older: WorkspaceState = serde_json::from_str(&older).unwrap();
+    older.validate().unwrap();
+}

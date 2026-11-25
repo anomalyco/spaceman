@@ -11,6 +11,9 @@ struct ParkedWindowsRef<'a>(
 );
 
 pub(super) trait WorkspaceBackend {
+    /// The worker's clock. Parking's settle, retry and exemption windows read
+    /// time only through it, so tests can step it instead of sleeping.
+    fn now(&self) -> Instant;
     fn snapshot(
         &mut self,
         cycle: u64,
@@ -43,6 +46,9 @@ pub(super) trait WorkspaceBackend {
     fn onscreen_window_frames(&mut self) -> Option<HashMap<u32, crate::Rect>>;
     /// On-screen window-server IDs, front-most first.
     fn onscreen_window_order(&mut self) -> Option<Vec<u32>>;
+    /// The running application instance owning each of `window_ids`, per the window server.
+    /// For the rare window no observation covers; windows it cannot attribute are left out.
+    fn window_owners(&mut self, window_ids: &HashSet<u32>) -> HashMap<u32, AppInstanceId>;
     fn set_position(
         &mut self,
         window: &crate::PhysicalWindowId,
@@ -68,6 +74,8 @@ pub(super) trait WorkspaceBackend {
     }
     fn raise_window(&mut self, window: &crate::PhysicalWindowId) -> bool;
     fn focus_window(&mut self, window: &crate::PhysicalWindowId) -> bool;
+    /// Presses the app's "Move Tab to New Window" for its focused `window`.
+    fn detach_tab(&mut self, window: &crate::PhysicalWindowId) -> macos::TabDetachResult;
     fn pointer_location(&mut self) -> Option<(i32, i32)> {
         None
     }
@@ -139,6 +147,10 @@ impl MacWorkspaceBackend {
 }
 
 impl WorkspaceBackend for MacWorkspaceBackend {
+    fn now(&self) -> Instant {
+        Instant::now()
+    }
+
     fn snapshot(
         &mut self,
         cycle: u64,
@@ -182,6 +194,10 @@ impl WorkspaceBackend for MacWorkspaceBackend {
         macos::onscreen_window_order()
     }
 
+    fn window_owners(&mut self, window_ids: &HashSet<u32>) -> HashMap<u32, AppInstanceId> {
+        macos::window_owners(window_ids)
+    }
+
     fn set_position(
         &mut self,
         window: &crate::PhysicalWindowId,
@@ -220,6 +236,10 @@ impl WorkspaceBackend for MacWorkspaceBackend {
 
     fn focus_window(&mut self, window: &crate::PhysicalWindowId) -> bool {
         macos::focus_window(window)
+    }
+
+    fn detach_tab(&mut self, window: &crate::PhysicalWindowId) -> macos::TabDetachResult {
+        macos::detach_tab(window)
     }
 
     fn pointer_location(&mut self) -> Option<(i32, i32)> {

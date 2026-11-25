@@ -375,63 +375,141 @@ fn visited_empty_workspaces_keep_the_configured_workspace_order() {
 }
 
 #[test]
-fn app_context_menu_reflects_float_tile_and_pin_state() {
+fn app_context_menu_names_route_rules_always_open_and_keeps_pin_for_the_pin_action() {
     let ws2 = id(2);
     let ws4 = id(4);
+    let title = |menu: &rune::PopupMenu, item: &str| menu.find(item).unwrap().title().to_owned();
 
-    // Default (tiled, unpinned): offers Float and Pin to Workspace 2.
-    let default_menu = menu::build_app_menu("Safari", ws2, None);
+    // No rule: Float, Pin on all workspaces, then where new windows open.
+    let default_menu = menu::build_app_menu("Safari", ws2, None, false);
+    assert_eq!(title(&default_menu, menu::ID_TOGGLE_FLOAT), "Float Safari");
     assert_eq!(
-        default_menu.find(menu::ID_TOGGLE_FLOAT).unwrap().title(),
-        "Float Safari"
+        title(&default_menu, menu::ID_TOGGLE_PIN),
+        "Pin Safari on all workspaces"
     );
     assert_eq!(
-        default_menu.find(menu::ID_TOGGLE_PIN).unwrap().title(),
-        "Pin Safari to Workspace 2"
+        title(&default_menu, menu::ID_TOGGLE_ROUTE),
+        "Always open Safari on Workspace 2"
     );
-    assert_eq!(
-        menu::resolve_app_menu_pick(menu::ID_TOGGLE_FLOAT, ws2, None),
-        Some(Some(Place::Float))
+    assert!(
+        !default_menu
+            .find(menu::ID_TOGGLE_ROUTE)
+            .unwrap()
+            .is_checked()
     );
+    assert!(default_menu.find(menu::ID_CLEAR_ROUTE).is_none());
+    let pick = |item, current| menu::resolve_app_menu_pick(item, ws2, current, false);
+    assert_eq!(pick(menu::ID_TOGGLE_FLOAT, None), Some(Some(Place::Float)));
+    // "Pin" writes the pin action, never a route.
+    assert_eq!(pick(menu::ID_TOGGLE_PIN, None), Some(Some(Place::Pin)));
     assert_eq!(
-        menu::resolve_app_menu_pick(menu::ID_TOGGLE_PIN, ws2, None),
+        pick(menu::ID_TOGGLE_ROUTE, None),
         Some(Some(Place::Workspace(ws2)))
     );
+    assert_eq!(pick("unknown", None), None);
 
-    // Currently floated: offers Tile and Pin to Workspace 2.
-    let float_menu = menu::build_app_menu("Safari", ws2, Some(Place::Float));
+    // No item of a route rule's menu says "Pin … Workspace".
+    for current in [
+        None,
+        Some(Place::Workspace(ws2)),
+        Some(Place::Workspace(ws4)),
+    ] {
+        let menu = menu::build_app_menu("Safari", ws2, current, false);
+        for item in [menu::ID_TOGGLE_ROUTE, menu::ID_CLEAR_ROUTE] {
+            if let Some(item) = menu.find(item) {
+                assert!(item.title().starts_with("Always open Safari on Workspace "));
+            }
+        }
+        assert_eq!(
+            title(&menu, menu::ID_TOGGLE_PIN),
+            "Pin Safari on all workspaces"
+        );
+    }
+
+    // Floating by rule: Tile removes the rule.
+    let float_menu = menu::build_app_menu("Safari", ws2, Some(Place::Float), false);
+    assert_eq!(title(&float_menu, menu::ID_TOGGLE_FLOAT), "Tile Safari");
+    assert_eq!(pick(menu::ID_TOGGLE_FLOAT, Some(Place::Float)), Some(None));
+
+    // Pinned: Unpin leaves it floating, Tile removes the rule.
+    let pinned_menu = menu::build_app_menu("Safari", ws2, Some(Place::Pin), false);
+    assert_eq!(title(&pinned_menu, menu::ID_TOGGLE_PIN), "Unpin Safari");
+    assert_eq!(title(&pinned_menu, menu::ID_TOGGLE_FLOAT), "Tile Safari");
     assert_eq!(
-        float_menu.find(menu::ID_TOGGLE_FLOAT).unwrap().title(),
-        "Tile Safari"
+        pick(menu::ID_TOGGLE_PIN, Some(Place::Pin)),
+        Some(Some(Place::Float))
     );
+    assert_eq!(pick(menu::ID_TOGGLE_FLOAT, Some(Place::Pin)), Some(None));
+
+    // Opening here: the item is checked, and picking it removes the rule.
+    let here = Some(Place::Workspace(ws2));
+    let here_menu = menu::build_app_menu("Safari", ws2, here, false);
+    assert!(here_menu.find(menu::ID_TOGGLE_ROUTE).unwrap().is_checked());
+    assert!(here_menu.find(menu::ID_CLEAR_ROUTE).is_none());
+    assert_eq!(pick(menu::ID_TOGGLE_ROUTE, here), Some(None));
+
+    // Opening on another workspace: move it here, or pick the checked one to remove it.
+    let other = Some(Place::Workspace(ws4));
+    let other_menu = menu::build_app_menu("Safari", ws2, other, false);
+    assert!(!other_menu.find(menu::ID_TOGGLE_ROUTE).unwrap().is_checked());
     assert_eq!(
-        menu::resolve_app_menu_pick(menu::ID_TOGGLE_FLOAT, ws2, Some(Place::Float)),
-        Some(None)
+        title(&other_menu, menu::ID_CLEAR_ROUTE),
+        "Always open Safari on Workspace 4"
+    );
+    assert!(other_menu.find(menu::ID_CLEAR_ROUTE).unwrap().is_checked());
+    assert_eq!(
+        pick(menu::ID_TOGGLE_ROUTE, other),
+        Some(Some(Place::Workspace(ws2)))
+    );
+    assert_eq!(pick(menu::ID_CLEAR_ROUTE, other), Some(None));
+}
+
+#[test]
+fn app_context_menu_respects_the_built_in_float_defaults() {
+    let ws1 = id(1);
+    let stickies = "com.apple.Stickies";
+    assert!(spaceman::defaults::floats_by_default(stickies));
+    let title = |current| {
+        menu::build_app_menu("Stickies", ws1, current, true)
+            .find(menu::ID_TOGGLE_FLOAT)
+            .unwrap()
+            .title()
+            .to_owned()
+    };
+    let pick = |item, current| menu::resolve_app_menu_pick(item, ws1, current, true);
+
+    // It floats with no rule, so the menu offers Tile, and Tile writes the override.
+    assert_eq!(title(None), "Tile Stickies");
+    assert_eq!(pick(menu::ID_TOGGLE_FLOAT, None), Some(Some(Place::Tile)));
+    // Tiled by that override: Float takes the rule away again instead of adding one.
+    assert_eq!(title(Some(Place::Tile)), "Float Stickies");
+    assert_eq!(pick(menu::ID_TOGGLE_FLOAT, Some(Place::Tile)), Some(None));
+    // Pinned, then unpinned: back to the built-in float, with no rule left behind.
+    assert_eq!(pick(menu::ID_TOGGLE_PIN, None), Some(Some(Place::Pin)));
+    assert_eq!(pick(menu::ID_TOGGLE_PIN, Some(Place::Pin)), Some(None));
+    assert_eq!(
+        pick(menu::ID_TOGGLE_FLOAT, Some(Place::Pin)),
+        Some(Some(Place::Tile))
     );
 
-    // Pinned to current workspace: offers Float and Unpin.
-    let pinned_menu = menu::build_app_menu("Safari", ws2, Some(Place::Workspace(ws2)));
-    assert_eq!(
-        pinned_menu.find(menu::ID_TOGGLE_PIN).unwrap().title(),
-        "Unpin Safari from Workspace 2"
+    // The picks write rules Spaceman's own parser reads back the same way.
+    let mut doc = crate::rules::Doc::parse("version = 1\n");
+    doc.set_app_place(stickies, pick(menu::ID_TOGGLE_FLOAT, None).unwrap());
+    assert!(
+        doc.source().contains("action = \"tile\""),
+        "{}",
+        doc.source()
     );
-    assert_eq!(
-        menu::resolve_app_menu_pick(menu::ID_TOGGLE_PIN, ws2, Some(Place::Workspace(ws2))),
-        Some(None)
+    spaceman::config::Config::parse(&doc.source()).unwrap();
+    doc.set_app_place(
+        stickies,
+        pick(menu::ID_TOGGLE_PIN, Some(Place::Tile)).unwrap(),
     );
-
-    // Pinned to another workspace: offers Float, Pin here, and Unpin from the other workspace.
-    let other_menu = menu::build_app_menu("Safari", ws2, Some(Place::Workspace(ws4)));
-    assert_eq!(
-        other_menu.find(menu::ID_TOGGLE_PIN).unwrap().title(),
-        "Pin Safari to Workspace 2"
+    assert!(
+        doc.source().contains("action = \"pin\""),
+        "{}",
+        doc.source()
     );
-    assert_eq!(
-        other_menu.find(menu::ID_UNPIN_OTHER).unwrap().title(),
-        "Unpin Safari from Workspace 4"
-    );
-    assert_eq!(
-        menu::resolve_app_menu_pick(menu::ID_UNPIN_OTHER, ws2, Some(Place::Workspace(ws4))),
-        Some(None)
-    );
+    assert!(!doc.source().contains("workspace"), "{}", doc.source());
+    spaceman::config::Config::parse(&doc.source()).unwrap();
 }

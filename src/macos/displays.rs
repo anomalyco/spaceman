@@ -3,7 +3,7 @@
 use std::{collections::HashMap, ptr::NonNull};
 
 use objc2::{MainThreadMarker, rc::autoreleasepool};
-use objc2_app_kit::NSScreen;
+use objc2_app_kit::{NSApplication, NSScreen};
 use objc2_core_foundation::{CFRetained, CFUUID};
 use objc2_foundation::{NSNumber, ns_string};
 
@@ -214,6 +214,10 @@ impl DisplayOutputs {
 pub fn outputs() -> Result<DisplayOutputs, SnapshotError> {
     autoreleasepool(|_| {
         let marker = MainThreadMarker::new().ok_or(SnapshotError::MainThreadRequired)?;
+        // Without an initialized `NSApplication` (e.g. in the standalone `spaceman displays`
+        // CLI), AppKit reports `screensHaveSeparateSpaces == false` and includes secondary
+        // displays' menu bars inside `NSScreen::visibleFrame` (#357).
+        let _ = NSApplication::sharedApplication(marker);
         let screens = NSScreen::screens(marker);
         let primary_height = (0..screens.count())
             .map(|index| screens.objectAtIndex(index).frame())
@@ -470,5 +474,47 @@ mod tests {
             Some("second")
         );
         assert_eq!(with_bounds.display_at((2010, 800)), None);
+    }
+
+    #[test]
+    fn screen_rect_converts_visible_frames_excluding_menu_bars_on_side_displays() {
+        use objc2_foundation::{NSPoint, NSRect, NSSize};
+
+        // Main 2560x1440 with 30pt menu bar flanked by two 1440x2560 portrait displays (#357).
+        let primary_height = 1440.0;
+        let rect = |x, y, width, height| {
+            screen_rect(
+                NSRect::new(NSPoint::new(x, y), NSSize::new(width, height)),
+                primary_height,
+            )
+        };
+        assert_eq!(
+            rect(0.0, 0.0, 2560.0, 1410.0),
+            Rect {
+                x: 0,
+                y: 30,
+                width: 2560,
+                height: 1410,
+            }
+        );
+        // Side displays' visible frames exclude their 30pt menu bars just like main.
+        assert_eq!(
+            rect(-1440.0, -507.0, 1440.0, 2530.0),
+            Rect {
+                x: -1440,
+                y: -583,
+                width: 1440,
+                height: 2530,
+            }
+        );
+        assert_eq!(
+            rect(2560.0, -551.0, 1440.0, 2530.0),
+            Rect {
+                x: 2560,
+                y: -539,
+                width: 1440,
+                height: 2530,
+            }
+        );
     }
 }

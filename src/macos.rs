@@ -8,6 +8,7 @@ mod keys;
 mod presenter;
 mod spaces;
 mod swipes;
+mod tabs;
 #[cfg(test)]
 mod tests;
 mod window_attributes;
@@ -40,13 +41,14 @@ pub use ax::{
 pub use display_link::{DisplayFrame, DisplayLink, DisplayLinkError};
 pub use displays::{DisplayOutput, DisplayOutputs, display_ids, outputs};
 pub use events::WindowEventMonitor;
-pub use keys::KeyMonitor;
+pub use keys::{KeyMonitor, key_press};
 pub use presenter::{
     AppSink, AxBackend, EnhancedUi, InteractivePresenter, PresenterBackend, PresenterStats,
     WriteOutcome,
 };
 pub use spaces::{last_active_space_change, take_active_space_changed};
 pub use swipes::SwipeMonitor;
+pub use tabs::{TabDetachResult, detach_tab};
 
 use apply::{cache_managed_window, evict_managed_app, prune_managed_app};
 use ax::{
@@ -343,6 +345,26 @@ pub fn is_process_incarnation_running(id: &AppInstanceId) -> bool {
         evict_managed_app(id);
     }
     running
+}
+
+/// The running application instance owning each of `window_ids`, per the window server.
+/// Windows it no longer lists, or whose process is not a running application, are left out.
+#[must_use]
+pub fn window_owners(window_ids: &HashSet<u32>) -> HashMap<u32, AppInstanceId> {
+    autoreleasepool(|_| {
+        let Some(windows) = window_server_windows(CGWindowListOption::OptionAll) else {
+            return HashMap::new();
+        };
+        windows
+            .into_iter()
+            .filter(|window| window.pid > 0 && window_ids.contains(&window.id))
+            .filter_map(|window| {
+                let application =
+                    NSRunningApplication::runningApplicationWithProcessIdentifier(window.pid)?;
+                Some((window.id, app_instance_with_pid(&application, window.pid)))
+            })
+            .collect()
+    })
 }
 
 pub(super) fn app_instance_with_pid(application: &NSRunningApplication, pid: i32) -> AppInstanceId {

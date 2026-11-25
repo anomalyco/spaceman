@@ -242,6 +242,11 @@ impl Engine {
         self.edit_weights(window, |layout, slot| layout.resize(slot, current, canvas))
     }
 
+    /// The slot a newly adopted window is inserted next to.
+    pub(crate) const fn insertion_focus(&self) -> Option<crate::SlotId> {
+        self.insertion_focus
+    }
+
     pub(crate) fn remember_insertion_focus(&mut self, window: &PhysicalWindowId) {
         self.insertion_focus = self.slot_for_window(window);
     }
@@ -371,14 +376,25 @@ impl Engine {
         })
     }
 
+    /// Splits or re-orients the requested layout along `direction` only when
+    /// doing so changes its split structure. A temporary minimum-width fit can
+    /// make an outward directional move look perpendicular while recreating the
+    /// same saved shape; returning `false` lets `reorder_focused` cross displays.
     pub(crate) fn create_implicit_split(
         &mut self,
         window: &PhysicalWindowId,
         direction: crate::Direction,
     ) -> bool {
-        self.edit_requested(window, |layout, slot| {
-            layout.create_implicit_split(slot, direction)
-        })
+        let Some(slot) = self.slot_for_window(window) else {
+            return false;
+        };
+        let mut layout = self.layout.clone();
+        if !layout.create_implicit_split(slot, direction) || !layout.regroups(&self.layout) {
+            return false;
+        }
+        self.layout = layout;
+        self.commit_layout();
+        true
     }
 
     #[cfg(test)]
@@ -425,6 +441,23 @@ impl Engine {
         layout.sync(self.model.workspace.axis, &self.model.workspace.slots);
         self.layout = layout;
         self.commit_layout();
+    }
+
+    /// Hands `from`'s slot (its id, weight and place) to `to`: the window a tab
+    /// group shows once the tab `from` was is moved out of it.
+    pub(crate) fn rebind_window(&mut self, from: &PhysicalWindowId, to: &PhysicalWindowId) -> bool {
+        let Some(slot) = self
+            .model
+            .workspace
+            .slots
+            .iter_mut()
+            .find(|slot| slot.bound_window() == Some(from))
+        else {
+            return false;
+        };
+        slot.binding = crate::BindingState::Bound(to.clone());
+        self.invalidate_layout();
+        true
     }
 
     pub(crate) fn slot_for_window(&self, window: &PhysicalWindowId) -> Option<crate::SlotId> {
@@ -681,6 +714,32 @@ mod tests {
 
         assert!(engine.move_window_relative(&windows[2], &windows[0], crate::Direction::Right));
         assert_eq!(engine.model().workspace.slots[2].weight, 1);
+    }
+
+    #[test]
+    fn implicit_split_returns_false_when_saved_shape_is_unchanged() {
+        let output = Rect {
+            width: 1000,
+            height: 800,
+            ..Rect::default()
+        };
+        for mode in [LayoutMode::Columns, LayoutMode::Dwindle] {
+            let mut engine = Engine::default();
+            engine.insert_slot_with(slot(1, 1), mode, output, None);
+            engine.insert_slot_with(slot(2, 1), mode, output, Some(crate::SlotId(1)));
+            let windows = engine.bound_windows();
+            let before = engine.layout().clone();
+            let revision = engine.revision();
+
+            assert!(!engine.create_implicit_split(&windows[0], crate::Direction::Left));
+            assert!(!engine.create_implicit_split(&windows[1], crate::Direction::Right));
+            assert_eq!(engine.layout(), &before);
+            assert_eq!(engine.revision(), revision);
+
+            // Reversing the pair or re-orienting vertically changes the shape.
+            assert!(engine.create_implicit_split(&windows[0], crate::Direction::Up));
+            assert_eq!(engine.model().workspace.axis, crate::Axis::Vertical);
+        }
     }
 
     fn observation(cycle: u64, window_id: u32) -> NativeObservation {

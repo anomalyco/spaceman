@@ -53,12 +53,17 @@ right = 0
 [[rules]]
 bundle_id = "com.example.Application" # optional exact match
 title = "Preferences"                 # optional exact match
-action = "float"                      # required: "float", "tile", "route", or "ignore"
+action = "float"                      # required: "float", "pin", "tile", "route", or "ignore"
 
 [[rules]]
-bundle_id = "com.tinyspeck.slackmacgap"
+bundle_id = "com.apple.Safari"
+title_contains = "Work —"             # optional; case-insensitive part of the title
 action = "route"
-workspace = 2                         # required for route; forbidden for float, tile, and ignore
+workspace = 2                         # required for route; forbidden for the other actions
+
+[[rules]]
+bundle_id = "com.apple.Stickies"
+action = "tile"                       # tiles an app Spaceman floats by default
 
 [[rules]]
 bundle_id = "ai.opencode.desktop"
@@ -70,20 +75,35 @@ workspace = 9                         # 1 through 10 or "A" through "Z"; unique
 monitor = "main"                      # non-empty selector
 ```
 
-A rule needs at least one of `bundle_id` or `title`. If both are present, both must match exactly.
-Rules run in file order and the first matching rule wins. An unmatched window is managed normally.
+A rule needs at least one of `bundle_id`, `title` or `title_contains`; every matcher present must
+match. `bundle_id` and `title` match exactly; `title_contains` (not empty) matches when the window's
+title contains it, ignoring case, so `"Work —"` catches a Safari profile's `Work — Pull Request #42`.
+Rules run in file order and the first matching rule wins.
+
+A window no rule matches gets Spaceman's built-in default. A short, fixed list of utility, note
+and password apps floats at its own size: Stickies, Calculator, Dictionary, Clock, Weather, System
+Settings, Passwords, Photo Booth, Voice Memos, Digital Color Meter, Archive Utility, Keychain
+Access, 1Password (7 and 8), Bitwarden, Raycast, Alfred, CleanShot X and Hex (the list is
+`FLOATING_BUNDLES` in `src/defaults.rs`). Every other window is managed normally. A matching rule
+overrides the default for what it decides: `action = "tile"` tiles one of these apps again, and
+`action = "route"` keeps it floating but opens it on the routed workspace.
 
 - `float` excludes the window from tiling and resizing, preserves its native frame, and keeps it with
   its logical workspace (a remembered workspace during recall, or the active workspace where it was
   first observed).
-- `tile` tiles the window even when Spaceman would float it as a dialog, settings window, or
-  non-resizable window (see [Compatibility](compatibility.md)), like an unmatched resizable window.
+- `pin` floats the window like `float` and shows it on every workspace of its display: switching
+  workspaces never parks it and focusing it never switches workspaces. It still belongs to the
+  workspace where it was first observed (memory and the HUD use that), and pause, quit and restart
+  restore it like any other window. `spaceman ctl pin` pins or unpins the focused window by hand
+  (floating it first if it is tiled); a hand pin survives an agent restart.
+- `tile` tiles the window even when Spaceman would float it as a dialog, settings window, a
+  built-in floating utility, or non-resizable window (see [Compatibility](compatibility.md)), like an unmatched resizable window.
   A window that refuses its tile size keeps its own size inside the tile. Toggle Float still floats
   it until toggled back.
 - `route` assigns a newly inserted resizable logical window to workspace 1 through 10 or a configured
-  named workspace A through Z. A bundle-level `route` rule (without `title`) applies to the
-  application's initial window while secondary windows opened later stay on the active workspace; a
-  `title`-matched `route` rule routes every matching window. Movable
+  named workspace A through Z. A bundle-level `route` rule (without `title` or `title_contains`)
+  applies to the application's initial window while secondary windows opened later stay on the
+  active workspace; a title-matched `route` rule routes every matching window. Movable
   non-resizable windows remain floating on the workspace where first observed. A rule does not
   repeatedly route existing slots, including a Ghostty native-tab physical replacement.
 - `ignore` leaves the window entirely alone: never tiled, never owned by a workspace, never moved or
@@ -95,8 +115,9 @@ return, a window not matched by a `route` or `ignore` rule (including one matche
 may return to a remembered workspace; see [Remembered Placements](#remembered-placements). Matching
 `route` and `ignore` rules always win over memory.
 
-Title matching occurs only in memory. Titles are not serialized into persisted state, snapshots,
-`ctl debug`, or the HUD.
+Title matching (`title` and `title_contains`) occurs only in memory, against the live title of a
+newly observed window. Titles are not serialized into persisted state, snapshots, `ctl debug`, or
+the HUD; only the filter you write lives in `config.toml`.
 
 ## Workspace HUD
 
@@ -118,8 +139,10 @@ spaceman config set settings.hud_size extra-large
 
 In Settings › General, **Workspace HUD** picks `Off`, `Icons` or `Layouts`. While it is not
 `Off`, **Customize…** beside it opens a sheet: a live miniature of the capsule over **Position**
-(`Bottom` or `Top`), **Size** (`Small`, `Medium`, `Large`, `Extra-large`, or `Massive`), and a link to Settings › Workspaces, which decides the workspaces each display's
-capsule lists. `spaceman config reset` removes any settings key, back to its default.
+(`Bottom` or `Top`), **Size** (`Small`, `Medium`, `Large`, `Extra-large`, or `Massive`), and a
+link to Settings › Workspaces, which decides the workspaces each display's capsule lists.
+`spaceman config reset` restores the default for keys that `spaceman config set` accepts.
+Edit `settings.workspace_order` directly in the file. See [Display Assignments](#display-assignments).
 
 ## New-Window Layout
 
@@ -236,7 +259,8 @@ Commands:
 | Command | Action |
 | --- | --- |
 | `switch WORKSPACE` | Switch to workspace 1 through 10 or an enabled named workspace A through Z |
-| `move WORKSPACE` | Move the focused window there without switching |
+| `move WORKSPACE [--follow]` | Move the focused window there without switching; `--follow` also switches to that workspace and follows the window |
+| `move-tab WORKSPACE [--follow]` | Send the focused window's active tab there as its own window (and switch with `--follow`); a single-tab window moves whole ([Controls](controls.md#send-tab-to-workspace)) |
 | `back-and-forth` | Return to the previous workspace |
 | `move-workspace [next\|prev\|DISPLAY]` | Move the focused workspace to another display |
 | `focus left\|down\|up\|right` | Focus the nearest tile in that direction |
@@ -246,11 +270,14 @@ Commands:
 | `layout` | Toggle the active layout's root split axis |
 | `fullscreen` | Toggle Fullscreen Layout |
 | `float` | Float the focused window, or tile it again |
+| `pin` | Pin the focused window on every workspace (floating it first), or unpin it |
 | `resize shrink\|grow` | Shrink or grow the focused tile |
 | `resize width\|height POINTS` | Resize the focused window to that width or height (1 to 16384 points) |
 | `balance` | Equalize the focused tile's immediate split |
 | `retile` | Retile now |
 | `none` | Unbind the chord: no built-in shortcut claims it |
+
+`move WORKSPACE` leaves you on the current workspace; `move WORKSPACE --follow` switches to the destination so the moved window is in view. The CLI accepts `--follow` before or after the workspace.
 
 `resize width POINTS` resizes the focused window to that width (its own frame, gaps excluded) by
 moving its boundary at the nearest split that lays tiles out side by side; `resize height POINTS`
@@ -324,7 +351,7 @@ application relaunch. Spaceman therefore also remembers, per application bundle 
 workspace each managed window lived on, whether it floated, and its last on-screen frame. It never
 records window titles.
 
-A new application process that owns no windows yet may claim its remembered placements in three
+A new application process that owns no windows yet may claim its remembered placements in four
 cases:
 
 - **Startup recovery:** during the first 60 seconds after Spaceman starts, when an application
@@ -333,6 +360,10 @@ cases:
 - **Mid-session relaunch:** after the startup window, when another process of the same application
   quit within the last 30 seconds or still owns windows (for example, an in-app update or restart
   that launches the new process before the old one exits).
+- **Restored arrangements:** whenever the application's memory spans two or more workspaces and
+  its new process presents two or more windows at once (macOS reopening the windows it had when it
+  quit), however long it was closed. A fresh launch that opens one window still opens on the active
+  workspace.
 - **Returning applications:** when you move a newly opened window to another workspace by hand
   within 120 seconds of it opening on the active workspace, Spaceman marks that application to
   return so later launches recall its remembered placements as well.
@@ -343,11 +374,16 @@ recall). An ordinary later launch without a qualifying relaunch or returning mar
 active workspace instead of recalling historical placements.
 
 During a 60-second recall window, eligible windows claim remembered placements: first a window whose
-frame matches a remembered frame within 8 pixels, then the remaining windows in creation order. A
+frame matches a remembered frame within 8 pixels, then one whose size alone matches within 8 pixels
+(a note reopened somewhere else), then the remaining windows in creation order. A
 claimed window joins its remembered workspace (hidden if that workspace is not visible, and floating
 again if it was saved floating). Windows beyond the remembered count, windows opened after the
 recall window closes, and placements on workspaces that are no longer enabled or managed are adopted
-on the active workspace. Multi-window applications that restore windows with identical frames are
+on the active workspace.
+
+An application quit while some of its windows were parked reopens them at the parking spot, one
+pixel inside a display corner. Spaceman brings back every such window it did not park itself (not
+only the focused one), cascading them onto that display, so recall and tiling can adopt them. Multi-window applications that restore windows with identical frames are
 matched by creation order, which is a best guess.
 
 A changed arrangement replaces an application's memory only after it holds for 10 seconds while the
@@ -396,8 +432,9 @@ across config edits until that state no longer refers to it.
 `settings.workspace_order` sets the order a display's workspaces appear in the Workspace HUD, the
 menu bar menu, and three-finger swipes. Listed workspaces come first, in the order given; every other
 workspace follows in the default order (1 through 10, then A through Z), so a partial list is fine
-and an empty or missing list changes nothing. Entries are workspaces `1` through `10` or `"A"`
-through `"Z"`, as numbers or strings; an unknown or repeated entry is rejected. The order only
+and an empty or missing list changes nothing. The key is set in the file only: `spaceman config
+set` and `spaceman config reset` do not accept it. Entries are workspaces `1` through `10` or
+`"A"` through `"Z"`, as numbers or strings; an unknown or repeated entry is rejected. The order only
 changes where workspaces are listed: listing a letter does not enable it, and shortcuts, routes and
 saved state are unaffected. For the top keyboard row:
 

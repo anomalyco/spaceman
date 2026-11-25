@@ -103,6 +103,9 @@ fn a_config_without_spacing_tiles_edge_to_edge() {
 struct ToleranceAwareBackend(FakeBackend);
 
 impl WorkspaceBackend for ToleranceAwareBackend {
+    fn now(&self) -> Instant {
+        self.0.now()
+    }
     fn snapshot(
         &mut self,
         cycle: u64,
@@ -137,6 +140,9 @@ impl WorkspaceBackend for ToleranceAwareBackend {
     fn onscreen_window_order(&mut self) -> Option<Vec<u32>> {
         self.0.onscreen_window_order()
     }
+    fn window_owners(&mut self, window_ids: &HashSet<u32>) -> HashMap<u32, AppInstanceId> {
+        self.0.window_owners(window_ids)
+    }
     fn set_position(
         &mut self,
         window: &crate::PhysicalWindowId,
@@ -155,6 +161,9 @@ impl WorkspaceBackend for ToleranceAwareBackend {
     }
     fn focus_window(&mut self, window: &crate::PhysicalWindowId) -> bool {
         self.0.focus_window(window)
+    }
+    fn detach_tab(&mut self, window: &crate::PhysicalWindowId) -> macos::TabDetachResult {
+        self.0.detach_tab(window)
     }
     fn apply_managed(
         &mut self,

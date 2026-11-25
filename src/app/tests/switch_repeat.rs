@@ -463,7 +463,7 @@ fn cross_display_entry_fixture(park_secondary_on_seven: bool) -> WorkspaceRuntim
         let displays = outputs().frames().collect::<Vec<_>>();
         let parked = crate::geometry::parked_frame(displays[1], &displays, frame(1050));
         rt.backend.frames.insert(w30.clone(), parked);
-        rt.parked.insert(w30.clone(), frame(1050));
+        rt.parked.insert(w30.clone(), frame(1050), None);
         bind(&mut rt, WorkspaceId::new(7).unwrap(), &w30);
     } else {
         bind(&mut rt, WorkspaceId::SIX, &w30);

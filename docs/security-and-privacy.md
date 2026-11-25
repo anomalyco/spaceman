@@ -8,12 +8,18 @@ the on-screen Core Graphics window list, display topology, keyboard input source
 and mouse-button state needed for tiling and gestures. Two listen-only event taps watch three-finger
 trackpad swipes and Option key presses. The key tap reads only the virtual key code and modifier flags
 of presses with Option held, never characters, to notice a Spaceman shortcut macOS did not deliver;
-other presses are ignored and nothing is stored.
+other presses are ignored and nothing is stored. The setup tour's Try it step uses the same kind
+of tap, only while that step is on screen, to hear the four shortcuts it teaches. While the setup
+window has the keyboard on that step, Spaceman's global hotkeys are held off, so those shortcuts
+move the step's miniature desktop and no real window.
 
 The permission is broad because macOS grants Accessibility at application scope. Spaceman limits its
 own writes to eligible standard, non-minimized, non-fullscreen windows whose position is settable.
 Resizable windows may be moved and resized; movable non-resizable windows may be parked off-screen
-and restored without changing their size. It does not require disabling System Integrity Protection.
+and restored without changing their size. The one action Spaceman performs inside another app is
+`move-tab`: when you run it, Spaceman reads the focused app's trailing menu-bar menus (item
+identifiers, titles, and enabled state, never stored) to find its own `Move Tab to New Window`
+command and presses it. It does not require disabling System Integrity Protection.
 
 ## Data Handling
 
@@ -41,6 +47,13 @@ The optional `Launch at Login` menu action registers or unregisters the signed m
 macOS Service Management. Registration is stored and enforced by macOS; Spaceman does not install a
 separate helper, daemon, or launch-agent plist.
 
+The setup tour suggests an arrangement from the windows open at that moment. The suggestion is
+computed on the Mac from each app's bundle ID, its `Info.plist` `LSApplicationCategoryType`, window
+sizes and resizability, and each display's width; window titles are never part of it, and nothing is
+sent anywhere. The tour's permission step reads two switches in the `com.apple.WindowManager`
+preferences (`GloballyEnabled` for Stage Manager, `EnableTilingByEdgeDrag` for macOS edge tiling)
+and writes one only when you press its `Turn off`, which System Settings › Desktop & Dock undoes.
+
 Spaceman can read a window title for exact config-rule matching. Titles remain in memory and are
 explicitly excluded from serialized observations, persisted state, the arrangement journal,
 `spaceman ctl debug`, `spaceman doctor`, and `spaceman hud` output.
@@ -53,7 +66,8 @@ Local files live under `~/Library/Application Support/Spaceman/`:
 
 - `config.toml`: user-authored configuration;
 - `workspace-state.json`: active workspace selectors, previous-workspace history, logical slots,
-  last-focused tile intent, Fullscreen Layout state, floating-window ownership, and layout trees;
+  last-focused tile intent, Fullscreen Layout state, floating-window ownership, hand-pinned floating
+  windows, and layout trees;
 - `parked-windows.json`: physical process/window identifiers and original frames needed for recovery;
 - `window-memory.json`: per-application bundle identifiers with each remembered window's workspace,
   floating state, and last frame, used to restore placements after relaunches and reboots;
