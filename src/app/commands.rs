@@ -253,7 +253,7 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
         cancelled: &AtomicBool,
         backward: bool,
     ) -> Result<CycleStatus, String> {
-        let (focused, workspace) = self.focused_owner_workspace(&outputs, cancelled)?;
+        let (focused, workspace) = self.focused_cycle_workspace(&outputs, cancelled)?;
         let windows = self.workspaces.windows(workspace);
         let len = windows.len();
         let target = match windows.iter().position(|window| window == &focused) {
@@ -271,6 +271,36 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
         };
         self.focus_tile(Some(focused), &target, &outputs, CommandOrigin::Explicit)?;
         Ok(self.status(0, &outputs))
+    }
+
+    /// The workspace whose ring window cycling walks. A focused pin away from its hidden home
+    /// cycles the workspace shown on the display it is on, entering that ring at either end,
+    /// and never reveals its home (#592).
+    fn focused_cycle_workspace(
+        &mut self,
+        outputs: &macos::DisplayOutputs,
+        cancelled: &AtomicBool,
+    ) -> Result<(crate::PhysicalWindowId, WorkspaceId), String> {
+        if let Some(window) = self.current_focus()
+            && self.workspaces.is_pinned(&window)
+            && let Some(home) = self.workspaces.workspace_of_any(&window)
+            && !self.is_visible(home, outputs)
+        {
+            // Its frame, not its home, says which display it is on: a pin can be dragged
+            // to another display without changing its home (#561).
+            let output = self.window_display_output(&window, outputs);
+            let visible = self.visible_workspaces(outputs);
+            let shown = output
+                .and_then(|output| visible.iter().find(|shown| shown.output == output))
+                .or_else(|| {
+                    let display_id = &outputs.resolve(self.workspaces.assignment(home)).id;
+                    visible.iter().find(|shown| &shown.display_id == display_id)
+                })
+                .map(|shown| shown.workspace)
+                .ok_or("Focused window is not on an active workspace")?;
+            return Ok((window, shown));
+        }
+        self.focused_owner_workspace(outputs, cancelled)
     }
 
     fn focused_active_workspace(

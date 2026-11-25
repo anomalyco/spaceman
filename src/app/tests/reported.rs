@@ -6,6 +6,7 @@ mod back_and_forth_stale_report;
 mod close_all_frontmost;
 mod config_removed_named;
 mod config_same_display_alias;
+mod cycle_pinned_focus;
 mod debug_targets;
 mod drop_focus_history;
 mod dwindle_split_after_focus;
