@@ -371,14 +371,25 @@ impl Engine {
         })
     }
 
+    /// Splits or re-orients the requested layout along `direction` only when
+    /// doing so changes its split structure. A temporary minimum-width fit can
+    /// make an outward directional move look perpendicular while recreating the
+    /// same saved shape; returning `false` lets `reorder_focused` cross displays.
     pub(crate) fn create_implicit_split(
         &mut self,
         window: &PhysicalWindowId,
         direction: crate::Direction,
     ) -> bool {
-        self.edit_requested(window, |layout, slot| {
-            layout.create_implicit_split(slot, direction)
-        })
+        let Some(slot) = self.slot_for_window(window) else {
+            return false;
+        };
+        let mut layout = self.layout.clone();
+        if !layout.create_implicit_split(slot, direction) || !layout.regroups(&self.layout) {
+            return false;
+        }
+        self.layout = layout;
+        self.commit_layout();
+        true
     }
 
     #[cfg(test)]
@@ -681,6 +692,32 @@ mod tests {
 
         assert!(engine.move_window_relative(&windows[2], &windows[0], crate::Direction::Right));
         assert_eq!(engine.model().workspace.slots[2].weight, 1);
+    }
+
+    #[test]
+    fn implicit_split_returns_false_when_saved_shape_is_unchanged() {
+        let output = Rect {
+            width: 1000,
+            height: 800,
+            ..Rect::default()
+        };
+        for mode in [LayoutMode::Columns, LayoutMode::Dwindle] {
+            let mut engine = Engine::default();
+            engine.insert_slot_with(slot(1, 1), mode, output, None);
+            engine.insert_slot_with(slot(2, 1), mode, output, Some(crate::SlotId(1)));
+            let windows = engine.bound_windows();
+            let before = engine.layout().clone();
+            let revision = engine.revision();
+
+            assert!(!engine.create_implicit_split(&windows[0], crate::Direction::Left));
+            assert!(!engine.create_implicit_split(&windows[1], crate::Direction::Right));
+            assert_eq!(engine.layout(), &before);
+            assert_eq!(engine.revision(), revision);
+
+            // Reversing the pair or re-orienting vertically changes the shape.
+            assert!(engine.create_implicit_split(&windows[0], crate::Direction::Up));
+            assert_eq!(engine.model().workspace.axis, crate::Axis::Vertical);
+        }
     }
 
     fn observation(cycle: u64, window_id: u32) -> NativeObservation {
