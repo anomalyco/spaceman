@@ -19,7 +19,8 @@ Switch workspace                                           // ws.switch
     ├── Pressed again (`Option+<ws>` / `ctl switch`) while focus is on that workspace -> the
     │   next tile takes focus, wrapping at the end of the tile order; the way to walk the shared
     │   frame in Fullscreen Layout
-    ├── Focus on another display's workspace -> only brings focus back; the press after that cycles
+    ├── Focus on another display's workspace -> only brings focus back; the press after that cycles.
+    │   The workspace it left stays on screen and remembers its focused window (tile or float)
     └── Menu bar or HUD click on the active workspace -> never cycles, keeps the current focus
 
 Swipe                                                      // ws.swipe
@@ -51,7 +52,8 @@ Back-and-forth                                             // ws.back-and-forth
 │   rewrites no history
 ├── A focused pinned window counts as the workspace its display shows, never its hidden home
 ├── Target already on screen -> focus moves there, no display changes, nothing is parked
-│   └── Press again -> bounces back to the workspace the focus came from
+│   └── Press again -> bounces back to the workspace the focus came from, refocusing the
+│       window (tile or float) it left there
 ├── Target on screen but empty -> only shows its HUD; focus history is left alone
 └── Target hidden -> its own display switches to it and focuses its remembered tile
 
@@ -364,7 +366,9 @@ on the same letter.
   `a_workspace_switch_that_cannot_focus_keeps_the_focus_restore_pending`,
   `a_workspace_switch_that_focuses_settles_the_focus_restore`,
   `reselecting_the_active_split_workspace_keeps_the_focused_tile` (issue 120),
-  `leaving_with_a_float_focused_keeps_the_remembered_tile` (`float.rs`, issue 138), and the `mouse_follows_focus_*`
+  `leaving_with_a_float_focused_keeps_the_remembered_tile` (`float.rs`, issue 138),
+  `visible_back_and_forth_returns_to_the_float_it_left` and
+  `visible_workspace_shortcuts_return_to_the_float_they_left` (`float.rs`, issue 527), and the `mouse_follows_focus_*`
   tests covering `off` / `display` / `window`, empty-display centering, same-display and
   in-window skips, `move-workspace` / `move`, passive `cycle()` focus-follow suppression, and
   `mouse_down` guarding (plus `warp_reassociates_immediately_after_warping_and_skips_while_mouse_is_down`
