@@ -15,6 +15,11 @@ fn rect(x: i32, y: i32, width: i32, height: i32) -> crate::Rect {
 
 // A portrait main display with a 25-point menu bar, and a landscape display above it.
 fn displays() -> macos::DisplayOutputs {
+    displays_with_main(rect(0, 25, 1440, 2535))
+}
+
+// The same, with the main display's tiled area `main` inside its full 1440x2560 bounds.
+fn displays_with_main(main: crate::Rect) -> macos::DisplayOutputs {
     let display = |id: &str, frame, is_main| macos::DisplayOutput {
         id: id.into(),
         name: id.into(),
@@ -23,7 +28,7 @@ fn displays() -> macos::DisplayOutputs {
     };
     macos::DisplayOutputs::with_bounds(
         vec![
-            display("main", rect(0, 25, 1440, 2535), true),
+            display("main", main, true),
             display("above", rect(-560, -1440, 2560, 1440), false),
         ],
         vec![rect(0, 0, 1440, 2560), rect(-560, -1440, 2560, 1440)],
@@ -37,6 +42,14 @@ fn labs_on() -> Config {
 
 // `ids` side by side as columns on workspace 1 of the portrait display.
 fn columns(ids: &[u32], config: Config) -> WorkspaceRuntime<FakeBackend> {
+    columns_on(ids, config, &displays())
+}
+
+fn columns_on(
+    ids: &[u32],
+    config: Config,
+    outputs: &macos::DisplayOutputs,
+) -> WorkspaceRuntime<FakeBackend> {
     let mut backend = FakeBackend {
         focused: Some(window(ids[0])),
         ..FakeBackend::default()
@@ -56,16 +69,23 @@ fn columns(ids: &[u32], config: Config) -> WorkspaceRuntime<FakeBackend> {
             crate::Direction::Right
         ));
     }
-    rt.layout_workspace(
-        WorkspaceId::ONE,
-        displays().main().frame,
-        &AtomicBool::new(false),
-    );
+    rt.layout_workspace(WorkspaceId::ONE, outputs.main().frame, &AtomicBool::new(false));
     rt
 }
 
 fn drag(
     rt: &mut WorkspaceRuntime<FakeBackend>,
+    id: u32,
+    start: (i32, i32),
+    previews: &[(i32, i32)],
+    end: (i32, i32),
+) {
+    drag_on(rt, &displays(), id, start, previews, end);
+}
+
+fn drag_on(
+    rt: &mut WorkspaceRuntime<FakeBackend>,
+    outputs: &macos::DisplayOutputs,
     id: u32,
     start: (i32, i32),
     previews: &[(i32, i32)],
@@ -85,7 +105,7 @@ fn drag(
                 bounds: Some(bounds),
             },
             preview,
-            displays(),
+            outputs.clone(),
         );
         let Some(WorkerResult::Status { result, .. }) =
             rt.execute(command, &AtomicBool::new(false))
@@ -97,7 +117,14 @@ fn drag(
 }
 
 fn layout(rt: &WorkspaceRuntime<FakeBackend>) -> Vec<(u32, i32, i32, i32, i32)> {
-    let settings = rt.layout_settings(displays().main().frame);
+    layout_on(rt, &displays())
+}
+
+fn layout_on(
+    rt: &WorkspaceRuntime<FakeBackend>,
+    outputs: &macos::DisplayOutputs,
+) -> Vec<(u32, i32, i32, i32, i32)> {
+    let settings = rt.layout_settings(outputs.main().frame);
     rt.workspaces
         .engine(WorkspaceId::ONE)
         .placements(&settings)
@@ -182,6 +209,59 @@ fn the_side_band_wins_in_a_corner() {
         layout(&rt),
         [(20, 0, 25, 720, 2535), (10, 720, 25, 720, 2535)]
     );
+}
+
+#[test]
+fn the_side_band_wins_in_a_menu_bar_corner() {
+    // 20 dropped in the menu bar 20 points from the left edge docks into the left column,
+    // like a drop at the same x just below the menu bar (#504).
+    for end in [(20, 5), (20, 28)] {
+        let mut rt = columns(&[10, 20], labs_on());
+        drag(&mut rt, 20, (1080, 1200), &[], end);
+        assert_eq!(
+            layout(&rt),
+            [(20, 0, 25, 720, 2535), (10, 720, 25, 720, 2535)],
+            "dropped at {end:?}"
+        );
+    }
+    // And on the right: 10 dropped in the menu bar near the right edge docks on the right.
+    let mut rt = columns(&[10, 20], labs_on());
+    drag(&mut rt, 10, (360, 1200), &[], (1420, 5));
+    assert_eq!(
+        layout(&rt),
+        [(20, 0, 25, 720, 2535), (10, 720, 25, 720, 2535)]
+    );
+    // The middle of the menu bar is still a top row.
+    let mut rt = columns(&[10, 20], labs_on());
+    drag(&mut rt, 20, (1080, 1200), &[], (720, 5));
+    assert_eq!(layout(&rt), rows(20, 10));
+}
+
+#[test]
+fn a_side_dock_strip_is_a_band_only_in_its_corners() {
+    // An 80-point Dock on the left of the portrait display, below the menu bar.
+    let outputs = displays_with_main(rect(80, 25, 1360, 2535));
+    let columns = [(10, 80, 25, 680, 2535), (20, 760, 25, 680, 2535)];
+    // The middle of the Dock strip is no band: the columns stay as they were.
+    let mut rt = columns_on(&[10, 20], labs_on(), &outputs);
+    assert_eq!(layout_on(&rt, &outputs), columns);
+    drag_on(&mut rt, &outputs, 20, (1100, 1200), &[], (40, 1200));
+    assert_eq!(layout_on(&rt, &outputs), columns);
+    // Its top corner, under the menu bar, docks 20 into the left column.
+    let mut rt = columns_on(&[10, 20], labs_on(), &outputs);
+    drag_on(&mut rt, &outputs, 20, (1100, 1200), &[], (40, 5));
+    assert_eq!(
+        layout_on(&rt, &outputs),
+        [(20, 80, 25, 680, 2535), (10, 760, 25, 680, 2535)]
+    );
+}
+
+#[test]
+fn an_unarmed_side_band_keeps_its_menu_bar_corner() {
+    // Never out of the left band, up into its menu bar corner: neither a column nor a row.
+    let mut rt = columns(&[10, 20], labs_on());
+    drag(&mut rt, 10, (20, 1200), &[(20, 600)], (20, 5));
+    assert_eq!(layout(&rt), COLUMNS);
 }
 
 #[test]

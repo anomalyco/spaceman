@@ -362,7 +362,7 @@ fn display_edge_drop(
 /// tiled area is not taller than it is wide. Each band reaches `DISPLAY_EDGE_DROP_BAND`
 /// into the tiled area, includes the outer gap on that edge, and extends over the
 /// menu bar or Dock strip between `output` and the edge of `screen` (the display's
-/// full bounds). A corner inside `output` belongs to the side band, armed or not.
+/// full bounds). A corner belongs to the side band, armed or not, in the strips too.
 pub(in crate::app) fn display_row_bands(
     output: crate::Rect,
     usable: crate::Rect,
@@ -413,13 +413,38 @@ fn display_row_drop(
         .find(|(display, _)| display.frame == output)
         .map_or(output, |(_, screen)| screen);
     let (top, bottom) = display_row_bands(output, usable, screen)?;
-    [(top, Direction::Up), (bottom, Direction::Down)]
+    let (band, row) = [(top, Direction::Up), (bottom, Direction::Down)]
         .into_iter()
-        .find(|(band, _)| band.contains(point.0, point.1))
-        .and_then(|(band, direction)| {
-            let armed = bounds.is_none_or(|bounds| !bounds.entirely_inside(band));
-            armed.then_some(direction)
-        })
+        .find(|(band, _)| band.contains(point.0, point.1))?;
+    // Past `output`, a row band's ends over the menu bar or Dock strip are corners
+    // too, and belong to the side band (#504). A side Dock strip outside the row
+    // bands stays no band at all.
+    let corner = |from: i32, to: i32| crate::Rect {
+        x: from,
+        y: band.y,
+        width: to - from,
+        height: band.height,
+    };
+    // A corner arms with its side band: a pointer that has only been in the two
+    // has not left the side.
+    let with_side = |corner: crate::Rect, side: crate::Rect| {
+        let y = corner.y.min(side.y);
+        let end = (corner.y + corner.height).max(side.y + side.height);
+        crate::Rect {
+            height: end - y,
+            y,
+            ..corner
+        }
+    };
+    let (arming, direction) = [
+        (corner(band.x, left.x + left.width), left, Direction::Left),
+        (corner(right.x, band.x + band.width), right, Direction::Right),
+    ]
+    .into_iter()
+    .find(|(end, _, _)| end.contains(point.0, point.1))
+    .map_or((band, row), |(end, side, direction)| (with_side(end, side), direction));
+    let armed = bounds.is_none_or(|bounds| !bounds.entirely_inside(arming));
+    armed.then_some(direction)
 }
 
 fn drop_direction(point: (i32, i32), frame: crate::Rect) -> Option<Direction> {

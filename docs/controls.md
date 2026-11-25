@@ -100,8 +100,8 @@ With `[labs] portrait_edge_rows = true` (see [Configuration › Labs](configurat
 whose tiled area is taller than it is wide also has bands along its top and bottom edges, by the same
 rules: dropping there docks the window into a full-width, half-height row on that edge. These bands
 also cover the menu bar and any Dock strip above or below the tiled area. Where a side band and a top
-or bottom band meet, the side band wins, even before
-the pointer has left it. Landscape and square displays are unchanged.
+or bottom band meet, the side band wins, even before the pointer has left it, and that includes
+the corners of the menu bar and Dock strips. Landscape and square displays are unchanged.
 Dropping onto another display moves the window to that display's active workspace. Resizing a
 managed window with the pointer updates the relevant split weights. Spaceman previews the rest of
 the layout non-destructively against the layout at drag start and commits only on mouse-up, so
