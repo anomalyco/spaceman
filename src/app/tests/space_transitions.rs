@@ -476,3 +476,77 @@ fn the_first_cycle_after_a_swipe_releases_a_window_adopted_mid_swipe() {
     assert_eq!(runtime.workspaces.workspace_of(&left), None);
     assert_eq!(runtime.backend.frames[&other], full);
 }
+
+/// A browser with `shown` tiled and focused on workspace 1 and `other`
+/// parked on workspace 2. Leaving a video's native fullscreen in `shown`
+/// slides back to the desktop, and macOS moves `other` back to its last
+/// on-screen frame, which is its recovery frame (#489).
+fn fullscreen_exit_runtime(
+    after_slide: bool,
+) -> (
+    WorkspaceRuntime<FakeBackend>,
+    crate::PhysicalWindowId,
+    crate::PhysicalWindowId,
+) {
+    let shown = window(10);
+    let other = window(11);
+    let normal = frame(400);
+    let mut backend = FakeBackend {
+        observation: Some(observation_for_windows(
+            "com.example.Browser",
+            &shown,
+            &[(shown.clone(), frame(50)), (other.clone(), normal)],
+        )),
+        focused: Some(shown.clone()),
+        frontmost: Some(shown.app.clone()),
+        ..FakeBackend::default()
+    };
+    backend.frames.insert(shown.clone(), frame(50));
+    backend.frames.insert(other.clone(), normal);
+    backend.server_frames.insert(other.clone(), normal);
+    let mut runtime = runtime(backend);
+    bind(&mut runtime, WorkspaceId::ONE, &shown);
+    bind(&mut runtime, WorkspaceId::new(2).unwrap(), &other);
+    runtime.parked.insert(other.clone(), normal, None);
+    if after_slide {
+        // The slide's hold ended moments ago.
+        runtime.backend.space_changed_at = Some(runtime.backend.now());
+        runtime
+            .backend
+            .advance(SPACE_TRANSITION_SETTLE + Duration::from_millis(800));
+    }
+    (runtime, shown, other)
+}
+
+/// #489: the other browser window stays on its workspace, keeps its recovery
+/// frame, and is parked again instead of joining the workspace on screen.
+#[test]
+fn leaving_native_fullscreen_re_parks_the_apps_windows_from_other_workspaces() {
+    let (mut runtime, _, other) = fullscreen_exit_runtime(true);
+    runtime.cycle(outputs(), &AtomicBool::new(false)).unwrap();
+
+    assert_eq!(
+        runtime.workspaces.workspace_of(&other),
+        Some(WorkspaceId::new(2).unwrap())
+    );
+    assert_eq!(runtime.parked.get(&other), Some(&frame(400)));
+    assert!(
+        !outputs()
+            .union()
+            .contains_center(runtime.backend.frames[&other])
+    );
+}
+
+/// #489 control: with no Space change, a parked window its frontmost app
+/// brings back on screen was summoned and is still re-homed.
+#[test]
+fn a_frontmost_apps_window_back_on_screen_without_a_slide_is_still_re_homed() {
+    let (mut runtime, _, other) = fullscreen_exit_runtime(false);
+    runtime.cycle(outputs(), &AtomicBool::new(false)).unwrap();
+
+    assert_eq!(
+        runtime.workspaces.workspace_of(&other),
+        Some(WorkspaceId::ONE)
+    );
+    assert!(!runtime.parked.contains_key(&other));
+}
