@@ -62,6 +62,17 @@ impl LayoutTree {
     }
 
     #[cfg(test)]
+    pub(crate) fn resize_by_on(
+        &mut self,
+        slot: SlotId,
+        axis: Axis,
+        delta: i32,
+        output: Rect,
+    ) -> bool {
+        self.resize_by_on_within(slot, axis, delta, output, Minimums::FLOOR)
+    }
+
+    #[cfg(test)]
     pub(crate) fn balance(&mut self, slot: SlotId, output: Rect) -> bool {
         self.balance_within(slot, output, Minimums::FLOOR)
     }
@@ -193,6 +204,36 @@ impl LayoutTree {
         output: Rect,
         minimums: Minimums<'_>,
     ) -> bool {
+        self.resize_on_axis_within(slot, axis, |_| target, output, minimums)
+    }
+
+    /// Change the focused tile's extent along `axis` by `delta` at the nearest split on that
+    /// axis, as [`Self::resize_to_within`] would set it to its current extent plus `delta`.
+    pub(crate) fn resize_by_on_within(
+        &mut self,
+        slot: SlotId,
+        axis: Axis,
+        delta: i32,
+        output: Rect,
+        minimums: Minimums<'_>,
+    ) -> bool {
+        self.resize_on_axis_within(
+            slot,
+            axis,
+            |current| current.saturating_add(delta),
+            output,
+            minimums,
+        )
+    }
+
+    fn resize_on_axis_within(
+        &mut self,
+        slot: SlotId,
+        axis: Axis,
+        target: impl FnOnce(i32) -> i32,
+        output: Rect,
+        minimums: Minimums<'_>,
+    ) -> bool {
         let Some((path, index)) = nearest_split_on(&self.root, slot, axis, Vec::new()) else {
             return false;
         };
@@ -207,6 +248,7 @@ impl LayoutTree {
             .iter()
             .map(|child| minimum_extent(&child.node, axis, minimums))
             .collect::<Vec<_>>();
+        let target = target(extents[index]);
         let Some(sized) = extents_with(&extents, &minimums, index, target) else {
             return false;
         };

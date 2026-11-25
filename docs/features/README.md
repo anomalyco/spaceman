@@ -31,6 +31,7 @@ secondary-display workspaces ships in the notarized preview at
 | Scratchpad (`[labs] scratchpad`) | Opt-in Lab in source builds; off by default, shortcuts register only when on |
 | Settings › Activity (`[labs] activity`) | Opt-in Lab in source builds; off by default, the pane stays out of the sidebar while `spaceman doctor` and the journal keep recording |
 | Portrait edge rows (`[labs] portrait_edge_rows`) | Opt-in Lab in source builds; off by default, top/bottom display edge drop bands on portrait displays only when on |
+| Relative resize (`[labs] relative_resize`) | Opt-in Lab in source builds; off by default, `resize width\|height grow\|shrink POINTS` reports `Relative resize is off` until it is on |
 | Secondary-display workspaces 6-10 | Require a second display; with one display they fall back to `main` |
 | Three or more displays | Assign workspaces in Settings › Workspaces (each display past `secondary` by UUID) or with `[[workspaces]] monitor = "<uuid>"` |
 

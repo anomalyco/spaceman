@@ -320,6 +320,7 @@ fn worker_action(command: &Command) -> WorkerAction {
         Command::Float => WorkerAction::ToggleFloat,
         Command::Resize(direction) => WorkerAction::Resize(*direction),
         Command::ResizeTo(axis, points) => WorkerAction::ResizeTo(*axis, *points),
+        Command::ResizeBy(axis, delta) => WorkerAction::ResizeBy(*axis, *delta),
         Command::Balance => WorkerAction::Balance,
         Command::Retile => WorkerAction::Retile,
     }

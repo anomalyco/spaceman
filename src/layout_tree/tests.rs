@@ -411,6 +411,48 @@ fn resize_to_stops_at_recursive_tile_minimums() {
 }
 
 #[test]
+fn resize_by_on_steps_either_axis_from_the_current_extent() {
+    let output = Rect {
+        width: 1280,
+        height: 800,
+        ..Rect::default()
+    };
+    // 1 | [2 / [3 | 4]]
+    let mut tree = LayoutTree::flat(
+        Axis::Horizontal,
+        [SlotId(1), SlotId(2), SlotId(3), SlotId(4)],
+    );
+    assert!(tree.move_relative(SlotId(2), SlotId(3), Direction::Up));
+    assert!(tree.move_relative(SlotId(4), SlotId(3), Direction::Right));
+    let sizes = |tree: &LayoutTree| {
+        tree.placements(output)
+            .into_iter()
+            .map(|(slot, frame)| (slot.0, frame.width, frame.height))
+            .collect::<Vec<_>>()
+    };
+    let first = sizes(&tree);
+
+    assert!(tree.resize_by_on(SlotId(2), Axis::Horizontal, 50, output));
+    assert_eq!(
+        sizes(&tree),
+        [(1, 590, 800), (2, 690, 400), (3, 345, 400), (4, 345, 400)]
+    );
+    assert!(tree.resize_by_on(SlotId(2), Axis::Horizontal, 50, output));
+    assert_eq!(sizes(&tree)[1].1, 740);
+    assert!(tree.resize_by_on(SlotId(2), Axis::Horizontal, -50, output));
+    assert!(tree.resize_by_on(SlotId(2), Axis::Horizontal, -50, output));
+    assert_eq!(sizes(&tree), first);
+
+    assert!(tree.resize_by_on(SlotId(3), Axis::Vertical, 50, output));
+    assert_eq!(
+        sizes(&tree),
+        [(1, 640, 800), (2, 640, 350), (3, 320, 450), (4, 320, 450)]
+    );
+    // Tile 1 spans the full height: no split sets it.
+    assert!(!tree.resize_by_on(SlotId(1), Axis::Vertical, 50, output));
+}
+
+#[test]
 fn resize_to_leaves_a_lone_tile_alone() {
     let mut tree = LayoutTree::flat(Axis::Horizontal, [SlotId(1)]);
     assert!(!tree.resize_to(SlotId(1), Axis::Horizontal, 400, output()));

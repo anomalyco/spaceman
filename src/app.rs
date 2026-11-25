@@ -269,6 +269,9 @@ pub(crate) enum WorkerAction {
     Resize(ResizeDirection),
     /// Resize the focused window to this width (`Horizontal`) or height (`Vertical`) in points.
     ResizeTo(crate::Axis, i32),
+    /// Grow (positive) or shrink (negative) the focused window's width or height by this many
+    /// points: the Relative resize Lab.
+    ResizeBy(crate::Axis, i32),
     /// Equalize the focused tile's immediate split.
     Balance,
     ToggleFullscreenLayout,
@@ -313,7 +316,7 @@ impl WorkerAction {
             Self::Reorder(_) => "directional move queued".into(),
             Self::ToggleLayout => "layout toggle queued".into(),
             Self::Resize(_) => "resize queued".into(),
-            Self::ResizeTo(..) => "resize queued".into(),
+            Self::ResizeTo(..) | Self::ResizeBy(..) => "resize queued".into(),
             Self::Balance => "balance queued".into(),
             Self::ToggleFullscreenLayout => "fullscreen layout toggle queued".into(),
             Self::ToggleFloat => "float toggle queued".into(),

@@ -269,6 +269,7 @@ Commands:
 | `pin` | Pin the focused window on every workspace (floating it first), or unpin it |
 | `resize shrink\|grow` | Shrink or grow the focused tile |
 | `resize width\|height POINTS` | Resize the focused window to that width or height (1 to 16384 points) |
+| `resize width\|height grow\|shrink POINTS` | With `[labs] relative_resize = true`, make the focused window that much wider, narrower, taller, or shorter (1 to 16384 points) |
 | `balance` | Equalize the focused tile's immediate split |
 | `retile` | Retile now |
 | `none` | Unbind the chord: no built-in shortcut claims it |
@@ -283,6 +284,24 @@ for each of their tiles), so a size that does not fit is clamped. A tile with no
 or the height of a tile in a single row) is left alone. Like `resize shrink|grow` and `balance`, it
 asks you to leave Fullscreen Layout first. Neither `resize width|height` nor `balance` has a
 built-in chord; bind them here.
+
+`resize width grow|shrink POINTS` and `resize height grow|shrink POINTS` (the `relative_resize` Lab,
+see [Labs](#labs)) step the focused window's own width or height from its current size: each one
+does what `resize width|height` does with the current size plus or minus `POINTS`, at the same
+split, with the same sharing and the same 50-point minimum. Unlike `Option+-` and `Option+=`, which
+move the focused tile's immediate split, they pick the axis, so a pair of chords per axis covers
+both. `resize width +100` still means a width of 100 points. They have no built-in chord:
+
+```toml
+[labs]
+relative_resize = true
+
+[shortcuts.bindings]
+"ctrl+alt+right" = "resize width grow 50"
+"ctrl+alt+left" = "resize width shrink 50"
+"ctrl+alt+down" = "resize height grow 50"
+"ctrl+alt+up" = "resize height shrink 50"
+```
 
 A global shortcut fires in every app, so a chord that types something takes that key everywhere:
 `alt+left` replaces macOS's Option+arrow word jump in text fields. Prefer `ctrl` or `alt+shift` for
@@ -322,6 +341,7 @@ command changes behavior. Unknown keys are config errors.
 scratchpad = false                    # optional (default: false); the i3/sway-style Scratchpad
 activity = false                      # optional (default: false); Settings › Activity
 portrait_edge_rows = false            # optional (default: false); top/bottom drop bands on portrait displays
+relative_resize = false               # optional (default: false); resize width|height grow|shrink
 ```
 
 `scratchpad = true` enables the Scratchpad (see [Controls › Scratchpad](controls.md#scratchpad-lab)) and
@@ -339,6 +359,9 @@ keep recording either way. Turning it off while the pane is open returns Setting
 area is taller than it is wide: dragging a tiled window into one docks it into a full-width,
 half-height row on that edge (see [Controls](controls.md)). With it off, only the left and right edge
 bands exist. The switch applies to the next drag.
+`relative_resize = true` lets `resize width|height grow|shrink POINTS` run, from `[shortcuts.bindings]`
+or `spaceman ctl` (see [Shortcuts](#shortcuts)). With it off those commands still pass `config-check`
+but report `Relative resize is off` and change nothing; every other resize works as before.
 
 ```sh
 spaceman config set labs.activity true

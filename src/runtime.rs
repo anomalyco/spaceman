@@ -370,6 +370,22 @@ impl Engine {
         })
     }
 
+    /// Grow (positive `delta`) or shrink the focused window along `axis` by `delta` points. The
+    /// window and its cell differ by the inner gap, so the cell changes by the same amount.
+    pub(crate) fn resize_focused_tile_by(
+        &mut self,
+        window: &PhysicalWindowId,
+        axis: crate::Axis,
+        delta: i32,
+        settings: &Settings,
+        minimums: &WindowMinimums,
+    ) -> bool {
+        let canvas = settings.canvas();
+        self.edit_weights(window, settings, minimums, |layout, slot, floors| {
+            layout.resize_by_on_within(slot, axis, delta, canvas, floors)
+        })
+    }
+
     /// Splits or re-orients the requested layout along `direction` only when
     /// doing so changes its split structure. A temporary minimum-width fit can
     /// make an outward directional move look perpendicular while recreating the
