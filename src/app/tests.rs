@@ -15,6 +15,7 @@ mod journal;
 mod layout;
 mod memory;
 mod minimums;
+mod move_handoff;
 mod move_workspace;
 mod ordered_out;
 mod parking;
@@ -30,6 +31,7 @@ mod startup;
 mod switch_repeat;
 mod switching;
 mod tear_regressions;
+mod three_display;
 mod workspace_order;
 use crate::{BindingState, Slot, SlotId};
 

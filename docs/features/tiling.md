@@ -93,6 +93,10 @@ pause, quit, or hotkey loss.
   live config reload between Dwindle and Columns, cross-workspace moves, axis toggle, and Fullscreen Layout;
   `resize_to_*` in `src/layout_tree/tests.rs` cover the nearest split on each axis, proportional
   sharing, recursive minimums, and lone tiles.
+- Unit (FakeBackend), `src/app/tests/three_display.rs` and `src/navigation.rs`: three-display
+  directional focus from an empty workspace (parked window reported at corner/held-up or no focus,
+  #355) and from top/bottom tiles of tall portrait side displays that do not overlap the middle
+  display (#356), plus dropping a dragged tile over another display's menu bar (#358).
 - Unit (FakeBackend), `src/app/tests/gestures.rs` and `src/app/tests/drag_path.rs`:
   non-destructive drag previews (path-independent side drops, fast cross-display drops, cancel
   restoration), display outer left/right edge column drop bands (full edge sweep, outer gaps,
