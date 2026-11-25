@@ -44,7 +44,8 @@ Move workspace to another display                          // ws.move-workspace
 └── Preserves Fullscreen Layout and focus on the moved workspace (focus history untouched); HUD on both displays
 
 Move window without switching                              // ws.move-window
-├── Option+Shift+<ws> / ctl move <ws> -> window parked on target, current workspace reflows
+├── Option+Shift+<ws> / ctl move <ws> -> window parked on target, current workspace reflows and
+│                                        hands focus to a remaining visible window (if any)
 ├── Target on screen on another display -> tiled there (a floating window is carried over, same
 │   size and relative place); focus follows it and Option+Tab goes back
 ├── Target hidden on another display -> parked off the edge of the display it is on; its recovery
@@ -308,12 +309,15 @@ on the same letter.
   covered.
 - Live harness (not run): `scripts/live-workspaces.sh` switches 6/7/8 by real hotkeys, moves without
   switching, rapid-switch coalescing, and hard-kill recovery. Needs two displays and AeroSpace.
+- Unit (FakeBackend), `src/app/tests/move_handoff.rs`: moving the focused window (or all windows
+  of the focused app via `move-app`) to an inactive workspace without `--follow` hands keyboard
+  focus to a remaining visible tile or float on the current workspace (and remembers it in
+  Fullscreen Layout), while `move --follow` switches straight to the target workspace without an
+  intermediate handoff.
 - Live gauntlet, `scripts/gauntlet.sh`: `ctl switch` parks every window to at most a one-point strip,
   records each original frame in `parked-windows.json`, restores the exact frames on the way back and
-  empties the file; `ctl move` parks the window with its frame recorded.
-- Observed (2026-11-24, gauntlet): after `ctl move`, the moved (now parked) window keeps keyboard
-  focus and its app stays frontmost. Spaceman's in-memory focus suppression stops it following
-  that focus, but a relaunch in that state follows it to the target workspace.
+  empties the file; `ctl move` parks the window with its frame recorded and hands keyboard focus to
+  a remaining visible tile so a SIGKILL + relaunch keeps it on the target workspace.
 
 - Unit, `src/app/tests/dispatch.rs` and `src/app/tests/switching.rs`: the HUD event's rows per
   display, the visible workspace on each, and `from` only on the display that switched.

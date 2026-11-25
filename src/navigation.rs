@@ -49,21 +49,35 @@ const EDGE_TOLERANCE: i64 = 8;
 
 /// The tile a directional key moves to from the focused tile.
 ///
-/// Neighbors whose perpendicular band overlaps the current tile win, nearest
-/// edge first, the way i3 and AeroSpace pick them: from either tile of a
-/// stacked column, left always reaches the column beside it, however narrow
-/// or wide either is. Only when no tile shares the band does a tile off to
-/// the side count, which covers staggered displays.
+/// Within the focused tile's workspace, neighbors whose perpendicular band
+/// overlaps the current tile win, nearest edge first, the way i3 and AeroSpace
+/// pick them: from either tile of a stacked column, left always reaches the
+/// column beside it, however narrow or wide either is. When no tile lies ahead
+/// on the same workspace, navigation picks the nearest display's workspace in
+/// that direction first and then the closest tile on it, so a tall side display
+/// never skips over a shorter middle display (#356).
 #[must_use]
 pub fn target<'a>(
     tiles: &'a [NavigationTile],
     focused: &PhysicalWindowId,
     direction: Direction,
 ) -> Option<&'a NavigationTile> {
-    let current = tiles.iter().find(|tile| &tile.window == focused)?.frame;
-    neighbor(
-        tiles.iter().filter(|tile| &tile.window != focused),
-        current,
+    let current = tiles.iter().find(|tile| &tile.window == focused)?;
+    if let Some(local) = neighbor(
+        tiles
+            .iter()
+            .filter(|tile| tile.workspace == current.workspace && &tile.window != focused),
+        current.frame,
+        direction,
+    ) {
+        return Some(local);
+    }
+    let current_bounds = workspace_bounds(tiles, current.workspace)?;
+    cross_workspace_neighbor(
+        tiles,
+        current.frame,
+        current_bounds,
+        Some(current.workspace),
         direction,
     )
 }
@@ -78,7 +92,33 @@ pub fn rescue(
     from: Rect,
     direction: Direction,
 ) -> Option<&NavigationTile> {
-    neighbor(tiles.iter(), from, direction)
+    rescue_from_display(tiles, from, None, direction)
+}
+
+/// Like [`rescue`], when the caller knows the visible frame of the display
+/// `from` lives on (such as an empty workspace or a floating window near the
+/// edge of a tall side display, #355/#356).
+#[must_use]
+pub fn rescue_from_display(
+    tiles: &[NavigationTile],
+    from: Rect,
+    from_display: Option<Rect>,
+    direction: Direction,
+) -> Option<&NavigationTile> {
+    let home_workspace = workspace_containing_center(tiles, from);
+    if let Some(workspace) = home_workspace
+        && let Some(local) = neighbor(
+            tiles.iter().filter(|tile| tile.workspace == workspace),
+            from,
+            direction,
+        )
+    {
+        return Some(local);
+    }
+    let origin_bounds = from_display
+        .or_else(|| home_workspace.and_then(|workspace| workspace_bounds(tiles, workspace)))
+        .unwrap_or(from);
+    cross_workspace_neighbor(tiles, from, origin_bounds, home_workspace, direction)
         .or_else(|| {
             tiles
                 .iter()
@@ -94,13 +134,91 @@ pub fn rescue(
         })
 }
 
+fn cross_workspace_neighbor(
+    tiles: &[NavigationTile],
+    from_tile: Rect,
+    from_bounds: Rect,
+    exclude_workspace: Option<WorkspaceId>,
+    direction: Direction,
+) -> Option<&NavigationTile> {
+    let mut workspaces: Vec<(WorkspaceId, Rect)> = Vec::new();
+    for tile in tiles {
+        if Some(tile.workspace) == exclude_workspace {
+            continue;
+        }
+        if let Some((_, bounds)) = workspaces
+            .iter_mut()
+            .find(|(workspace, _)| *workspace == tile.workspace)
+        {
+            *bounds = union_rect(*bounds, tile.frame);
+        } else {
+            workspaces.push((tile.workspace, tile.frame));
+        }
+    }
+    let target_workspace = pick_best_rect(workspaces.into_iter(), from_bounds, direction)?;
+    let target_tiles: Vec<&NavigationTile> = tiles
+        .iter()
+        .filter(|tile| tile.workspace == target_workspace)
+        .collect();
+    neighbor(target_tiles.iter().copied(), from_tile, direction).or_else(|| {
+        target_tiles
+            .into_iter()
+            .min_by_key(|tile| center_distance(from_tile, tile.frame))
+    })
+}
+
+fn workspace_bounds(tiles: &[NavigationTile], workspace: WorkspaceId) -> Option<Rect> {
+    tiles
+        .iter()
+        .filter(|tile| tile.workspace == workspace)
+        .map(|tile| tile.frame)
+        .reduce(union_rect)
+}
+
+fn workspace_containing_center(tiles: &[NavigationTile], frame: Rect) -> Option<WorkspaceId> {
+    let mut workspaces: Vec<(WorkspaceId, Rect)> = Vec::new();
+    for tile in tiles {
+        if let Some((_, bounds)) = workspaces
+            .iter_mut()
+            .find(|(workspace, _)| *workspace == tile.workspace)
+        {
+            *bounds = union_rect(*bounds, tile.frame);
+        } else {
+            workspaces.push((tile.workspace, tile.frame));
+        }
+    }
+    workspaces
+        .into_iter()
+        .find(|(_, bounds)| bounds.contains_center(frame))
+        .map(|(workspace, _)| workspace)
+}
+
+fn union_rect(left: Rect, right: Rect) -> Rect {
+    let x = left.x.min(right.x);
+    let y = left.y.min(right.y);
+    Rect {
+        x,
+        y,
+        width: (left.x + left.width).max(right.x + right.width) - x,
+        height: (left.y + left.height).max(right.y + right.height) - y,
+    }
+}
+
 fn neighbor<'a>(
     candidates: impl Iterator<Item = &'a NavigationTile>,
     from: Rect,
     direction: Direction,
 ) -> Option<&'a NavigationTile> {
+    pick_best_rect(candidates.map(|tile| (tile, tile.frame)), from, direction)
+}
+
+fn pick_best_rect<T: Copy>(
+    candidates: impl Iterator<Item = (T, Rect)>,
+    from: Rect,
+    direction: Direction,
+) -> Option<T> {
     let ahead = candidates
-        .map(|tile| (Reach::new(from, tile.frame, direction), tile))
+        .map(|(item, rect)| (Reach::new(from, rect, direction), item))
         .filter(|(reach, _)| reach.gap >= -EDGE_TOLERANCE && reach.travel > 0)
         .collect::<Vec<_>>();
     ahead
@@ -112,7 +230,7 @@ fn neighbor<'a>(
                 .iter()
                 .min_by_key(|(reach, _)| (reach.band_gap(), reach.gap.max(0), reach.offset))
         })
-        .map(|(_, tile)| *tile)
+        .map(|(_, item)| *item)
 }
 
 /// Where a candidate lies relative to the current frame, measured as if
@@ -394,6 +512,51 @@ mod tests {
         assert_eq!(target(&tiles, &left.window, Direction::Up), None);
         assert_eq!(target(&tiles, &right.window, Direction::Left), Some(&left));
         assert_eq!(target(&tiles, &right.window, Direction::Down), None);
+    }
+
+    #[test]
+    fn tall_side_display_never_skips_middle_display_and_empty_display_rescues_in_direction() {
+        // Portrait left and right displays extending above and below a landscape center (#356).
+        let tiles = vec![
+            sized(60, 6, -1440, -583, 1440, 506),
+            sized(61, 6, -1440, -77, 1440, 506),
+            sized(62, 6, -1440, 429, 1440, 506),
+            sized(63, 6, -1440, 935, 1440, 506),
+            sized(64, 6, -1440, 1441, 1440, 506),
+            sized(10, 1, 0, 30, 1280, 1410),
+            sized(11, 1, 1280, 30, 1280, 1410),
+            sized(90, 9, 2560, -539, 1440, 2530),
+        ];
+        // Top and bottom rows on the left display reach the nearest tile on center, never right.
+        assert_eq!(id(&tiles, 60, Direction::Right), Some(10));
+        assert_eq!(id(&tiles, 64, Direction::Right), Some(10));
+        // From center, moving right reaches right and moving left reaches left.
+        assert_eq!(id(&tiles, 11, Direction::Right), Some(90));
+        assert_eq!(id(&tiles, 10, Direction::Left), Some(62));
+        // From right, moving left reaches center's right column, never skipping to left.
+        assert_eq!(id(&tiles, 90, Direction::Left), Some(11));
+
+        // Rescuing from an empty center display picks the display in the pressed direction (#355).
+        let outer = vec![
+            sized(60, 6, -1440, -583, 1440, 2530),
+            sized(90, 9, 2560, -539, 1440, 2530),
+        ];
+        let center = Rect {
+            x: 0,
+            y: 30,
+            width: 2560,
+            height: 1410,
+        };
+        assert_eq!(
+            rescue_from_display(&outer, center, Some(center), Direction::Right)
+                .map(|tile| tile.window.window_id),
+            Some(90)
+        );
+        assert_eq!(
+            rescue_from_display(&outer, center, Some(center), Direction::Left)
+                .map(|tile| tile.window.window_id),
+            Some(60)
+        );
     }
 
     #[test]

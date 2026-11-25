@@ -217,11 +217,12 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
                 }
             };
         }
-        if let Some(target) = self
-            .visible_workspaces(outputs)
-            .into_iter()
-            .find(|resolved| resolved.output.contains(point.0, point.1))
-            .map(|resolved| resolved.workspace)
+        if let Some(display) = outputs.display_at(point)
+            && let Some(target) = self
+                .visible_workspaces(outputs)
+                .into_iter()
+                .find(|resolved| resolved.display_id == display.id)
+                .map(|resolved| resolved.workspace)
             && target != source
         {
             return DropTarget::OtherWorkspace(target);

@@ -292,14 +292,53 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
         outputs: &macos::DisplayOutputs,
     ) -> Option<crate::PhysicalWindowId> {
         let tiles = self.navigation_tiles(outputs);
-        let frame = origin.and_then(|window| {
+        // A parked or suppressed window left behind after switching to an empty
+        // workspace sits off a display corner (possibly another display's), so
+        // never navigate from its off-screen frame (#355).
+        let on_screen_origin = origin.filter(|window| {
+            !self.parked.contains_key(*window)
+                && self.suppressed_focus.as_ref() != Some(*window)
+                && self
+                    .workspaces
+                    .workspace_of_any(window)
+                    .is_none_or(|workspace| self.is_visible(workspace, outputs))
+        });
+        if let Some(frame) = on_screen_origin.and_then(|window| {
             self.backend
                 .window_server_frame(window)
                 .or_else(|| self.backend.frame(window).ok())
-        });
-        if let Some(frame) = frame {
-            return crate::navigation::rescue(&tiles, frame, direction)
+        }) {
+            let from_display = outputs
+                .display_at(rect_center(frame))
+                .map(|display| display.frame);
+            return crate::navigation::rescue_from_display(&tiles, frame, from_display, direction)
                 .map(|tile| tile.window.clone());
+        }
+        // When focus sits on an empty workspace (or nowhere), navigate from the
+        // display the user is currently on in the requested direction (#355).
+        let current_display = self
+            .last_focused_workspace
+            .filter(|workspace| self.is_visible(*workspace, outputs))
+            .map(|workspace| output_for(&self.workspaces, workspace, outputs))
+            .or_else(|| {
+                self.backend
+                    .pointer_location()
+                    .and_then(|point| outputs.display_at(point))
+                    .map(|display| display.frame)
+            })
+            .or_else(|| {
+                origin
+                    .and_then(|window| self.workspaces.workspace_of_any(window))
+                    .map(|workspace| output_for(&self.workspaces, workspace, outputs))
+            });
+        if let Some(display_frame) = current_display {
+            return crate::navigation::rescue_from_display(
+                &tiles,
+                display_frame,
+                Some(display_frame),
+                direction,
+            )
+            .map(|tile| tile.window.clone());
         }
         self.visible_workspaces(outputs)
             .iter()
@@ -382,6 +421,7 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
             self.remember_fullscreen_focus(workspace, target)?;
         }
         if let Some(workspace) = self.workspaces.workspace_of_any(target) {
+            self.record_focused_workspace(workspace);
             let display = outputs.resolve(self.workspaces.assignment(workspace));
             let output = display.frame;
             let frame = self.focus_window_frame(target, workspace, output);
