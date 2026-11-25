@@ -96,6 +96,8 @@ pub(super) struct WorkspaceRuntime<B = MacWorkspaceBackend> {
     pub(super) memory: MemoryState,
     pub(super) journal: JournalState,
     pub(super) displays: super::displays::DisplayWatch,
+    /// A pressed "Move Tab to New Window" awaiting its new window.
+    pub(super) tab_detach: Option<super::detach_tab::PendingTabDetach>,
 }
 
 impl WorkspaceRuntime<MacWorkspaceBackend> {
@@ -229,6 +231,7 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
                 WorkerAction::MoveFocused(_)
                     | WorkerAction::MoveFocusedFollow(_)
                     | WorkerAction::MoveApp(..)
+                    | WorkerAction::MoveTab { .. }
             ) {
                 self.pending_focus = None;
             }
@@ -244,6 +247,7 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
                 | WorkerAction::Focus(_)
                 | WorkerAction::MoveFocused(_)
                 | WorkerAction::MoveFocusedFollow(_)
+                | WorkerAction::MoveTab { .. }
         ) {
             super::commands::WarpContext::Explicit
         } else {
@@ -287,6 +291,9 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
             }
             WorkerAction::MoveApp(bundle_id, workspace) => {
                 rt.move_app(&bundle_id, workspace, outputs, cancelled)
+            }
+            WorkerAction::MoveTab { target, follow } => {
+                rt.move_tab(target, follow, outputs, cancelled)
             }
             WorkerAction::CycleFocus => rt.cycle_focus(outputs, cancelled),
             WorkerAction::CycleFocusPrevious => rt.cycle_focus_previous(outputs, cancelled),
@@ -401,6 +408,7 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
             memory: MemoryState::default(),
             journal: JournalState::default(),
             displays: super::displays::DisplayWatch::default(),
+            tab_detach: None,
         }
     }
 

@@ -156,6 +156,9 @@ impl WorkspaceBackend for ToleranceAwareBackend {
     fn focus_window(&mut self, window: &crate::PhysicalWindowId) -> bool {
         self.0.focus_window(window)
     }
+    fn detach_tab(&mut self, window: &crate::PhysicalWindowId) -> macos::TabDetachResult {
+        self.0.detach_tab(window)
+    }
     fn apply_managed(
         &mut self,
         placements: &[crate::Placement],

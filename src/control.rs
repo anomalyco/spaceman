@@ -23,7 +23,7 @@ const REQUEST_READ_TIMEOUT: Duration = Duration::from_millis(250);
 const RESPONSE_TIMEOUT: Duration = Duration::from_secs(5);
 const CLIENT_TIMEOUT: Duration = Duration::from_secs(6);
 
-pub const COMMAND_USAGE: &str = "status|debug|settings|open TARGET|open-settings|open-accessibility|check-for-updates|toggle-launch-at-login|switch WORKSPACE|back-and-forth|move-workspace [next|prev|DISPLAY]|move WORKSPACE [--follow]|move-app ID WORKSPACE|focus DIR|focus next|focus prev|move-direction DIR|layout|fullscreen|float|resize shrink|resize grow|resize width|height POINTS|balance|scratchpad toggle|scratchpad mark|pause|resume|retile|wrong|restart|quit";
+pub const COMMAND_USAGE: &str = "status|debug|settings|open TARGET|open-settings|open-accessibility|check-for-updates|toggle-launch-at-login|switch WORKSPACE|back-and-forth|move-workspace [next|prev|DISPLAY]|move WORKSPACE [--follow]|move-tab WORKSPACE [--follow]|move-app ID WORKSPACE|focus DIR|focus next|focus prev|move-direction DIR|layout|fullscreen|float|resize shrink|resize grow|resize width|height POINTS|balance|scratchpad toggle|scratchpad mark|pause|resume|retile|wrong|restart|quit";
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub(crate) enum Command {
@@ -219,6 +219,16 @@ fn parse_line(line: &str) -> Result<Command, String> {
         ["move", workspace, "--follow"] | ["move", "--follow", workspace] => {
             WorkerAction::MoveFocusedFollow(WorkspaceId::parse(workspace)?)
         }
+        ["move-tab", workspace] => WorkerAction::MoveTab {
+            target: WorkspaceId::parse(workspace)?,
+            follow: false,
+        },
+        ["move-tab", workspace, "--follow"] | ["move-tab", "--follow", workspace] => {
+            WorkerAction::MoveTab {
+                target: WorkspaceId::parse(workspace)?,
+                follow: true,
+            }
+        }
         ["move-app", bundle_id, workspace] => {
             WorkerAction::MoveApp((*bundle_id).into(), WorkspaceId::parse(workspace)?)
         }
@@ -309,6 +319,29 @@ mod tests {
             queued("switch D"),
             WorkerAction::SwitchWorkspace(WorkspaceId::named('D').unwrap())
         );
+        assert_eq!(
+            queued("move-tab 2"),
+            WorkerAction::MoveTab {
+                target: WorkspaceId::new(2).unwrap(),
+                follow: false,
+            }
+        );
+        assert_eq!(
+            queued("move-tab 2 --follow"),
+            WorkerAction::MoveTab {
+                target: WorkspaceId::TWO,
+                follow: true,
+            }
+        );
+        assert_eq!(
+            queued("move-tab --follow D"),
+            WorkerAction::MoveTab {
+                target: WorkspaceId::named('D').unwrap(),
+                follow: true,
+            }
+        );
+        assert!(parse_line("move-tab 11").is_err());
+        assert!(parse_line("move-tab").is_err());
         assert_eq!(
             queued("move-app com.example.App 3"),
             WorkerAction::MoveApp("com.example.App".into(), WorkspaceId::new(3).unwrap())

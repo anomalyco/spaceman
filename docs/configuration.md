@@ -233,6 +233,7 @@ Commands:
 | --- | --- |
 | `switch WORKSPACE` | Switch to workspace 1 through 10 or an enabled named workspace A through Z |
 | `move WORKSPACE` | Move the focused window there without switching |
+| `move-tab WORKSPACE [--follow]` | Send the focused window's active tab there as its own window (and switch with `--follow`); a single-tab window moves whole ([Controls](controls.md#send-tab-to-workspace)) |
 | `back-and-forth` | Return to the previous workspace |
 | `move-workspace [next\|prev\|DISPLAY]` | Move the focused workspace to another display |
 | `focus left\|down\|up\|right` | Focus the nearest tile in that direction |

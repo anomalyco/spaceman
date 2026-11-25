@@ -8,6 +8,7 @@ mod keys;
 mod presenter;
 mod spaces;
 mod swipes;
+mod tabs;
 #[cfg(test)]
 mod tests;
 mod window_attributes;
@@ -47,6 +48,7 @@ pub use presenter::{
 };
 pub use spaces::{last_active_space_change, take_active_space_changed};
 pub use swipes::SwipeMonitor;
+pub use tabs::{TabDetachResult, detach_tab};
 
 use apply::{cache_managed_window, evict_managed_app, prune_managed_app};
 use ax::{

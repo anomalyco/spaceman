@@ -427,6 +427,23 @@ impl Engine {
         self.commit_layout();
     }
 
+    /// Hands `from`'s slot (its id, weight and place) to `to`: the window a tab
+    /// group shows once the tab `from` was is moved out of it.
+    pub(crate) fn rebind_window(&mut self, from: &PhysicalWindowId, to: &PhysicalWindowId) -> bool {
+        let Some(slot) = self
+            .model
+            .workspace
+            .slots
+            .iter_mut()
+            .find(|slot| slot.bound_window() == Some(from))
+        else {
+            return false;
+        };
+        slot.binding = crate::BindingState::Bound(to.clone());
+        self.invalidate_layout();
+        true
+    }
+
     pub(crate) fn slot_for_window(&self, window: &PhysicalWindowId) -> Option<crate::SlotId> {
         self.model
             .workspace
