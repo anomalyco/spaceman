@@ -321,6 +321,7 @@ command changes behavior. Unknown keys are config errors.
 [labs]
 scratchpad = false                    # optional (default: false); the i3/sway-style Scratchpad
 activity = false                      # optional (default: false); Settings › Activity
+portrait_edge_rows = false            # optional (default: false); top/bottom drop bands on portrait displays
 ```
 
 `scratchpad = true` enables the Scratchpad (see [Controls › Scratchpad](controls.md#scratchpad-lab)) and
@@ -333,6 +334,11 @@ hidden in the scratchpad brings them back on screen, where they tile again.
 and Save snapshot (see [Restarts and Recovery](features/restarts-and-recovery.md)). With it off the pane
 stays out of the Settings sidebar and its `⌘6` shortcut does nothing; `spaceman doctor` and the journal
 keep recording either way. Turning it off while the pane is open returns Settings to General.
+
+`portrait_edge_rows = true` adds drop bands along the top and bottom edges of a display whose tiled
+area is taller than it is wide: dragging a tiled window into one docks it into a full-width,
+half-height row on that edge (see [Controls](controls.md)). With it off, only the left and right edge
+bands exist. The switch applies to the next drag.
 
 ```sh
 spaceman config set labs.activity true

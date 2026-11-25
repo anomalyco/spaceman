@@ -2,13 +2,15 @@ use super::super::input::PointerBounds;
 use super::super::*;
 use super::gesture::{GestureOverlay, OverlayKind, ShownDrop};
 
-/// Width inside the tiled area (in addition to any outer gap) of the display's
-/// left and right full-height column drop bands.
+/// Depth inside the tiled area (in addition to any outer gap) of the display's
+/// left and right full-height column drop bands, and of the top and bottom
+/// full-width row bands on portrait displays (`[labs] portrait_edge_rows`).
 pub(in crate::app) const DISPLAY_EDGE_DROP_BAND: i32 = 64;
 
 #[derive(Clone, Debug)]
 pub(in crate::app) enum DropTarget {
-    /// Dock into a full-height half-width column on the display's left or right edge.
+    /// Dock into a full-height half-width column on the display's left or right
+    /// edge, or a full-width half-height row on a portrait display's top or bottom.
     DisplayEdge(Direction),
     /// Swap with or nest beside another tile on the same workspace.
     LocalTile {
@@ -212,6 +214,11 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
         if let Some(direction) = display_edge_drop(point, source_output, usable, bounds) {
             return DropTarget::DisplayEdge(direction);
         }
+        if self.config.labs().portrait_edge_rows
+            && let Some(direction) = display_row_drop(point, source_output, usable, bounds, outputs)
+        {
+            return DropTarget::DisplayEdge(direction);
+        }
         if let Some(tile) = self
             .navigation_tiles(outputs)
             .into_iter()
@@ -339,6 +346,70 @@ fn display_edge_drop(
         return armed.then_some(Direction::Right);
     }
     None
+}
+
+/// Top and bottom full-width edge bands on a portrait `output`, `None` when the
+/// tiled area is not taller than it is wide. Each band reaches `DISPLAY_EDGE_DROP_BAND`
+/// into the tiled area, includes the outer gap on that edge, and extends over the
+/// menu bar or Dock strip between `output` and the edge of `screen` (the display's
+/// full bounds). A corner inside `output` belongs to the side band, armed or not.
+pub(in crate::app) fn display_row_bands(
+    output: crate::Rect,
+    usable: crate::Rect,
+    screen: crate::Rect,
+) -> Option<(crate::Rect, crate::Rect)> {
+    if usable.height <= usable.width {
+        return None;
+    }
+    let inset = DISPLAY_EDGE_DROP_BAND.min(usable.height / 6).max(0);
+    let output_bottom = output.y + output.height;
+    let top_end = (usable.y + inset).clamp(output.y, output_bottom);
+    let bottom_start = (usable.y + usable.height - inset).clamp(output.y, output_bottom);
+    let top_start = screen.y.min(output.y);
+    let bottom_end = (screen.y + screen.height).max(output_bottom);
+    let left = screen.x.min(output.x);
+    let width = (screen.x + screen.width).max(output.x + output.width) - left;
+    let top = crate::Rect {
+        x: left,
+        y: top_start,
+        width,
+        height: top_end - top_start,
+    };
+    let bottom = crate::Rect {
+        x: left,
+        y: bottom_start,
+        width,
+        height: bottom_end - bottom_start,
+    };
+    Some((top, bottom))
+}
+
+fn display_row_drop(
+    point: (i32, i32),
+    output: crate::Rect,
+    usable: crate::Rect,
+    bounds: Option<PointerBounds>,
+    outputs: &macos::DisplayOutputs,
+) -> Option<Direction> {
+    // A corner belongs to the side band even before that band is armed.
+    let (left, right) = display_edge_bands(output, usable);
+    if left.contains(point.0, point.1) || right.contains(point.0, point.1) {
+        return None;
+    }
+    let screen = outputs
+        .displays()
+        .iter()
+        .zip(outputs.screens())
+        .find(|(display, _)| display.frame == output)
+        .map_or(output, |(_, screen)| screen);
+    let (top, bottom) = display_row_bands(output, usable, screen)?;
+    [(top, Direction::Up), (bottom, Direction::Down)]
+        .into_iter()
+        .find(|(band, _)| band.contains(point.0, point.1))
+        .and_then(|(band, direction)| {
+            let armed = bounds.is_none_or(|bounds| !bounds.entirely_inside(band));
+            armed.then_some(direction)
+        })
 }
 
 fn drop_direction(point: (i32, i32), frame: crate::Rect) -> Option<Direction> {

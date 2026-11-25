@@ -113,7 +113,10 @@ monitor = "main"
 # Option+\ summons it centred on the focused display (or hides it again).
 # activity = true adds Settings › Activity, the live arrangement log and
 # doctor diagnostics; with it off the pane stays out of Settings.
+# portrait_edge_rows = true makes the top and bottom edges of a display taller
+# than it is wide drop targets: drag a tiled window there for a half-height row.
 #
 # [labs]
 # scratchpad = false
 # activity = false
+# portrait_edge_rows = false

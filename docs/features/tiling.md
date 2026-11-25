@@ -33,6 +33,7 @@ Reorder                                                 // tile.reorder
 │   └── Perpendicular move    -> re-orients or creates a mixed split (falls through to the adjacent display if the saved split would not change)
 └── Pointer drag (non-destructive previews against drag-start layout; committed only on mouse-up)
     ├── Display left/right edge band -> full-height half-width column on that side (includes outer gap, armed once the pointer has been outside the band; lone tile unchanged; saved layout edited even while temporarily stacked)
+    ├── Portrait display top/bottom edge band ([labs] portrait_edge_rows) -> full-width half-height row on that edge (same rules; includes the menu bar and Dock strips; side bands win in the corners)
     ├── Over a sibling     -> live-previewed swap, applied on mouse-up
     ├── Near a tile edge   -> nested split (in the saved layout, even while tiles are temporarily stacked)
     └── Onto another display -> moved to that display's active workspace (restoring siblings left behind)
@@ -104,7 +105,8 @@ pause, quit, or hotkey loss.
 - Unit (FakeBackend), `src/app/tests/gestures.rs` and `src/app/tests/drag_path.rs`:
   non-destructive drag previews (path-independent side drops, fast cross-display drops, cancel
   restoration), display outer left/right edge column drop bands (full edge sweep, outer gaps,
-  band arming after leaving the band, temporary stacks, Fullscreen Layout), edge-nesting preview,
+  band arming after leaving the band, temporary stacks, Fullscreen Layout), portrait top/bottom
+  row drop bands in `src/app/tests/drag_rows.rs`, edge-nesting preview,
   cross-display drop; `startup.rs` covers gesture classification and `src/app/input.rs` covers
   queued final gestures, pointer bounds tracking while busy, and edge drags grabbed from outside
   the window (in a gap or over the neighbor), which `src/macos/tests.rs` hit-tests by resize-border

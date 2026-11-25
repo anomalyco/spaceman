@@ -207,6 +207,9 @@ pub struct LabsConfig {
     /// Settings › Activity: the live arrangement log, doctor diagnostics, and process vitals.
     #[serde(default)]
     pub activity: bool,
+    /// Top and bottom display edge drop bands that make a half-height row on portrait displays.
+    #[serde(default)]
+    pub portrait_edge_rows: bool,
 }
 
 impl LabsConfig {
@@ -216,6 +219,7 @@ impl LabsConfig {
         match feature {
             LabFeature::Scratchpad => self.scratchpad,
             LabFeature::Activity => self.activity,
+            LabFeature::PortraitEdgeRows => self.portrait_edge_rows,
         }
     }
 }
@@ -227,11 +231,13 @@ pub enum LabFeature {
     Scratchpad,
     /// Settings › Activity: the live arrangement log, doctor diagnostics, and process vitals.
     Activity,
+    /// Top and bottom display edge drop bands that make a half-height row on portrait displays.
+    PortraitEdgeRows,
 }
 
 impl LabFeature {
     /// Every switch, in the order `[labs]` lists them.
-    pub const ALL: [Self; 2] = [Self::Scratchpad, Self::Activity];
+    pub const ALL: [Self; 3] = [Self::Scratchpad, Self::Activity, Self::PortraitEdgeRows];
 
     /// The `[labs]` key that turns this feature on.
     #[must_use]
@@ -239,6 +245,7 @@ impl LabFeature {
         match self {
             Self::Scratchpad => "scratchpad",
             Self::Activity => "activity",
+            Self::PortraitEdgeRows => "portrait_edge_rows",
         }
     }
 
@@ -1193,6 +1200,9 @@ monitor = "main"
             Config::parse("version = 1\n[labs]\nscratchpad = true\nactivity = true\n").unwrap();
         assert!(both.labs().enabled(LabFeature::Scratchpad));
         assert!(both.labs().enabled(LabFeature::Activity));
+        assert!(!both.labs().enabled(LabFeature::PortraitEdgeRows));
+        let rows = Config::parse("version = 1\n[labs]\nportrait_edge_rows = true\n").unwrap();
+        assert!(rows.labs().portrait_edge_rows);
     }
 
     #[test]
