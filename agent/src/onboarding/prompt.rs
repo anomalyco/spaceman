@@ -139,25 +139,21 @@ fn title(p: Paint, index: usize, label: &str, learned: bool) -> El {
             .motion_intent(MotionIntent::OVERSHOOT)
             .transition(pop())
     });
+    // The clip spans the whole row, so it cuts the rolling words only at the top and bottom,
+    // never the end of a longer title arriving.
     row()
         .key("title")
         .w_full()
         .h(TITLE_H)
         .gap(6.0)
         .center_y()
+        .clip_rounded(0.0)
         .child(
-            row()
-                .key("words")
-                .h(TITLE_H)
-                .center_y()
-                .clip_rounded(0.0)
-                .child(
-                    text(label.to_owned())
-                        .key(format!("lesson{index}"))
-                        .font(p.strong())
-                        .color(p.text())
-                        .transition(turn()),
-                ),
+            text(label.to_owned())
+                .key(format!("lesson{index}"))
+                .font(p.strong())
+                .color(p.text())
+                .transition(turn()),
         )
         .children(tick)
 }

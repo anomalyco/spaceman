@@ -84,7 +84,8 @@ fn cap(p: Paint, key: String, label: &str, down: bool, rolls: bool) -> El {
     let legend = if rolls {
         legend
             .key(format!("legend-{label}"))
-            .transition(roll().springs(SpringPair::new(KEY_UP, KEY_UP)))
+            // The old legend is gone before the key's width closes over it.
+            .transition(roll().springs(SpringPair::new(KEY_UP, LEGEND_OUT)))
     } else {
         legend.key("label")
     };
@@ -205,6 +206,8 @@ fn well(p: Paint, key: &str) -> El {
             ..Shadow::default()
         })
 }
+
+const LEGEND_OUT: Spring = Spring::new(0.1, 0.0);
 
 /// In from the bottom, out through the top, inside the parent's clip.
 pub fn roll() -> Transition {
