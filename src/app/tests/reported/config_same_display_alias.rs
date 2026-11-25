@@ -224,12 +224,25 @@ fn hidden_workspace_selector_edit_keeps_the_shown_one_in_front() {
         );
         let shown_window = window(u32::from(shown) * 10);
         let edited_window = window(u32::from(edited) * 10);
-        assert!(!rt.parked.contains_key(&shown_window), "{edited} {selector}");
-        assert!(rt.parked.contains_key(&edited_window), "{edited} {selector}");
+        assert!(
+            !rt.parked.contains_key(&shown_window),
+            "{edited} {selector}"
+        );
+        assert!(
+            rt.parked.contains_key(&edited_window),
+            "{edited} {selector}"
+        );
         // An explicit switch still brings the edited workspace forward.
-        let debug =
-            execute(&mut rt, WorkerAction::SwitchWorkspace(ws(edited)), &displays).unwrap();
-        assert_eq!(debug["active_workspaces"], serde_json::json!([1, edited, 7]));
+        let debug = execute(
+            &mut rt,
+            WorkerAction::SwitchWorkspace(ws(edited)),
+            &displays,
+        )
+        .unwrap();
+        assert_eq!(
+            debug["active_workspaces"],
+            serde_json::json!([1, edited, 7])
+        );
     }
 }
 
@@ -246,9 +259,10 @@ fn shown_workspace_selector_edit_ignores_another_displays_newer_record() {
     for n in [9, 6] {
         execute(&mut rt, WorkerAction::SwitchWorkspace(ws(n)), &displays).unwrap();
     }
-    // With the left display gone, secondary names the right one, which shows 4.
+    // With the left display gone, 6 (newer than 1) promotes onto main while
+    // secondary names the right display, which shows 4.
     let debug = execute(&mut rt, WorkerAction::SwitchWorkspace(ws(4)), &unplugged).unwrap();
-    assert_eq!(debug["active_workspaces"], serde_json::json!([1, 4]));
+    assert_eq!(debug["active_workspaces"], serde_json::json!([6, 4]));
     let debug = execute(&mut rt, WorkerAction::Retile, &displays).unwrap();
     assert_eq!(debug["active_workspaces"], serde_json::json!([1, 6, 9]));
     let mut config = alias_config("secondary", "dwindle", 0);

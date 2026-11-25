@@ -286,7 +286,10 @@ fn pause_restores_hidden_scratchpad_windows_without_leaks() {
         &AtomicBool::new(false),
     );
 
-    assert!(matches!(result, Some(WorkerResult::Restored { failed: 0, .. })));
+    assert!(matches!(
+        result,
+        Some(WorkerResult::Restored { failed: 0, .. })
+    ));
     assert!(runtime.parked.is_empty());
     assert!(runtime.backend.persisted.is_empty());
     assert!(pad(&runtime).is_empty());

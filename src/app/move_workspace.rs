@@ -23,8 +23,17 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
         }
         let visible = self.visible_workspaces(&outputs);
         let reported_focused = self.backend.focused_window();
-        let (source_resolved, focused_window) =
+        let (mut source_resolved, focused_window) =
             self.focused_visible_workspace(&visible, &outputs)?;
+        // `move-workspace` still moves a pinned window's home workspace when it
+        // is shown, even after the pin was dragged to another display (#561).
+        if let Some(window) = focused_window.as_ref()
+            && self.workspaces.is_pinned(window)
+            && let Some(home) = self.workspaces.workspace_of_any(window)
+            && let Some(home_resolved) = visible.iter().find(|entry| entry.workspace == home)
+        {
+            source_resolved = home_resolved.clone();
+        }
         let moved_ws = source_resolved.workspace;
         let source_display_id = source_resolved.display_id;
         let source_output = source_resolved.output;
@@ -454,22 +463,10 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
         outputs: &macos::DisplayOutputs,
     ) -> Result<(ResolvedWorkspace, Option<crate::PhysicalWindowId>), String> {
         let focused = self.current_focus();
-        if let Some(window) = focused.as_ref() {
-            if let Some(workspace) = self.workspaces.workspace_of_any(window)
-                && let Some(resolved) = visible.iter().find(|entry| entry.workspace == workspace)
-            {
-                return Ok((resolved.clone(), Some(window.clone())));
-            }
-            if let Some(frame) = self
-                .backend
-                .window_server_frame(window)
-                .or_else(|| self.backend.frame(window).ok())
-                && let Some(resolved) = visible
-                    .iter()
-                    .find(|entry| entry.output.contains_center(frame))
-            {
-                return Ok((resolved.clone(), Some(window.clone())));
-            }
+        if let Some(window) = focused.as_ref()
+            && let Some(resolved) = self.shown_workspace_for(window, visible, outputs)
+        {
+            return Ok((resolved, Some(window.clone())));
         }
         // No visible window has focus, as on an empty workspace: the one
         // switched to last is the focused one, wherever it shows.

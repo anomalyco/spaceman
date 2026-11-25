@@ -141,8 +141,8 @@ monitor = 'third-id'
             app(5, &[(81, at(2000)), (31, at(0))]),
         ],
     });
-    for n in [2, 4, 7] {
-        rt.workspaces.switch(ws(n));
+    for (display, n) in [("main-id", 2), ("secondary-id", 4), ("third-id", 7)] {
+        rt.workspaces.show_on(display, ws(n));
     }
     report(&mut rt, &seven);
     act(&mut rt, displays, WorkerAction::Retile);

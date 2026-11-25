@@ -170,3 +170,24 @@ fn a_queued_hover_leaves_a_float_that_now_covers_the_point_in_front() {
     hover(&mut rt, &window(60), point);
     assert_eq!(rt.backend.focused, Some(window(60)));
 }
+
+#[test]
+fn leaving_the_warp_point_before_any_hover_lets_the_first_return_hover() {
+    // Pointer warps to `warp`, moves away inside the 150 ms hover delay (so no
+    // hover is ever delivered for the warp), then returns to `warp` and rests.
+    let warp = (1200, 200);
+    let mut rt = two_displays(LAB, warp);
+    rt.backend.observation = Some(observation_for_windows(
+        "com.example.Test",
+        &window(10),
+        &[(window(10), frame(50)), (window(60), frame(1050))],
+    ));
+    rt.focus.note_warp(warp);
+
+    rt.backend.pointer = Some((300, 200));
+    rt.cycle(outputs(), &AtomicBool::new(false)).unwrap();
+
+    rt.backend.pointer = Some(warp);
+    hover(&mut rt, &window(60), warp);
+    assert_eq!(rt.backend.focused, Some(window(60)));
+}

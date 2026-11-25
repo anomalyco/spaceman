@@ -19,6 +19,9 @@ pub(in crate::app) enum DropTarget {
     },
     /// Move to another display's active workspace.
     OtherWorkspace(WorkspaceId),
+    /// The drag started in Fullscreen Layout; toggling Split mid-drag must not
+    /// turn its release into an accidental drop.
+    IgnoredFullscreen,
     /// Return to the pre-drag layout without editing it.
     None,
 }
@@ -60,13 +63,37 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
             return Ok(self.status(0, &outputs));
         }
         let source_output = output_for(&self.workspaces, source, &outputs);
-        if self.workspaces.deck(source).is_monocle() {
-            // Fullscreen Layout ignores pointer drags: once released, the tile
-            // fills its own display again, wherever it was let go (#392).
-            self.gesture = None;
+        let started_in_fullscreen = matches!(
+            self.gesture.as_ref(),
+            Some(GestureOverlay {
+                window: dragged,
+                kind: OverlayKind::Drag {
+                    shown: Some((_, DropTarget::IgnoredFullscreen)),
+                    ..
+                },
+                ..
+            }) if *dragged == window
+        );
+        if self.workspaces.deck(source).is_monocle() || started_in_fullscreen {
+            // Fullscreen Layout ignores pointer drags: remember that the drag
+            // started in Fullscreen so toggling back to Split mid-drag never
+            // commits an accidental drop, and on release restore the tile
+            // wherever it was let go (#392).
             if preview {
+                if !started_in_fullscreen {
+                    self.gesture = Some(GestureOverlay {
+                        window,
+                        workspace: source,
+                        kind: OverlayKind::Drag {
+                            layout: self.workspaces.engine(source).layout().clone(),
+                            pointer_bounds: bounds,
+                            shown: Some((point, DropTarget::IgnoredFullscreen)),
+                        },
+                    });
+                }
                 return Ok(self.status(0, &outputs));
             }
+            self.gesture = None;
             self.forget_readback(source, &window);
             let layout = self.layout_workspace(source, source_output, cancelled);
             return Ok(self.status(layout.failed, &outputs));
@@ -164,7 +191,7 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
                     cancelled,
                 )
             }
-            DropTarget::None => self.finish_local_drop(
+            DropTarget::None | DropTarget::IgnoredFullscreen => self.finish_local_drop(
                 source,
                 &window,
                 None,
@@ -517,11 +544,17 @@ fn display_row_drop(
     };
     let (arming, direction) = [
         (corner(band.x, left.x + left.width), left, Direction::Left),
-        (corner(right.x, band.x + band.width), right, Direction::Right),
+        (
+            corner(right.x, band.x + band.width),
+            right,
+            Direction::Right,
+        ),
     ]
     .into_iter()
     .find(|(end, _, _)| end.contains(point.0, point.1))
-    .map_or((band, row), |(end, side, direction)| (with_side(end, side), direction));
+    .map_or((band, row), |(end, side, direction)| {
+        (with_side(end, side), direction)
+    });
     let armed = bounds.is_none_or(|bounds| !bounds.entirely_inside(arming));
     armed.then_some(direction)
 }

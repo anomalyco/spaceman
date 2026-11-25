@@ -521,7 +521,7 @@ fn cycle_records_a_click_on_another_display_for_option_tab() {
     runtime
         .workspace_back_and_forth(outputs(), &cancelled)
         .unwrap();
-    assert_eq!(runtime.backend.focused, Some(first));
+    assert_eq!(runtime.backend.focused, Some(clicked));
 }
 
 #[test]

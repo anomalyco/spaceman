@@ -107,9 +107,221 @@ fn an_absolute_resize_lands_when_a_sibling_first_reveals_its_minimum() {
     assert!(before[2] >= 460, "{before:?}");
     assert!(runtime.minimum_sizes.is_empty());
 
-    let status = command(&mut runtime, WorkerAction::ResizeTo(crate::Axis::Horizontal, 700));
+    let status = command(
+        &mut runtime,
+        WorkerAction::ResizeTo(crate::Axis::Horizontal, 700),
+    );
 
     assert_eq!(status.failed, 0);
     let after = [window(1), window(2), window(3)].map(|w| runtime.backend.frames[&w].width);
     assert_eq!(after, [700, 266, 460]);
+}
+
+struct RecordingToleranceBackend {
+    inner: FakeBackend,
+    tolerances: Vec<i32>,
+}
+
+impl WorkspaceBackend for RecordingToleranceBackend {
+    fn now(&self) -> std::time::Instant {
+        self.inner.now()
+    }
+    fn pause(&mut self, duration: Duration) {
+        self.inner.pause(duration);
+    }
+    fn window_owners(&mut self, window_ids: &HashSet<u32>) -> HashMap<u32, AppInstanceId> {
+        self.inner.window_owners(window_ids)
+    }
+    fn snapshot(
+        &mut self,
+        cycle: u64,
+        outputs: &macos::DisplayOutputs,
+    ) -> Result<crate::NativeObservation, String> {
+        self.inner.snapshot(cycle, outputs)
+    }
+    fn is_process_running(&mut self, app: &AppInstanceId) -> bool {
+        self.inner.is_process_running(app)
+    }
+    fn confirms_no_windows(&mut self, app: &AppInstanceId) -> bool {
+        self.inner.confirms_no_windows(app)
+    }
+    fn confirms_set_aside(&mut self, window: &crate::PhysicalWindowId) -> bool {
+        self.inner.confirms_set_aside(window)
+    }
+    fn frame(
+        &mut self,
+        window: &crate::PhysicalWindowId,
+    ) -> Result<crate::Rect, macos::WindowAccessError> {
+        self.inner.frame(window)
+    }
+    fn window_server_frame(&mut self, window: &crate::PhysicalWindowId) -> Option<crate::Rect> {
+        self.inner.window_server_frame(window)
+    }
+    fn window_server_frames(&mut self) -> Option<HashMap<u32, crate::Rect>> {
+        self.inner.window_server_frames()
+    }
+    fn onscreen_window_frames(&mut self) -> Option<HashMap<u32, crate::Rect>> {
+        self.inner.onscreen_window_frames()
+    }
+    fn onscreen_window_order(&mut self) -> Option<Vec<u32>> {
+        self.inner.onscreen_window_order()
+    }
+    fn set_position(
+        &mut self,
+        window: &crate::PhysicalWindowId,
+        target: crate::Rect,
+    ) -> macos::ApplyOutcome {
+        self.inner.set_position(window, target)
+    }
+    fn focused_window(&mut self) -> Option<crate::PhysicalWindowId> {
+        self.inner.focused_window()
+    }
+    fn frontmost_application(&mut self) -> Option<AppInstanceId> {
+        self.inner.frontmost_application()
+    }
+    fn raise_window(&mut self, window: &crate::PhysicalWindowId) -> bool {
+        self.inner.raise_window(window)
+    }
+    fn focus_window(&mut self, window: &crate::PhysicalWindowId) -> bool {
+        self.inner.focus_window(window)
+    }
+    fn detach_tab(&mut self, window: &crate::PhysicalWindowId) -> macos::TabDetachResult {
+        self.inner.detach_tab(window)
+    }
+    fn apply_managed(
+        &mut self,
+        placements: &[crate::Placement],
+        settings: &Settings,
+        cancelled: &AtomicBool,
+    ) -> Vec<macos::ApplyResult> {
+        self.tolerances.push(settings.frame_tolerance);
+        self.inner.apply_managed(placements, settings, cancelled)
+    }
+    fn apply_managed_during_drag(
+        &mut self,
+        placements: &[crate::Placement],
+        settings: &Settings,
+        dragged: &crate::PhysicalWindowId,
+        cancelled: &AtomicBool,
+    ) -> Vec<macos::ApplyResult> {
+        self.inner
+            .apply_managed_during_drag(placements, settings, dragged, cancelled)
+    }
+    fn apply_observed(
+        &mut self,
+        placements: &[crate::Placement],
+        settings: &Settings,
+        cancelled: &AtomicBool,
+    ) -> Vec<macos::ApplyResult> {
+        self.inner.apply_observed(placements, settings, cancelled)
+    }
+    fn persist_parked(
+        &mut self,
+        parked: &HashMap<crate::PhysicalWindowId, crate::Rect>,
+    ) -> Result<(), String> {
+        self.inner.persist_parked(parked)
+    }
+    fn persist_workspace_state(
+        &mut self,
+        state: &crate::workspace::WorkspaceState,
+    ) -> Result<(), String> {
+        self.inner.persist_workspace_state(state)
+    }
+    fn persist_window_memory(
+        &mut self,
+        memory: &crate::window_memory::WindowMemory,
+    ) -> Result<(), String> {
+        self.inner.persist_window_memory(memory)
+    }
+    fn persist_workspace_monitor(
+        &mut self,
+        workspace: WorkspaceId,
+        selector: &DisplaySelector,
+    ) -> Result<(), String> {
+        self.inner.persist_workspace_monitor(workspace, selector)
+    }
+    fn journal(&mut self, line: &crate::journal::JournalLine) {
+        self.inner.journal(line);
+    }
+    fn pointer_location(&mut self) -> Option<(i32, i32)> {
+        self.inner.pointer_location()
+    }
+    fn hover_window_at(&mut self, point: (i32, i32)) -> Option<u32> {
+        self.inner.hover_window_at(point)
+    }
+    fn mouse_down(&mut self) -> bool {
+        self.inner.mouse_down()
+    }
+    fn any_mouse_button_down(&mut self) -> bool {
+        self.inner.any_mouse_button_down()
+    }
+    fn warp_pointer(&mut self, point: (i32, i32)) -> bool {
+        self.inner.warp_pointer(point)
+    }
+    fn recent_input(&mut self) -> Option<crate::macos::RecentInput> {
+        self.inner.recent_input()
+    }
+}
+
+#[test]
+fn exact_spacing_stays_zero_through_minimum_refit_passes() {
+    let initial = crate::Rect {
+        x: RIGHT.x + 100,
+        y: RIGHT.y + 100,
+        width: 800,
+        height: 400,
+    };
+    let windows: Vec<_> = (1..=3).map(|i| (window(i), initial)).collect();
+    let backend = RecordingToleranceBackend {
+        inner: FakeBackend {
+            observation: Some(observation_for_windows(
+                "com.example.Test",
+                &window(1),
+                &windows,
+            )),
+            focused: Some(window(1)),
+            frames: windows.iter().cloned().collect(),
+            minimum_widths: [(window(3), 460)].into_iter().collect(),
+            ..FakeBackend::default()
+        },
+        tolerances: Vec::new(),
+    };
+    let config = Config::parse(
+        "version = 1
+[settings]
+layout = 'columns'
+[settings.gaps]
+inner = 7
+[[workspaces]]
+workspace = 9
+monitor = 'right'
+",
+    )
+    .unwrap();
+    let mut rt = WorkspaceRuntime::with_backend_and_config(
+        ManagementScope::Both,
+        backend,
+        HashMap::new(),
+        config,
+    );
+    assert_eq!(command(&mut rt, WorkerAction::Retile).failed, 0);
+    rt.backend.tolerances.clear();
+
+    let status = command(
+        &mut rt,
+        WorkerAction::ResizeTo(crate::Axis::Horizontal, 700),
+    );
+    assert_eq!(status.failed, 0);
+    // Both the initial apply and every minimum-refit pass keep frame_tolerance == 0.
+    assert!(
+        rt.backend.tolerances.len() >= 2,
+        "{:?}",
+        rt.backend.tolerances
+    );
+    assert!(
+        rt.backend.tolerances.iter().all(|&tol| tol == 0),
+        "refit pass dropped exact spacing: {:?}",
+        rt.backend.tolerances
+    );
+    assert!(!rt.exact_spacing_workspaces.contains(&ws(9)));
 }

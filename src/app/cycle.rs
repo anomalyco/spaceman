@@ -94,10 +94,15 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
         if cancelled.load(Ordering::Acquire) {
             return Err("workspace operation cancelled".into());
         }
+        if !self.backend.mouse_down() {
+            self.gesture = None;
+        }
+        self.focus.note_pointer(self.backend.pointer_location());
         if let Some(until) = self.space_transition_until() {
             return Ok(self.defer_for_space_transition(until, &outputs));
         }
         self.note_outputs(&outputs);
+        self.follow_displays(&outputs);
         // Parking is durable before workspace ownership. A crash between those
         // writes must not strand an unowned window behind an otherwise valid state.
         // Hidden scratchpad windows are unowned on purpose until summoned.
@@ -116,7 +121,6 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
                 "Recovery pending for {pending} unowned parked window(s)"
             ));
         }
-        self.follow_displays(&outputs);
         let visible = self.visible_workspaces(&outputs);
         let frontmost = self.backend.frontmost_application();
         let focused = self.backend.focused_window();

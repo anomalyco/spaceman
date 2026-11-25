@@ -955,7 +955,13 @@ fn dwindle_keeps_a_flipped_root_axis_when_one_tile_is_left_and_another_joins() {
     tree.toggle_root_axis();
 
     // B leaves: the flipped root keeps its direction with one tile (#507).
-    assert!(tree.sync_near(Axis::Horizontal, &[a.clone()], None, dwindle, output));
+    assert!(tree.sync_near(
+        Axis::Horizontal,
+        std::slice::from_ref(&a),
+        None,
+        dwindle,
+        output
+    ));
     assert_eq!(tree.root_axis(), Axis::Horizontal);
 
     // C joins: A and C finish side by side, not top and bottom.

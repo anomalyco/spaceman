@@ -20,12 +20,9 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
             return Err(LAB_OFF.into());
         }
         let visible = self.visible_workspaces(&outputs);
-        // The display a focused pin is on; otherwise the display `move-workspace` would move:
-        // the focused window's, or with no visible window focused, the one switched to last.
-        let shown = match self.focused_pin_display(&visible) {
-            Some(shown) => shown,
-            None => self.focused_visible_workspace(&visible, &outputs)?.0,
-        };
+        // The display the focused window (including a dragged pin) is seen on, or with no
+        // visible window focused, the workspace switched to last.
+        let shown = self.focused_visible_workspace(&visible, &outputs)?.0;
         let listed = self.listed_workspaces(&shown.display_id, Some(shown.workspace), &outputs);
         match step.target(&listed, shown.workspace) {
             Some(target) => self.switch_with(
@@ -72,23 +69,6 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
         } else {
             self.move_focused(target, outputs, cancelled)
         }
-    }
-
-    /// The visible workspace on the display a focused pin is on. A pin shows on every
-    /// workspace and can be dragged to another display without changing its home, so its
-    /// frame, not its home, says which display has focus (#561).
-    fn focused_pin_display(&mut self, visible: &[ResolvedWorkspace]) -> Option<ResolvedWorkspace> {
-        let window = self
-            .current_focus()
-            .filter(|window| self.workspaces.is_pinned(window))?;
-        let frame = self
-            .backend
-            .window_server_frame(&window)
-            .or_else(|| self.backend.frame(&window).ok())?;
-        visible
-            .iter()
-            .find(|entry| entry.output.contains_center(frame))
-            .cloned()
     }
 
     /// Every enabled, managed workspace shown on `display_id`, in `settings.workspace_order`.

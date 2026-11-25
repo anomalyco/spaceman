@@ -50,31 +50,16 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
             .set_empty_choice(chosen.then_some(EmptyChoice { workspace, left }));
     }
 
-    /// Whether window, still focused, is on another visible workspace than
-    /// workspace: by the workspace that owns it, or, for a window Spaceman
-    /// does not manage (an `ignore` rule, #532), by the display it is on.
+    /// Whether window, still focused, is seen on another visible workspace than
+    /// workspace (whether managed, pinned, or unmanaged, #532).
     fn focus_kept_elsewhere(
         &mut self,
         window: &crate::PhysicalWindowId,
         workspace: WorkspaceId,
         outputs: &macos::DisplayOutputs,
     ) -> bool {
-        if self.parked.contains_key(window) {
-            return false;
-        }
-        if let Some(owner) = self.workspaces.workspace_of_any(window) {
-            return owner != workspace && self.is_visible(owner, outputs);
-        }
-        let Some(frame) = self
-            .backend
-            .window_server_frame(window)
-            .or_else(|| self.backend.frame(window).ok())
-        else {
-            return false;
-        };
-        self.visible_workspaces(outputs)
-            .iter()
-            .find(|entry| entry.output.contains_center(frame))
+        let visible = self.visible_workspaces(outputs);
+        self.shown_workspace_for(window, &visible, outputs)
             .is_some_and(|entry| entry.workspace != workspace)
     }
 

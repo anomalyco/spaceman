@@ -418,8 +418,8 @@ impl Workspaces {
 
     /// [`Self::workspace_for_app`] counting only windows `alive` keeps. A bound
     /// window the window server no longer lists is closed and must not pull a
-    /// switch to its workspace (#516); an unresolved slot has no window to ask
-    /// about, so it still counts.
+    /// switch to its workspace (#516); an unresolved slot counts only while at
+    /// least one of its candidates is still alive (or it has none to check).
     #[must_use]
     pub fn workspace_for_live_app(
         &self,
@@ -438,7 +438,9 @@ impl Workspaces {
                         slot.belongs_to(app)
                             && match &slot.binding {
                                 crate::BindingState::Bound(window) => alive(window),
-                                crate::BindingState::Unresolved { .. } => true,
+                                crate::BindingState::Unresolved { candidates, .. } => {
+                                    candidates.is_empty() || candidates.iter().any(&alive)
+                                }
                             }
                     })
                     || self.floating_entries().any(|(window, owner)| {

@@ -54,7 +54,6 @@ fn a_second_window_stays_put_after_the_routed_first_window_floats_by_hand() {
 
 #[test]
 fn a_route_all_rule_still_routes_the_second_window_after_the_first_floats() {
-    let config =
-        format!("version = 1\n[labs]\nroute_all_windows = true\n{RULE}windows = 'all'\n");
+    let config = format!("version = 1\n[labs]\nroute_all_windows = true\n{RULE}windows = 'all'\n");
     assert_eq!(second_window_after_float(&config), Some(WorkspaceId::SIX));
 }
