@@ -52,7 +52,8 @@ pub(super) trait WorkspaceBackend {
     /// On-screen window-server IDs, front-most first.
     fn onscreen_window_order(&mut self) -> Option<Vec<u32>>;
     /// The running application instance owning each of `window_ids`, per the window server.
-    /// For the rare window no observation covers; windows it cannot attribute are left out.
+    /// For the rare window no observation covers; windows it cannot attribute, and windows off
+    /// the normal layer (always-on-top windows observation ignores), are left out.
     fn window_owners(&mut self, window_ids: &HashSet<u32>) -> HashMap<u32, AppInstanceId>;
     /// The bundle ID and title rules match `window` by, for a window no observation lists.
     fn window_rule_probe(

@@ -23,6 +23,8 @@ const AX_MESSAGING_TIMEOUT: f32 = 0.5;
 pub(super) struct WindowServerWindow {
     pub(super) pid: i32,
     pub(super) id: u32,
+    /// `kCGWindowLayer`: 0 (normal) or 3 (floating).
+    pub(super) layer: i64,
     pub(super) frame: Rect,
 }
 
@@ -221,13 +223,18 @@ pub(super) fn window_server_windows(
     let mut windows = Vec::new();
     let list = CGWindowListCopyWindowInfo(options | CGWindowListOption::ExcludeDesktopElements, 0)?;
     for entry in cf_array_items::<CFDictionary>(&list) {
-        let Some((pid, id, _)) = window_server_identity(entry) else {
+        let Some((pid, id, layer)) = window_server_identity(entry) else {
             continue;
         };
         let Some(frame) = window_server_bounds(entry) else {
             continue;
         };
-        windows.push(WindowServerWindow { pid, id, frame });
+        windows.push(WindowServerWindow {
+            pid,
+            id,
+            layer,
+            frame,
+        });
     }
     Some(windows)
 }
