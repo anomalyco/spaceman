@@ -146,7 +146,8 @@ Focus follows                                              // ws.focus-follow
 ├── Focusing a window on another display's visible workspace -> no switch; Option+Tab remembers it
 ├── Focusing a pinned window (`action = "pin"`, `ctl pin`) -> never switches: it shows everywhere
 └── No focused window reported -> follows the frontmost app only when all its windows, tiled
-    or floating, are on one workspace
+    or floating, are on one workspace; windows the window server no longer lists (just closed,
+    not yet retired) don't count, so closing all of an app's windows never switches (#516)
 
 Where a new window goes (first match wins)                 // ws.adoption
 ├── Disposition: the first matching [[rules]] entry (bundle_id, title, title_contains), over the
@@ -390,8 +391,10 @@ on the same letter.
   in `agent/src/hud/tests.rs`, issue 419); a deleted named workspace (`config_removed_named.rs`,
   issue 424); Option+Tab after lagging focus reports (`back_and_forth_stale_report.rs`,
   `back_and_forth_fast_shortcuts.rs`, issue 399); a numbered move under a lagging report
-  (`numbered_move_stale_report.rs`, issue 397); and pointer follow for `move-tab --follow`
-  (issue 417), an accepted frame (issue 418) and a held right button (issue 422). Unit,
+  (`numbered_move_stale_report.rs`, issue 397); no follow after closing all of the frontmost
+  app's windows (`close_all_frontmost.rs`,
+  `frontmost_app_whose_windows_all_closed_does_not_pull_a_switch`, issue 516); and pointer
+  follow for `move-tab --follow` (issue 417), an accepted frame (issue 418) and a held right button (issue 422). Unit,
   `src/workspace/display_map.rs` and `src/app/focus/tests.rs`: the display records and the
   focus automaton on their own.
 - Unit (FakeBackend), `src/app/tests/reconnect_unsettled.rs`: a tile whose display disconnects
