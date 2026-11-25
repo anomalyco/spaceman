@@ -338,12 +338,25 @@ pub fn button(
     kind: ButtonKind,
     press: impl Fn(&mut Ui, &mut Tx) + 'static,
 ) -> El {
+    button_enabled(p, key, label, kind, true, press)
+}
+
+/// A [`button`] that is dimmed and takes no press while there is nothing for it to do.
+pub fn button_enabled(
+    p: Paint,
+    key: &str,
+    label: &str,
+    kind: ButtonKind,
+    enabled: bool,
+    press: impl Fn(&mut Ui, &mut Tx) + 'static,
+) -> El {
     Button::new(label)
         .variant(match kind {
             ButtonKind::Primary => ButtonVariant::Contrast,
             ButtonKind::Secondary => ButtonVariant::Neutral,
         })
         .on_press_tx(press)
+        .disabled(!enabled)
         .control_size(ControlSize::Large)
         .build(p.k)
         .px(BUTTON_PX)

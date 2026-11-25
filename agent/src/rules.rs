@@ -717,6 +717,7 @@ fn set_place(table: &mut dyn TableLike, place: Place) {
 }
 
 mod comments;
+mod filters;
 mod shortcuts;
 mod spacing;
 #[cfg(test)]

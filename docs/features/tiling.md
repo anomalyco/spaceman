@@ -150,9 +150,10 @@ pause, quit, or hotkey loss.
 
 ## Gotchas
 
-- Settings › Rules shows no `tile` rules: tiling is the default, so the map has nowhere to draw one.
-  Edit them with `spaceman rules` or `config.toml`; the Workspace HUD's Float and Pin replace an
-  app's tile rule.
+- Settings › Rules shows a `tile` rule only for a built-in float, as `· tiled` on its chip under
+  `Floating by default`. Tiling is the default for every other app, so the map has nowhere to
+  draw its tile rule: edit those with `spaceman rules` or `config.toml`. The Workspace HUD's
+  `Float`, `Pin` and `Always open` items replace an app's tile rule.
 - Tests check requested frames; apps with minimum sizes may refuse them. Spaceman grows such a
   window's tile to the size it kept, taking the space from its siblings in proportion to what each
   can spare, and logs a `minimum size:` line in `agent.log`. Minimums are learned per window, only

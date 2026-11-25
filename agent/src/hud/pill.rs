@@ -154,7 +154,7 @@ pub fn slot(
 }
 
 /// Interactive capsule used by the live HUD overlay and its 120 Hz tests: marks the capsule as a
-/// hit region, holds on hover, switches workspaces on click, and opens the per-app Float/Pin menu
+/// hit region, holds on hover, switches workspaces on click, and opens the per-app rule menu
 /// on secondary click.
 pub fn interactive_slot(
     view: &HudView,

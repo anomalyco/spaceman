@@ -190,13 +190,15 @@ impl HudOverlay {
             .cloned()
             .unwrap_or_else(|| apps::fallback_name(bundle));
         let current = self.sink.app_place(bundle);
-        let popup = menu::build_app_menu(&app_name, workspace, current);
+        let floats_by_default = spaceman::defaults::floats_by_default(bundle);
+        let popup = menu::build_app_menu(&app_name, workspace, current, floats_by_default);
         self.flow.set_menu_open(true, now_ms);
         let bundle_id = bundle.to_owned();
         tx.popup_menu(popup, at, move |overlay: &mut HudOverlay, picked, tx| {
             let close_ms = overlay.now_ms();
             if let Some(picked) = picked
-                && let Some(new_place) = menu::resolve_app_menu_pick(picked, workspace, current)
+                && let Some(new_place) =
+                    menu::resolve_app_menu_pick(picked, workspace, current, floats_by_default)
             {
                 drop(overlay.sink.set_app_place(&bundle_id, new_place));
             }

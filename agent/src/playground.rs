@@ -9,7 +9,7 @@ use spaceman::{
     app::{UiAgentSnapshot, UiLaunchAtLogin, UiUpdateStatus},
 };
 
-use crate::{Pane, Ui, activity, apps, controls::WINDOW, hud, map, onboarding, panes, rules::Doc};
+use crate::{Pane, Ui, activity, controls::WINDOW, hud, map, onboarding, panes, rules::Doc};
 
 pub(crate) type Scene = (&'static str, fn(&mut Ui));
 
@@ -59,35 +59,10 @@ pub fn scenes() -> &'static [Scene] {
 }
 
 pub(crate) fn blank_fixture() -> Ui {
-    let mut ui = Ui {
-        pane: Pane::Rules,
-        navigated: false,
-        doc: Doc::parse(include_str!("../fixtures/config.toml")),
-        apps: apps::Catalog::default(),
-        agent: None,
-        activity: activity::ActivityPane::default(),
-        bridge: None,
-        window: None,
-        hud_driver: None,
-        hud_preview: None,
-        frame_remembered: true,
-        tour: None,
-        drag: None,
-        menu: None,
-        sheet: None,
-        card_w: WINDOW.card_w(render_width()),
-        running: Vec::new(),
-        displays: panes::workspaces::fixture_pair(),
-        displays_at: None,
-        highlight_lab: None,
-        highlight_feature: None,
-        error: None,
-        spacing_draft: None,
-        per_edge: None,
-        shortcut_capture: panes::shortcuts::Capture::Idle,
-        fixture: true,
-    };
-    reset_fixture(&mut ui, Pane::Rules);
+    let mut ui = Ui::new(Doc::parse(include_str!("../fixtures/config.toml")), None);
+    ui.frame_remembered = true;
+    ui.card_w = WINDOW.card_w(render_width());
+    reset_fixture(&mut ui, Pane::General);
     ui
 }
 
@@ -120,6 +95,11 @@ pub(crate) fn reset_fixture(ui: &mut Ui, pane: Pane) {
     ui.highlight_feature = None;
     ui.shortcut_capture = panes::shortcuts::Capture::Idle;
     ui.doc = Doc::parse(include_str!("../fixtures/config.toml"));
+    ui.menu = None;
+    ui.drag = None;
+    ui.error = None;
+    ui.title_filter = rune::TextEdit::default();
+    ui.default_floats = map::fixture_default_floats();
     ui.look_up_apps();
     ui.agent = Some(UiAgentSnapshot {
         accessibility: true,
@@ -187,6 +167,9 @@ mod tests {
             "Rules/rules",
             "Rules/rules-drag",
             "Rules/rules-add",
+            "Rules/rules-filter",
+            "Rules/rules-filter-taken",
+            "Rules/rules-default",
             "Workspaces/workspaces",
             "Workspaces/workspaces-three-displays",
             "Workspaces/workspaces-long-name",

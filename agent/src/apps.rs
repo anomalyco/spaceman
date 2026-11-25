@@ -74,6 +74,22 @@ pub fn running() -> Vec<Running> {
     Vec::new()
 }
 
+/// The apps a fixture has running, so a still's Add menu doesn't list this Mac's.
+pub fn fixture_running() -> Vec<Running> {
+    [
+        ("com.anthropic.claudefordesktop", "Claude"),
+        ("com.apple.Notes", "Notes"),
+        ("com.apple.Safari", "Safari"),
+        ("com.tinyspeck.slackmacgap", "Slack"),
+        ("com.apple.Stickies", "Stickies"),
+    ]
+    .map(|(bundle_id, name)| Running {
+        bundle_id: bundle_id.to_owned(),
+        name: name.to_owned(),
+    })
+    .into()
+}
+
 const KNOWN_WINDOW_MANAGERS: &[(&str, &str)] = &[
     ("bobko.aerospace", "AeroSpace"),
     ("com.amethyst.Amethyst", "Amethyst"),

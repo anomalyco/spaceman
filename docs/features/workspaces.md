@@ -106,6 +106,23 @@ Where a new window goes (first match wins)                 // ws.adoption
 │   Stickies notes can live on workspaces 1 and 2
 └── otherwise          -> tiled on the active workspace of the display under the window's center
 
+Settings › Rules                                           // ws.rules-pane
+├── Settings opens on General; Rules is a pane to visit (or spaceman://settings/rules)
+├── `Where new windows open` ("Optional. Any window can move to any workspace"): a tile per
+│   workspace with the apps routed there; drag an icon to another tile or to `Floating`
+├── + on a tile, or `Add app`, lists every running app, ruled or not
+│   ├── an app with no rule -> a rule for every window, at once
+│   └── an app with a rule (its name ends in …) -> the `Title contains` sheet: the typed text
+│       becomes title_contains, so Safari can open Work windows on 1 and Claude windows on 2.
+│       The field starts empty and is never filled from a window's title. A filter another rule
+│       of the app already has, or none while the app has an every-window rule, can't be added
+├── A filtered rule is written ahead of the app's every-window rule (first match wins) and its
+│   icon wears a dot; right-click a rule -> `Title contains…`, `Float` or `Pin on all
+│   workspaces`, `Remove rule`
+└── `Floating by default`: a quiet chip for each running built-in float (src/defaults.rs) with no
+    rule of its own, and for any a rule tiles. Its menu: `Float` (no rule), `Tile`
+    (action = "tile"), `Pin on all workspaces` (action = "pin", which moves it to `Floating`)
+
 Pinned floats                                              // ws.pin
 ├── action = "pin" rule, or spaceman ctl pin on the focused window (floats it first; again unpins)
 ├── Never parked by a switch, a move or a display change: shows on every workspace of its display
@@ -163,8 +180,13 @@ Workspace HUD ([settings] hud, on by default)               // ws.hud
 │   ├── Hover over the capsule -> pauses auto-dismiss (and rescues a mid-exit capsule); resumes
 │   │   0.6 s after the pointer leaves
 │   ├── Click a workspace slot -> switches that display to that workspace without activating
-│   └── Right-click (or Ctrl+click) an app icon -> native Float/Tile and Pin/Unpin menu writing
-│       through config.toml rules
+│   └── Right-click (or Ctrl+click) an app icon -> native menu editing the app's one every-window
+│       rule in config.toml, in two groups:
+│       ├── how its windows sit: `Float <App>` or `Tile <App>` (a built-in float tiles with an
+│       │   action = "tile" rule and floats again by losing it), and `Pin <App> on all
+│       │   workspaces` (action = "pin") or `Unpin <App>`
+│       └── where its new windows open: `Always open <App> on Workspace N` (action = "route"),
+│           checked while it is the rule; picking the checked one removes it
 ├── Another switch while it's up, or on its way out -> the same capsule carries on from where it
 │   is: the marker's leading edge sets off first and its trailing edge catches up; in Layouts the
 │   cells grow and shrink and their neighbours slide. Only the display that switched moves its
@@ -326,7 +348,17 @@ on the same letter.
   `src/config.rs`: `built_in_float_defaults_apply_only_after_user_rules`,
   `pin_rule_parses_and_rejects_a_workspace`, `title_contains_matches_case_insensitively_in_memory`;
   `src/workspace/tests.rs`: `hand_pins_persist_for_floating_windows_and_rule_pins_do_not`;
-  `agent/src/map.rs`: `pin_and_title_contains_rules_round_trip_as_non_app_wide_floats`.
+  `agent/src/map/tests.rs`: `pin_and_title_contains_rules_round_trip_as_non_app_wide_floats`.
+- Unit, Settings › Rules and the HUD menu: `agent/src/main.rs`
+  `settings_opens_on_general_not_on_rules`; `agent/src/map/tests.rs`
+  `the_add_menu_lists_apps_that_already_have_rules`,
+  `a_second_rule_for_an_app_takes_a_title_filter_that_starts_blank`,
+  `built_in_floats_are_default_chips_and_take_a_tile_or_pin_override`;
+  `agent/src/rules/filters_tests.rs` (a filtered rule is valid TOML ahead of the every-window
+  rule, with comments and other tables kept); `agent/src/hud/tests.rs`
+  `app_context_menu_names_route_rules_always_open_and_keeps_pin_for_the_pin_action` and
+  `app_context_menu_respects_the_built_in_float_defaults`. No test drives the sheet's field or
+  the menus through the pointer.
 - Unit (FakeBackend), `src/app/tests/restart_recall.rs`:
   `every_window_reopened_at_a_parking_spot_is_rescued_and_recalled` (three Safari windows on
   workspaces 1-3, reopened minutes later in the background),

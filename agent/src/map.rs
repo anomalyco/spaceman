@@ -1,12 +1,25 @@
-//! Rules as a workspace map: a tile per workspace showing the apps that open there, and the
-//! apps that float below. Dragging an app to another tile, or to the float box, rewrites its
-//! rule. Everything sits at computed positions, so a drag knows where the pointer is from the
-//! dragged icon's own spot. The map is as wide as the pane's cards (`Ui::card_w`): its tiles and
-//! chips share that width out, and its labels sit on the page's text rail.
+//! Rules as a workspace map: a tile per workspace showing the apps whose new windows open there,
+//! the apps that float below, and under those the running apps Spaceman floats with no rule.
+//! Rules are optional: without one a window opens on the workspace in view and can move to any
+//! other. Dragging an app to another tile, or to the float box, rewrites its rule. An app can
+//! have several rules, each for the windows a title filter picks out (`filter`). Everything sits
+//! at computed positions, so a drag knows where the pointer is from the dragged icon's own spot.
+//! The map is as wide as the pane's cards (`Ui::card_w`): its tiles and chips share that width
+//! out, and its labels sit on the page's text rail.
+
+mod defaults;
+mod drag;
+mod filter;
+#[cfg(test)]
+mod tests;
 
 use rune::{Cursor, El, PointerPress, Tx, el, row, text};
 use rune_kit::{Menu as KitMenu, MenuItem, Placement};
 use spaceman::WorkspaceId;
+
+pub use defaults::{fixture_default_floats, poll as poll_default_floats};
+pub use drag::Drag;
+pub use filter::{FilterDraft, sheet as filter_sheet};
 
 use crate::{
     Menu, Pane, Ui,
@@ -16,6 +29,7 @@ use crate::{
     rules::{Doc, Place, Rule},
     view::scroll_body,
 };
+use defaults::DefaultFloat;
 
 const COLS: usize = 5;
 const TILE_H: f32 = 100.0;
@@ -42,63 +56,52 @@ const CHIPS_PER_ROW: usize = 4;
 const SLOP: f32 = 3.0;
 /// The dot a title rule's icon wears.
 const TITLE_DOT: f32 = 8.0;
+/// Beside the map's first label: a rule is a default for new windows, never a fence.
+const OPTIONAL: &str = "Optional. Any window can move to any workspace";
 
 pub(crate) const SCENES: &[Scene] = &[
-    ("rules", |ui| reset_fixture(ui, Pane::Rules)),
+    ("rules", fixture),
     ("rules-drag", |ui| {
-        reset_fixture(ui, Pane::Rules);
+        fixture(ui);
         ui.drag = Drag::fixture(&ui.doc, ui.card_w);
     }),
     ("rules-add", |ui| {
-        reset_fixture(ui, Pane::Rules);
-        ui.open_add_menu(Place::Float);
+        fixture(ui);
+        ui.open_add_menu(Place::Workspace(WorkspaceId::THREE));
+    }),
+    // A second Safari rule, for the windows a title filter picks out.
+    ("rules-filter", |ui| {
+        fixture(ui);
+        filter::fixture_sheet(ui, "Docs");
+    }),
+    // The same sheet before anything is typed: Safari's every-window rule is taken.
+    ("rules-filter-taken", |ui| {
+        fixture(ui);
+        ui.edit(|doc| doc.add_rule(filter::SAFARI, None, Place::Workspace(WorkspaceId::FOUR)));
+        filter::fixture_sheet(ui, "");
+    }),
+    // A built-in float's choices, beside one a rule tiles.
+    ("rules-default", |ui| {
+        fixture(ui);
+        defaults::fixture_menu(ui);
     }),
 ];
 
-/// An app being dragged: its rule, where it started and how far the pointer has gone.
-#[derive(Clone, Debug, PartialEq)]
-pub struct Drag {
-    pub rule: usize,
-    snapshot: Rule,
-    /// The dragged item's top-left in the map, and its size.
-    origin: (f32, f32),
-    size: (f32, f32),
-    /// Where in the item the press landed.
-    grab: (f32, f32),
-    delta: (f32, f32),
-    moved: bool,
-    target: Option<Place>,
-}
-
-impl Drag {
-    /// Slack mid-drag over workspace 4, for stills.
-    fn fixture(doc: &Doc, width: f32) -> Option<Drag> {
-        let layout = Layout::new(doc, width);
-        let rule = doc
-            .rules()
-            .into_iter()
-            .find(|rule| rule.bundle_id.as_deref() == Some("com.tinyspeck.slackmacgap"))?;
-        let (origin, size) = layout.spot(&rule)?;
-        let grab = (size.0 / 2.0, size.1 / 2.0);
-        let to = layout.grid.tile_origin(3);
-        let tile_w = layout.grid.tile_w();
-        let delta = (
-            to.0 + tile_w / 2.0 - origin.0 - grab.0,
-            to.1 + TILE_H / 2.0 - origin.1 - grab.1,
+/// The fixture's rules, and Safari twice: its Work windows on 1 and its Claude windows on 2.
+fn fixture(ui: &mut Ui) {
+    reset_fixture(ui, Pane::Rules);
+    ui.edit(|doc| {
+        doc.add_rule(
+            filter::SAFARI,
+            Some("Work"),
+            Place::Workspace(WorkspaceId::ONE),
         );
-        Some(Drag {
-            rule: rule.index,
-            snapshot: rule,
-            origin,
-            size,
-            grab,
-            delta,
-            moved: true,
-            target: layout
-                .grid
-                .target_at(to.0 + tile_w / 2.0, to.1 + TILE_H / 2.0),
-        })
-    }
+        doc.add_rule(
+            filter::SAFARI,
+            Some("Claude"),
+            Place::Workspace(WorkspaceId::TWO),
+        );
+    });
 }
 
 /// Where everything in the map goes, from the rules.
@@ -107,12 +110,20 @@ struct Layout {
     /// Rules by tile, in file order.
     routed: Vec<Vec<Rule>>,
     floating: Vec<Rule>,
+    /// The built-in floats shown under the float box.
+    defaults: Vec<DefaultFloat>,
 }
 
 impl Layout {
-    /// The map for a pane whose cards are `width` wide.
+    /// The map for a pane whose cards are `width` wide, with no built-in float running.
     fn new(doc: &Doc, width: f32) -> Layout {
+        Layout::with_running(doc, width, &[])
+    }
+
+    /// The map, with a chip for each of the `running` apps Spaceman floats by default.
+    fn with_running(doc: &Doc, width: f32, running: &[String]) -> Layout {
         let rules = doc.rules();
+        let defaults = defaults::listed(&rules, running);
         let tiles = doc.workspaces_with_referenced(WorkspaceId::numbered());
         let mut routed = vec![Vec::new(); tiles.len()];
         let mut floating = Vec::new();
@@ -124,9 +135,9 @@ impl Layout {
                     }
                 }
                 Place::Float | Place::Pin | Place::Ignore => floating.push(rule),
-                // Tiling is the default, so a tile rule has no place on the map.
-                // `spaceman rules` and config.toml edit it; the HUD's Float and Pin
-                // replace it.
+                // Tiling is the default, so a tile rule has no place on the map, except the
+                // one that tiles a built-in float: that shows on its default chip.
+                // `spaceman rules` and config.toml edit the others.
                 Place::Tile => {}
             }
         }
@@ -138,6 +149,7 @@ impl Layout {
             },
             routed,
             floating,
+            defaults,
         }
     }
 
@@ -250,7 +262,7 @@ impl DropGrid {
 }
 
 pub fn pane(ui: &Ui, p: Paint, layer: &mut Vec<El>) -> El {
-    let layout = Layout::new(&ui.doc, ui.card_w);
+    let layout = Layout::with_running(&ui.doc, ui.card_w, &ui.default_floats);
     let width = layout.grid.width;
     let view = MapView {
         ui,
@@ -266,11 +278,6 @@ pub fn pane(ui: &Ui, p: Paint, layer: &mut Vec<El>) -> El {
             .filter(|drag| drag.moved)
             .and_then(|drag| drag.target),
     };
-    let hint = if ui.doc.rules().is_empty() {
-        "Hover a workspace to add an app"
-    } else {
-        "Drag an app to move it"
-    };
     // The labels sit on the text rail, as over a card; the tiles and the float box take the
     // card's edges.
     let heading = |key: &str, title: &str, accessory: Option<El>, top: f32| {
@@ -285,8 +292,8 @@ pub fn pane(ui: &Ui, p: Paint, layer: &mut Vec<El>) -> El {
         .h(layout.grid.height())
         .child(heading(
             "where",
-            "Where apps open",
-            Some(controls::caption(p, hint)),
+            "Where new windows open",
+            Some(controls::caption(p, OPTIONAL)),
             0.0,
         ));
     for (index, workspace) in layout.grid.tiles.iter().copied().enumerate() {
@@ -305,7 +312,12 @@ pub fn pane(ui: &Ui, p: Paint, layer: &mut Vec<El>) -> El {
         map = map.children(view.ghost(drag));
     }
     // Drag positions are in map coordinates, so scrolling the body doesn't move drop targets.
-    scroll_body("rules-body", map)
+    // The built-in floats flow under the map: they are no drop target and take no rule.
+    let rules = rune::col()
+        .key("rules")
+        .child(map)
+        .children(view.default_floats(layer));
+    scroll_body("rules-body", rules)
 }
 
 #[derive(Clone, Copy)]
@@ -410,7 +422,7 @@ impl MapView<'_> {
 
     fn chip(self, rule: &Rule) -> El {
         let c = &self.p.k.c;
-        let name = self.rule_name(rule);
+        let name = self.rule_label(rule);
         row()
             .size(self.layout.grid.chip_w(), CHIP_H)
             .px(6.0)
@@ -498,23 +510,29 @@ impl MapView<'_> {
         if open {
             menu = menu.group_label("Running apps");
             if self.ui.running.is_empty() {
-                menu = menu.item(MenuItem::new("Every running app has a rule").disabled(true));
+                menu = menu.item(MenuItem::new("No apps are running").disabled(true));
             }
+            let ruled = filter::ruled_apps(&self.ui.doc);
+            // Every running app is here, ruled or not: an app takes as many rules as it has
+            // kinds of window. One with a rule already asks which windows this rule is for.
             for app in &self.ui.running {
                 let bundle_id = app.bundle_id.clone();
                 let lead = controls::icon_or_initial(
                     self.p,
                     self.ui.apps.cached(&bundle_id),
                     &app.name,
-                    16.0,
+                    METRICS.icon,
                 );
-                menu = menu.item(MenuItem::new(app.name.clone()).lead(lead).on_select(
-                    move |ui: &mut Ui| {
-                        let bundle_id = bundle_id.clone();
-                        ui.menu = None;
-                        ui.edit(move |doc| doc.add(&bundle_id, place));
-                    },
-                ));
+                let label = if ruled.contains(&bundle_id) {
+                    format!("{}…", app.name)
+                } else {
+                    app.name.clone()
+                };
+                menu = menu.item(
+                    MenuItem::new(label)
+                        .lead(lead)
+                        .on_select(move |ui: &mut Ui| ui.add_app(&bundle_id, place)),
+                );
             }
         }
         menu.build(self.p.k, layer)
@@ -541,7 +559,7 @@ impl MapView<'_> {
             .cursor(Cursor::Grab)
             .opacity(if dragging { 0.3 } else { 1.0 })
             .on_drag(move |ui: &mut Ui, d: &mut rune::Drag, _: &mut Tx| {
-                drag(ui, d, &drag_rule, origin, size, |x, y| grid.target_at(x, y))
+                drag::drag(ui, d, &drag_rule, origin, size, |x, y| grid.target_at(x, y))
             })
             .on_secondary_press(move |ui: &mut Ui, press: PointerPress, _: &mut Tx| {
                 ui.menu = Some(Menu::Rule(index, press));
@@ -553,13 +571,24 @@ impl MapView<'_> {
         let mut menu = rune_kit::context_menu(format!("rule-{index}-menu"), item, point)
             .on_close(|ui: &mut Ui| ui.menu = None);
         if point.is_some() {
-            if rule.place != Place::Float {
-                let expected = rule.clone();
-                menu = menu.item(MenuItem::new("Float").on_select(move |ui: &mut Ui| {
-                    ui.menu = None;
-                    ui.try_edit(|doc| doc.place_matching(&expected, Place::Float));
-                }));
+            // An exact `title` rule keeps its matcher; config.toml edits that.
+            if rule.bundle_id.is_some() && rule.title.is_none() {
+                let editing = rule.clone();
+                menu = menu.item(
+                    MenuItem::new("Title contains…")
+                        .on_select(move |ui: &mut Ui| ui.edit_filter(&editing)),
+                );
             }
+            let other = if rule.place == Place::Float {
+                ("Pin on all workspaces", Place::Pin)
+            } else {
+                ("Float", Place::Float)
+            };
+            let expected = rule.clone();
+            menu = menu.item(MenuItem::new(other.0).on_select(move |ui: &mut Ui| {
+                ui.menu = None;
+                ui.try_edit(|doc| doc.place_matching(&expected, other.1));
+            }));
             let expected = rule.clone();
             menu = menu.item(MenuItem::new("Remove rule").on_select(move |ui: &mut Ui| {
                 ui.menu = None;
@@ -609,6 +638,15 @@ impl MapView<'_> {
         }
     }
 
+    /// A chip's name: the app, and the title filter that picks out some of its windows.
+    fn rule_label(self, rule: &Rule) -> String {
+        let name = self.rule_name(rule);
+        match (&rule.bundle_id, rule.title_filter()) {
+            (Some(_), Some(filter)) => format!("{name} “{filter}”"),
+            _ => name,
+        }
+    }
+
     fn rule_help(self, rule: &Rule) -> String {
         let name = self.rule_name(rule);
         match (&rule.title, &rule.title_contains) {
@@ -634,362 +672,5 @@ impl MapView<'_> {
                 .border(1.5, c.layer_01)
                 .absolute(size - 6.0, -2.0),
         )
-    }
-}
-
-fn drag(
-    ui: &mut Ui,
-    d: &rune::Drag,
-    rule: &Rule,
-    origin: (f32, f32),
-    size: (f32, f32),
-    target_at: impl Fn(f32, f32) -> Option<Place>,
-) {
-    drag_step(
-        ui,
-        d.phase,
-        (d.start_x, d.start_y),
-        (d.dx, d.dy),
-        d.cancelled(),
-        rule,
-        origin,
-        size,
-        target_at,
-    );
-}
-
-#[allow(clippy::too_many_arguments)]
-fn drag_step(
-    ui: &mut Ui,
-    phase: rune::Phase,
-    start: (f32, f32),
-    delta: (f32, f32),
-    cancelled: bool,
-    rule: &Rule,
-    origin: (f32, f32),
-    size: (f32, f32),
-    target_at: impl Fn(f32, f32) -> Option<Place>,
-) {
-    match phase {
-        rune::Phase::Down => {
-            ui.menu = None;
-            ui.drag = Some(Drag {
-                rule: rule.index,
-                snapshot: rule.clone(),
-                origin,
-                size,
-                grab: start,
-                delta: (0.0, 0.0),
-                moved: false,
-                target: None,
-            });
-        }
-        rune::Phase::Move => {
-            let Some(drag) = ui.drag.as_mut().filter(|drag| drag.rule == rule.index) else {
-                return;
-            };
-            drag.delta = delta;
-            drag.moved |= delta.0.abs().max(delta.1.abs()) >= SLOP;
-            drag.target = target_at(
-                origin.0 + drag.grab.0 + delta.0,
-                origin.1 + drag.grab.1 + delta.1,
-            );
-        }
-        rune::Phase::Up => {
-            let Some(drag) = ui.drag.take().filter(|drag| drag.rule == rule.index) else {
-                return;
-            };
-            if cancelled || !drag.moved {
-                ui.flush_pending_reload();
-                return;
-            }
-            let Some(target) = drag.target else {
-                ui.flush_pending_reload();
-                return;
-            };
-            let current = drag.snapshot.place;
-            let unchanged = current == target
-                || (target == Place::Float && matches!(current, Place::Ignore | Place::Pin));
-            if unchanged {
-                ui.flush_pending_reload();
-            } else {
-                ui.try_edit(|doc| doc.place_matching(&drag.snapshot, target));
-            }
-        }
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    /// The cards' width as Settings opens.
-    const WIDTH: f32 = 660.0;
-
-    #[test]
-    fn the_map_shares_out_the_cards_width() {
-        let doc = Doc::parse(include_str!("../fixtures/config.toml"));
-        // The smallest window, the one Settings opens at, and the widest the cards get.
-        for width in [600.0, WIDTH, METRICS.content_max] {
-            let grid = Layout::new(&doc, width).grid;
-            let last_tile = grid.tile_origin(COLS - 1).0 + grid.tile_w();
-            assert!((last_tile - width).abs() < 0.01, "tiles end at {last_tile}");
-            let last_chip = grid.chip_origin(CHIPS_PER_ROW - 1).0 + grid.chip_w();
-            assert!(
-                (last_chip - (width - BOX_PAD)).abs() < 0.01,
-                "chips end at {last_chip}"
-            );
-            // Six icons still fit a tile at the narrowest.
-            let (x, _) = Layout::icon_offset(ICONS_PER_ROW - 1);
-            assert!(x + ICON + TILE_PAD <= grid.tile_w());
-        }
-    }
-
-    #[test]
-    fn hit_tests_tiles_and_the_float_box() {
-        let doc = Doc::parse(include_str!("../fixtures/config.toml"));
-        let layout = Layout::new(&doc, WIDTH);
-        let grid = &layout.grid;
-        assert_eq!(grid.tiles.len(), 11, "1–10 and M");
-        let ws = |name| Some(Place::Workspace(WorkspaceId::parse(name).unwrap()));
-        assert_eq!(grid.target_at(5.0, GRID_TOP + 5.0), ws("1"));
-        let (x, y) = grid.tile_origin(3);
-        assert_eq!(grid.target_at(x + 50.0, y + 50.0), ws("4"));
-        let (x, y) = grid.tile_origin(9);
-        assert_eq!(grid.target_at(x + 50.0, y + 50.0), ws("10"));
-        let (x, y) = grid.tile_origin(10);
-        assert_eq!(grid.target_at(x + 50.0, y + 50.0), ws("M"));
-        assert_eq!(
-            grid.target_at(20.0, grid.box_top() + 10.0),
-            Some(Place::Float)
-        );
-        assert_eq!(grid.target_at(20.0, grid.height() + 100.0), None);
-    }
-
-    #[test]
-    fn rules_map_includes_workspace_10_by_default_and_once_when_referenced() {
-        let ws10 = WorkspaceId::new(10).unwrap();
-        let ws_m = WorkspaceId::named('M').unwrap();
-
-        // Default config shows all ten numbered workspaces and no unmentioned named ones.
-        let mut doc = Doc::parse("version = 1\n");
-        let layout = Layout::new(&doc, WIDTH);
-        let expected_numbered: Vec<WorkspaceId> = WorkspaceId::numbered().collect();
-        assert_eq!(layout.grid.tiles, expected_numbered);
-        assert_eq!(layout.grid.tiles.len(), 10);
-        let (x, y) = layout.grid.tile_origin(9);
-        assert_eq!(
-            layout.grid.target_at(x + 50.0, y + 50.0),
-            Some(Place::Workspace(ws10))
-        );
-
-        // Adding an app to tile 10 writes a valid route to workspace 10 and keeps 10 once.
-        doc.add("com.example.Editor", Place::Workspace(ws10));
-        let source = doc.source();
-        let config = spaceman::config::Config::parse(&source).unwrap();
-        let sample_window = spaceman::ObservedWindow {
-            id: spaceman::PhysicalWindowId {
-                app: spaceman::AppInstanceId {
-                    pid: 1,
-                    launched_at: 1,
-                },
-                window_id: 1,
-            },
-            frame: spaceman::Rect {
-                x: 0,
-                y: 0,
-                width: 800,
-                height: 600,
-            },
-            resizable: true,
-            title: None,
-        };
-        assert_eq!(
-            config.disposition("com.example.Editor", &sample_window),
-            spaceman::config::WindowDisposition::Route(ws10)
-        );
-        let after_add = Layout::new(&doc, WIDTH);
-        assert_eq!(after_add.grid.tiles, expected_numbered);
-        assert_eq!(after_add.routed[9].len(), 1);
-        assert!(after_add.spot(&doc.rules()[0]).is_some());
-
-        // Mentioning workspace 10 in [[workspaces]] also keeps workspace 10 once.
-        doc.set_monitor(ws10, Some("main"));
-        assert_eq!(Layout::new(&doc, WIDTH).grid.tiles, expected_numbered);
-
-        // Mentioning a named workspace appends it after workspace 10 and hit-tests it.
-        doc.set_monitor(ws_m, Some("main"));
-        let with_named = Layout::new(&doc, WIDTH);
-        assert_eq!(with_named.grid.tiles.len(), 11);
-        assert_eq!(with_named.grid.tiles[9], ws10);
-        assert_eq!(with_named.grid.tiles[10], ws_m);
-        let (mx, my) = with_named.grid.tile_origin(10);
-        assert_eq!(
-            with_named.grid.target_at(mx + 50.0, my + 50.0),
-            Some(Place::Workspace(ws_m))
-        );
-    }
-
-    #[test]
-    fn every_rule_has_a_spot() {
-        let doc = Doc::parse(include_str!("../fixtures/config.toml"));
-        let layout = Layout::new(&doc, WIDTH);
-        for rule in doc.rules() {
-            assert!(layout.spot(&rule).is_some(), "{rule:?}");
-        }
-    }
-
-    #[test]
-    fn rule_drag_preserves_external_save_and_flushes_deferred_reload_on_cancel() {
-        use std::sync::atomic::{AtomicU64, Ordering};
-        static NEXT: AtomicU64 = AtomicU64::new(0);
-        let dir = std::env::temp_dir().join(format!(
-            "spaceman-map-drag-{}-{}",
-            std::process::id(),
-            NEXT.fetch_add(1, Ordering::Relaxed)
-        ));
-        std::fs::create_dir_all(&dir).unwrap();
-        let path = dir.join("config.toml");
-        let initial = concat!(
-            "version = 1\n\n",
-            "[settings]\n",
-            "hud = true\n\n",
-            "[[rules]]\n",
-            "bundle_id = \"com.apple.TextEdit\"\n",
-            "action = \"route\"\n",
-            "workspace = 1\n",
-        );
-        let external_hud_off = concat!(
-            "version = 1\n\n",
-            "[settings]\n",
-            "hud = false\n\n",
-            "[[rules]]\n",
-            "bundle_id = \"com.apple.TextEdit\"\n",
-            "action = \"route\"\n",
-            "workspace = 1\n",
-        );
-        std::fs::write(&path, initial).unwrap();
-
-        let mut ui = crate::playground::blank_fixture();
-        ui.fixture = false;
-        ui.doc = Doc::load_from(path.clone());
-        let layout = Layout::new(&ui.doc, WIDTH);
-        let rule = ui.doc.rules()[0].clone();
-        let (origin, size) = layout.spot(&rule).unwrap();
-        let ws2 = layout.grid.tile_origin(1);
-        let dx = ws2.0 + layout.grid.tile_w() / 2.0 - origin.0 - size.0 / 2.0;
-        let dy = ws2.1 + TILE_H / 2.0 - origin.1 - size.1 / 2.0;
-
-        let grab = (size.0 / 2.0, size.1 / 2.0);
-
-        // 1. Hold pointer down on TextEdit, receive an external save mid-drag, then drop on ws 2.
-        drag_step(
-            &mut ui,
-            rune::Phase::Down,
-            grab,
-            (0.0, 0.0),
-            false,
-            &rule,
-            origin,
-            size,
-            |x, y| layout.grid.target_at(x, y),
-        );
-        assert!(ui.drag.is_some());
-        std::fs::write(&path, external_hud_off).unwrap();
-        assert!(
-            !ui.on_config_changed(),
-            "reload must defer while a drag is active"
-        );
-        assert!(ui.doc.reload_pending());
-        drag_step(
-            &mut ui,
-            rune::Phase::Move,
-            grab,
-            (dx, dy),
-            false,
-            &rule,
-            origin,
-            size,
-            |x, y| layout.grid.target_at(x, y),
-        );
-        drag_step(
-            &mut ui,
-            rune::Phase::Up,
-            grab,
-            (dx, dy),
-            false,
-            &rule,
-            origin,
-            size,
-            |x, y| layout.grid.target_at(x, y),
-        );
-        assert!(ui.drag.is_none());
-        assert_eq!(ui.error, None);
-        assert!(!ui.doc.reload_pending());
-        let saved = std::fs::read_to_string(&path).unwrap();
-        let parsed = spaceman::config::Config::parse(&saved).unwrap();
-        assert!(!parsed.hud(), "external hud = false must survive:\n{saved}");
-        assert_eq!(ui.doc.rules()[0].place, Place::Workspace(WorkspaceId::TWO));
-        assert!(saved.contains("workspace = 2"), "{saved}");
-
-        // 2. Cancelled drag flushes a deferred reload immediately instead of leaving Rules stale.
-        let rule_ws2 = ui.doc.rules()[0].clone();
-        drag_step(
-            &mut ui,
-            rune::Phase::Down,
-            grab,
-            (0.0, 0.0),
-            false,
-            &rule_ws2,
-            origin,
-            size,
-            |x, y| layout.grid.target_at(x, y),
-        );
-        std::fs::write(&path, initial).unwrap();
-        assert!(!ui.on_config_changed());
-        drag_step(
-            &mut ui,
-            rune::Phase::Up,
-            grab,
-            (0.0, 0.0),
-            true,
-            &rule_ws2,
-            origin,
-            size,
-            |x, y| layout.grid.target_at(x, y),
-        );
-        assert!(ui.drag.is_none());
-        assert!(!ui.doc.reload_pending());
-        assert!(ui.doc.hud(), "deferred reload must apply after drag cancel");
-        assert_eq!(ui.doc.rules()[0].place, Place::Workspace(WorkspaceId::ONE));
-
-        // 3. Control: idle config_changed notification reloads immediately.
-        std::fs::write(&path, external_hud_off).unwrap();
-        assert!(ui.on_config_changed());
-        assert!(!ui.doc.hud());
-
-        drop(std::fs::remove_dir_all(dir));
-    }
-
-    #[test]
-    fn pin_and_title_contains_rules_round_trip_as_non_app_wide_floats() {
-        let mut doc = Doc::parse(
-            "version = 1\n\n[[rules]]\nbundle_id = \"com.apple.Stickies\"\naction = \"pin\"\n\n[[rules]]\nbundle_id = \"com.apple.Safari\"\ntitle_contains = \"Work\"\naction = \"route\"\nworkspace = 2\n",
-        );
-        assert!(doc.error.is_none(), "{:?}", doc.error);
-        let rules = doc.rules();
-        assert_eq!(rules[0].place, Place::Pin);
-        assert!(rules[0].app_wide());
-        assert_eq!(rules[1].title_contains.as_deref(), Some("Work"));
-        assert!(!rules[1].app_wide());
-        assert_eq!(doc.app_place("com.apple.Safari"), None);
-        assert_eq!(Layout::new(&doc, WIDTH).floating.len(), 1);
-
-        // An app-wide Safari rule is added beside the title rule, never over it.
-        doc.set_app_place("com.apple.Safari", Some(Place::Workspace(WorkspaceId::ONE)));
-        let source = doc.source();
-        assert!(source.contains("title_contains = \"Work\""), "{source}");
-        assert!(source.contains("action = \"pin\""), "{source}");
-        spaceman::config::Config::parse(&source).unwrap();
     }
 }

@@ -34,6 +34,8 @@ use spaceman::app::{UiAction, UiAgentSnapshot, UiBridge};
 pub enum Sheet {
     /// The Workspace HUD's Customize sheet, with the demo desktop its miniature shows.
     Hud(hud::HudPreview),
+    /// Settings › Rules' title filter, for a rule being added or one on the map.
+    Filter(map::FilterDraft),
 }
 
 /// The one anchored menu that is open.
@@ -43,12 +45,12 @@ pub enum Menu {
     Add(Place),
     /// A rule's context menu, at the secondary press.
     Rule(usize, PointerPress),
+    /// A built-in float's choices, by its place in `spaceman::defaults::FLOATING_BUNDLES`.
+    Default(usize),
 }
 
 pub struct Ui {
     pub pane: Pane,
-    /// Someone picked a pane, so the agent's first report doesn't move them.
-    pub navigated: bool,
     pub doc: Doc,
     pub apps: apps::Catalog,
     /// `None` until the runtime publishes its first snapshot.
@@ -66,6 +68,13 @@ pub struct Ui {
     /// The width cards have in the pane on screen, as last laid out.
     pub(crate) card_w: f32,
     pub running: Vec<apps::Running>,
+    /// The running apps Spaceman floats with no rule, as Settings › Rules lists them, and when
+    /// they were last read on Rune's clock.
+    pub(crate) default_floats: Vec<String>,
+    pub(crate) default_floats_at: Option<f64>,
+    /// What Settings › Rules' title filter sheet has typed in it. It starts empty or with the
+    /// rule's own filter from config.toml, never with a window's title.
+    pub(crate) title_filter: rune::TextEdit,
     /// Every connected display, as Settings › Workspaces offers them.
     pub(crate) displays: Vec<panes::workspaces::ConnectedDisplay>,
     /// When the display list was last read, on Rune's clock.
@@ -89,22 +98,16 @@ pub struct Ui {
 }
 
 impl Ui {
-    #[cfg(target_os = "macos")]
-    fn load_live(
-        doc: Doc,
-        bridge: UiBridge,
-        initial_tour: Option<onboarding::Step>,
-        accessibility: bool,
-        initial_target: Option<spaceman::deep_link::OpenTarget>,
-    ) -> Ui {
-        let mut ui = Ui {
-            pane: Pane::Rules,
-            navigated: false,
+    /// Settings as it opens: on General, with nothing selected, open or dragged. Rules are
+    /// optional, so they are a pane to visit, not the first thing Settings says.
+    pub(crate) fn new(doc: Doc, bridge: Option<UiBridge>) -> Ui {
+        Ui {
+            pane: Pane::General,
             doc,
             apps: apps::Catalog::default(),
             agent: None,
             activity: activity::ActivityPane::default(),
-            bridge: Some(bridge),
+            bridge,
             window: None,
             hud_driver: None,
             hud_preview: None,
@@ -115,6 +118,9 @@ impl Ui {
             sheet: None,
             card_w: controls::WINDOW.card_w(controls::WINDOW.size.0),
             running: Vec::new(),
+            default_floats: Vec::new(),
+            default_floats_at: None,
+            title_filter: rune::TextEdit::default(),
             displays: Vec::new(),
             displays_at: None,
             highlight_lab: None,
@@ -124,7 +130,18 @@ impl Ui {
             per_edge: None,
             shortcut_capture: panes::shortcuts::Capture::Idle,
             fixture: false,
-        };
+        }
+    }
+
+    #[cfg(target_os = "macos")]
+    fn load_live(
+        doc: Doc,
+        bridge: UiBridge,
+        initial_tour: Option<onboarding::Step>,
+        accessibility: bool,
+        initial_target: Option<spaceman::deep_link::OpenTarget>,
+    ) -> Ui {
+        let mut ui = Ui::new(doc, Some(bridge));
         ui.look_up_apps();
         if let Some(step) = initial_tour {
             ui.tour = Some(onboarding::Tour::from_launch(step, accessibility, &mut ui));
@@ -162,7 +179,6 @@ impl Ui {
 
     pub fn select_pane(&mut self, pane: Pane) {
         self.pane = pane;
-        self.navigated = true;
         self.menu = None;
         self.sheet = None;
         self.drag = None;
@@ -172,6 +188,10 @@ impl Ui {
         if pane == Pane::Workspaces {
             // Read the displays before the next frame paints them.
             self.displays_at = None;
+        }
+        if pane == Pane::Rules {
+            // And the running built-in floats.
+            self.default_floats_at = None;
         }
     }
 
@@ -348,12 +368,16 @@ impl Ui {
         self.send_action(UiAction::MarkWrong);
     }
 
-    /// Names and icons for every app the rules mention, before the view needs them.
+    /// Names and icons for every app the rules and the built-in floats mention, before the view
+    /// needs them.
     pub(crate) fn look_up_apps(&mut self) {
         for rule in self.doc.rules() {
             if let Some(bundle_id) = &rule.bundle_id {
                 self.apps.get(bundle_id);
             }
+        }
+        for bundle_id in &self.default_floats {
+            self.apps.get(bundle_id);
         }
     }
 
@@ -389,7 +413,7 @@ impl Ui {
     }
 
     fn sync_hud_from_doc(&mut self) {
-        if !self.doc.hud() {
+        if !self.doc.hud() && matches!(self.sheet, Some(Sheet::Hud(_))) {
             // The HUD went off, here or in config.toml: its Customize sheet has nothing to show.
             self.sheet = None;
         }
@@ -414,7 +438,6 @@ impl Ui {
     pub(crate) fn leave_hidden_lab_pane(&mut self) {
         if !self.pane.visible(self.doc.labs()) {
             self.pane = Pane::General;
-            self.navigated = true;
             self.menu = None;
             self.sheet = None;
             self.drag = None;
@@ -438,24 +461,6 @@ impl Ui {
             self.reload_doc();
         }
     }
-
-    pub fn open_add_menu(&mut self, place: Place) {
-        let ruled: Vec<String> = self
-            .doc
-            .rules()
-            .into_iter()
-            .filter(|rule| rule.app_wide())
-            .filter_map(|rule| rule.bundle_id)
-            .collect();
-        self.running = apps::running()
-            .into_iter()
-            .filter(|app| !ruled.contains(&app.bundle_id))
-            .collect();
-        for app in &self.running {
-            self.apps.get(&app.bundle_id);
-        }
-        self.menu = Some(Menu::Add(place));
-    }
 }
 
 fn setup(ui: &mut Ui, waker: Waker) {
@@ -472,6 +477,7 @@ fn poll(ui: &mut Ui, clock: f64, tx: &mut Tx) -> bool {
     }
     let mut changed = onboarding::poll(ui, tx);
     changed |= panes::workspaces::poll_displays(ui, clock);
+    changed |= map::poll_default_floats(ui, clock);
     changed |= ui.activity.poll(
         ui.pane == Pane::Activity && ui.tour.is_none() && ui.hud_preview.is_none(),
         ui.fixture,
@@ -483,9 +489,6 @@ fn poll(ui: &mut Ui, clock: f64, tx: &mut Tx) -> bool {
     if let Some(snapshot) = news.snapshot {
         if let Some(driver) = &ui.hud_driver {
             driver.set_enabled(snapshot.hud);
-        }
-        if !ui.navigated && ui.agent.is_none() && !snapshot.accessibility && ui.tour.is_none() {
-            ui.pane = Pane::General;
         }
         ui.agent = Some(snapshot);
         changed = true;
@@ -711,6 +714,20 @@ mod tests {
         // It opens at 920 × 660, where General, Layout and Rules show whole.
         assert_eq!(spec().size, (920.0, 660.0));
         assert_eq!(spec().min_size, Some((860.0, 580.0)));
+    }
+
+    #[test]
+    fn settings_opens_on_general_not_on_rules() {
+        // Rules are optional defaults for new windows. Opening on them told people every app
+        // needs a workspace; a deep link is the only thing that opens another pane.
+        let ui = Ui::new(Doc::parse(include_str!("../fixtures/config.toml")), None);
+        assert_eq!(ui.pane, Pane::General);
+        assert!(ui.sheet.is_none() && ui.menu.is_none());
+        assert_eq!(playground::blank_fixture().pane, Pane::General);
+
+        let mut ui = playground::blank_fixture();
+        ui.open_target(parse_url("spaceman://settings/rules").unwrap().resolve());
+        assert_eq!(ui.pane, Pane::Rules);
     }
 
     #[test]

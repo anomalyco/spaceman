@@ -151,6 +151,7 @@ impl Pane {
 pub fn sheet(ui: &Ui, p: Paint, reduce_motion: bool, layer: &mut Vec<El>) {
     match &ui.sheet {
         Some(Sheet::Hud(preview)) => general::hud_sheet(ui, preview, p, reduce_motion, layer),
+        Some(Sheet::Filter(draft)) => map::filter_sheet(ui, draft, p, layer),
         None => {}
     }
 }
