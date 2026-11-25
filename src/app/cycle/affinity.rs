@@ -13,6 +13,9 @@ pub(super) enum FrozenWindowAffinity {
     /// The window a `move-tab` detach opened, sent to its target ahead of any
     /// route rule.
     DetachedTab(WorkspaceId),
+    /// The window opened next after an empty workspace was chosen on another display
+    /// (Labs › `open_on_chosen_workspace`), sent there when nothing earlier decided.
+    ChosenWorkspace(WorkspaceId),
     /// The app's existing workspace, or a remembered placement a relaunched
     /// application's window claimed.
     Inferred(WorkspaceId),
@@ -73,7 +76,12 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
         // Read once, and only if a Complete snapshot omits an owned float.
         let mut onscreen_frames = None;
         for application in &observation.applications {
-            let crate::AppObservation::Complete { app, windows, .. } = application else {
+            let crate::AppObservation::Complete {
+                app,
+                windows,
+                focused,
+            } = application
+            else {
                 continue;
             };
             if has_floating {
@@ -92,6 +100,7 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
             }
             self.prepare_recall(app, windows);
             let detached_tab = self.claim_detached_tab(app, windows);
+            let chosen = self.take_chosen_window(app, focused.as_ref(), windows);
             let mut app_owns_window = self.workspaces.app_owns_windows(&app.id);
             let mut app_owns_tiled = self.workspaces.app_owns_tiled_windows(&app.id);
             for window in windows {
@@ -111,6 +120,10 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
                 // non-resizable (an attached window-modal sheet), and a tile rule tiles it
                 // whatever it looks like: user rule ⊕ built-in default ⊕ window traits.
                 let tiled = self.workspaces.workspace_of(&window.id).is_some();
+                let chosen_here = chosen
+                    .as_ref()
+                    .filter(|(candidate, _)| *candidate == window.id)
+                    .map(|(_, target)| *target);
                 let rules = self.config.patch(&app.bundle_id, window);
                 let patch = rules.over(DispositionPatch::traits(window.resizable, tiled));
                 if patch.is_ignored() {
@@ -204,6 +217,19 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
                         log_event!("route floating {:?} -> workspace {}", window.id, target);
                         self.note_placement(&window.id, PlacementSource::Rule, target);
                         float_home(self, target, None)
+                    } else if let Some(target) = chosen_here.filter(|_| {
+                        // Only a float by its traits: a dialog stays with its parent, and a
+                        // float rule or built-in default decides as before.
+                        !app_owns_window && !by_hand && !rules.floats()
+                    }) {
+                        app_owns_window = true;
+                        log_event!(
+                            "chosen workspace: floating {:?} -> workspace {}",
+                            window.id,
+                            target
+                        );
+                        self.note_placement(&window.id, PlacementSource::Active, target);
+                        float_home(self, target, None)
                     } else if let Some(resolved) = visible
                         .iter()
                         .find(|resolved| resolved.screen.contains_center(window.frame))
@@ -250,9 +276,14 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
                 } else {
                     app_owns_window = true;
                     app_owns_tiled = true;
-                    recalled.map_or(FrozenWindowAffinity::CurrentDisplay, |placement| {
-                        FrozenWindowAffinity::Inferred(placement.workspace)
-                    })
+                    match (recalled, chosen_here) {
+                        (Some(placement), _) => FrozenWindowAffinity::Inferred(placement.workspace),
+                        (None, Some(target)) => {
+                            log_event!("chosen workspace: {:?} -> workspace {}", window.id, target);
+                            FrozenWindowAffinity::ChosenWorkspace(target)
+                        }
+                        (None, None) => FrozenWindowAffinity::CurrentDisplay,
+                    }
                 };
                 self.workspaces.set_rule_pinned(&window.id, patch.pins());
                 affinities.insert(window.id.clone(), affinity);

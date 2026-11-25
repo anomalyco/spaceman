@@ -1226,6 +1226,17 @@ monitor = "main"
     }
 
     #[test]
+    fn parses_labs_with_open_on_chosen_workspace_off_by_default() {
+        assert!(!Config::default().labs().open_on_chosen_workspace);
+        let config = Config::parse("version = 1\n[labs]\n").unwrap();
+        assert!(!config.labs().enabled(LabFeature::OpenOnChosenWorkspace));
+        let config =
+            Config::parse("version = 1\n[labs]\nopen_on_chosen_workspace = true\n").unwrap();
+        assert!(config.labs().enabled(LabFeature::OpenOnChosenWorkspace));
+        assert!(!config.labs().enabled(LabFeature::Activity));
+    }
+
+    #[test]
     fn lab_features_round_trip_their_keys() {
         for feature in LabFeature::ALL {
             assert_eq!(LabFeature::parse(feature.key()), Some(feature));

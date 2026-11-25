@@ -47,6 +47,8 @@ pub(crate) struct LabsDoc {
     pub recent_focus: Option<bool>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub swipe_switch: Option<bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub open_on_chosen_workspace: Option<bool>,
 }
 
 impl LabsDoc {
@@ -57,6 +59,7 @@ impl LabsDoc {
             && self.physical_displays.is_none()
             && self.recent_focus.is_none()
             && self.swipe_switch.is_none()
+            && self.open_on_chosen_workspace.is_none()
     }
 
     /// The switch as the file asks for it: off while unset.
@@ -82,6 +85,7 @@ impl LabsDoc {
             LabFeature::PhysicalDisplays => self.physical_displays,
             LabFeature::RecentFocus => self.recent_focus,
             LabFeature::SwipeSwitch => self.swipe_switch,
+            LabFeature::OpenOnChosenWorkspace => self.open_on_chosen_workspace,
         }
     }
 
@@ -93,6 +97,7 @@ impl LabsDoc {
             LabFeature::PhysicalDisplays => &mut self.physical_displays,
             LabFeature::RecentFocus => &mut self.recent_focus,
             LabFeature::SwipeSwitch => &mut self.swipe_switch,
+            LabFeature::OpenOnChosenWorkspace => &mut self.open_on_chosen_workspace,
         }
     }
 }

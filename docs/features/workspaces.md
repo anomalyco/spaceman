@@ -120,6 +120,24 @@ Where a new window goes (first match wins)                 // ws.adoption
 ├── float / pin rule, built-in float, dialog / non-resizable (no tile rule) -> floating on the
 │   active workspace under the window's center; each float belongs to its own workspace, so two
 │   Stickies notes can live on workspaces 1 and 2
+├── chosen empty workspace ([labs] open_on_chosen_workspace, off by default; two or more displays)
+│   -> after a switch or selection (shortcut, ctl switch, menu, HUD) shows an empty workspace,
+│   the next window focus goes to joins it, from whichever display macOS opened it on, before
+│   any display reconciles (the display it opened on never makes room for it)
+│   ├── only that one window, and only while nothing else took focus: focusing a window
+│   │   Spaceman already placed, running any other command, or the workspace getting a window
+│   │   ends it. A click in the window that already had focus changes nothing Accessibility
+│   │   reports, so it does not end it
+│   ├── a launcher on the way does not end it: a focused window Spaceman never observes
+│   │   (a panel), an ignored window, or one a float rule or built-in default floats (Raycast,
+│   │   Alfred, Calculator) opens as before, and the app it launches still gets the choice
+│   ├── never a window opened in the background (focus didn't go to it), nor one of several
+│   │   windows an app shows at once (a launch restoring its windows)
+│   ├── rules, built-in defaults, remembered placements and the windows above decide first; a
+│   │   secondary window of an app with a bundle-only route rule stays where it opened
+│   └── a window floating only by its traits (non-resizable, no rule or default), from an app
+│       with no other window, floats on that workspace, moved fully onto its display; a dialog
+│       of an open window stays with its parent
 └── otherwise          -> tiled on the active workspace of the display under the window's center
 
 Settings › Rules                                           // ws.rules-pane
@@ -250,6 +268,15 @@ on the same letter.
 
 ## Existing Checks
 
+- Unit (FakeBackend), `src/app/tests/chosen_workspace.rs` (`[labs] open_on_chosen_workspace`): the
+  next window joins the chosen empty workspace on another display and the center's tiles don't move;
+  a launched app's first window joins it; a launcher panel on the way keeps the choice, and so does
+  a launcher that floats by a rule on the chosen display itself; a window floating by its traits
+  floats fully on the chosen display; a float rule keeps its window where it opened and passes it
+  over; an ignored window doesn't count as a new window; a route rule still
+  decides; a lagging focus report still claims the window; with the Lab off, focusing another window
+  first, or a window opened in the background, the window opens as before; a workspace with windows
+  claims nothing.
 - Unit (FakeBackend), `src/app/tests/switching.rs`:
   `switching_reveals_and_lays_out_incoming_beneath_before_hiding_outgoing` (ordering of reveal,
   layout, hide), `switch_keeps_outgoing_visible_when_incoming_reveal_never_arrives`

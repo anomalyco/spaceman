@@ -124,6 +124,11 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
                 .as_ref()
                 .is_none_or(|frontmost| &focused.app == frontmost)
         });
+        self.follow_chosen_workspace(
+            focused.as_ref().filter(|_| focused_is_frontmost),
+            frontmost.as_ref(),
+            &visible,
+        );
         // A pinned window shows on every workspace, so focusing it never switches.
         let focus_workspace = if focused_is_frontmost {
             focused
@@ -375,6 +380,7 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
                         }
                         FrozenWindowAffinity::ExplicitRoute(_)
                         | FrozenWindowAffinity::DetachedTab(_)
+                        | FrozenWindowAffinity::ChosenWorkspace(_)
                         | FrozenWindowAffinity::Inferred(_)
                         | FrozenWindowAffinity::CurrentDisplay => {
                             screen.contains_center(window.frame)

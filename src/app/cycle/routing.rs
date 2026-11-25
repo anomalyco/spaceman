@@ -1,8 +1,9 @@
 //! Routing before reconciliation: a newly seen window bound for another workspace (a `route`
 //! rule, the setup tour's arrangement, a detached tab, a remembered placement on a hidden
-//! workspace) joins that workspace directly, before any display's reconciliation runs. It is
-//! never inserted into the workspace on screen and then pulled back out, so a park that fails
-//! leaves it unowned (and routed again next cycle) instead of tiled on the wrong workspace.
+//! workspace, the empty workspace just chosen on another display) joins that workspace
+//! directly, before any display's reconciliation runs. It is never inserted into the workspace
+//! on screen and then pulled back out, so a park that fails leaves it unowned (and routed again
+//! next cycle) instead of tiled on the wrong workspace.
 //!
 //! Floats bound for another workspace move onto that workspace's display here too: on screen
 //! now when it shows, or parked with a recovery frame on its display when it is hidden.
@@ -26,7 +27,8 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
             .iter()
             .filter_map(|(window, affinity)| match *affinity {
                 FrozenWindowAffinity::ExplicitRoute(target)
-                | FrozenWindowAffinity::DetachedTab(target) => {
+                | FrozenWindowAffinity::DetachedTab(target)
+                | FrozenWindowAffinity::ChosenWorkspace(target) => {
                     Some((window.clone(), target, *affinity))
                 }
                 // A recall to a workspace on screen is reconciled there directly.
@@ -82,6 +84,9 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
                 }
                 FrozenWindowAffinity::Inferred(_) => {
                     self.note_placement(&window, PlacementSource::Recall, target);
+                }
+                FrozenWindowAffinity::ChosenWorkspace(_) => {
+                    self.note_placement(&window, PlacementSource::Active, target);
                 }
                 _ => {}
             }

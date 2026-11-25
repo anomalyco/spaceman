@@ -1,25 +1,25 @@
 use super::*;
 
-const LEFT: crate::Rect = crate::Rect {
+pub(super) const LEFT: crate::Rect = crate::Rect {
     x: -1440,
     y: -583,
     width: 1440,
     height: 2530,
 };
-const CENTER: crate::Rect = crate::Rect {
+pub(super) const CENTER: crate::Rect = crate::Rect {
     x: 0,
     y: 30,
     width: 2560,
     height: 1410,
 };
-const RIGHT: crate::Rect = crate::Rect {
+pub(super) const RIGHT: crate::Rect = crate::Rect {
     x: 2560,
     y: -539,
     width: 1440,
     height: 2530,
 };
 
-fn trio() -> macos::DisplayOutputs {
+pub(super) fn trio() -> macos::DisplayOutputs {
     let display = |id: &str, frame, is_main| macos::DisplayOutput {
         id: id.into(),
         name: id.into(),
@@ -42,11 +42,11 @@ fn trio() -> macos::DisplayOutputs {
     .unwrap()
 }
 
-fn ws(n: u8) -> WorkspaceId {
+pub(super) fn ws(n: u8) -> WorkspaceId {
     WorkspaceId::new(n).unwrap()
 }
 
-fn win(id: u32) -> crate::PhysicalWindowId {
+pub(super) fn win(id: u32) -> crate::PhysicalWindowId {
     crate::PhysicalWindowId {
         app: AppInstanceId {
             pid: id as i32,
@@ -56,7 +56,7 @@ fn win(id: u32) -> crate::PhysicalWindowId {
     }
 }
 
-fn seen(id: u32, frame: crate::Rect) -> crate::AppObservation {
+pub(super) fn seen(id: u32, frame: crate::Rect) -> crate::AppObservation {
     crate::AppObservation::Complete {
         app: crate::ObservedApplication {
             id: win(id).app,
@@ -73,6 +73,15 @@ fn seen(id: u32, frame: crate::Rect) -> crate::AppObservation {
 }
 
 fn rig(windows: &[(u32, u8, crate::Rect)]) -> WorkspaceRuntime<FakeBackend> {
+    rig_with(windows, "")
+}
+
+/// The three displays with workspaces 6-8 on the left and 9-10 on the right, `extra` appended
+/// to the config, each window bound to its workspace and 1, 6 and 9 on screen.
+pub(super) fn rig_with(
+    windows: &[(u32, u8, crate::Rect)],
+    extra: &str,
+) -> WorkspaceRuntime<FakeBackend> {
     let mut text = "version = 1
 [settings]
 layout = 'columns'
@@ -92,6 +101,7 @@ monitor = '{id}'
 "
         ));
     }
+    text.push_str(extra);
     let backend = FakeBackend {
         focused: Some(win(windows[0].0)),
         frontmost: Some(win(windows[0].0).app),
@@ -120,7 +130,7 @@ monitor = '{id}'
     rt
 }
 
-fn act(rt: &mut WorkspaceRuntime<FakeBackend>, action: WorkerAction) {
+pub(super) fn act(rt: &mut WorkspaceRuntime<FakeBackend>, action: WorkerAction) {
     let Some(WorkerResult::Status { result, .. }) = rt.execute(
         WorkerCommand::Action(action, trio()),
         &AtomicBool::new(false),
@@ -131,7 +141,7 @@ fn act(rt: &mut WorkspaceRuntime<FakeBackend>, action: WorkerAction) {
     rt.focus.age_request(super::super::focus::FOCUS_SETTLE);
 }
 
-fn focused(rt: &WorkspaceRuntime<FakeBackend>) -> Option<u32> {
+pub(super) fn focused(rt: &WorkspaceRuntime<FakeBackend>) -> Option<u32> {
     rt.backend.focused.as_ref().map(|window| window.window_id)
 }
 

@@ -45,6 +45,7 @@ mod app_loop;
 mod arrange;
 mod backend;
 mod bridge;
+mod chosen_workspace;
 mod commands;
 mod cycle;
 mod detach_tab;

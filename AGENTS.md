@@ -45,7 +45,8 @@ This file is the current engineering contract. README and `docs/` describe curre
 - `src/app/runtime.rs`, `src/app/cycle.rs`, `src/app/cycle/affinity.rs`, `src/app/switching.rs`,
   `src/app/parking.rs`, `src/app/commands.rs`, `src/app/backend.rs`: the worker-thread
   `WorkspaceRuntime` — observation cycles and affinity (new windows bound for another workspace
-  join it in `src/app/cycle/routing.rs` before any display reconciles), workspace switches, durable
+  join it in `src/app/cycle/routing.rs` before any display reconciles; `src/app/chosen_workspace.rs`
+  is the Lab that sends the next window to an empty workspace just chosen), workspace switches, durable
   parking/restoration, focused-window commands, and the native/persistence/clock backend seam.
   `src/app/parking/table.rs` is the one record per parked window (recovery frame, its display,
   settle/restore/summon phase, display re-park epoch) plus parking exemptions; parking reads time

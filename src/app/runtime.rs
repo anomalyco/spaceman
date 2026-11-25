@@ -69,6 +69,8 @@ pub(super) struct WorkspaceRuntime<B = MacWorkspaceBackend> {
     pub(super) displays: super::displays::DisplayWatch,
     /// A pressed "Move Tab to New Window" awaiting its new window.
     pub(super) tab_detach: Option<super::detach_tab::PendingTabDetach>,
+    /// An empty workspace just chosen, awaiting the next window (Labs).
+    pub(super) chosen_workspace: Option<super::chosen_workspace::ChosenWorkspace>,
     /// The setup tour's arrangement: where it sends unowned windows, and how to undo it.
     pub(super) arranging: super::arrange::ArrangeState,
 }
@@ -128,6 +130,7 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
                 outputs,
             ),
             WorkerCommand::Gesture(gesture, preview, outputs) => {
+                self.chosen_workspace = None;
                 let window = match &gesture {
                     FinalGesture::Drop { window, .. } | FinalGesture::Resize(window, _) => window,
                 };
@@ -155,6 +158,7 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
                 (result, outputs)
             }
             WorkerCommand::RestoreAll(outputs) => {
+                self.chosen_workspace = None;
                 if let Some(outputs) = &outputs {
                     self.note_outputs(outputs);
                 }
@@ -197,6 +201,11 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
         cancelled: &AtomicBool,
     ) -> Result<CycleStatus, String> {
         let origin = super::commands::CommandOrigin::of(&action);
+        // Any command but a plain observation ends an empty workspace's claim on the
+        // next window; choosing one again renews it.
+        if !matches!(action, WorkerAction::Retile) {
+            self.chosen_workspace = None;
+        }
         match action {
             WorkerAction::Retile => {
                 let mut status = self.cycle(outputs.clone(), cancelled)?;
@@ -217,22 +226,30 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
                 }
                 Ok(status)
             }
-            WorkerAction::SwitchWorkspace(workspace) => self.switch_with(
-                workspace,
-                outputs,
-                cancelled,
-                RepeatSwitch::CycleFocus,
-                origin,
-            ),
+            WorkerAction::SwitchWorkspace(workspace) => {
+                let status = self.switch_with(
+                    workspace,
+                    outputs.clone(),
+                    cancelled,
+                    RepeatSwitch::CycleFocus,
+                    origin,
+                )?;
+                self.note_chosen_workspace(workspace, &outputs);
+                Ok(status)
+            }
             // A menu-bar or HUD click on the workspace already up re-focuses it;
             // clicking it again must not jump to another window.
-            WorkerAction::SelectWorkspace(workspace) => self.switch_with(
-                workspace,
-                outputs,
-                cancelled,
-                RepeatSwitch::KeepFocus,
-                origin,
-            ),
+            WorkerAction::SelectWorkspace(workspace) => {
+                let status = self.switch_with(
+                    workspace,
+                    outputs.clone(),
+                    cancelled,
+                    RepeatSwitch::KeepFocus,
+                    origin,
+                )?;
+                self.note_chosen_workspace(workspace, &outputs);
+                Ok(status)
+            }
             WorkerAction::WorkspaceBackAndForth => {
                 self.workspace_back_and_forth(outputs, cancelled)
             }
@@ -349,6 +366,7 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
             journal: JournalState::default(),
             displays: super::displays::DisplayWatch::default(),
             tab_detach: None,
+            chosen_workspace: None,
             arranging: super::arrange::ArrangeState::default(),
         }
     }

@@ -17,6 +17,11 @@ const GROUPS: [(&str, &str, &[Lab]); 4] = [
         "Windows",
         &[
             (
+                LabFeature::OpenOnChosenWorkspace,
+                "Open on chosen workspace",
+                "Your next window opens on the empty workspace you just showed",
+            ),
+            (
                 LabFeature::Scratchpad,
                 "Scratchpad",
                 "Hide a window with ⌥⇧\\ and bring it back with ⌥\\",

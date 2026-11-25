@@ -184,6 +184,8 @@ pub(crate) fn config_help(executable: &str) -> String {
         "  labs.physical_displays   true | false  Menu bar and HUD in physical display order and shape",
         "  labs.recent_focus        true | false  Option+H/J/K/L prefers the last-used bordering tile",
         "  labs.swipe_switch        true | false  An off switch for the three-finger swipe (trackpad_swipe)",
+        "  labs.open_on_chosen_workspace",
+        "                           true | false  Next window joins the empty workspace just chosen",
         "",
         "Notes:",
         "  - Respects SPACEMAN_CONFIG and SPACEMAN_APPLICATION_SUPPORT.",

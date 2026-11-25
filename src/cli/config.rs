@@ -216,6 +216,7 @@ impl Key {
             Self::Lab(LabFeature::PhysicalDisplays) => "labs.physical_displays",
             Self::Lab(LabFeature::RecentFocus) => "labs.recent_focus",
             Self::Lab(LabFeature::SwipeSwitch) => "labs.swipe_switch",
+            Self::Lab(LabFeature::OpenOnChosenWorkspace) => "labs.open_on_chosen_workspace",
         }
     }
 

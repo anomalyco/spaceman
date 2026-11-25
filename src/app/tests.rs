@@ -1,5 +1,6 @@
 mod arrange;
 mod benchmarks;
+mod chosen_workspace;
 mod cross_display;
 mod dispatch;
 mod display_disconnect;

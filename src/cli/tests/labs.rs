@@ -41,6 +41,14 @@ fn config_gets_sets_and_resets_labs_activity() {
     )
     .unwrap();
     assert_eq!(show["labs"]["activity"], true);
+    // A switch the file doesn't set is left out, not shown as null.
+    for unset in [
+        "scratchpad",
+        "portrait_edge_rows",
+        "open_on_chosen_workspace",
+    ] {
+        assert!(show["labs"].get(unset).is_none(), "{unset} in {show}");
+    }
     let shown = Config::parse(&temp.run(&["config", "show"]).stdout.unwrap()).unwrap();
     assert!(shown.labs().activity);
 
@@ -67,6 +75,15 @@ fn config_gets_sets_and_resets_labs_activity() {
             .stdout
             .as_deref(),
         Some("true")
+    );
+
+    let set = temp.run(&["config", "set", "labs.open_on_chosen_workspace", "true"]);
+    assert_eq!(set.exit_code, 0, "{:?}", set.stderr);
+    assert!(
+        Config::parse(&temp.read())
+            .unwrap()
+            .labs()
+            .open_on_chosen_workspace
     );
 
     let bad = temp.run(&["config", "set", "labs.activity", "yes"]);

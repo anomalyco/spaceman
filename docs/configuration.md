@@ -338,9 +338,9 @@ in the file are kept.
 `[labs]` turns on experimental features one by one. Every switch is off by default, and with all of
 them off Spaceman behaves exactly as if Labs did not exist: no extra shortcuts register and no
 command changes behavior. Unknown keys are config errors. Settings › Labs lists every switch,
-grouped by what it changes (`Windows`: Scratchpad, Portrait edge rows and Recent focus;
-`Workspaces`: Swipe switch; `Menu bar & HUD`: Physical display order; `Settings`: Activity), and
-flipping one there writes the same key.
+grouped by what it changes (`Windows`: Open on chosen workspace, Scratchpad, Portrait edge rows
+and Recent focus; `Workspaces`: Swipe switch; `Menu bar & HUD`: Physical display
+order; `Settings`: Activity), and flipping one there writes the same key.
 
 ```toml
 [labs]
@@ -350,6 +350,7 @@ portrait_edge_rows = false            # optional (default: false); top/bottom dr
 physical_displays = false             # optional (default: false); menu bar in physical display order and shape
 recent_focus = false                  # optional (default: false); Option+H/J/K/L returns where you were
 swipe_switch = false                  # optional (default: false); lets trackpad_swipe turn swipes off
+open_on_chosen_workspace = false      # optional (default: false); next window joins the empty workspace just chosen
 ```
 
 `scratchpad = true` enables the Scratchpad (see [Controls › Scratchpad](controls.md#scratchpad-lab)) and
@@ -367,6 +368,12 @@ keep recording either way. Turning it off while the pane is open returns Setting
 swipe row in Settings › Shortcuts into the **Swipe to switch workspace** switch (see
 [Trackpad Swipe](#trackpad-swipe)). With it off, `trackpad_swipe` is ignored and swipes work as before.
 In Settings it is `Labs › Workspaces › Swipe switch`.
+
+`open_on_chosen_workspace = true` changes where one window opens. After you show an empty
+workspace on another display (a workspace shortcut, `spaceman ctl switch`, the menu or the HUD),
+the next window you open joins it, even when macOS opens it on the display you came from; see
+[Workspaces › Where a new window goes](features/workspaces.md). With one display, or with the switch
+off, new windows open exactly as before. In Settings it is `Labs › Windows › Open on chosen workspace`.
 
 `portrait_edge_rows = true` adds drop bands along the top and bottom edges of a display whose tiled
 area is taller than it is wide: dragging a tiled window into one docks it into a full-width,
