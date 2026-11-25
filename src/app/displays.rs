@@ -330,18 +330,11 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
                 let Some(window) = placement.window.as_ref() else {
                     continue;
                 };
-                if self.parked.contains_key(window) {
-                    continue;
-                }
-                let Some(&frame) = onscreen_frames.get(&window.window_id) else {
+                let Some(frame) =
+                    self.stranded_visible_frame(window, &displays, &onscreen_frames, server_frames)
+                else {
                     continue;
                 };
-                if displays
-                    .iter()
-                    .any(|display| display.contains_center(frame))
-                {
-                    continue;
-                }
                 log_event!(
                     "recover stranded tiled {:?} on workspace {} from {:?} to {:?}",
                     window,
@@ -371,18 +364,14 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
                 if cancelled.load(Ordering::Acquire) {
                     return;
                 }
-                if self.parked.contains_key(&window) {
-                    continue;
-                }
-                let Some(&frame) = onscreen_frames.get(&window.window_id) else {
+                let Some(frame) = self.stranded_visible_frame(
+                    &window,
+                    &displays,
+                    &onscreen_frames,
+                    server_frames,
+                ) else {
                     continue;
                 };
-                if displays
-                    .iter()
-                    .any(|display| display.contains_center(frame))
-                {
-                    continue;
-                }
                 let target = clamp_into_output(frame, output);
                 let outcome = self.backend.set_position(&window, target);
                 log_event!(
@@ -401,6 +390,43 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
                 }
             }
         }
+    }
+
+    /// The stranded off-display frame of `window`, if it is a live visible
+    /// window whose center sits outside every connected display.
+    ///
+    /// A window in `onscreen_frames` is already proven on screen (such as a
+    /// bottom-right sliver). One omitted from `onscreen_frames` because 0 px
+    /// overlap any connected display after an unplug is recovered only when
+    /// `server_frames` places it off every display (`!shows_on`), Accessibility
+    /// still reaches it, and it is neither minimized nor hidden — leaving
+    /// ordered-out windows on other Spaces or minimized alone.
+    fn stranded_visible_frame(
+        &mut self,
+        window: &crate::PhysicalWindowId,
+        displays: &[crate::Rect],
+        onscreen_frames: &HashMap<u32, crate::Rect>,
+        server_frames: &HashMap<u32, crate::Rect>,
+    ) -> Option<crate::Rect> {
+        if self.parked.contains_key(window) {
+            return None;
+        }
+        if let Some(&frame) = onscreen_frames.get(&window.window_id) {
+            return (!displays
+                .iter()
+                .any(|display| display.contains_center(frame)))
+            .then_some(frame);
+        }
+        let &frame = server_frames.get(&window.window_id)?;
+        if displays
+            .iter()
+            .any(|display| display.contains_center(frame))
+            || crate::geometry::shows_on(frame, displays)
+        {
+            return None;
+        }
+        (self.backend.frame(window).is_ok() && !self.backend.confirms_set_aside(window))
+            .then_some(frame)
     }
 
     /// Where a recovery frame is restored: itself while it shows on a connected

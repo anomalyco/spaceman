@@ -20,6 +20,10 @@ use crate::swipe::{Fingers, Swipe, SwipeTracker};
 /// A gap this long between gesture frames means the lift was missed (matches
 /// `crate::swipe::SwipeTracker`).
 const STALE_SECONDS: f64 = 0.5;
+/// How often an active horizontal three- or four-finger slide refreshes the
+/// Space-gesture hold while fingers remain on the trackpad (avoids 120 Hz
+/// cancellations while still keeping long held slides covered).
+const SPACE_GESTURE_REFRESH_SECONDS: f64 = 0.5;
 
 /// Gates [`SwipeTracker`] so a pointer drag (including macOS Accessibility
 /// "Three Finger Drag") never triggers a workspace swipe.
@@ -33,7 +37,10 @@ struct SwipeGate {
     tracker: SwipeTracker,
     touching: bool,
     suppressed: bool,
+    sliding_spaces: bool,
     last_frame: Option<f64>,
+    last_space_note: Option<f64>,
+    space_gesture_note_due: bool,
 }
 
 impl SwipeGate {
@@ -41,12 +48,18 @@ impl SwipeGate {
         self.tracker = SwipeTracker::default();
         self.touching = false;
         self.suppressed = false;
+        self.sliding_spaces = false;
         self.last_frame = None;
+        self.last_space_note = None;
+        self.space_gesture_note_due = false;
     }
 
     fn pointer_pressed(&mut self) {
         if self.touching {
             self.suppressed = true;
+            self.sliding_spaces = false;
+            self.last_space_note = None;
+            self.space_gesture_note_due = false;
             self.tracker = SwipeTracker::default();
         }
     }
@@ -63,31 +76,65 @@ impl SwipeGate {
         {
             self.suppressed = false;
             self.touching = false;
+            self.sliding_spaces = false;
+            self.last_space_note = None;
+            self.space_gesture_note_due = false;
         }
         self.last_frame = Some(at);
         if touches.is_empty() {
+            let was_sliding = self.sliding_spaces;
             self.touching = false;
             self.suppressed = false;
+            self.sliding_spaces = false;
+            self.last_space_note = None;
+            if was_sliding {
+                self.space_gesture_note_due = true;
+            }
             return self.tracker.frame(at, touches);
         }
         self.touching = true;
         if pointer_down {
             self.suppressed = true;
+            self.sliding_spaces = false;
+            self.last_space_note = None;
+            self.space_gesture_note_due = false;
             self.tracker = SwipeTracker::default();
             return None;
         }
         if self.suppressed {
             return None;
         }
-        self.tracker.frame(at, touches)
+        let swipe = self.tracker.frame(at, touches);
+        if !self.sliding_spaces
+            && (swipe.is_some() || self.tracker.is_sliding_horizontally(touches))
+        {
+            self.sliding_spaces = true;
+            self.last_space_note = Some(at);
+            self.space_gesture_note_due = true;
+        } else if self.sliding_spaces
+            && self
+                .last_space_note
+                .is_none_or(|last| at - last >= SPACE_GESTURE_REFRESH_SECONDS)
+        {
+            self.last_space_note = Some(at);
+            self.space_gesture_note_due = true;
+        }
+        swipe
     }
 
-    /// Whether the frame just seen could be macOS sliding between desktops:
-    /// three or four fingers touching, and not a pointer drag. macOS shows
-    /// the arriving desktop's windows from the first movement, before it
-    /// reports a Space change and even if the swipe is reversed (#513).
-    fn may_slide_spaces(&self, touches: &[(f64, f64)]) -> bool {
-        self.touching && !self.suppressed && matches!(touches.len(), 3 | 4)
+    /// Whether the active touch sequence has moved horizontally with three or
+    /// four fingers (and is not a pointer drag), so macOS may be sliding
+    /// between desktops (#513). Stationary taps and resting palms do not arm
+    /// the hold.
+    #[cfg(test)]
+    fn may_slide_spaces(&self) -> bool {
+        self.sliding_spaces
+    }
+
+    /// Whether the frame just processed should publish a Space-gesture hold
+    /// (on slide start, periodic refresh while held, and once on lift).
+    fn take_space_gesture_note(&mut self) -> bool {
+        std::mem::take(&mut self.space_gesture_note_due)
     }
 }
 
@@ -237,10 +284,11 @@ unsafe extern "C-unwind" fn tap_callback(
         let button_down = context.left_button_down.get() || live_button_down;
         let mut gate = context.gate.borrow_mut();
         let swipe = gate.frame(ns_event.timestamp(), &touches, button_down);
-        if gate.may_slide_spaces(&touches) {
+        let note_space_gesture = gate.take_space_gesture_note();
+        drop(gate);
+        if note_space_gesture {
             super::spaces::note_space_gesture();
         }
-        drop(gate);
         if let Some((swipe, fingers)) = swipe {
             let point = CGEvent::location(Some(cg_event));
             let point = (point.x.round() as i32, point.y.round() as i32);
@@ -335,29 +383,87 @@ mod tests {
         );
     }
 
-    /// #513: macOS shows the arriving desktop from a swipe's first movement,
-    /// so three or four fingers on the trackpad hold layout, while a pointer
-    /// drag, a two-finger scroll and lifted fingers do not.
+    /// #513: macOS shows the arriving desktop once three or four fingers move
+    /// horizontally, so horizontal slides arm the hold (and stay latched until
+    /// lift), while a pointer drag, a two-finger scroll, a vertical swipe and
+    /// lifted fingers do not.
     #[test]
-    fn three_or_four_touching_fingers_may_be_sliding_between_desktops() {
+    fn horizontal_three_or_four_finger_slides_arm_space_hold_until_lift() {
         let mut gate = SwipeGate::default();
-        let three = fingers(0.3, 0.5, 3);
-        gate.frame(0.0, &three, false);
-        assert!(gate.may_slide_spaces(&three));
-        let four = fingers(0.3, 0.5, 4);
-        gate.frame(0.01, &four, false);
-        assert!(gate.may_slide_spaces(&four));
-        gate.frame(0.02, &[], false);
-        assert!(!gate.may_slide_spaces(&[]));
+        gate.frame(0.0, &fingers(0.3, 0.5, 3), false);
+        assert!(!gate.may_slide_spaces());
+        assert!(!gate.take_space_gesture_note());
 
-        let two = fingers(0.3, 0.5, 2);
-        gate.frame(0.1, &two, false);
-        assert!(!gate.may_slide_spaces(&two));
+        // Horizontal movement >= 0.015 latches sliding_spaces and notes once.
+        gate.frame(0.01, &fingers(0.32, 0.5, 3), false);
+        assert!(gate.may_slide_spaces());
+        assert!(gate.take_space_gesture_note());
 
-        gate.frame(0.2, &[], false);
-        gate.frame(0.3, &three, true);
-        assert!(!gate.may_slide_spaces(&three));
-        gate.frame(0.31, &three, false);
-        assert!(!gate.may_slide_spaces(&three));
+        // Subsequent 120 Hz frames stay latched without re-emitting every frame.
+        gate.frame(0.02, &fingers(0.34, 0.5, 3), false);
+        assert!(gate.may_slide_spaces());
+        assert!(!gate.take_space_gesture_note());
+
+        // Refresh fires only after SPACE_GESTURE_REFRESH_SECONDS.
+        gate.frame(0.52, &fingers(0.35, 0.5, 3), false);
+        assert!(gate.may_slide_spaces());
+        assert!(gate.take_space_gesture_note());
+
+        // Lifting emits one final note to anchor the post-lift settle and clears.
+        gate.frame(0.55, &[], false);
+        assert!(!gate.may_slide_spaces());
+        assert!(gate.take_space_gesture_note());
+
+        // Four-finger horizontal slide works the same way.
+        gate.frame(1.0, &fingers(0.3, 0.5, 4), false);
+        assert!(!gate.may_slide_spaces());
+        gate.frame(1.01, &fingers(0.28, 0.5, 4), false);
+        assert!(gate.may_slide_spaces());
+        assert!(gate.take_space_gesture_note());
+        gate.frame(1.02, &[], false);
+        assert!(!gate.may_slide_spaces());
+        assert!(gate.take_space_gesture_note());
+
+        // Two-finger scroll and pointer drag never arm the hold.
+        gate.frame(1.1, &fingers(0.3, 0.5, 2), false);
+        gate.frame(1.11, &fingers(0.4, 0.5, 2), false);
+        assert!(!gate.may_slide_spaces());
+        assert!(!gate.take_space_gesture_note());
+
+        gate.frame(1.2, &[], false);
+        gate.frame(1.3, &fingers(0.3, 0.5, 3), true);
+        gate.frame(1.31, &fingers(0.4, 0.5, 3), false);
+        assert!(!gate.may_slide_spaces());
+        assert!(!gate.take_space_gesture_note());
+    }
+
+    #[test]
+    fn stationary_three_finger_touch_and_vertical_swipe_never_freeze_layout() {
+        let mut gate = SwipeGate::default();
+        // Resting three fingers or palm with small jitter for 120 frames (~1 s).
+        for step in 0..120 {
+            let jitter = if step % 2 == 0 { 0.0 } else { 0.004 };
+            let touches = fingers(0.4 + jitter, 0.5 + jitter, 3);
+            assert_eq!(gate.frame(f64::from(step) * 0.008, &touches, false), None);
+            assert!(!gate.may_slide_spaces());
+            assert!(!gate.take_space_gesture_note());
+        }
+        gate.frame(1.0, &[], false);
+        assert!(!gate.take_space_gesture_note());
+
+        // Upward three-finger Mission Control swipe with small horizontal drift.
+        gate.frame(1.5, &fingers(0.5, 0.3, 3), false);
+        for step in 1..=20 {
+            let t = f64::from(step) / 20.0;
+            let touches = fingers(0.5 + 0.02 * t, 0.3 + 0.3 * t, 3);
+            assert_eq!(
+                gate.frame(1.5 + f64::from(step) * 0.01, &touches, false),
+                None
+            );
+            assert!(!gate.may_slide_spaces());
+            assert!(!gate.take_space_gesture_note());
+        }
+        gate.frame(1.75, &[], false);
+        assert!(!gate.take_space_gesture_note());
     }
 }

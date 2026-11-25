@@ -253,15 +253,23 @@ pub fn window_rule_probe(id: &PhysicalWindowId) -> Option<WindowRuleProbe> {
             .map(|value| value.to_string())
     })?;
     let read = with_managed_window_result(id, |window| {
-        Ok(attribute::<CFString>(window, "AXTitle")
-            .ok()
-            .map(|title| std::sync::Arc::from(title.to_string())))
+        interpret_ax_title(attribute::<CFString>(window, "AXTitle"))
     });
     Some(WindowRuleProbe {
         bundle_id,
         resolved: read.is_ok(),
         title: read.ok().flatten(),
     })
+}
+
+fn interpret_ax_title(
+    result: Result<CFRetained<CFString>, AXError>,
+) -> Result<Option<std::sync::Arc<str>>, WindowAccessError> {
+    match result {
+        Ok(title) => Ok(Some(std::sync::Arc::from(title.to_string()))),
+        Err(AXError::NoValue | AXError::AttributeUnsupported) => Ok(None),
+        Err(_) => Err(WindowAccessError::Unavailable),
+    }
 }
 
 pub fn set_position_only(id: &PhysicalWindowId, target: Rect) -> ApplyOutcome {
@@ -735,21 +743,36 @@ pub(super) fn prune_managed_app(app: &AppInstanceId, current: &HashSet<PhysicalW
     MANAGED_WINDOWS.with(|windows| {
         windows
             .borrow_mut()
-            .retain(|window, _| &window.app != app || current.contains(window));
+            .retain(|window, _| keep_cached_window(window, app, current));
     });
+}
+
+fn keep_cached_window(
+    window: &PhysicalWindowId,
+    app: &AppInstanceId,
+    current: &HashSet<PhysicalWindowId>,
+) -> bool {
+    if window.app == *app {
+        current.contains(window)
+    } else {
+        window.app.pid != app.pid || window.app.launched_at > app.launched_at
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use std::cell::RefCell;
 
+    use std::collections::HashSet;
+
     use objc2_application_services::AXError;
+    use objc2_core_foundation::CFString;
 
     use super::{
-        FRONTMOST_POLL, FRONTMOST_REASSERTS, arrived_short, confirm_frontmost, focus_sequence,
-        warp_sequence, write_frame,
+        FRONTMOST_POLL, FRONTMOST_REASSERTS, WindowAccessError, arrived_short, confirm_frontmost,
+        focus_sequence, interpret_ax_title, keep_cached_window, warp_sequence, write_frame,
     };
-    use crate::{Rect, Settings};
+    use crate::{AppInstanceId, PhysicalWindowId, Rect, Settings};
 
     #[test]
     fn a_window_from_another_display_that_lands_short_is_sized_again() {
@@ -937,5 +960,70 @@ mod tests {
             || calls.borrow_mut().push("reassociate"),
         ));
         assert_eq!(*calls.borrow(), ["warp", "reassociate"]);
+    }
+
+    #[test]
+    fn ax_title_timeout_marks_rule_probe_unresolved_instead_of_untitled() {
+        assert_eq!(
+            interpret_ax_title(Ok(CFString::from_str("Work")))
+                .unwrap()
+                .as_deref(),
+            Some("Work")
+        );
+        assert_eq!(interpret_ax_title(Err(AXError::NoValue)), Ok(None));
+        assert_eq!(
+            interpret_ax_title(Err(AXError::AttributeUnsupported)),
+            Ok(None)
+        );
+        assert_eq!(
+            interpret_ax_title(Err(AXError::CannotComplete)),
+            Err(WindowAccessError::Unavailable)
+        );
+        assert_eq!(
+            interpret_ax_title(Err(AXError::APIDisabled)),
+            Err(WindowAccessError::Unavailable)
+        );
+    }
+
+    #[test]
+    fn prune_managed_app_evicts_older_incarnations_reusing_the_same_pid() {
+        let older_app = AppInstanceId {
+            pid: 42,
+            launched_at: 100,
+        };
+        let current_app = AppInstanceId {
+            pid: 42,
+            launched_at: 200,
+        };
+        let other_app = AppInstanceId {
+            pid: 99,
+            launched_at: 50,
+        };
+        let kept_current = PhysicalWindowId {
+            app: current_app.clone(),
+            window_id: 1,
+        };
+        let closed_current = PhysicalWindowId {
+            app: current_app.clone(),
+            window_id: 2,
+        };
+        let stale_reused_pid = PhysicalWindowId {
+            app: older_app,
+            window_id: 3,
+        };
+        let unrelated = PhysicalWindowId {
+            app: other_app,
+            window_id: 4,
+        };
+        let current = HashSet::from([kept_current.clone()]);
+
+        assert!(keep_cached_window(&kept_current, &current_app, &current));
+        assert!(!keep_cached_window(&closed_current, &current_app, &current));
+        assert!(!keep_cached_window(
+            &stale_reused_pid,
+            &current_app,
+            &current
+        ));
+        assert!(keep_cached_window(&unrelated, &current_app, &current));
     }
 }

@@ -632,3 +632,28 @@ fn a_frontmost_apps_window_back_on_screen_without_a_slide_is_still_re_homed() {
     );
     assert!(!runtime.parked.contains_key(&other));
 }
+
+#[test]
+fn space_slide_just_settled_honors_space_gesture_timestamp() {
+    let (mut runtime, _, other) = fullscreen_exit_runtime(false);
+    // A horizontal Space swipe gesture settled moments ago without an
+    // active_space_changed_at notification yet: macOS putting a parked window
+    // back on screen is still recognized as a Space-slide return.
+    runtime.backend.space_gesture_at = Some(runtime.backend.now());
+    runtime
+        .backend
+        .advance(SPACE_GESTURE_SETTLE + Duration::from_millis(500));
+    assert!(runtime.space_slide_just_settled());
+
+    runtime.cycle(outputs(), &AtomicBool::new(false)).unwrap();
+    assert_eq!(
+        runtime.workspaces.workspace_of(&other),
+        Some(WorkspaceId::new(2).unwrap())
+    );
+    assert_eq!(runtime.parked.get(&other), Some(&frame(400)));
+
+    // Once the arrival window after the gesture passes, it is no longer treated
+    // as just settled.
+    runtime.backend.advance(Duration::from_secs(3));
+    assert!(!runtime.space_slide_just_settled());
+}

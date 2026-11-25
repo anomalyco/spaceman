@@ -25,9 +25,10 @@ pub(super) struct UnmovableStale {
     /// Display frames when the failures were recorded: a display change retries every window.
     displays: Vec<crate::Rect>,
     windows: HashMap<u32, RescueFailure>,
-    /// Windows an `ignore` rule matched, with their window-server frame then. Judging one reads
-    /// its title through Accessibility, which a hung app makes wait out the timeout, so each is
-    /// judged once until it moves, the displays change or the rules do (#562).
+    /// Windows an `ignore` rule matched or the window server left unowned (such as an
+    /// always-on-top overlay off the normal layer, #581/#582), with their window-server frame
+    /// then. Judging one reads its title through Accessibility or queries window owners, so each
+    /// is checked once until it moves, closes, the displays change or the rules do (#562).
     ignored: HashMap<u32, crate::Rect>,
 }
 
@@ -56,6 +57,11 @@ impl UnmovableStale {
     /// Judge every window again: the rules changed.
     pub(super) fn forget_ignored(&mut self) {
         self.ignored.clear();
+    }
+
+    #[cfg(test)]
+    pub(super) fn is_ignored(&self, id: u32) -> bool {
+        self.ignored.contains_key(&id)
     }
 
     fn waiting(&self, id: u32, now: Instant) -> bool {
@@ -150,6 +156,7 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
         let mut cascade: HashMap<(i32, i32), i32> = HashMap::new();
         for (id, frame, output) in stale {
             let Some(app) = owners.get(&id) else {
+                self.unmovable_stale.ignored.insert(id, frame);
                 continue;
             };
             let window = crate::PhysicalWindowId {

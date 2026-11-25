@@ -806,3 +806,84 @@ fn mission_control_thumbnail_frames_do_not_trigger_repark_or_escalation() {
         |call| matches!(call, BackendCall::SetPosition(window, _) if window == &parked_window)
     ));
 }
+
+/// #553 regression: a transient CGWindowList omission while Accessibility still
+/// reaches a parked window (or while displays are settling) must never drop its
+/// durable recovery frame or workspace slot.
+#[test]
+fn transient_cg_absence_keeps_parked_recovery_and_slot_while_ax_still_reaches_window() {
+    let other = window(10);
+    let parked_win = window(11);
+    let hidden = WorkspaceId::new(2).unwrap();
+    let original = frame(50);
+    let parked_pos = main_parked_frame(original);
+
+    let mut backend = FakeBackend::default();
+    backend.frames.insert(other.clone(), frame(20));
+    backend.frames.insert(parked_win.clone(), parked_pos);
+    let mut runtime = runtime_with_parked(backend, [(parked_win.clone(), original)]);
+    runtime
+        .backend
+        .persisted
+        .insert(parked_win.clone(), original);
+    bind(&mut runtime, WorkspaceId::ONE, &other);
+    bind(&mut runtime, hidden, &parked_win);
+
+    // Non-empty server_frames snapshot transiently omits parked_win while AX
+    // still resolves it.
+    let transient_server_frames = HashMap::from([(other.window_id, frame(20))]);
+    let outputs = outputs();
+    let visible = runtime.visible_workspaces(&outputs);
+    runtime.park_inactive(
+        &outputs,
+        &visible,
+        &transient_server_frames,
+        &AtomicBool::new(false),
+        &mut 0,
+    );
+
+    assert_eq!(runtime.parked.get(&parked_win), Some(&original));
+    assert_eq!(runtime.backend.persisted.get(&parked_win), Some(&original));
+    assert_eq!(runtime.workspaces.workspace_of(&parked_win), Some(hidden));
+
+    // While awaiting a display re-park, even an AX Gone + CG absence keeps the
+    // recovery entry until displays settle.
+    runtime.parked.displays_changed();
+    runtime.backend.frames.remove(&parked_win);
+    runtime.park_inactive(
+        &outputs,
+        &visible,
+        &transient_server_frames,
+        &AtomicBool::new(false),
+        &mut 0,
+    );
+    assert_eq!(runtime.parked.get(&parked_win), Some(&original));
+    assert_eq!(runtime.workspaces.workspace_of(&parked_win), Some(hidden));
+}
+
+/// #582: an edge window the window server leaves unowned (such as a layer-3
+/// overlay filtered out of `window_owners`) is cached in `unmovable_stale`
+/// so subsequent cycles do not scan workspaces and query `window_owners` on
+/// every cycle.
+#[test]
+fn unowned_edge_window_is_cached_as_ignored_across_cycles() {
+    let active = window(10);
+    let overlay = window(99);
+    let outputs = outputs();
+    let tile = outputs.main().frame;
+    let edge = main_parked_frame(frame(50));
+
+    let mut backend = FakeBackend {
+        observation: Some(observation(&active, tile)),
+        ..FakeBackend::default()
+    };
+    backend.frames.insert(active.clone(), tile);
+    // Present in window-server frames at the parking spot, absent from AX
+    // `frames` so `FakeBackend::window_owners` omits it (like a layer-3 overlay).
+    backend.server_frames.insert(overlay.clone(), edge);
+    let mut runtime = runtime(backend);
+
+    runtime.cycle(outputs, &AtomicBool::new(false)).unwrap();
+
+    assert!(runtime.unmovable_stale.is_ignored(overlay.window_id));
+}
