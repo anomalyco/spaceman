@@ -102,6 +102,7 @@ impl MainThreadAgent {
             self.worker
                 .send_with_outputs(|outputs| WorkerCommand::Gesture(gesture, true, outputs));
         }
+        self.tick_hover(mouse_down || self.mouse_was_down);
         self.mouse_was_down = mouse_down;
         if !self.worker.is_busy()
             && let Some(input) = self.pending_inputs.front().cloned()

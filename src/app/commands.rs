@@ -114,7 +114,10 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
         if already_there {
             return;
         }
-        let _: bool = self.backend.warp_pointer(rect_center(target_rect));
+        let point = rect_center(target_rect);
+        if self.backend.warp_pointer(point) {
+            self.focus.note_warp(point);
+        }
     }
 
     pub(super) fn follow_pointer_for_workspace(

@@ -127,6 +127,7 @@ impl Doc {
             single_window_height: self.lab(LabFeature::SingleWindowHeight),
             route_all_windows: self.lab(LabFeature::RouteAllWindows),
             menu_bar_icon_style: self.lab(LabFeature::MenuBarIconStyle),
+            focus_follows_mouse: self.lab(LabFeature::FocusFollowsMouse),
         }
     }
 

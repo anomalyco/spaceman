@@ -34,6 +34,8 @@ pub(super) struct Probe {
     pub(super) swipe_fingers: Option<Fingers>,
     /// `Config::menu_bar_icon` read for `config_stamp`, when that config loaded.
     pub(super) menu_bar_icon: Option<MenuBarIcon>,
+    /// `[labs] focus_follows_mouse` read for `config_stamp`, when that config loaded.
+    pub(super) focus_follows_mouse: Option<bool>,
 }
 
 /// What the probe reads from a `config.toml` that loads.
@@ -43,6 +45,7 @@ pub(super) struct ConfigRead {
     pub(super) shortcuts: Shortcuts,
     pub(super) swipe_fingers: Fingers,
     pub(super) menu_bar_icon: MenuBarIcon,
+    pub(super) focus_follows_mouse: bool,
 }
 
 impl ConfigRead {
@@ -52,6 +55,7 @@ impl ConfigRead {
             shortcuts: config.shortcuts().clone(),
             swipe_fingers: config.swipe_fingers(),
             menu_bar_icon: config.menu_bar_icon(),
+            focus_follows_mouse: config.labs().focus_follows_mouse,
         })
     }
 }
@@ -96,6 +100,7 @@ impl ProbeState {
         let shortcuts = read.as_ref().map(|read| read.shortcuts.clone());
         let swipe_fingers = read.as_ref().map(|read| read.swipe_fingers);
         let menu_bar_icon = read.as_ref().map(|read| read.menu_bar_icon);
+        let focus_follows_mouse = read.as_ref().map(|read| read.focus_follows_mouse);
         self.config = Some((config_stamp, read));
         let login_due = forced
             || self.login.as_ref().is_none_or(|(read_at, _)| {
@@ -117,6 +122,7 @@ impl ProbeState {
             shortcuts,
             swipe_fingers,
             menu_bar_icon,
+            focus_follows_mouse,
         })
     }
 }
@@ -257,6 +263,7 @@ mod tests {
         assert_eq!(probe.shortcuts, Some(Shortcuts::default()));
         assert_eq!(probe.swipe_fingers, Some(Fingers::Three));
         assert_eq!(probe.menu_bar_icon, Some(MenuBarIcon::Full));
+        assert_eq!(probe.focus_follows_mouse, Some(false));
     }
 
     fn read(hud: bool) -> ConfigRead {
@@ -265,6 +272,7 @@ mod tests {
             shortcuts: Shortcuts::default(),
             swipe_fingers: Fingers::Three,
             menu_bar_icon: MenuBarIcon::Full,
+            focus_follows_mouse: false,
         }
     }
 }

@@ -46,6 +46,11 @@ const GROUPS: [(&str, &str, &[Lab]); 4] = [
                 "Route every window",
                 "Route rules with windows = \"all\" take every new window, not only the first",
             ),
+            (
+                LabFeature::FocusFollowsMouse,
+                "Focus follows mouse",
+                "The tile the pointer rests on takes focus, without a click",
+            ),
         ],
     ),
     (

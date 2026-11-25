@@ -290,6 +290,12 @@ pub(crate) enum WorkerAction {
     Arrange(crate::onboarding_plan::Arrangement),
     /// The Scratchpad Lab: summon or hide, or send a window to or from it.
     Scratchpad(crate::scratchpad::ScratchpadCommand),
+    /// The Focus follows mouse Lab: the pointer rested at `point` on the window-server
+    /// window `window_id`; a visible tile there takes focus. Never moves the pointer.
+    FocusHovered {
+        window_id: u32,
+        point: (i32, i32),
+    },
 }
 
 impl WorkerAction {
@@ -334,6 +340,7 @@ impl WorkerAction {
             Self::MarkWrong => "marking the journal".into(),
             Self::Arrange(_) => "arrangement queued".into(),
             Self::Scratchpad(command) => format!("scratchpad {} queued", command.as_str()),
+            Self::FocusHovered { .. } => "hover focus queued".into(),
         }
     }
 }
@@ -440,6 +447,7 @@ pub struct PreparedAgent {
     hud: bool,
     swipe_fingers: Fingers,
     menu_bar_icon: crate::config::MenuBarIcon,
+    focus_follows_mouse: bool,
     controls: Receiver<ControlRequest>,
     control_server: control::Server,
     bridge: UiBridge,
@@ -459,6 +467,7 @@ pub fn prepare() -> Result<(PreparedAgent, UiBridge), String> {
     let hud = config.hud();
     let swipe_fingers = config.swipe_fingers();
     let menu_bar_icon = config.menu_bar_icon();
+    let focus_follows_mouse = config.labs().focus_follows_mouse;
     let shortcuts = config.shortcuts().clone();
     let mut configured_workspaces = Workspaces::default();
     config.configure_workspaces(&mut configured_workspaces);
@@ -510,6 +519,7 @@ pub fn prepare() -> Result<(PreparedAgent, UiBridge), String> {
             hud,
             swipe_fingers,
             menu_bar_icon,
+            focus_follows_mouse,
             controls,
             control_server,
             bridge: bridge.clone(),
@@ -574,6 +584,7 @@ impl PreparedAgent {
                 shortcuts: self.shortcuts,
                 hud: self.hud,
                 swipe_fingers: self.swipe_fingers,
+                focus_follows_mouse: self.focus_follows_mouse,
                 trusted,
                 setup_tour_open,
                 controls: self.controls,

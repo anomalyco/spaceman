@@ -5,7 +5,10 @@ use crate::{AppInstanceId, DisplaySelector, PhysicalWindowId, Rect};
 use super::{
     DisplayOutput, DisplayOutputs, any_button_down,
     apply::{group_placements_by_app, position_matches},
-    ax::{WindowServerWindow, should_ignore_missing_window_id, windows_reaching_point},
+    ax::{
+        StackedWindow, WindowServerWindow, hover_target, should_ignore_missing_window_id,
+        windows_reaching_point,
+    },
     classify::{TitleBar, TitleButton, is_dialog, is_ignored},
     events::running_application_instances,
     frontmost_application, is_process_incarnation_running, process_start_time,
@@ -312,4 +315,64 @@ fn any_held_mouse_button_counts_as_down() {
     ] {
         assert!(any_button_down(|button| button == held));
     }
+}
+
+#[test]
+fn hover_focuses_only_an_ordinary_window_in_front_of_the_pointer() {
+    let tile = StackedWindow {
+        pid: 2,
+        id: 20,
+        layer: 0,
+        frame: Rect {
+            x: 0,
+            y: 30,
+            width: 800,
+            height: 800,
+        },
+    };
+    let menu_bar = StackedWindow {
+        pid: 3,
+        id: 30,
+        layer: 24,
+        frame: Rect {
+            x: 0,
+            y: 0,
+            width: 1600,
+            height: 30,
+        },
+    };
+    let hud = StackedWindow {
+        pid: 1,
+        id: 10,
+        layer: 0,
+        frame: Rect {
+            x: 300,
+            y: 300,
+            width: 200,
+            height: 100,
+        },
+    };
+    let own = 1;
+    assert_eq!(
+        hover_target(&[menu_bar, hud, tile], (100, 100), own),
+        Some(20)
+    );
+    // The menu bar, and Spaceman's own HUD or Settings, are not hovers.
+    assert_eq!(hover_target(&[menu_bar, hud, tile], (100, 10), own), None);
+    assert_eq!(hover_target(&[menu_bar, hud, tile], (350, 350), own), None);
+    // Nothing under the pointer.
+    assert_eq!(hover_target(&[menu_bar, tile], (1200, 400), own), None);
+    // An open menu anywhere holds focus where it is.
+    let menu = StackedWindow {
+        pid: 3,
+        id: 40,
+        layer: 101,
+        frame: Rect {
+            x: 900,
+            y: 30,
+            width: 200,
+            height: 300,
+        },
+    };
+    assert_eq!(hover_target(&[menu, menu_bar, tile], (100, 100), own), None);
 }

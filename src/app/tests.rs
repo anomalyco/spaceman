@@ -12,6 +12,7 @@ mod empty_workspace_move;
 mod float;
 mod float_regressions;
 mod focus;
+mod focus_follows_mouse;
 mod fullscreen;
 mod gestures;
 mod journal;

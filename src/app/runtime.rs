@@ -290,6 +290,9 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
                 Ok(self.status(0, &outputs))
             }
             WorkerAction::Arrange(arrangement) => self.arrange(&arrangement, outputs, cancelled),
+            WorkerAction::FocusHovered { window_id, point } => {
+                self.focus_hovered(window_id, point, outputs)
+            }
         }
     }
 

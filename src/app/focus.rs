@@ -12,6 +12,7 @@ use crate::workspace::WorkspaceId;
 use crate::{AppInstanceId, PhysicalWindowId};
 
 mod chosen;
+mod hover;
 mod requests;
 mod target;
 
@@ -83,6 +84,9 @@ pub(super) struct FocusTracker {
     /// Restored Fullscreen Layout workspaces whose front tile is raised again
     /// on their first cycle after a restart.
     fullscreen_restore: HashSet<WorkspaceId>,
+    /// Where mouse follows focus last put the pointer. Focus follows mouse never
+    /// counts the pointer resting there as a hover, so the two cannot feed each other.
+    last_warp: Option<(i32, i32)>,
 }
 
 impl FocusRequest {
@@ -131,6 +135,16 @@ impl FocusTracker {
     #[cfg(test)]
     pub(super) fn restores_any_fullscreen(&self) -> bool {
         !self.fullscreen_restore.is_empty()
+    }
+
+    /// Mouse follows focus just moved the pointer to `point`.
+    pub(super) const fn note_warp(&mut self, point: (i32, i32)) {
+        self.last_warp = Some(point);
+    }
+
+    /// Whether the pointer resting at `point` is where Spaceman last warped it.
+    pub(super) fn warped_to(&self, point: (i32, i32)) -> bool {
+        self.last_warp == Some(point)
     }
 
     /// The request still settling at now.

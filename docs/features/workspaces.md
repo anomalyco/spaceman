@@ -123,6 +123,15 @@ Mouse follows focus ([settings] mouse_follows_focus)       // ws.mouse-follows-f
     any mouse button (left, right or middle) is held; re-associates mouse movement immediately
     after warping
 
+Focus follows mouse ([labs] focus_follows_mouse, off)      // ws.focus-follows-mouse
+├── Main thread (src/app/app_loop/hover.rs): the pointer moved, then rested ~150 ms -> Core
+│   Graphics names the front window there (no AX); the menu bar, Dock, an open menu, or
+│   Spaceman's HUD/Settings in front -> nothing
+├── Worker (src/app/focus/hover.rs): a tile on a visible workspace -> focused, pointer untouched;
+│   floats, the Scratchpad and unmanaged windows -> nothing
+└── Skipped when the pointer has moved on, rests where mouse follows focus warped it, a button is
+    held, a drag or a Space slide is under way
+
 Focus follows                                              // ws.focus-follow
 ├── Focusing a window that lives on a hidden workspace (Dock, Cmd+Tab, notification)
 │   -> that workspace becomes active, with focus on that window (not its remembered tile)

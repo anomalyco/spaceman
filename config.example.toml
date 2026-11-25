@@ -153,6 +153,8 @@ monitor = "main"
 # window of its app to its workspace, not only the first one.
 # menu_bar_icon_style = true makes Spaceman read settings.menu_bar_icon, and adds
 # its picker to Settings › General.
+# focus_follows_mouse = true focuses the tile the pointer comes to rest on,
+# without a click; floats, the Scratchpad and the menu bar are never hovered.
 #
 # [labs]
 # scratchpad = false
@@ -168,3 +170,4 @@ monitor = "main"
 # single_window_height = false
 # route_all_windows = false
 # menu_bar_icon_style = false
+# focus_follows_mouse = false
