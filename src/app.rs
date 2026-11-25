@@ -109,6 +109,11 @@ const APPLICATION_ACTIVATION_SETTLE: Duration = Duration::from_millis(50);
 /// How long after macOS changes the active Space background cycles hold
 /// layout: the desktop and fullscreen slides finish well within it.
 const SPACE_TRANSITION_SETTLE: Duration = Duration::from_millis(700);
+/// How long after three or four fingers last touch the trackpad background
+/// cycles hold layout. macOS reports the Space change a swipe makes about a
+/// second after the fingers lift, and the arriving desktop's windows are on
+/// screen the whole time, so this outlasts that delay (#572).
+const SPACE_GESTURE_SETTLE: Duration = Duration::from_millis(1500);
 
 // AX creation and app activation can both precede the first on-screen frame.
 const WINDOW_OPENING_SETTLE: Duration = Duration::from_millis(500);

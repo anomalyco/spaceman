@@ -18,13 +18,19 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
     /// swipe between desktops brings the arriving desktop's windows on screen
     /// while the fingers move, before macOS reports the change and even when
     /// the swipe is reversed, so three or four fingers on the trackpad hold
-    /// layout too, until a settle after they lift (#513).
+    /// layout too, until a settle after they lift (#513). macOS reports the
+    /// change about a second after they lift, so that settle is longer than
+    /// the one after a reported change (#572).
     pub(super) fn space_transition_until(&mut self) -> Option<Instant> {
-        let latest = self
+        let changed = self
             .backend
             .active_space_changed_at()
-            .max(self.backend.space_gesture_at())?;
-        let until = latest + SPACE_TRANSITION_SETTLE;
+            .map(|at| at + SPACE_TRANSITION_SETTLE);
+        let gesture = self
+            .backend
+            .space_gesture_at()
+            .map(|at| at + SPACE_GESTURE_SETTLE);
+        let until = changed.max(gesture)?;
         (self.backend.now() < until).then_some(until)
     }
 
