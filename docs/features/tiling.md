@@ -45,6 +45,7 @@ Reorder                                                 // tile.reorder
 Size                                                    // tile.size
 ├── Option+- / Option+= / ctl resize shrink|grow -> 50 px at the immediate split
 ├── Pointer resize       -> split weights follow both edges of a corner drag, preview during the gesture
+│   └── On release         -> every tile is written exactly to its target, even a point or two off
 ├── ctl resize width|height <points> -> resize the focused window to that width/height at the
 │   nearest split on that axis; siblings give or take in proportion; clamped at minimums; lone tile unchanged
 ├── ctl balance          -> equalize the focused tile's immediate split (no default hotkey)
@@ -133,7 +134,8 @@ pause, quit, or hotkey loss.
   the window (in a gap or over the neighbor), which `src/macos/tests.rs` hit-tests by resize-border
   reach.
 - Unit (FakeBackend), `src/app/tests/reported/`: pointer resize previews leave the saved split alone
-  until mouse-up and pausing discards them (#387), a drag over a resized temporary stack keeps its
+  until mouse-up and pausing discards them (#387), a window that settles a point or two short of
+  its tile after release is written back to the seam (#506), a drag over a resized temporary stack keeps its
   sizes (#388), pausing a held drag restores the previewed siblings (#389), a release keeps the target
   its preview showed across a config reload (#390), returning to an edge band's last preview point
   after leaving it while the worker was busy docks the edge column (#495), a Fullscreen Layout tile
