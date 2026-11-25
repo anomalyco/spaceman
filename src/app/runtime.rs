@@ -467,25 +467,21 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
         Ok(selector)
     }
 
-    pub(super) fn exit_fullscreen_if_split(&mut self, workspace: WorkspaceId) {
-        if !self.workspaces.deck(workspace).is_monocle() {
-            return;
-        }
-        let bound_count = self
-            .workspaces
-            .engine(workspace)
-            .model()
-            .workspace
-            .slots
-            .iter()
-            .filter(|slot| slot.bound_window().is_some())
-            .count();
-        if bound_count > 1 {
-            log_event!("workspace {workspace}: exited Fullscreen Layout ({bound_count} tiles)");
-            self.workspaces
-                .set_deck(workspace, crate::workspace::DeckMode::Split);
-            self.focus.settle_fullscreen(workspace);
-        }
+    /// Whether `workspace` is in Fullscreen Layout with more than one bound
+    /// tile — the case where a newly arriving tile needs a HUD cue so it does
+    /// not silently join a stack.
+    pub(super) fn is_stacked_fullscreen(&self, workspace: WorkspaceId) -> bool {
+        self.workspaces.deck(workspace).is_monocle()
+            && self
+                .workspaces
+                .engine(workspace)
+                .model()
+                .workspace
+                .slots
+                .iter()
+                .filter(|slot| slot.bound_window().is_some())
+                .count()
+                > 1
     }
 
     pub(super) fn spatial_target(

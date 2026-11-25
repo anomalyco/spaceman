@@ -32,8 +32,10 @@ may be disabled (as while a window shows a sheet), and a window without one tile
 button is enabled: SwiftUI and scene-based windows such as FaceTime, Phone, News, Podcasts, Games,
 Shortcuts, System Settings and Finder's Get Info expose no fullscreen button. Windows that keep
 their own aspect ratio (FaceTime) fill their tile along one side and leave the rest of it empty.
-Modal windows, standard windows with a close button but neither a fullscreen button nor an enabled
-zoom button (such as file Open/Save panels, settings windows, and splash screens),
+Modal windows, AppKit Open/Save file panels (`AXIdentifier` `open-panel` / `save-panel`),
+windows exposing a cancel button (`AXCancelButton`), buttonless windows exposing a default button
+(`AXDefaultButton`), standard windows with a close button but neither a fullscreen button nor an
+enabled zoom button (such as settings windows and splash screens),
 accessory-application windows whose fullscreen button is disabled or absent, movable non-resizable
 windows, and windows matched by a `float` rule retain their frame but park and reveal with their
 logical workspace. A `tile` rule tiles any of them, though a window that cannot resize keeps its own

@@ -161,8 +161,10 @@ pause, quit, or hotkey loss.
   `fitting_minimums_reaches_into_nested_splits_and_leaves_impossible_splits_alone`.
 - Window classification (`src/macos/classify.rs`), `src/macos/tests.rs`:
   `primary_windows_without_a_working_fullscreen_button_still_tile` (FaceTime, Phone, News, Podcasts,
-  Games, Shortcuts, System Settings, windows showing a sheet) and
-  `settings_windows_modals_and_accessory_panels_still_float`.
+  Games, Shortcuts, System Settings, windows showing a sheet),
+  `settings_windows_modals_and_accessory_panels_still_float`, and
+  `open_save_panels_and_button_bar_dialogs_float` (AppKit Open/Save panels, `AXCancelButton`, and
+  buttonless `AXDefaultButton` dialogs).
 - `tile` rule: `src/app/tests/rules.rs`
   `a_tile_rule_tiles_a_window_that_looks_like_a_dialog_until_toggled_to_float`; `src/config.rs`
   `tile_rule_parses_and_rejects_a_workspace`; `src/cli/tests.rs` `rules_add_tile_writes_a_tile_rule`;
@@ -232,7 +234,8 @@ pause, quit, or hotkey loss.
 - A window that enters macOS native fullscreen (for example browser video) loses its slot after two
   seconds and returns as a new tile at the end of the layout
   ([known defect](fullscreen-layout.md#gotchas)).
-- Floating windows (rules, manual Toggle Float, modal windows, dialogs with a close button but
+- Floating windows (rules, manual Toggle Float, modal windows, AppKit Open/Save panels,
+  cancel-button or buttonless default-button dialogs, dialogs with a close button but
   neither a fullscreen button nor an enabled zoom button, or non-resizable windows) are owned by a
   workspace (and can be moved between workspaces)
   but are never tiled or resized. A window that already holds a tile keeps it while it temporarily

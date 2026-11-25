@@ -27,6 +27,7 @@ struct ReconcileDisplayContext<'a> {
     cancelled: &'a AtomicBool,
     failed: &'a mut usize,
     close_recheck: &'a mut Option<Instant>,
+    fullscreen_hud: &'a mut Option<WorkspaceId>,
 }
 
 impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
@@ -208,7 +209,8 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
         self.recover_stale_parked_windows(&outputs, server_frames);
         self.pin_parked_floats_by_rule();
         self.restore_visible(&visible, cancelled, &mut failed);
-        self.park_inactive(&outputs, &visible, server_frames, cancelled, &mut failed);
+        let mut fullscreen_hud =
+            self.park_inactive(&outputs, &visible, server_frames, cancelled, &mut failed);
         self.recover_stranded_visible(&outputs, &visible, server_frames, cancelled, &mut failed);
         if cancelled.load(Ordering::Acquire) {
             return Err("workspace operation cancelled".into());
@@ -226,6 +228,9 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
             &outputs,
             &mut failed,
         );
+        if let Some(workspace) = affinity_policy.fullscreen_hud {
+            fullscreen_hud = Some(workspace);
+        }
         // Taken after the Accessibility snapshot so a window listed here was
         // on screen no earlier than the snapshot that may have omitted it.
         let onscreen_snapshot = self.backend.onscreen_window_frames();
@@ -244,6 +249,7 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
                     cancelled,
                     failed: &mut failed,
                     close_recheck: &mut close_recheck,
+                    fullscreen_hud: &mut fullscreen_hud,
                 },
             )?;
         }
@@ -302,6 +308,14 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
         self.journal.observation = Some(observation);
         self.persist_workspace_state_if_changed()?;
         let mut status = self.status_for_visible(failed, &visible, &outputs);
+        if let Some(workspace) = fullscreen_hud.filter(|&ws| self.is_stacked_fullscreen(ws)) {
+            status.hud = Some(self.hud_for(
+                workspace,
+                UiHudKind::Fullscreen { enabled: true },
+                None,
+                &outputs,
+            ));
+        }
         status.close_recheck = close_recheck;
         status.missing_frontmost_window = missing_frontmost_window;
         self.settle_tab_detach(status, &outputs, cancelled)
@@ -335,6 +349,7 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
             cancelled,
             failed,
             close_recheck,
+            fullscreen_hud,
         } = context;
         let workspace = resolved.workspace;
         let output = resolved.output;
@@ -442,8 +457,8 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
             .bound_windows()
             .into_iter()
             .collect();
-        if inserted_here {
-            self.exit_fullscreen_if_split(workspace);
+        if inserted_here && self.workspaces.deck(workspace).is_monocle() {
+            *fullscreen_hud = Some(workspace);
         }
         self.workspaces.prune_intents(workspace);
         self.clear_fullscreen_restore_if_inactive(workspace);

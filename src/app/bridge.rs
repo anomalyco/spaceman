@@ -141,8 +141,9 @@ impl UiHudToast {
     }
 }
 
-/// Title-free Workspace HUD event emitted on explicit user actions: every display's row of
-/// workspaces, with their layouts and the bundle IDs of the apps in them.
+/// Title-free Workspace HUD event emitted on explicit user actions and when a
+/// tiled window joins a visible Fullscreen Layout workspace: every display's
+/// row of workspaces, with their layouts and the bundle IDs of the apps in them.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct UiHudEvent {
     /// The workspace the action was on: switched to, moved to, or relaid.

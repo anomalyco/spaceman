@@ -31,7 +31,8 @@ Mode persistence                                        // fullscreen.persist
 ├── Spaceman restart     -> mode and remembered top window restored
 ├── Ghostty native-tab replacement -> keeps mode and slot
 ├── Floating / dialog window opens -> floats above without exiting Fullscreen Layout
-├── New tiled window opens or moves in -> automatically exits Fullscreen Layout and splits side by side
+├── New tiled window opens, routes, reappears, moves in, or unfloats -> stays in Fullscreen Layout
+│   (fills the display, remembers focus if focused) and cues the Workspace HUD when visible
 └── Last tiled window closes or moves away -> mode turns off
 
 Blocked while on                                        // fullscreen.guards
@@ -51,10 +52,12 @@ Unit (FakeBackend), `src/app/tests/layout.rs`:
 `fullscreen_layout_activates_persisted_cross_app_focus_after_restart`,
 `switching_away_and_back_restores_fullscreen_layout_focus`,
 `selecting_an_active_fullscreen_workspace_preserves_its_current_focus`,
-`opening_a_new_tiled_window_exits_fullscreen_layout_and_splits_side_by_side`,
+`opening_a_new_tiled_window_keeps_fullscreen_layout_and_emits_hud`,
 `opening_a_floating_window_preserves_fullscreen_layout`,
-`reappearing_parked_tile_exits_fullscreen_layout_and_splits_side_by_side` (issue 153),
-`reappearing_parked_floating_window_preserves_fullscreen_layout`, and
+`reappearing_parked_tile_keeps_fullscreen_layout_and_emits_hud` (issue 153),
+`reappearing_parked_floating_window_preserves_fullscreen_layout`,
+`routing_moving_and_unfloating_preserve_fullscreen_layout`,
+`routing_onto_a_hidden_fullscreen_workspace_preserves_mode_without_hud`, and
 `ghostty_native_tab_replacement_preserves_workspace_and_fullscreen_layout`. They prove frames,
 persisted mode, and which window Spaceman asks to focus or raise; none observes real z-order.
 
@@ -90,8 +93,10 @@ independently.
 - **Nothing shows how many windows are stacked or which is next.** Hidden windows are full-size
   underneath rather than hidden, so closing the top window reveals whatever macOS raises next, not
   necessarily the next tile in Spaceman's order. No test covers that close path.
-- **New tiled windows** on the workspace automatically exit Fullscreen Layout and split side by side,
-  while floating/dialog windows open above without exiting Fullscreen Layout.
+- **Fullscreen Layout is sticky:** new tiled windows (opened, routed, reappearing from a park,
+  moved in, or unfloated) join the stack without exiting Fullscreen Layout and show the Workspace HUD
+  when the workspace is visible. Only `Option+Shift+F`, `Option+/`, or emptying the workspace leaves
+  the mode.
 - Native macOS fullscreen is a different thing: such windows are not managed at all. **Known
   defect (Observed, 2026-10-01):** a tiled browser window whose video enters native fullscreen
   drops out of Accessibility observation, loses its slot after the 2 s omission grace, and is adopted

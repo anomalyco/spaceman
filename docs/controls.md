@@ -72,7 +72,8 @@ display, as in a split layout. Leaving the workspace hides its windows back to f
 windows are never uncovered mid-switch.
 Command-backtick continues to use macOS's same-application window cycle, and Spaceman remembers the
 resulting focus. Press `Option+Shift+F` again to restore the unchanged split layout. Fullscreen Layout
-and its active tile survive workspace switches, native-tab physical-window replacement, and Spaceman
+and its active tile survive new tiled windows (which join the stack and cue the Workspace HUD when
+visible), workspace switches, native-tab physical-window replacement, and Spaceman
 restarts. `Option+/` exits Fullscreen Layout, toggles the preserved split axis, and immediately applies
 the resulting normal layout. Keyboard resize (including `resize width|height`), balance, and tile
 reordering require leaving Fullscreen Layout first. Pointer dragging and resizing are ignored while the mode is active. Floating windows are

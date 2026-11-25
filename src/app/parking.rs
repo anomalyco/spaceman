@@ -35,39 +35,32 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
         window: &crate::ObservedWindow,
         visible: &[ResolvedWorkspace],
         server_frames: &HashMap<u32, crate::Rect>,
-    ) {
-        let Some(original) = self.parked.get(&window.id).copied() else {
-            return;
-        };
+    ) -> Option<WorkspaceId> {
+        let original = self.parked.get(&window.id).copied()?;
         if self.parked.awaits_display(&window.id)
             || self.parked.settling(&window.id, self.backend.now())
         {
             // The park write may still be applying inside the app; wait it out.
-            return;
+            return None;
         }
         // The observation may be stale; only the window server is trusted.
-        let Some(frame) = server_frames.get(&window.id.window_id).copied() else {
-            return;
-        };
-        let Some(target) = visible
+        let frame = server_frames.get(&window.id.window_id).copied()?;
+        let target = visible
             .iter()
-            .find(|resolved| resolved.output.contains_center(frame))
-        else {
-            return;
-        };
+            .find(|resolved| resolved.output.contains_center(frame))?;
         if self.backend.frontmost_application().as_ref() != Some(&window.id.app) {
             // A background reappearance is an app re-asserting its saved bounds
             // (Electron does this on screen-parameter changes), not the user
             // summoning the window. Keep the recovery frame; parking pushes it
             // back off-screen instead of re-homing it.
-            return;
+            return None;
         }
         if self.returned_by_space_slide(&window.id) {
             // macOS put it back while leaving the app's fullscreen Space (#489);
             // parking pushes it back off-screen.
-            return;
+            return None;
         }
-        self.honor_reappearance(&window.id, frame, original, target);
+        self.honor_reappearance(&window.id, frame, original, target)
     }
 
     /// Honor a window that will not stay parked: drop the recovery frame and
@@ -79,7 +72,7 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
         frame: crate::Rect,
         original: crate::Rect,
         target: &ResolvedWorkspace,
-    ) {
+    ) -> Option<WorkspaceId> {
         let record = self.commit_unparked(window);
         log_event!(
             "heal: {:?} reappeared at {:?}; dropping recovery frame {:?}",
@@ -89,10 +82,11 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
         );
         self.persist_removals_or_rollback(record.map(|record| (window.clone(), record)));
         if self.parked.contains_key(window) {
-            return;
+            return None;
         }
         let repeatedly_unparked = self.parked.note_heal(window, self.backend.now());
         let workspace = target.workspace;
+        let mut joined_fullscreen = None;
         if self.workspaces.floating_workspace_of(window).is_some() {
             log_event!(
                 "heal: re-home floating {:?} -> workspace {}",
@@ -101,7 +95,9 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
             );
             self.workspaces.own_floating(window.clone(), workspace);
         } else if let Some(source) = self.move_tiled_to(window, workspace, target.output) {
-            self.exit_fullscreen_if_split(workspace);
+            if self.workspaces.deck(workspace).is_monocle() {
+                joined_fullscreen = Some(workspace);
+            }
             self.clear_fullscreen_restore_if_inactive(source);
             self.clear_relocation_evidence(source, workspace, window);
             log_event!(
@@ -120,6 +116,7 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
                 window
             );
         }
+        joined_fullscreen
     }
 
     pub(super) fn park_inactive(
@@ -129,7 +126,7 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
         server_frames: &HashMap<u32, crate::Rect>,
         cancelled: &AtomicBool,
         failed: &mut usize,
-    ) {
+    ) -> Option<WorkspaceId> {
         let visible_workspaces: HashSet<_> =
             visible.iter().map(|resolved| resolved.workspace).collect();
         let inactive = self.workspaces.inactive_windows_except(&visible_workspaces);
@@ -143,23 +140,27 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
             server_frames,
             visible,
         };
+        let mut fullscreen_hud = None;
         // Hidden scratchpad windows intentionally have no workspace owner, so
         // re-park any background bounds reassertions here before affinity sees them.
         for window in self.workspaces.scratchpad().hidden() {
             if cancelled.load(Ordering::Acquire) {
-                return;
+                return fullscreen_hud;
             }
             if self.stays_on_screen(&window) {
                 continue;
             }
-            if let Some(original) = self.parked.get(&window).copied() {
-                self.repark_drifted_window(&window, original, outputs.main().frame, &context);
+            if let Some(original) = self.parked.get(&window).copied()
+                && let Some(ws) =
+                    self.repark_drifted_window(&window, original, outputs.main().frame, &context)
+            {
+                fullscreen_hud = Some(ws);
             }
         }
         let mut candidates = Vec::new();
         for (workspace, window) in inactive {
             if cancelled.load(Ordering::Acquire) {
-                return;
+                return fullscreen_hud;
             }
             // Pinned windows show on every workspace; restore_visible brings back one pinned
             // while it was parked.
@@ -168,7 +169,9 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
             }
             let output = output_for(&self.workspaces, workspace, outputs);
             if let Some(original) = self.parked.get(&window).copied() {
-                self.repark_drifted_window(&window, original, output, &context);
+                if let Some(ws) = self.repark_drifted_window(&window, original, output, &context) {
+                    fullscreen_hud = Some(ws);
+                }
                 continue;
             }
             let frame = match self.backend.frame(&window) {
@@ -209,7 +212,7 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
             candidates.push((workspace, window, frame, target));
         }
         if candidates.is_empty() {
-            return;
+            return fullscreen_hud;
         }
         self.order_back_to_front(&mut candidates, |(_, window, ..)| window.window_id);
         for (_, window, frame, _) in &candidates {
@@ -222,7 +225,7 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
             }
             *failed += candidates.len();
             log_event!("failed to persist parked windows: {error}");
-            return;
+            return fullscreen_hud;
         }
 
         let mut restored = Vec::new();
@@ -257,6 +260,7 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
             }
         }
         self.persist_removals_or_rollback(restored);
+        fullscreen_hud
     }
 
     /// A parked window observed on-screen in the background re-asserted its
@@ -269,25 +273,23 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
         original: crate::Rect,
         output: crate::Rect,
         context: &ParkContext<'_>,
-    ) {
+    ) -> Option<WorkspaceId> {
         if self.parked.awaits_display(window) {
-            return;
+            return None;
         }
-        let Some(server) = context.server_frames.get(&window.window_id).copied() else {
-            return;
-        };
+        let server = context.server_frames.get(&window.window_id).copied()?;
         let now = self.backend.now();
         if !crate::geometry::shows_on(server, context.displays) {
             // Only a window that STAYED parked past the settle grace ends a
             // fight; right after a re-park write the app may still undo it.
             self.parked.stayed_parked(window, now);
-            return;
+            return None;
         }
         if self.parked.settling(window, now)
             || (context.frontmost.as_ref() == Some(&window.app)
                 && !self.returned_by_space_slide(window))
         {
-            return;
+            return None;
         }
         if server.width < original.width.saturating_sub(RESTORE_CONFIRM_TOLERANCE)
             && server.height < original.height.saturating_sub(RESTORE_CONFIRM_TOLERANCE)
@@ -301,7 +303,7 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
             // Mission Control / Exposé scales parked windows into on-screen
             // thumbnails in the window server while their Accessibility
             // position stays parked off-screen.
-            return;
+            return None;
         }
         if self.parked.reparks(window) >= REPARK_ATTEMPT_LIMIT {
             // The app undoes every park. Fighting on would flicker forever;
@@ -312,14 +314,11 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
                 window,
                 REPARK_ATTEMPT_LIMIT
             );
-            if let Some(target) = context
+            return context
                 .visible
                 .iter()
                 .find(|resolved| resolved.output.contains_center(server))
-            {
-                self.honor_reappearance(window, server, original, target);
-            }
-            return;
+                .and_then(|target| self.honor_reappearance(window, server, original, target));
         }
         // Park by the size the window has now; the recovery frame's may be stale.
         let park_output = Self::display_for_frame(server, context.displays).unwrap_or(output);
@@ -343,6 +342,7 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
             // display reconfiguration must not escalate and adopt the window.
             self.parked.repark_applied(window, now);
         }
+        None
     }
 
     /// Confirms that an Accessibility `Gone` result means `window` actually

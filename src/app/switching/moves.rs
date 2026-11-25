@@ -244,7 +244,6 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
                     target_canvas,
                 )
                 .ok_or("Window could not be moved")?;
-            self.exit_fullscreen_if_split(target);
         }
         self.clear_fullscreen_restore_if_inactive(source);
         self.clear_relocation_evidence(source, target, &window);
@@ -294,6 +293,9 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
                 failed += 1;
             }
             if self.request_focus(&window, [reported]) {
+                if !is_floating && self.workspaces.deck(target).is_monocle() {
+                    self.workspaces.remember_focus(target, &window);
+                }
                 // Focus followed the window to the workspace on screen
                 // elsewhere; Option+Tab goes back to where it came from.
                 self.record_focused_workspace(target);
