@@ -14,7 +14,7 @@ use objc2_core_graphics::{
     CGEventTapPlacement, CGEventTapProxy, CGEventType, CGMouseButton,
 };
 
-use crate::swipe::{Swipe, SwipeTracker};
+use crate::swipe::{Fingers, Swipe, SwipeTracker};
 
 /// A gap this long between gesture frames means the lift was missed (matches
 /// `crate::swipe::SwipeTracker`).
@@ -50,7 +50,12 @@ impl SwipeGate {
         }
     }
 
-    fn frame(&mut self, at: f64, touches: &[(f64, f64)], pointer_down: bool) -> Option<Swipe> {
+    fn frame(
+        &mut self,
+        at: f64,
+        touches: &[(f64, f64)],
+        pointer_down: bool,
+    ) -> Option<(Swipe, Fingers)> {
         if self
             .last_frame
             .is_some_and(|last| at - last > STALE_SECONDS)
@@ -88,7 +93,7 @@ fn pointer_button_down() -> bool {
         || CGEventSource::button_state(CGEventSourceStateID::HIDSystemState, CGMouseButton::Left)
 }
 
-/// Listens for three-finger trackpad swipes and reports each with the pointer's
+/// Listens for three- and four-finger trackpad swipes and reports each with the pointer's
 /// position. The tap only listens, so touches still reach every app, and it needs
 /// only Accessibility.
 pub struct SwipeMonitor {
@@ -98,7 +103,7 @@ pub struct SwipeMonitor {
 }
 
 struct Context {
-    report: Box<dyn Fn(Swipe, (i32, i32))>,
+    report: Box<dyn Fn(Swipe, Fingers, (i32, i32))>,
     gate: RefCell<SwipeGate>,
     left_button_down: Cell<bool>,
     tap: RefCell<Option<CFRetained<CFMachPort>>>,
@@ -106,7 +111,7 @@ struct Context {
 
 impl SwipeMonitor {
     /// Installs on the main run loop. Fails without Accessibility.
-    pub fn install(report: impl Fn(Swipe, (i32, i32)) + 'static) -> Result<Self, String> {
+    pub fn install(report: impl Fn(Swipe, Fingers, (i32, i32)) + 'static) -> Result<Self, String> {
         let context = Box::new(Context {
             report: Box::new(report),
             gate: RefCell::default(),
@@ -210,9 +215,10 @@ unsafe extern "C-unwind" fn tap_callback(
             .gate
             .borrow_mut()
             .frame(ns_event.timestamp(), &touches, button_down);
-        if let Some(swipe) = swipe {
+        if let Some((swipe, fingers)) = swipe {
             let point = CGEvent::location(Some(cg_event));
-            (context.report)(swipe, (point.x.round() as i32, point.y.round() as i32));
+            let point = (point.x.round() as i32, point.y.round() as i32);
+            (context.report)(swipe, fingers, point);
         }
     });
     event.as_ptr()
@@ -234,7 +240,7 @@ mod tests {
         from: (f64, f64),
         to: (f64, f64),
         pointer_down: impl Fn(u32) -> bool,
-    ) -> Vec<Swipe> {
+    ) -> Vec<(Swipe, Fingers)> {
         (0..=20)
             .filter_map(|step| {
                 let t = f64::from(step) / 20.0;
@@ -267,7 +273,7 @@ mod tests {
         assert_eq!(gate.frame(0.55, &[], false), None);
         assert_eq!(
             sweep(&mut gate, 0.65, (0.2, 0.5), (0.6, 0.5), |_| false),
-            [Swipe::Right]
+            [(Swipe::Right, Fingers::Three)]
         );
     }
 
@@ -284,7 +290,7 @@ mod tests {
         assert_eq!(gate.frame(0.3, &[], false), None);
         assert_eq!(
             sweep(&mut gate, 0.4, (0.6, 0.5), (0.2, 0.5), |_| false),
-            [Swipe::Left]
+            [(Swipe::Left, Fingers::Three)]
         );
     }
 
@@ -295,7 +301,7 @@ mod tests {
         gate.pointer_pressed();
         assert_eq!(
             sweep(&mut gate, 0.1, (0.6, 0.5), (0.2, 0.5), |_| false),
-            [Swipe::Left]
+            [(Swipe::Left, Fingers::Three)]
         );
     }
 }

@@ -57,6 +57,11 @@ const GROUPS: [(&str, &str, &[Lab]); 4] = [
                 "Workspace steps",
                 "Shortcuts to step to the next or previous workspace on a display",
             ),
+            (
+                LabFeature::FourFingerSwipe,
+                "Four-finger swipe",
+                "Swipe with 4 fingers to switch workspaces, leaving 3 to macOS",
+            ),
         ],
     ),
     (

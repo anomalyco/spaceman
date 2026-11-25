@@ -184,7 +184,7 @@ fn fixed_row(p: Paint, key: &str, title: &str, caps: Vec<String>) -> El {
     )
 }
 
-/// What the three-finger swipe's row shows.
+/// What the workspace swipe's row shows.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum SwipeRow {
     /// The fixed keycap tray, as always while `[labs] swipe_switch` is off.
@@ -205,30 +205,36 @@ impl SwipeRow {
     }
 }
 
-/// The three-finger swipe's row: a fixed keycap tray, or with `[labs] swipe_switch` on, a
-/// switch for `settings.trackpad_swipe` (off leaves the gesture to macOS alone).
+/// The workspace swipe's row: a fixed keycap tray, or with `[labs] swipe_switch` on, a
+/// switch for `settings.trackpad_swipe` (off leaves the gesture to macOS alone). It names
+/// four fingers while `[labs] four_finger_swipe` is on.
 fn swipe_row(ui: &Ui, p: Paint) -> El {
+    let fingers = if ui.doc.lab(LabFeature::FourFingerSwipe) {
+        4
+    } else {
+        3
+    };
     let on = match SwipeRow::of(&ui.doc) {
         SwipeRow::Fixed => {
             return fixed_row(
                 p,
                 "swipe",
                 "Switch adjacent workspace",
-                vec!["3-finger swipe".into()],
+                vec![format!("{fingers}-finger swipe")],
             );
         }
         SwipeRow::Switch { on } => on,
     };
     let description = if on {
-        "3-finger swipe left or right"
+        format!("{fingers}-finger swipe left or right")
     } else {
-        "Off: 3-finger swipes are left to macOS"
+        format!("Off: {fingers}-finger swipes are left to macOS")
     };
     controls::toggle_row(
         p,
         "swipe-row",
         "Swipe to switch workspace",
-        Some((description.into(), p.muted())),
+        Some((description, p.muted())),
         on,
         move |ui| ui.edit(|doc| doc.set_trackpad_swipe(!on)),
     )

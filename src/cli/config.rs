@@ -219,6 +219,7 @@ impl Key {
             Self::Lab(LabFeature::EmptyWorkspaceFocus) => "labs.empty_workspace_focus",
             Self::Lab(LabFeature::FloatFollowsDisplay) => "labs.float_follows_display",
             Self::Lab(LabFeature::WorkspaceSteps) => "labs.workspace_steps",
+            Self::Lab(LabFeature::FourFingerSwipe) => "labs.four_finger_swipe",
         }
     }
 

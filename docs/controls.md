@@ -28,11 +28,16 @@ A three-finger horizontal swipe steps through the workspaces that the display's 
 (the visible one and every one holding windows), stopping at either end. Swiping left goes to the
 next one, as with macOS Spaces. Spaceman only listens to the trackpad, so macOS still acts on the
 same swipe: set "Swipe between full-screen applications" to four fingers or off in Trackpad
-settings. Four-finger swipes and vertical swipes are left to macOS. To keep the macOS gesture and
-drop Spaceman's instead, turn on **Swipe switch** in Settings › Labs (`[labs] swipe_switch = true`),
-then turn off **Swipe to switch workspace** in Settings › Shortcuts (`trackpad_swipe = false`); see
-[Configuration › Trackpad Swipe](configuration.md#trackpad-swipe). The switch exists only with that
-Lab on.
+settings. Four-finger swipes (unless the Four-finger swipe Lab below is on) and vertical swipes are
+left to macOS. To keep the macOS gesture and drop Spaceman's instead, turn on **Swipe switch** in
+Settings › Labs (`[labs] swipe_switch = true`), then turn off **Swipe to switch workspace** in
+Settings › Shortcuts (`trackpad_swipe = false`); see [Configuration › Trackpad
+Swipe](configuration.md#trackpad-swipe). The switch exists only with that Lab on.
+
+With **Four-finger swipe** on in Settings › Labs (`[labs] four_finger_swipe = true`), the swipe
+takes four fingers instead, and three-finger swipes are left to macOS. That suits Accessibility's
+"Three Finger Drag", which already moves macOS's own swipes to four fingers: set "Swipe between
+full-screen applications" off in Trackpad settings so only Spaceman moves.
 
 Every shortcut above can be rebound, unbound, or replaced in the config file's `[shortcuts]` table;
 see [Configuration › Shortcuts](configuration.md#shortcuts). The table lists the built-in defaults.

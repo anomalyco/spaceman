@@ -3,7 +3,7 @@
 use std::collections::VecDeque;
 
 use super::{FinalGesture, WorkerAction};
-use crate::{PhysicalWindowId, Rect};
+use crate::{PhysicalWindowId, Rect, swipe::Fingers};
 
 const MAX_PENDING_INPUTS: usize = 64;
 
@@ -96,6 +96,27 @@ pub(super) fn should_ignore_swipe(
     gesture_active: bool,
 ) -> bool {
     mouse_down || mouse_was_down || gesture_active
+}
+
+/// Whether a worker action from the main thread enters the input queue. A swipe
+/// enters only with the configured finger count (`Config::swipe_fingers`; the
+/// other count is macOS's gesture and must not wake the worker) and while
+/// [`should_ignore_swipe`] lets it. `pointer` reads `(mouse_down,
+/// mouse_was_down, gesture_active)` and only runs for such a swipe. Every other
+/// action enters.
+pub(super) fn admits_action(
+    action: &WorkerAction,
+    swipe_fingers: Fingers,
+    pointer: impl FnOnce() -> (bool, bool, bool),
+) -> bool {
+    let WorkerAction::Swipe(_, fingers, _) = action else {
+        return true;
+    };
+    if *fingers != swipe_fingers {
+        return false;
+    }
+    let (mouse_down, mouse_was_down, gesture_active) = pointer();
+    !should_ignore_swipe(mouse_down, mouse_was_down, gesture_active)
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -612,7 +633,11 @@ mod tests {
     #[test]
     fn suppressed_swipes_never_enter_the_input_queue_while_normal_swipes_do() {
         let mut queue = InputQueue::default();
-        let swipe = WorkerAction::Swipe(crate::swipe::Swipe::Right, (200, 100));
+        let swipe = WorkerAction::Swipe(
+            crate::swipe::Swipe::Right,
+            crate::swipe::Fingers::Three,
+            (200, 100),
+        );
 
         // While dragging with three fingers (mouse_down = true), a swipe is dropped.
         if !should_ignore_swipe(true, true, true) {
@@ -625,6 +650,30 @@ mod tests {
             queue.push(QueuedInput::Action(swipe.clone())).unwrap();
         }
         assert_eq!(queue.pop(), Some(QueuedInput::Action(swipe)));
+    }
+
+    #[test]
+    fn only_swipes_with_the_configured_finger_count_are_admitted() {
+        use crate::swipe::{Fingers, Swipe};
+        let three = WorkerAction::Swipe(Swipe::Left, Fingers::Three, (200, 100));
+        let four = WorkerAction::Swipe(Swipe::Left, Fingers::Four, (200, 100));
+        let idle = || (false, false, false);
+        fn never() -> (bool, bool, bool) {
+            unreachable!("pointer read for a dropped swipe")
+        }
+
+        // With [labs] four_finger_swipe off, macOS's four-finger swipe never reaches
+        // the queue (and never reads the pointer); three fingers do.
+        assert!(!admits_action(&four, Fingers::Three, never));
+        assert!(admits_action(&three, Fingers::Three, idle));
+        // With it on, the other way round.
+        assert!(!admits_action(&three, Fingers::Four, never));
+        assert!(admits_action(&four, Fingers::Four, idle));
+        // A pointer drag still drops the configured swipe.
+        assert!(!admits_action(&four, Fingers::Four, || (true, false, false)));
+        // Other actions are untouched.
+        let switch = WorkerAction::SwitchWorkspace(crate::WorkspaceId::TWO);
+        assert!(admits_action(&switch, Fingers::Four, never));
     }
 
     #[test]

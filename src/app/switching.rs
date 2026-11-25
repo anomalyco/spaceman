@@ -600,16 +600,18 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
     }
 
     /// Left goes to the next workspace in the display's menu section, right to
-    /// the previous one. Nothing happens past either end, or while
-    /// `settings.trackpad_swipe` is off.
+    /// the previous one. Nothing happens past either end, while
+    /// `settings.trackpad_swipe` is off, or for a finger count other than
+    /// [`crate::config::Config::swipe_fingers`] (that one stays with macOS).
     pub(super) fn swipe(
         &mut self,
         swipe: Swipe,
+        fingers: Fingers,
         point: (i32, i32),
         outputs: macos::DisplayOutputs,
         cancelled: &AtomicBool,
     ) -> Result<CycleStatus, String> {
-        if !self.config.trackpad_swipe() {
+        if !self.config.trackpad_swipe() || fingers != self.config.swipe_fingers() {
             return Ok(self.status(0, &outputs));
         }
         let display_id = outputs.display_for_point(point).id.clone();

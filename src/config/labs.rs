@@ -39,6 +39,10 @@ pub struct LabsConfig {
     /// focused display from the keyboard.
     #[serde(default)]
     pub workspace_steps: bool,
+    /// The workspace swipe takes four fingers instead of three, leaving three-finger
+    /// gestures (such as Accessibility "Three Finger Drag") to macOS.
+    #[serde(default)]
+    pub four_finger_swipe: bool,
 }
 
 impl LabsConfig {
@@ -55,6 +59,7 @@ impl LabsConfig {
             LabFeature::EmptyWorkspaceFocus => self.empty_workspace_focus,
             LabFeature::FloatFollowsDisplay => self.float_follows_display,
             LabFeature::WorkspaceSteps => self.workspace_steps,
+            LabFeature::FourFingerSwipe => self.four_finger_swipe,
         }
     }
 }
@@ -81,11 +86,13 @@ pub enum LabFeature {
     FloatFollowsDisplay,
     /// `switch next|prev` and `move next|prev [--follow]` on the focused display.
     WorkspaceSteps,
+    /// The workspace swipe takes four fingers instead of three.
+    FourFingerSwipe,
 }
 
 impl LabFeature {
     /// Every switch, in the order `[labs]` lists them.
-    pub const ALL: [Self; 9] = [
+    pub const ALL: [Self; 10] = [
         Self::Scratchpad,
         Self::Activity,
         Self::PortraitEdgeRows,
@@ -95,6 +102,7 @@ impl LabFeature {
         Self::EmptyWorkspaceFocus,
         Self::FloatFollowsDisplay,
         Self::WorkspaceSteps,
+        Self::FourFingerSwipe,
     ];
 
     /// The `[labs]` key that turns this feature on.
@@ -110,6 +118,7 @@ impl LabFeature {
             Self::EmptyWorkspaceFocus => "empty_workspace_focus",
             Self::FloatFollowsDisplay => "float_follows_display",
             Self::WorkspaceSteps => "workspace_steps",
+            Self::FourFingerSwipe => "four_finger_swipe",
         }
     }
 

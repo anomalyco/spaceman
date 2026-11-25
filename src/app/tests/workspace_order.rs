@@ -93,7 +93,13 @@ fn swipes_step_through_workspaces_in_the_configured_order() {
     let mut runtime = keyboard_row(r#"workspace_order = [1, "Q", "W", "E"]"#);
     let mut swipe = |swipe| {
         runtime
-            .swipe(swipe, (500, 400), outputs(), &AtomicBool::new(false))
+            .swipe(
+                swipe,
+                Fingers::Three,
+                (500, 400),
+                outputs(),
+                &AtomicBool::new(false),
+            )
             .unwrap()
             .active[0]
     };
@@ -126,7 +132,13 @@ fn trackpad_swipe_off_stops_swipes_only_with_its_lab_on_and_reloads_live() {
     let lab = "[labs]\nswipe_switch = true";
     let swipe = |runtime: &mut WorkspaceRuntime<FakeBackend>, swipe| {
         runtime
-            .swipe(swipe, (500, 400), outputs(), &AtomicBool::new(false))
+            .swipe(
+                swipe,
+                Fingers::Three,
+                (500, 400),
+                outputs(),
+                &AtomicBool::new(false),
+            )
             .unwrap()
             .active[0]
     };
@@ -144,4 +156,34 @@ fn trackpad_swipe_off_stops_swipes_only_with_its_lab_on_and_reloads_live() {
     // Back on (or unset) after a reload, swipes step through workspaces again.
     runtime.replace_config(config(lab));
     assert_eq!(swipe(&mut runtime, Swipe::Left), named('E'));
+}
+
+#[test]
+fn four_finger_swipe_lab_moves_the_swipe_to_four_fingers_and_reloads_live() {
+    let lab = "[labs]\nfour_finger_swipe = true";
+    let swipe = |runtime: &mut WorkspaceRuntime<FakeBackend>, fingers| {
+        runtime
+            .swipe(
+                Swipe::Left,
+                fingers,
+                (500, 400),
+                outputs(),
+                &AtomicBool::new(false),
+            )
+            .unwrap()
+            .active[0]
+    };
+
+    // With the Lab off, four-finger swipes stay with macOS.
+    let mut runtime = keyboard_row("");
+    assert_eq!(swipe(&mut runtime, Fingers::Four), WorkspaceId::ONE);
+
+    // With it on, four fingers step and three are left to macOS.
+    runtime.replace_config(config(lab));
+    assert_eq!(swipe(&mut runtime, Fingers::Three), WorkspaceId::ONE);
+    assert_eq!(swipe(&mut runtime, Fingers::Four), named('E'));
+
+    // Off again after a reload, three fingers step once more.
+    runtime.replace_config(config(""));
+    assert_eq!(swipe(&mut runtime, Fingers::Three), named('Q'));
 }

@@ -53,6 +53,8 @@ pub(crate) struct LabsDoc {
     pub float_follows_display: Option<bool>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub workspace_steps: Option<bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub four_finger_swipe: Option<bool>,
 }
 
 impl LabsDoc {
@@ -66,6 +68,7 @@ impl LabsDoc {
             && self.empty_workspace_focus.is_none()
             && self.float_follows_display.is_none()
             && self.workspace_steps.is_none()
+            && self.four_finger_swipe.is_none()
     }
 
     /// The switch as the file asks for it: off while unset.
@@ -94,6 +97,7 @@ impl LabsDoc {
             LabFeature::EmptyWorkspaceFocus => self.empty_workspace_focus,
             LabFeature::FloatFollowsDisplay => self.float_follows_display,
             LabFeature::WorkspaceSteps => self.workspace_steps,
+            LabFeature::FourFingerSwipe => self.four_finger_swipe,
         }
     }
 
@@ -108,6 +112,7 @@ impl LabsDoc {
             LabFeature::EmptyWorkspaceFocus => &mut self.empty_workspace_focus,
             LabFeature::FloatFollowsDisplay => &mut self.float_follows_display,
             LabFeature::WorkspaceSteps => &mut self.workspace_steps,
+            LabFeature::FourFingerSwipe => &mut self.four_finger_swipe,
         }
     }
 }

@@ -18,7 +18,7 @@ use crate::{
     deep_link::OpenTarget,
     hotkeys::{DeliveryWatch, HotkeyPlan, Hotkeys},
     live, login_item, macos, permission_guide, status_item,
-    swipe::Swipe,
+    swipe::{Fingers, Swipe},
     termination, url_handler,
 };
 
@@ -248,9 +248,9 @@ pub(crate) enum WorkerAction {
     SelectWorkspace(WorkspaceId),
     WorkspaceBackAndForth,
     MoveWorkspaceToDisplay(DisplayTarget),
-    /// A trackpad swipe, stepping through the occupied workspaces of the display
-    /// under the pointer.
-    Swipe(Swipe, (i32, i32)),
+    /// A trackpad swipe and its finger count, stepping through the occupied
+    /// workspaces of the display under the pointer.
+    Swipe(Swipe, Fingers, (i32, i32)),
     /// The Workspace Steps Lab's `switch next|prev`: the swipe's step, on the focused display.
     StepWorkspace(crate::WorkspaceStep),
     MoveFocused(WorkspaceId),
@@ -438,6 +438,7 @@ pub struct PreparedAgent {
     hotkey_workspaces: Vec<WorkspaceId>,
     shortcuts: crate::shortcuts::Shortcuts,
     hud: bool,
+    swipe_fingers: Fingers,
     controls: Receiver<ControlRequest>,
     control_server: control::Server,
     bridge: UiBridge,
@@ -455,6 +456,7 @@ pub fn prepare() -> Result<(PreparedAgent, UiBridge), String> {
     let (config, workspace_state) =
         recover_startup_metadata(Config::load(), load_workspace_state());
     let hud = config.hud();
+    let swipe_fingers = config.swipe_fingers();
     let shortcuts = config.shortcuts().clone();
     let mut configured_workspaces = Workspaces::default();
     config.configure_workspaces(&mut configured_workspaces);
@@ -504,6 +506,7 @@ pub fn prepare() -> Result<(PreparedAgent, UiBridge), String> {
             hotkey_workspaces,
             shortcuts,
             hud,
+            swipe_fingers,
             controls,
             control_server,
             bridge: bridge.clone(),
@@ -566,6 +569,7 @@ impl PreparedAgent {
                 hotkey_workspaces: self.hotkey_workspaces,
                 shortcuts: self.shortcuts,
                 hud: self.hud,
+                swipe_fingers: self.swipe_fingers,
                 trusted,
                 setup_tour_open,
                 controls: self.controls,
