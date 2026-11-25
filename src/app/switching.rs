@@ -51,6 +51,12 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
             .into_iter()
             .find(|resolved| resolved.display_id == display_id)
             .map_or(workspace, |resolved| resolved.workspace);
+        // Focus leaving for another display's workspace: the one it leaves
+        // stays on screen. `previous` is hidden by this switch and keeps its
+        // own departure memory below.
+        let reported = self.backend.focused_window();
+        let departing_focus = self.effective_focus(reported);
+        self.remember_departing_visible_focus(departing_focus, workspace, previous, &outputs);
         if previous == workspace {
             // A repeat press steps from the window the previous press focused,
             // which Accessibility may not report yet. Every other request
@@ -99,6 +105,7 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
             // Selecting a workspace that is already up still moves focus there
             // when it lives on another display, so it belongs in the history.
             self.record_focused_workspace(workspace);
+            self.persist_workspace_state_if_changed()?;
             let mut status = self.status(0, &outputs);
             status.hud = Some(self.hud_for(workspace, UiHudKind::Workspace, None, &outputs));
             return Ok(status);
@@ -587,6 +594,7 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
             .filter(|target| Some(*target) != current && self.workspaces.is_enabled(*target))
             .ok_or("No previous workspace")?;
         if self.is_visible(target, &outputs) {
+            self.remember_departing_visible_focus(focused, target, target, &outputs);
             return self.focus_visible_workspace(target, current, &outputs);
         }
         self.switch_with(
@@ -615,6 +623,34 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
             .into_iter()
             .find(|resolved| resolved.display_id == display_id)
             .map(|resolved| resolved.workspace)
+    }
+
+    /// Focus moving to `target` leaves the focused window's workspace. When
+    /// that workspace stays on screen (the target is on another display) it
+    /// is never parked, so no switch departure remembers its focus. Remember
+    /// its focused window (tile or float) here so coming back refocuses it
+    /// (#527). `hidden` is the workspace the move hides, if any (`target`
+    /// when it hides none); its switch departure remembers it instead. The
+    /// window a departure guard holds back is stale focus Spaceman already
+    /// left, not the user's.
+    fn remember_departing_visible_focus(
+        &mut self,
+        focused: Option<crate::PhysicalWindowId>,
+        target: WorkspaceId,
+        hidden: WorkspaceId,
+        outputs: &macos::DisplayOutputs,
+    ) {
+        let Some(window) = focused.filter(|window| self.focus.guarded_window() != Some(window))
+        else {
+            return;
+        };
+        if let Some(departing) = self.workspaces.workspace_of_any(&window)
+            && departing != target
+            && departing != hidden
+            && self.is_visible(departing, outputs)
+        {
+            self.workspaces.remember_focus(departing, &window);
+        }
     }
 
     /// Focus a workspace that is already on screen instead of switching any
@@ -658,6 +694,7 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
                 outputs,
             );
         }
+        self.persist_workspace_state_if_changed()?;
         let mut status = self.status(0, outputs);
         status.hud = Some(self.hud_for(workspace, UiHudKind::Workspace, from, outputs));
         Ok(status)

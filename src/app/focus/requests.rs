@@ -27,7 +27,8 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
         self.focus.resolve(now, reported)
     }
 
-    /// The effective focus without settling anything, for diagnostics.
+    /// The effective focus without settling anything (diagnostics, and the
+    /// focus a switch leaves behind).
     pub(in crate::app) fn effective_focus(
         &self,
         reported: Option<crate::PhysicalWindowId>,
