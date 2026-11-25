@@ -98,6 +98,8 @@ struct EditableRule {
     bundle_id: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     title: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    title_contains: Option<String>,
     action: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     workspace: Option<WorkspaceId>,
@@ -236,4 +238,35 @@ pub fn save_workspace_monitor_at(
     write_config_atomic(path, rendered.as_bytes())
         .map_err(|error| format!("failed to write {}: {error}", path.display()))?;
     Ok(parsed)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn saving_a_workspace_monitor_keeps_title_contains_rules() {
+        let nanos = crate::config::now().as_nanos();
+        let dir = std::env::temp_dir().join(format!(
+            "spaceman-config-title-contains-{}-{nanos}",
+            std::process::id()
+        ));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("config.toml");
+        std::fs::write(
+            &path,
+            "version = 1\n[[rules]]\nbundle_id = \"com.apple.Safari\"\ntitle_contains = \"Work\"\naction = \"float\"\n",
+        )
+        .unwrap();
+        save_workspace_monitor_at(&path, WorkspaceId::ONE, &DisplaySelector::Secondary).unwrap();
+        let saved = std::fs::read_to_string(&path).unwrap();
+        assert!(saved.contains("title_contains = \"Work\""));
+        assert!(saved.contains("monitor = \"secondary\""));
+
+        std::fs::write(&path, include_str!("../../config.example.toml")).unwrap();
+        save_workspace_monitor_at(&path, WorkspaceId::ONE, &DisplaySelector::Secondary).unwrap();
+        let saved = std::fs::read_to_string(&path).unwrap();
+        assert!(saved.contains("title_contains = \"Work —\""));
+        drop(std::fs::remove_dir_all(dir));
+    }
 }
