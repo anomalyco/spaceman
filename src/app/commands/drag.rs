@@ -72,6 +72,9 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
             return Ok(self.status(layout.failed, &outputs));
         }
         self.forget_readback(source, &window);
+        if let Some(left) = self.moved_mid_drag(&window, source, point, bounds) {
+            return self.settle_moved_mid_drag(left, source, preview, &outputs, cancelled);
+        }
 
         let (pre_drag_layout, effective_bounds, shown) = self.drag_overlay(&window, source, bounds);
         let source_settings = self.layout_settings(source_output);
@@ -164,6 +167,66 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
                 cancelled,
             ),
         }
+    }
+
+    /// The workspace the dragged window was previewed on, when a command moved
+    /// it to `source` while the button was held and the pointer has gone
+    /// nowhere new since that preview. Its old target belongs to the workspace
+    /// it left, so it must not be classified afresh into a move back (#528).
+    fn moved_mid_drag(
+        &self,
+        window: &crate::PhysicalWindowId,
+        source: WorkspaceId,
+        point: (i32, i32),
+        bounds: Option<PointerBounds>,
+    ) -> Option<WorkspaceId> {
+        let GestureOverlay {
+            window: dragged,
+            workspace,
+            kind:
+                OverlayKind::Drag {
+                    pointer_bounds,
+                    shown: Some((at, _)),
+                    ..
+                },
+        } = self.gesture.as_ref()?
+        else {
+            return None;
+        };
+        let mut merged = *pointer_bounds;
+        if let Some(bounds) = bounds {
+            match &mut merged {
+                Some(existing) => existing.merge(bounds),
+                None => merged = Some(bounds),
+            }
+        }
+        (dragged == window && *workspace != source && *at == point && merged == *pointer_bounds)
+            .then_some(*workspace)
+    }
+
+    /// Keep the command's move: a preview waits, and the release lays out the
+    /// workspace the window left and the one it joined.
+    fn settle_moved_mid_drag(
+        &mut self,
+        left: WorkspaceId,
+        source: WorkspaceId,
+        preview: bool,
+        outputs: &macos::DisplayOutputs,
+        cancelled: &AtomicBool,
+    ) -> Result<CycleStatus, String> {
+        if preview {
+            return Ok(self.status(0, outputs));
+        }
+        self.gesture = None;
+        let mut failed = 0;
+        if self.is_visible(left, outputs) {
+            let output = output_for(&self.workspaces, left, outputs);
+            failed += self.layout_workspace(left, output, cancelled).failed;
+        }
+        let output = output_for(&self.workspaces, source, outputs);
+        failed += self.layout_workspace(source, output, cancelled).failed;
+        self.persist_workspace_state_if_changed()?;
+        Ok(self.status(failed, outputs))
     }
 
     /// The drag's layout at its start, the pointer's extent so far, and the

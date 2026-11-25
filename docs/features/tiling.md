@@ -142,7 +142,8 @@ pause, quit, or hotkey loss.
   its tile after release is written back to the seam (#506), a drag over a resized temporary stack keeps its
   sizes (#388), pausing a held drag restores the previewed siblings (#389), a release keeps the target
   its preview showed across a config reload (#390), returning to an edge band's last preview point
-  after leaving it while the worker was busy docks the edge column (#495), a Fullscreen Layout tile
+  after leaving it while the worker was busy docks the edge column (#495), releasing a held swap
+  preview after a numbered move sent the tile elsewhere keeps that move (#528), a Fullscreen Layout tile
   and a tile moved to another display without a gesture come back (#392), a float or new window
   over a Dock strip stays on that display (#393, #394), a new window matching a `route` rule over a
   menu bar strip is routed (#498), a lost mouse-up sample restores the previews (#395), a width cap
