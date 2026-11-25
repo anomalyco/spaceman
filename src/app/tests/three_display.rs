@@ -256,3 +256,51 @@ fn drop_over_another_displays_menu_bar_moves_the_tile_there() {
         );
     }
 }
+
+/// #428: macOS can cut the first write after a move to the display the window
+/// is leaving, so a window sent to a tall portrait display stops at the center
+/// display's bottom edge. The next cycle writes it again and it fills its tile.
+#[test]
+fn move_to_tall_portrait_display_retries_a_frame_cut_to_the_old_display() {
+    let center_bottom = CENTER.y + CENTER.height;
+    for (workspace, direction, portrait) in [
+        (6, Direction::Left, LEFT),
+        (9, Direction::Right, RIGHT),
+    ] {
+        for action in [
+            WorkerAction::MoveFocused(ws(workspace)),
+            WorkerAction::MoveFocusedFollow(ws(workspace)),
+            WorkerAction::Reorder(direction),
+        ] {
+            let mut rt = rig(&[(10, 1, CENTER)]);
+            rt.backend.clamp_bottom.insert(win(10), center_bottom);
+            act(&mut rt, action.clone());
+            assert_eq!(rt.workspaces.workspace_of(&win(10)), Some(ws(workspace)));
+            let cut = rt.backend.frames[&win(10)];
+            assert_eq!(cut.y + cut.height, center_bottom, "{action:?}: cut short");
+            rt.backend.clamp_bottom.clear();
+            act(&mut rt, WorkerAction::Retile);
+            assert_eq!(rt.backend.frames.get(&win(10)), Some(&portrait), "{action:?}");
+        }
+    }
+}
+
+/// #428: a window that stays short of its tile after a move (a maximum size)
+/// is written again only up to the attempt limit, then accepted as it is.
+#[test]
+fn a_window_that_stays_short_after_a_move_is_accepted_at_the_attempt_limit() {
+    let mut rt = rig(&[(10, 1, CENTER)]);
+    rt.backend
+        .clamp_bottom
+        .insert(win(10), CENTER.y + CENTER.height);
+    act(&mut rt, WorkerAction::MoveFocused(ws(6)));
+    for _ in 0..5 {
+        act(&mut rt, WorkerAction::Retile);
+    }
+    let tile = BackendCall::Apply(win(10), LEFT);
+    let writes = rt.backend.calls.iter().filter(|call| **call == tile);
+    let limit = super::super::cycle::APPLY_ATTEMPT_LIMIT;
+    assert_eq!(writes.count(), usize::from(limit));
+    assert!(rt.constrained[ws(6).index()].contains_key(&win(10)));
+    assert!(!rt.relocated.contains(&win(10)));
+}

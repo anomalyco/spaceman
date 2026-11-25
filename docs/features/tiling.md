@@ -176,6 +176,12 @@ pause, quit, or hotkey loss.
   from refusals visible right after the write, and kept until the window closes or Spaceman
   restarts. Apps that clamp
   later (Electron aspect ratios) are still recorded as constrained instead of fought every cycle.
+  A window that comes back short right after moving to another display (macOS can cut the
+  first resize to the display it left, so it stops at that display's bottom edge on a taller
+  portrait one) is written again on the following cycles, up to the usual attempt limit (three
+  writes in all), before its size is accepted (#428; `src/app/tests/three_display.rs`
+  `move_to_tall_portrait_display_retries_a_frame_cut_to_the_old_display`,
+  `a_window_that_stays_short_after_a_move_is_accepted_at_the_attempt_limit`).
   If the requested split cannot fit, Spaceman tries grouping one adjacent pair of root children
   on the other axis. It checks both width and height and keeps window order. Automatic fits
   are temporary; the requested layout returns when it fits again. A resize or balance while a

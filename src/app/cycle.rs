@@ -313,6 +313,9 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
         self.applied[target.index()].remove(window);
         self.apply_attempts[source.index()].remove(window);
         self.apply_attempts[target.index()].remove(window);
+        if source != target {
+            self.relocated.insert(window.clone());
+        }
     }
 
     fn reconcile_display(
@@ -446,6 +449,8 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
         let workspaces = &self.workspaces;
         self.minimum_sizes
             .retain(|window, _| workspaces.workspace_of(window).is_some());
+        self.relocated
+            .retain(|window| workspaces.workspace_of(window).is_some());
         let observed_frames = live::observed_frames(&scoped_observation);
         let engine = self.workspaces.engine_mut(workspace);
         engine.fit_minimums(&settings, &self.minimum_sizes);
