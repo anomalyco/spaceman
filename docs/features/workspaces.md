@@ -228,7 +228,8 @@ Displays                                                    // ws.displays
 │   saved assignment keeps a Disconnected displays card with the picker on Not connected
 ├── Each display remembers, by its UUID, which selector's workspace it showed last, so two
 │   selectors naming one display (secondary and its UUID) never compete: a reconnect, a restart
-│   and a config edit that only changes the selector all keep the same workspace in front
+│   and a config edit that only changes the selector all keep the same workspace in front,
+│   whether the edited workspace is the one shown or one hidden behind it
 ├── A workspace that moves display with a reconnect brings its floats from the display it left
 ├── Deleting the last declaration of an unused named workspace makes it unavailable at once
 └── Display added or removed -> hidden windows re-parked against the new displays; visible owned
@@ -395,7 +396,8 @@ on the same letter.
   display across a restart (`restart_dual_selector.rs`, issue 386), a reconnect
   (`reconnect_dual_selector.rs`, issue 404) and a config edit (`config_same_display_alias.rs`,
   issue 423, and moving the edited workspace away revealing the one shown just before it, issue
-  544); moving a workspace back after switches between those selectors
+  544; editing a hidden workspace's selector keeps the shown one in front, issue 542); moving a
+  workspace back after switches between those selectors
   (`move_back_reveals_last_shown.rs`, issue 400); restored cross-selector history
   (`restored_cross_selector_history.rs`, issue 401); a tall float's round trip
   (`tall_float_round_trip.rs`, issue 403); floats returning on reconnect

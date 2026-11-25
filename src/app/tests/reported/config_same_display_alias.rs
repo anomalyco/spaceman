@@ -193,3 +193,67 @@ fn move_after_alias_edit_reveals_the_workspace_shown_before() {
         assert!(rt.parked.contains_key(&window(60)), "{target:?}");
     }
 }
+
+/// #542: the edited workspace is hidden behind another selector's workspace
+/// on the same display; it stays hidden and the shown one stays in front.
+#[test]
+fn hidden_workspace_selector_edit_keeps_the_shown_one_in_front() {
+    let displays = portrait_displays();
+    // (switches, edited workspace, new selector, shown workspace)
+    for (switches, edited, selector, shown) in [
+        ([6, 5, 7], 6, "secondary", 5),
+        ([5, 6, 7], 5, "secondary-id", 6),
+    ] {
+        let mut rt = configured_rig(
+            alias_config("secondary", "dwindle", 0),
+            &displays,
+            &[(1, 10, 0), (5, 50, 1), (6, 60, 1), (7, 70, 2)],
+        );
+        for n in switches {
+            execute(&mut rt, WorkerAction::SwitchWorkspace(ws(n)), &displays).unwrap();
+        }
+        assert!(rt.is_visible(ws(shown), &displays));
+        let mut config = alias_config("secondary", "dwindle", 0);
+        config.set_workspace_monitor(ws(edited), DisplaySelector::parse(selector));
+        rt.replace_config(config);
+        let debug = execute(&mut rt, WorkerAction::Retile, &displays).unwrap();
+        assert_eq!(
+            debug["active_workspaces"],
+            serde_json::json!([1, shown, 7]),
+            "editing {edited} to {selector}"
+        );
+        let shown_window = window(u32::from(shown) * 10);
+        let edited_window = window(u32::from(edited) * 10);
+        assert!(!rt.parked.contains_key(&shown_window), "{edited} {selector}");
+        assert!(rt.parked.contains_key(&edited_window), "{edited} {selector}");
+        // An explicit switch still brings the edited workspace forward.
+        let debug =
+            execute(&mut rt, WorkerAction::SwitchWorkspace(ws(edited)), &displays).unwrap();
+        assert_eq!(debug["active_workspaces"], serde_json::json!([1, edited, 7]));
+    }
+}
+
+/// #542 review: a display that showed `secondary` while the left display was
+/// unplugged holds a newer record on that lane. After a reconnect the left
+/// display still shows 6 through its UUID, so renaming 6's selector to
+/// `secondary` keeps 6 in front (#423).
+#[test]
+fn shown_workspace_selector_edit_ignores_another_displays_newer_record() {
+    let displays = portrait_displays();
+    let all = displays.displays();
+    let unplugged = macos::DisplayOutputs::new(vec![all[0].clone(), all[2].clone()]).unwrap();
+    let mut rt = configured_rig(alias_config("secondary", "dwindle", 0), &displays, &[]);
+    for n in [9, 6] {
+        execute(&mut rt, WorkerAction::SwitchWorkspace(ws(n)), &displays).unwrap();
+    }
+    // With the left display gone, secondary names the right one, which shows 4.
+    let debug = execute(&mut rt, WorkerAction::SwitchWorkspace(ws(4)), &unplugged).unwrap();
+    assert_eq!(debug["active_workspaces"], serde_json::json!([1, 4]));
+    let debug = execute(&mut rt, WorkerAction::Retile, &displays).unwrap();
+    assert_eq!(debug["active_workspaces"], serde_json::json!([1, 6, 9]));
+    let mut config = alias_config("secondary", "dwindle", 0);
+    config.set_workspace_monitor(ws(6), DisplaySelector::Secondary);
+    rt.replace_config(config);
+    let debug = execute(&mut rt, WorkerAction::Retile, &displays).unwrap();
+    assert_eq!(debug["active_workspaces"], serde_json::json!([1, 6, 9]));
+}

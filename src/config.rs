@@ -639,16 +639,17 @@ impl Config {
     }
 
     pub fn configure_workspaces(&self, workspaces: &mut Workspaces) {
-        self.configure_workspaces_with(workspaces, |_, _| false);
+        self.configure_workspaces_with(workspaces, |_, _, _| false);
     }
 
-    /// Applies the named workspaces and display assignments. same_display says
-    /// whether two selectors name one connected display, so a workspace that
-    /// display shows stays in front when only its selector changes.
+    /// Applies the named workspaces and display assignments. keeps_front says
+    /// whether a workspace is shown and its old and new selectors name the one
+    /// connected display showing it, so it stays in front when only its
+    /// selector changes.
     pub(crate) fn configure_workspaces_with(
         &self,
         workspaces: &mut Workspaces,
-        same_display: impl Fn(&DisplaySelector, &DisplaySelector) -> bool,
+        keeps_front: impl Fn(WorkspaceId, &DisplaySelector, &DisplaySelector) -> bool,
     ) {
         let named: HashSet<_> = self.named_workspaces().collect();
         workspaces.retain_named(|workspace| named.contains(&workspace));
@@ -667,7 +668,7 @@ impl Config {
                     || Workspaces::default_assignment(workspace),
                     |(_, selector)| selector.clone(),
                 );
-            workspaces.set_assignment_with(workspace, target, &same_display);
+            workspaces.set_assignment_with(workspace, target, &keeps_front);
         }
     }
 

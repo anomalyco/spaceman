@@ -95,15 +95,23 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
             self.exact_spacing_workspaces.extend(WorkspaceId::all());
         }
         // An edit that only renames the selector a display is known by (its
-        // UUID instead of secondary) keeps that display's workspace in front.
+        // UUID instead of secondary) keeps that display's workspace in front
+        // (#423). Only a workspace a display shows qualifies: a hidden one
+        // that is still its own selector's last workspace stays hidden (#542).
         let known = self.displays.known_outputs().cloned();
-        config.configure_workspaces_with(&mut self.workspaces, |a, b| {
-            known.as_ref().is_some_and(|outputs| {
-                match (outputs.resolve_exact(a), outputs.resolve_exact(b)) {
-                    (Some(a), Some(b)) => a.id == b.id,
-                    _ => false,
-                }
-            })
+        let shown: HashSet<WorkspaceId> = known
+            .iter()
+            .flat_map(|outputs| self.visible_workspaces(outputs))
+            .map(|resolved| resolved.workspace)
+            .collect();
+        config.configure_workspaces_with(&mut self.workspaces, |workspace, a, b| {
+            shown.contains(&workspace)
+                && known.as_ref().is_some_and(|outputs| {
+                    match (outputs.resolve_exact(a), outputs.resolve_exact(b)) {
+                        (Some(a), Some(b)) => a.id == b.id,
+                        _ => false,
+                    }
+                })
         });
         self.config = config;
     }
