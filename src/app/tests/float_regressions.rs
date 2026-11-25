@@ -1,5 +1,6 @@
-//! Floating-window regressions: rule origin across a restart (#160), focus next
-//! from and through floats (#178), and a float omitted from one snapshot (#179).
+//! Floating-window regressions: rule origin across a restart (#160) and within a session
+//! (#493), focus next from and through floats (#178), and a float omitted from one snapshot
+//! (#179).
 use super::*;
 
 fn act(runtime: &mut WorkspaceRuntime<FakeBackend>, action: WorkerAction) -> Result<(), String> {
@@ -101,6 +102,31 @@ fn a_manual_float_keeps_floating_after_a_restart() {
         runtime.workspaces.engine(WorkspaceId::ONE).bound_windows(),
         vec![window(20)]
     );
+}
+
+/// #493: a float rule added and removed while a window floats by hand leaves it floating by
+/// hand; only Toggle Float tiles it again.
+#[test]
+fn a_temporary_float_rule_keeps_a_manual_float() {
+    let mut runtime = runtime(titled_notes(two_windows(10)));
+    act(&mut runtime, WorkerAction::Retile).unwrap();
+    act(&mut runtime, WorkerAction::ToggleFloat).unwrap();
+
+    runtime.replace_config(float_rule());
+    act(&mut runtime, WorkerAction::Retile).unwrap();
+    runtime.replace_config(Config::default());
+    act(&mut runtime, WorkerAction::Retile).unwrap();
+    assert_eq!(
+        runtime.workspaces.floating_workspace_of(&window(10)),
+        Some(WorkspaceId::ONE)
+    );
+    assert_eq!(
+        runtime.workspaces.engine(WorkspaceId::ONE).bound_windows(),
+        vec![window(20)]
+    );
+
+    act(&mut runtime, WorkerAction::ToggleFloat).unwrap();
+    assert_eq!(runtime.workspaces.floating_workspace_of(&window(10)), None);
 }
 
 fn tiles_and_focused_float() -> WorkspaceRuntime<FakeBackend> {

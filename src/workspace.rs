@@ -223,10 +223,10 @@ impl Workspaces {
         }
         self.displays.restore_fronts(fronts);
         // The saved state does not say why a window floated, so every restored float floats
-        // by hand until its first observation hands it back to a float rule.
+        // by hand until its first observation settles whether a float rule holds it.
         for (window, workspace) in floating {
             if self.workspace_of(&window).is_none() {
-                self.float(window, workspace, FloatCause::Manual);
+                self.float(window, workspace, FloatCause::Restored);
             }
         }
         for window in pinned {

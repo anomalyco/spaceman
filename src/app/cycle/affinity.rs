@@ -127,14 +127,12 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
                     affinities.insert(window.id.clone(), FrozenWindowAffinity::Ignored);
                     continue;
                 }
-                // A float rule, not a manual override, floats this window. An agent restart
-                // restores every float as manual because the saved state does not say why it
-                // floated, so hand it back to the rule: removing the rule then tiles it again
-                // (#160). A window no workspace owns yet floats by hand when the setup tour
-                // or a recalled placement floated it.
-                if rules.floats() {
-                    self.workspaces.hand_float_to_rule(&window.id);
-                }
+                // An agent restart restores every float without saying why it floated, so its
+                // first observation hands it to a matching float rule (removing the rule then
+                // tiles it again, #160) or keeps it floating by hand. A float set by hand this
+                // session stays manual whatever its rules say (#493). A window no workspace owns
+                // yet floats by hand when the setup tour or a recalled placement floated it.
+                self.workspaces.settle_restored_float(&window.id, rules.floats());
                 let recalled = self.memory.recalled(&window.id);
                 let by_hand = self.workspaces.is_manual_float(&window.id)
                     || (self.workspaces.residency(&window.id).is_none()
