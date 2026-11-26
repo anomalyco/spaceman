@@ -607,7 +607,12 @@ on the same letter.
   three or four fingers on the trackpad hold layout like a Space slide, before macOS posts any
   change and when a swipe is reversed, so the outgoing desktop's tile is not resized and the
   arriving window is not adopted beside it; `src/macos/swipes.rs`
-  `three_or_four_touching_fingers_may_be_sliding_between_desktops` covers which touches count.
+  `horizontal_three_or_four_finger_slides_arm_space_hold_until_lift` and
+  `stationary_three_finger_touch_and_vertical_swipe_never_freeze_layout` cover which touches
+  count. `a_thumb_lifting_mid_swipe_still_arms_space_hold` (`src/macos/swipes.rs`) and
+  `space_slide_survives_finger_count_changes_that_spend_a_swipe` (`src/swipe.rs`) (#677): a
+  finger-count change mid-swipe (a resting thumb lifting from four fingers to three, a fifth
+  contact) still starts the hold once the remaining three or four fingers slide sideways.
   `a_space_change_reported_a_second_after_the_fingers_lift_is_still_held` (#572): macOS reports a
   swipe's Space change about a second after the fingers lift, and layout holds for about 1.5 s
   after the last touch, so neither desktop's windows are written before the change. That delay is

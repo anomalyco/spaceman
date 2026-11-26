@@ -15,7 +15,7 @@ use objc2_core_graphics::{
 };
 use objc2_foundation::{NSString, NSUserDefaults};
 
-use crate::swipe::{Fingers, Swipe, SwipeTracker};
+use crate::swipe::{Fingers, SpaceSlide, Swipe, SwipeTracker};
 
 /// A gap this long between gesture frames means the lift was missed (matches
 /// `crate::swipe::SwipeTracker`).
@@ -35,6 +35,7 @@ const SPACE_GESTURE_REFRESH_SECONDS: f64 = 0.5;
 #[derive(Debug, Default)]
 struct SwipeGate {
     tracker: SwipeTracker,
+    space_slide: SpaceSlide,
     touching: bool,
     suppressed: bool,
     sliding_spaces: bool,
@@ -49,6 +50,7 @@ impl SwipeGate {
         self.touching = false;
         self.suppressed = false;
         self.sliding_spaces = false;
+        self.space_slide.reset();
         self.last_frame = None;
         self.last_space_note = None;
         self.space_gesture_note_due = false;
@@ -58,6 +60,7 @@ impl SwipeGate {
         if self.touching {
             self.suppressed = true;
             self.sliding_spaces = false;
+            self.space_slide.reset();
             self.last_space_note = None;
             self.space_gesture_note_due = false;
             self.tracker = SwipeTracker::default();
@@ -77,6 +80,7 @@ impl SwipeGate {
             self.suppressed = false;
             self.touching = false;
             self.sliding_spaces = false;
+            self.space_slide.reset();
             self.last_space_note = None;
             self.space_gesture_note_due = false;
         }
@@ -86,6 +90,7 @@ impl SwipeGate {
             self.touching = false;
             self.suppressed = false;
             self.sliding_spaces = false;
+            self.space_slide.reset();
             self.last_space_note = None;
             if was_sliding {
                 self.space_gesture_note_due = true;
@@ -96,6 +101,7 @@ impl SwipeGate {
         if pointer_down {
             self.suppressed = true;
             self.sliding_spaces = false;
+            self.space_slide.reset();
             self.last_space_note = None;
             self.space_gesture_note_due = false;
             self.tracker = SwipeTracker::default();
@@ -105,9 +111,10 @@ impl SwipeGate {
             return None;
         }
         let swipe = self.tracker.frame(at, touches);
-        if !self.sliding_spaces
-            && (swipe.is_some() || self.tracker.is_sliding_horizontally(touches))
-        {
+        // Tracked apart from the workspace swipe, which a finger-count change
+        // spends while macOS goes on sliding between desktops (#677).
+        let slid = self.space_slide.frame(touches);
+        if !self.sliding_spaces && (swipe.is_some() || slid) {
             self.sliding_spaces = true;
             self.last_space_note = Some(at);
             self.space_gesture_note_due = true;
@@ -465,5 +472,24 @@ mod tests {
         }
         gate.frame(1.75, &[], false);
         assert!(!gate.take_space_gesture_note());
+    }
+
+    /// #677: a resting thumb that lifts mid-swipe (four fingers to three)
+    /// spends the workspace swipe, but macOS still slides between desktops,
+    /// so the remaining three fingers' horizontal slide arms the hold.
+    #[test]
+    fn a_thumb_lifting_mid_swipe_still_arms_space_hold() {
+        let mut gate = SwipeGate::default();
+        gate.frame(0.0, &fingers(0.5, 0.5, 4), false);
+        gate.frame(0.01, &fingers(0.5, 0.5, 3), false);
+        assert!(!gate.may_slide_spaces());
+        assert!(!gate.take_space_gesture_note());
+
+        gate.frame(0.02, &fingers(0.47, 0.5, 3), false);
+        assert!(gate.may_slide_spaces());
+        assert!(gate.take_space_gesture_note());
+
+        gate.frame(0.03, &[], false);
+        assert!(gate.take_space_gesture_note());
     }
 }
