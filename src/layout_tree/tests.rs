@@ -5,6 +5,7 @@ use crate::{Axis, Direction, Rect, ResizeDirection, SlotId};
 use super::{Child, LayoutTree, MIN_TILE_EXTENT, Node};
 
 mod dwindle_close_open;
+mod dwindle_nested_manual_axis;
 
 #[test]
 fn edge_insertion_after_resize_uses_the_destination_weight_scale() {

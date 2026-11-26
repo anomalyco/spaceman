@@ -81,6 +81,15 @@ pub(super) fn retain_node(
             let shrank = surviving.len() < old_len;
             match surviving.len() {
                 0 => None,
+                // A user-arranged split left holding one tile keeps its
+                // direction for the next tile that joins it (#611).
+                1 if reorient && !auto_axis && matches!(surviving[0].node, Node::Leaf(_)) => {
+                    Some(Node::Split {
+                        axis,
+                        auto_axis,
+                        children: surviving,
+                    })
+                }
                 1 => {
                     let mut promoted = surviving.remove(0).node;
                     if reorient && shrank {

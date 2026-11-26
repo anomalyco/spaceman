@@ -499,7 +499,18 @@ fn node_at_mut<'a>(node: &'a mut Node, path: &[usize]) -> Option<&'a mut Node> {
     Some(node)
 }
 
+/// The split a keyboard resize or balance of `slot` acts on, and the index of the child that
+/// holds it: the split directly holding the tile, or, when that is a one-child split kept for
+/// its direction (#611), the nearest ancestor where the tile has a sibling.
 fn immediate_parent(node: &Node, slot: SlotId, path: Vec<usize>) -> Option<(Vec<usize>, usize)> {
+    sizing_parent(node, slot, path).map(|(path, index, _)| (path, index))
+}
+
+fn sizing_parent(
+    node: &Node,
+    slot: SlotId,
+    path: Vec<usize>,
+) -> Option<(Vec<usize>, usize, usize)> {
     let Node::Split { children, .. } = node else {
         return None;
     };
@@ -507,11 +518,16 @@ fn immediate_parent(node: &Node, slot: SlotId, path: Vec<usize>) -> Option<(Vec<
         .iter()
         .position(|child| child.node.contains(slot))?;
     if matches!(children[index].node, Node::Leaf(existing) if existing == slot) {
-        return Some((path, index));
+        return Some((path, index, children.len()));
     }
-    let mut child_path = path;
+    let mut child_path = path.clone();
     child_path.push(index);
-    immediate_parent(&children[index].node, slot, child_path)
+    let nested = sizing_parent(&children[index].node, slot, child_path)?;
+    if nested.2 == 1 && children.len() > 1 {
+        Some((path, index, children.len()))
+    } else {
+        Some(nested)
+    }
 }
 
 fn minimum_extent(node: &Node, axis: Axis, minimums: Minimums<'_>) -> i32 {

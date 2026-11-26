@@ -274,20 +274,10 @@ impl LayoutTree {
             };
             return slot;
         };
-        // A user-arranged root left holding just this tile keeps its direction
-        // for the next tile (#507); only auto-chosen splits follow the shape.
-        if let Node::Split {
-            auto_axis: false,
-            children,
-            ..
-        } = &mut self.root
-            && children.len() == 1
-            && children[0].node == Node::Leaf(target)
-        {
-            children.push(Child {
-                weight: children[0].weight,
-                node: Node::Leaf(slot),
-            });
+        // A user-arranged split, root (#507) or nested (#611), left holding
+        // just this tile keeps its direction for the next tile; only
+        // auto-chosen splits follow the shape.
+        if join_lone_manual_split(&mut self.root, target, slot) {
             return slot;
         }
         let frame = shown
@@ -392,6 +382,29 @@ fn split_leaf(node: &mut Node, target: SlotId, inserted: SlotId, axis: Axis) -> 
             .iter_mut()
             .any(|child| split_leaf(&mut child.node, target, inserted, axis)),
     }
+}
+
+/// Add `inserted` beside `target` when `target` is the only tile left in a
+/// user-arranged split, so the pair keeps that split's direction.
+fn join_lone_manual_split(node: &mut Node, target: SlotId, inserted: SlotId) -> bool {
+    let Node::Split {
+        auto_axis,
+        children,
+        ..
+    } = node
+    else {
+        return false;
+    };
+    if !*auto_axis && children.len() == 1 && children[0].node == Node::Leaf(target) {
+        children.push(Child {
+            weight: children[0].weight,
+            node: Node::Leaf(inserted),
+        });
+        return true;
+    }
+    children
+        .iter_mut()
+        .any(|child| join_lone_manual_split(&mut child.node, target, inserted))
 }
 
 /// Insert in the same container without changing its share of the parent.
