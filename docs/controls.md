@@ -146,7 +146,8 @@ switch to the target with the tab. If the window has a single tab, or the app ha
 `move-tab` moves the whole window, exactly like `move`. A tab whose window has not appeared within
 800 ms is left where the app put it. A second `move-tab` sent while an earlier tab's window is
 still on its way waits for that window first (up to the same 800 ms), so each tab reaches its own
-workspace. `move-tab` has no default shortcut; bind one in
+workspace, and then sends the next tab of the same group, even after an earlier `--follow` moved
+focus away from it. Without `--follow`, focus then stays on the tab you were in. `move-tab` has no default shortcut; bind one in
 [`[shortcuts.bindings]`](configuration.md#shortcuts), such as `"ctrl+alt+shift+2" = "move-tab 2"`.
 
 ## Scratchpad (Lab)

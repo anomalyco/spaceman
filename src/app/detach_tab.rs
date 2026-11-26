@@ -28,7 +28,38 @@ pub(super) struct PendingTabDetach {
     /// Every window on screen before the press; none of them is the new one.
     /// `None` when the window server could not be read before the press.
     onscreen_before: Option<HashSet<u32>>,
+    /// Where focus goes once a detach without `--follow` settles.
+    settle_focus: SettleFocus,
     phase: DetachPhase,
+}
+
+/// Where a detach without `--follow` leaves focus.
+#[derive(Clone, Debug, Eq, PartialEq)]
+enum SettleFocus {
+    /// The press went to the focused window: focus stays with its tabs.
+    Remaining,
+    /// Keying the source moved focus off this window (#597): it gets it back.
+    HandBack(crate::PhysicalWindowId),
+    /// Keying moved focus off nothing reported: leave it alone.
+    Keep,
+}
+
+/// `move_tab` focused the window to press on, away from `left`.
+#[derive(Clone, Debug, Eq, PartialEq)]
+struct Keyed {
+    left: Option<crate::PhysicalWindowId>,
+    /// The window was parked on a hidden workspace and keyed under a
+    /// departure guard, without a focus request.
+    parked: bool,
+}
+
+/// A settled tab detach: `detached` went to its target and `remaining` took
+/// over the source slot at `settled_at`.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub(super) struct TabDetachHandoff {
+    detached: crate::PhysicalWindowId,
+    remaining: crate::PhysicalWindowId,
+    settled_at: Instant,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -75,6 +106,7 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
                 .workspace_of_any(&window)
                 .ok_or("Window is not managed by Spaceman")?
         };
+        let keyed = self.key_window_for_detach(&window, source, &outputs)?;
         let onscreen_before = self
             .backend
             .onscreen_window_frames()
@@ -83,7 +115,10 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
         match self.backend.detach_tab(&window) {
             macos::TabDetachResult::SingleTabOrUnsupported => {
                 log_event!("move tab: {window:?} has no tab to detach; moving the window");
-                if self.current_focus().as_ref() == Some(&window) {
+                // Keyed only for the press: hand focus back and move the
+                // window the way `move` moves one that is not focused.
+                let keyed = keyed.map(|keyed| self.hand_back_keyed(keyed, &window));
+                if keyed.is_none() && self.current_focus().as_ref() == Some(&window) {
                     if follow {
                         self.move_focused_follow(target, outputs, cancelled)
                     } else {
@@ -115,10 +150,20 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
                 }
             }
             macos::TabDetachResult::Error(error) => {
+                if let Some(keyed) = keyed {
+                    self.hand_back_keyed(keyed, &window);
+                }
                 Err(format!("Move Tab to New Window failed: {error}"))
             }
             macos::TabDetachResult::Detached => {
                 log_event!("move tab: detached a tab of {window:?} for workspace {target}");
+                let settle_focus = match keyed {
+                    None => SettleFocus::Remaining,
+                    Some(Keyed {
+                        left: Some(left), ..
+                    }) => SettleFocus::HandBack(left),
+                    Some(Keyed { left: None, .. }) => SettleFocus::Keep,
+                };
                 self.tab_detach = Some(PendingTabDetach {
                     app: window.app.clone(),
                     source_window: window,
@@ -128,6 +173,7 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
                     expires_at: self.backend.now() + TAB_DETACH_TIMEOUT,
                     source_frame,
                     onscreen_before,
+                    settle_focus,
                     phase: DetachPhase::Awaiting,
                 });
                 self.cycle(outputs, cancelled)
@@ -135,17 +181,71 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
         }
     }
 
+    /// The app's menu command acts on its key window. After an earlier
+    /// `--follow` that is the tab it sent away, not the tab group this command
+    /// means (#597), so key `window` first and return the focus it took from
+    /// another window. A window on a shown workspace takes focus as usual; one
+    /// parked on a hidden workspace is keyed without letting focus follow chase
+    /// it. Fails if `window` cannot be focused, rather than pressing on another.
+    fn key_window_for_detach(
+        &mut self,
+        window: &crate::PhysicalWindowId,
+        source: WorkspaceId,
+        outputs: &macos::DisplayOutputs,
+    ) -> Result<Option<Keyed>, String> {
+        let reported = self.backend.focused_window();
+        if reported.as_ref() == Some(window) {
+            return Ok(None);
+        }
+        // What the user has focused: a focus command still in flight counts
+        // over Accessibility's lagging report of the window it left.
+        let effective = self.effective_focus(reported.clone());
+        if effective.as_ref() == Some(window) {
+            // Already the focused window in all but the report: key it again
+            // for the press, but it stays focused like any other move-tab.
+            if !self.request_focus(window, [reported]) {
+                log_event!("move tab: could not key {window:?} again; pressing anyway");
+            }
+            return Ok(None);
+        }
+        if self.is_visible(source, outputs) {
+            if self.request_focus(window, [reported, effective.clone()]) {
+                return Ok(Some(Keyed {
+                    left: effective,
+                    parked: false,
+                }));
+            }
+        } else if self.backend.focus_window(window) {
+            self.guard_departure(Some(window.clone()), Some(window.app.clone()));
+            return Ok(Some(Keyed {
+                left: effective,
+                parked: true,
+            }));
+        }
+        Err(format!("Could not focus {window:?} to detach its tab"))
+    }
+
+    /// Undoes `key_window_for_detach` when the press detached nothing.
+    fn hand_back_keyed(&mut self, keyed: Keyed, window: &crate::PhysicalWindowId) {
+        if keyed.parked {
+            self.clear_suppressed_focus();
+        }
+        if let Some(left) = keyed.left {
+            let _: bool = self.request_focus(&left, [Some(window.clone())]);
+        }
+    }
+
     /// A newer `move-tab` lets an earlier detach still waiting for its window
     /// finish first: it observes until that window is claimed and sent to its
     /// own target, or the detach expires, so the earlier tab keeps its
     /// destination (#570). Returns `(detached, remaining)` if the pending
-    /// detach settled while waiting.
+    /// detach settled while waiting, or settled in the moments before this
+    /// command ran, while it was already queued (#597).
     fn finish_pending_tab_detach(
         &mut self,
         outputs: &macos::DisplayOutputs,
         cancelled: &AtomicBool,
     ) -> Result<Option<(crate::PhysicalWindowId, crate::PhysicalWindowId)>, String> {
-        self.last_tab_detach_handoff = None;
         let mut was_cancelled = false;
         while let Some(pending) = self.tab_detach.as_ref() {
             let expires_at = pending.expires_at;
@@ -170,7 +270,12 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
                 dropped.source_window
             );
         }
-        Ok(self.last_tab_detach_handoff.take())
+        let now = self.backend.now();
+        Ok(self
+            .last_tab_detach_handoff
+            .take()
+            .filter(|handoff| now < handoff.settled_at + TAB_DETACH_TIMEOUT)
+            .map(|handoff| (handoff.detached, handoff.remaining)))
     }
 
     /// Before `app`'s window affinities freeze: its first window that was not on
@@ -280,7 +385,11 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
                 detached,
                 remaining,
             } => {
-                self.last_tab_detach_handoff = Some((detached.clone(), remaining.clone()));
+                self.last_tab_detach_handoff = Some(TabDetachHandoff {
+                    detached: detached.clone(),
+                    remaining: remaining.clone(),
+                    settled_at: self.backend.now(),
+                });
                 (detached.clone(), remaining.clone())
             }
             DetachPhase::Awaiting if self.backend.now() >= pending.expires_at => {
@@ -317,30 +426,38 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
             )?;
             status.failed += failed;
         } else {
-            let focus = if pending.follow {
-                &detached
-            } else {
-                &remaining
+            let focus = match (pending.follow, &pending.settle_focus) {
+                (true, _) => Some(&detached),
+                (false, SettleFocus::Remaining) => Some(&remaining),
+                (false, SettleFocus::HandBack(left)) => Some(left),
+                (false, SettleFocus::Keep) => None,
             };
+            // Handing focus back leaves the window keyed for the press behind
+            // too; it may still be reported while the request is in flight.
+            let keyed = (!pending.follow
+                && matches!(pending.settle_focus, SettleFocus::HandBack(_)))
+            .then(|| pending.source_window.clone());
             let reported = self.backend.focused_window();
-            if self.request_focus(focus, [reported]) {
-                if pending.follow {
-                    self.record_focused_workspace(target);
-                    // The pointer follows the tab the command sent and
-                    // followed, onto its display (#417).
-                    let display = outputs.resolve(self.workspaces.assignment(target));
-                    let (display_id, output) = (display.id.clone(), display.frame);
-                    let frame = self.focus_window_frame(focus, target, output);
-                    self.follow_pointer_to(
-                        CommandOrigin::Explicit,
-                        &display_id,
-                        output,
-                        frame,
-                        outputs,
-                    );
+            match focus {
+                Some(focus) if self.request_focus(focus, [reported, keyed]) => {
+                    if pending.follow {
+                        self.record_focused_workspace(target);
+                        // The pointer follows the tab the command sent and
+                        // followed, onto its display (#417).
+                        let display = outputs.resolve(self.workspaces.assignment(target));
+                        let (display_id, output) = (display.id.clone(), display.frame);
+                        let frame = self.focus_window_frame(focus, target, output);
+                        self.follow_pointer_to(
+                            CommandOrigin::Explicit,
+                            &display_id,
+                            output,
+                            frame,
+                            outputs,
+                        );
+                    }
                 }
-            } else {
-                log_event!("move tab: could not focus {focus:?}");
+                Some(focus) => log_event!("move tab: could not focus {focus:?}"),
+                None => {}
             }
             if !target_visible {
                 // Focus follow must not chase the parked tab back to its workspace.

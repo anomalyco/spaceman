@@ -126,6 +126,10 @@ Send tab to workspace                                      // ws.move-tab
 │   and focuses the tab
 ├── A newer move-tab while one is pending -> observes until the pending tab is claimed for its own
 │   <ws> or expires, then presses (issue 570)
+├── The press acts on the app's key window, so a newer move-tab keys the tab group it means first:
+│   the group's next tab when the earlier tab was sent away (even if that settled just before the
+│   newer command ran), without letting focus follow chase it on a hidden workspace; without
+│   --follow, focus then goes back to the window it was on (issue 597)
 └── No window within 800 ms -> dropped; later windows open normally
 
 Mouse follows focus ([settings] mouse_follows_focus)       // ws.mouse-follows-focus
@@ -611,9 +615,12 @@ on the same letter.
   next tab keeps the source slot, a single-tab window moves whole (with and without `--follow`), a
   late window is claimed by a prompt re-observation, expiry and a failed press leave nothing pending,
   a second move-tab while one is pending lets the earlier tab reach its own workspace first (#570)
-  and waits out a detach whose window never appears, and another app's new window is never claimed. `src/macos/tabs.rs` covers menu-item matching and
-  loading AppKit's translations; `src/control.rs`, `src/shortcuts.rs` and `src/hotkeys.rs` cover
-  parsing and bindings. Pressing the real menu item in Safari, Chromium or Ghostty is not covered.
+  and waits out a detach whose window never appears, a move-tab after a `--follow` detaches the
+  group's next tab even when the first settled before it ran, from a shown or a hidden source, and
+  without `--follow` leaves focus on the followed tab (#597; the fake presses only on the key
+  window), and another app's new window is never claimed. `src/macos/tabs.rs` covers menu-item
+  matching and loading AppKit's translations; `src/control.rs`, `src/shortcuts.rs` and
+  `src/hotkeys.rs` cover parsing and bindings. Pressing the real menu item in Safari, Chromium or Ghostty is not covered.
 - Live gauntlet, `scripts/gauntlet.sh`: `ctl switch` parks every window to at most a one-point strip,
   records each original frame in `parked-windows.json`, restores the exact frames on the way back and
   empties the file; `ctl move` parks the window with its frame recorded and hands keyboard focus to
