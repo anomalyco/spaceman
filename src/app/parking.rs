@@ -264,18 +264,18 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
             let park_output = Self::display_for_frame(frame, &displays).unwrap_or(output);
             let target =
                 crate::geometry::parked_frame_clear_of(park_output, &displays, &screens, frame);
-            candidates.push((workspace, window, recovery, target));
+            candidates.push((workspace, window, recovery, target, frame));
         }
         if candidates.is_empty() {
             return fullscreen_hud;
         }
         self.order_back_to_front(&mut candidates, |(_, window, ..)| window.window_id);
-        for (_, window, frame, _) in &candidates {
+        for (_, window, frame, ..) in &candidates {
             let display = self.recovery_display(*frame);
             self.parked.insert(window.clone(), *frame, display);
         }
         if let Err(error) = self.persist_parked() {
-            for (_, window, _, _) in &candidates {
+            for (_, window, ..) in &candidates {
                 self.parked.remove(window);
             }
             *failed += candidates.len();
@@ -284,7 +284,7 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
         }
 
         let mut restored = Vec::new();
-        for (workspace, window, frame, target) in candidates {
+        for (workspace, window, frame, target, from) in candidates {
             let record = self.parked.record(&window).cloned();
             log_event!(
                 "park inactive: {:?} (workspace {}) from {:?}",
@@ -298,7 +298,7 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
             }
             match outcome {
                 macos::ApplyOutcome::Applied => {
-                    self.parked.park_applied(&window, self.backend.now());
+                    self.parked.park_applied_from(&window, self.backend.now(), from);
                 }
                 macos::ApplyOutcome::Gone => {
                     restored.extend(self.parked.remove(&window).map(|r| (window.clone(), r)));
@@ -340,7 +340,15 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
             self.parked.stayed_parked(window, now);
             return None;
         }
-        if self.parked.settling(window, now)
+        // A stale readback right after a park still shows where the window was when the
+        // park was issued (not necessarily its recovery frame, which a cross-display park
+        // moves). A window that turns up somewhere else while its first park settles (a
+        // background unhide, #693) moved since the park; re-park it now instead of
+        // leaving it on screen for the rest of the grace.
+        let moved_since_park = self.parked.settling_from(window, now).is_some_and(|from| {
+            !server.position_approximately_equals(from, RESTORE_CONFIRM_TOLERANCE)
+        });
+        if (self.parked.settling(window, now) && !moved_since_park)
             || (context.frontmost.as_ref() == Some(&window.app)
                 && !self.returned_by_space_slide(window))
         {
@@ -564,7 +572,7 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
         let outcome = self.backend.set_parked_position(window, parked);
         log_event!("park: {:?} from {:?} ({:?})", window, recovery, outcome);
         if matches!(outcome, macos::ApplyOutcome::Applied) {
-            self.parked.park_applied(window, self.backend.now());
+            self.parked.park_applied_from(window, self.backend.now(), frame);
         } else {
             // Undo onto the frame it had, not the display it was heading to.
             if recovery != original && !self.record_recovery(window, original) {

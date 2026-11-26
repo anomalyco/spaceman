@@ -34,6 +34,7 @@ mod residency;
 mod restart_recall;
 mod rules;
 mod scratchpad;
+mod settle_grace;
 mod space_transitions;
 mod spacing;
 mod stacked_resize;
