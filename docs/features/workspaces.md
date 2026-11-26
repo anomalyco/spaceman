@@ -206,7 +206,9 @@ Where a new window goes (first match wins)                 // ws.adoption
 │   2+ workspaces) -> remembered workspace, matched by frame, then size, then creation order
 │   (floating if matched by a float rule, dialog/non-resizable without a tile rule, or remembered
 │   as floating; a remembered float moves to its remembered position on that workspace's
-│   display, keeping the size the app reopened at)
+│   display, keeping the size the app reopened at); a claimed window whose first park to a
+│   hidden workspace fails keeps its claim and is parked there again next cycle, a float at its
+│   remembered position (#689)
 ├── float / pin rule, built-in float, dialog / non-resizable (no tile rule) -> floating on the
 │   active workspace under the window's center (unless a route rule above sends it
 │   elsewhere); each float belongs to its own workspace, so two
@@ -559,6 +561,10 @@ on the same letter.
   `app_context_menu_names_route_rules_always_open_and_keeps_pin_for_the_pin_action` and
   `app_context_menu_respects_the_built_in_float_defaults`. No test drives the sheet's field or
   the menus through the pointer.
+- Unit (FakeBackend), `src/app/tests/cross_display.rs`:
+  `a_recalled_window_keeps_its_placement_across_a_refused_first_park` (a recalled tile and a
+  recalled float whose first park is refused join their remembered hidden workspace once the
+  window accepts the move, issue 689).
 - Unit (FakeBackend), `src/app/tests/restart_recall.rs`:
   `every_window_reopened_at_a_parking_spot_is_rescued_and_recalled` (three Safari windows on
   workspaces 1-3, reopened minutes later in the background),

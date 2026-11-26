@@ -99,17 +99,24 @@ impl MemoryState {
 }
 
 impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
-    /// Close recalls whose window lapsed, whose placements are all claimed,
-    /// or whose process exited.
+    /// Close recalls whose window lapsed, whose placements are all claimed and
+    /// joined, or whose process exited. A claimed window no workspace holds yet (its
+    /// first park failed) keeps the recall open so a later cycle sends it to the
+    /// placement it claimed instead of the workspace on screen (#689).
     pub(super) fn close_recalls(&mut self) {
         let now = self.backend.now();
         let backend = &mut self.backend;
+        let workspaces = &self.workspaces;
         let closed: Vec<_> = self
             .memory
             .recalls
             .extract_if(|app, recall| {
                 now.saturating_duration_since(recall.opened) >= RECALL_WINDOW
-                    || recall.remaining.is_empty()
+                    || (recall.remaining.is_empty()
+                        && recall
+                            .claimed
+                            .keys()
+                            .all(|window| workspaces.workspace_of_any(window).is_some()))
                     || !backend.is_process_running(app)
             })
             .map(|(_, recall)| recall)
