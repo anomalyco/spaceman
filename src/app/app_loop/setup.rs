@@ -60,6 +60,12 @@ pub(super) struct SetupRequests {
     arrangement: Option<Arrangement>,
 }
 
+impl SetupRequests {
+    pub(super) fn clear_arrangement(&mut self) {
+        self.arrangement = None;
+    }
+}
+
 impl MainThreadAgent {
     pub(super) fn want_inventory(&mut self) {
         self.setup.inventory = true;
@@ -100,7 +106,7 @@ impl MainThreadAgent {
             // The normal gate starts tiling once restoration ends.
             self.awaiting_accessibility = true;
         } else {
-            self.start_automatic();
+            self.start_automatic(false);
         }
         self.ui_dirty = true;
     }

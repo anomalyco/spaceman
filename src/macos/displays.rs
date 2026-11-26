@@ -15,6 +15,11 @@ use super::SnapshotError;
 unsafe extern "C" {
     fn CGDisplayCreateUUIDFromDisplayID(display: u32) -> *const CFUUID;
     fn CGDisplayIsBuiltin(display: u32) -> u32;
+    fn CGGetOnlineDisplayList(
+        max_displays: u32,
+        online_displays: *mut u32,
+        display_count: *mut u32,
+    ) -> i32;
 }
 
 pub(super) fn main_output() -> Result<Rect, SnapshotError> {
@@ -329,28 +334,34 @@ pub fn outputs() -> Result<DisplayOutputs, SnapshotError> {
     })
 }
 
-/// Counts connected built-in and external displays via `CGDisplayIsBuiltin`. Main thread only;
-/// returns `None` outside the main thread or when no screens are reported.
+/// Counts online built-in and external displays via `CGGetOnlineDisplayList` and
+/// `CGDisplayIsBuiltin`, including displays in a hardware mirror set that `NSScreen::screens`
+/// collapses into one screen. Returns `None` when Core Graphics reports no online displays.
 #[must_use]
 pub fn display_topology() -> Option<DisplayTopology> {
-    autoreleasepool(|_| {
-        let marker = MainThreadMarker::new()?;
-        let screens = NSScreen::screens(marker);
-        let count = screens.count();
-        if count == 0 {
-            return None;
-        }
-        let mut flags = Vec::with_capacity(count);
-        for index in 0..count {
-            let screen = screens.objectAtIndex(index);
-            let display_id = screen_display_id(&screen)?;
-            // SAFETY: `CGDisplayIsBuiltin` queries Core Graphics display metadata for a display ID
-            // and returns a `boolean_t` (0 = false, non-zero = true) without taking pointers.
-            let is_builtin = unsafe { CGDisplayIsBuiltin(display_id) != 0 };
-            flags.push(is_builtin);
-        }
-        Some(DisplayTopology::from_builtin_flags(flags))
-    })
+    let mut count: u32 = 0;
+    // SAFETY: Passing a null buffer with `max_displays = 0` queries the number of online
+    // displays without writing through the buffer pointer; `count` is a valid out-pointer.
+    let status = unsafe { CGGetOnlineDisplayList(0, std::ptr::null_mut(), &mut count) };
+    if status != 0 || count == 0 {
+        return None;
+    }
+    let capacity = count.saturating_add(4);
+    let mut displays = vec![0u32; usize::try_from(capacity).ok()?];
+    let mut filled: u32 = 0;
+    // SAFETY: `displays` holds `capacity` elements and `filled` is a valid out-pointer;
+    // Core Graphics writes at most `capacity` online display IDs.
+    let status = unsafe { CGGetOnlineDisplayList(capacity, displays.as_mut_ptr(), &mut filled) };
+    if status != 0 || filled == 0 {
+        return None;
+    }
+    let filled = usize::try_from(filled).ok()?.min(displays.len());
+    let flags = displays[..filled].iter().map(|&display_id| {
+        // SAFETY: `CGDisplayIsBuiltin` queries Core Graphics display metadata for a display ID
+        // and returns a `boolean_t` (0 = false, non-zero = true) without taking pointers.
+        unsafe { CGDisplayIsBuiltin(display_id) != 0 }
+    });
+    Some(DisplayTopology::from_builtin_flags(flags))
 }
 
 /// Each connected display's Core Graphics ID, keyed by the ID `outputs` gives it. Main thread

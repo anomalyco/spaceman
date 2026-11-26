@@ -11,12 +11,23 @@ pub(super) struct DisplayWatch {
     known: Option<macos::DisplayOutputs>,
     /// The displays before the last change, which pending windows were parked against.
     previous: Option<macos::DisplayOutputs>,
+    /// The frames of the displays the last change took away. A window left off every
+    /// remaining display but still on one of these was stranded by the unplug, not
+    /// hidden there by its app, so it still needs a recovery frame and a park write
+    /// (#589).
+    lost: Vec<crate::Rect>,
 }
 
 impl DisplayWatch {
     /// The displays the runtime last saw.
     pub(super) const fn known_outputs(&self) -> Option<&macos::DisplayOutputs> {
         self.known.as_ref()
+    }
+
+    /// The displays the last change took away. A window still on one of them, and on
+    /// no remaining display, was stranded by that change.
+    pub(super) fn lost_displays(&self) -> &[crate::Rect] {
+        &self.lost
     }
 }
 
@@ -63,12 +74,27 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
     /// Record the current displays. When they differ from the last ones, every
     /// parked window is due a re-park against them.
     pub(super) fn note_outputs(&mut self, outputs: &macos::DisplayOutputs) {
-        if self
+        let changed = self
             .displays
             .known
             .as_ref()
-            .is_some_and(|known| !known.frames().eq(outputs.frames()))
-        {
+            .is_some_and(|known| !known.frames().eq(outputs.frames()));
+        if changed {
+            // Keep what went away: a window still sitting there, on no remaining
+            // display, was stranded by the change rather than hidden by its app.
+            self.displays.lost = self
+                .displays
+                .known
+                .as_ref()
+                .map(|known| {
+                    known
+                        .displays()
+                        .iter()
+                        .filter(|gone| !outputs.displays().iter().any(|now| now.id == gone.id))
+                        .map(|gone| gone.frame)
+                        .collect()
+                })
+                .unwrap_or_default();
             log_event!("displays changed: re-parking hidden windows");
             // An empty workspace chosen on another display stood for focus on
             // that arrangement only; after a display change the reported focus

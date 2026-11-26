@@ -12,12 +12,23 @@ pub(super) const TOAST_RESUMED: &str = "Tiling resumed — external display";
 pub(super) const PAUSED_STATUS: &str = "Paused · built-in display";
 /// How often the main loop checks connected display topology when the feature is active.
 const DISPLAY_TOPOLOGY_INTERVAL: Duration = Duration::from_millis(500);
+/// Consecutive built-in-only samples required before auto-pausing an active session, preventing
+/// single-tick KVM/dock/mirror reconfiguration glitches from triggering restore + retile churn.
+const AUTO_PAUSE_SAMPLES: u8 = 2;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(super) enum BuiltinDisplayAction {
     None,
     AutoPause,
     AutoResume,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(super) enum StartDecision {
+    /// Proceed with starting automatic tiling.
+    Start,
+    /// Enter auto-pause instead of tiling (internal start on a built-in-only display).
+    AutoPause,
 }
 
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
@@ -27,6 +38,8 @@ pub(super) struct BuiltinDisplayPolicy {
     /// Built-in-only topology where the user explicitly resumed tiling; suppresses immediate
     /// re-pausing until the display topology actually changes.
     manual_resume_topology: Option<DisplayTopology>,
+    /// Consecutive `evaluate` samples that observed a built-in-only topology while tiling.
+    builtin_only_samples: u8,
 }
 
 impl BuiltinDisplayPolicy {
@@ -48,15 +61,23 @@ impl BuiltinDisplayPolicy {
         }
         if !enabled {
             self.auto_paused_for_builtin = false;
+            self.builtin_only_samples = 0;
             return BuiltinDisplayAction::None;
         }
         if automatic && topology.is_builtin_only() {
             if self.manual_resume_topology == Some(topology) {
+                self.builtin_only_samples = 0;
                 return BuiltinDisplayAction::None;
             }
+            self.builtin_only_samples = self.builtin_only_samples.saturating_add(1);
+            if self.builtin_only_samples < AUTO_PAUSE_SAMPLES {
+                return BuiltinDisplayAction::None;
+            }
+            self.builtin_only_samples = 0;
             self.auto_paused_for_builtin = true;
             return BuiltinDisplayAction::AutoPause;
         }
+        self.builtin_only_samples = 0;
         if !automatic && self.auto_paused_for_builtin && topology.has_external() {
             if !trusted || restoring {
                 return BuiltinDisplayAction::None;
@@ -76,6 +97,7 @@ impl BuiltinDisplayPolicy {
         enabled: bool,
         topology: Option<DisplayTopology>,
     ) -> bool {
+        self.builtin_only_samples = 0;
         if enabled && topology.is_some_and(DisplayTopology::is_builtin_only) {
             self.auto_paused_for_builtin = true;
             true
@@ -84,24 +106,53 @@ impl BuiltinDisplayPolicy {
         }
     }
 
+    /// Decides whether starting automatic tiling should tile now or enter auto-pause.
+    ///
+    /// A manual user start (`manual = true`) always tiles and suppresses immediate re-pausing
+    /// while the current built-in-only topology holds. An internal start (`manual = false` — e.g.
+    /// Accessibility granted, setup tour finished, failed-update recovery, or auto-resume) enters
+    /// auto-pause immediately when `enabled` and only a built-in display is connected.
+    #[must_use]
+    pub(super) fn on_start(
+        &mut self,
+        manual: bool,
+        enabled: bool,
+        topology: Option<DisplayTopology>,
+    ) -> StartDecision {
+        self.builtin_only_samples = 0;
+        if manual {
+            self.on_manual_resume(enabled, topology);
+            StartDecision::Start
+        } else if self.should_start_auto_paused(enabled, topology) {
+            StartDecision::AutoPause
+        } else {
+            self.auto_paused_for_builtin = false;
+            StartDecision::Start
+        }
+    }
+
     pub(super) fn mark_auto_paused(&mut self) {
         self.auto_paused_for_builtin = true;
+        self.builtin_only_samples = 0;
     }
 
     pub(super) fn clear_auto_pause(&mut self) {
         self.auto_paused_for_builtin = false;
+        self.builtin_only_samples = 0;
     }
 
     /// User manually paused tiling: clear auto-pause so reconnecting displays never resumes it.
     pub(super) fn on_manual_pause(&mut self) {
         self.auto_paused_for_builtin = false;
         self.manual_resume_topology = None;
+        self.builtin_only_samples = 0;
     }
 
     /// User manually resumed tiling: clear auto-pause and suppress immediate re-pausing while
     /// the current built-in-only display topology stays unchanged.
     pub(super) fn on_manual_resume(&mut self, enabled: bool, topology: Option<DisplayTopology>) {
         self.auto_paused_for_builtin = false;
+        self.builtin_only_samples = 0;
         self.manual_resume_topology = if enabled {
             topology.filter(|t| t.is_builtin_only())
         } else {
@@ -112,6 +163,7 @@ impl BuiltinDisplayPolicy {
     /// Updates state when `settings.pause_on_builtin_display` changes at runtime.
     pub(super) fn on_setting_changed(&mut self, enabled: bool) {
         self.manual_resume_topology = None;
+        self.builtin_only_samples = 0;
         if !enabled {
             self.auto_paused_for_builtin = false;
         }
@@ -126,6 +178,9 @@ impl MainThreadAgent {
         self.pause_on_builtin_display = enabled;
         self.builtin_display.on_setting_changed(enabled);
         self.display_topology_dirty = true;
+        if !self.automatic {
+            status_item::set_status(self.paused_status());
+        }
     }
 
     pub(super) fn tick_builtin_display(&mut self) {
@@ -168,7 +223,7 @@ impl MainThreadAgent {
                 self.bridge.publish_toast(UiHudToast::paused(TOAST_PAUSED));
             }
             BuiltinDisplayAction::AutoResume => {
-                self.start_automatic();
+                self.start_automatic(false);
                 if self.automatic {
                     log_event!("auto-resumed tiling: external display connected");
                     self.bridge
@@ -204,6 +259,15 @@ mod tests {
         external: 2,
     };
 
+    fn unplug(policy: &mut BuiltinDisplayPolicy) -> BuiltinDisplayAction {
+        assert_eq!(
+            policy.evaluate(true, true, true, false, BUILTIN_ONLY),
+            BuiltinDisplayAction::None,
+            "first built-in-only sample should wait for confirmation"
+        );
+        policy.evaluate(true, true, true, false, BUILTIN_ONLY)
+    }
+
     #[test]
     fn disconnect_external_auto_pauses_and_reconnect_auto_resumes() {
         let mut policy = BuiltinDisplayPolicy::default();
@@ -215,11 +279,8 @@ mod tests {
         );
         assert!(!policy.auto_paused_for_builtin);
 
-        // Unplugging external display triggers auto-pause.
-        assert_eq!(
-            policy.evaluate(true, true, true, false, BUILTIN_ONLY),
-            BuiltinDisplayAction::AutoPause
-        );
+        // Unplugging external display triggers auto-pause after 2 consecutive samples.
+        assert_eq!(unplug(&mut policy), BuiltinDisplayAction::AutoPause);
         assert!(policy.auto_paused_for_builtin);
 
         // Staying on built-in display while paused does nothing.
@@ -243,7 +304,7 @@ mod tests {
         );
         assert!(policy.auto_paused_for_builtin);
 
-        // Once Accessibility is trusted and restoration is done, reconnect auto-resumes.
+        // Once Accessibility is trusted and restoration is done, reconnect auto-resumes on 1 sample.
         assert_eq!(
             policy.evaluate(true, false, true, false, DOCKED),
             BuiltinDisplayAction::AutoResume
@@ -252,12 +313,41 @@ mod tests {
     }
 
     #[test]
-    fn clamshell_reconnect_auto_resumes_too() {
+    fn single_builtin_only_glitch_does_not_auto_pause_and_resets_debounce() {
         let mut policy = BuiltinDisplayPolicy::default();
+
+        // One transient built-in-only sample (KVM / display reconfiguration) does not pause.
+        assert_eq!(
+            policy.evaluate(true, true, true, false, BUILTIN_ONLY),
+            BuiltinDisplayAction::None
+        );
+        assert!(!policy.auto_paused_for_builtin);
+
+        // Returning to docked resets the consecutive sample counter.
+        assert_eq!(
+            policy.evaluate(true, true, true, false, DOCKED),
+            BuiltinDisplayAction::None
+        );
+
+        // Another isolated single-tick glitch still does not pause.
+        assert_eq!(
+            policy.evaluate(true, true, true, false, BUILTIN_ONLY),
+            BuiltinDisplayAction::None
+        );
+        assert!(!policy.auto_paused_for_builtin);
+
+        // A second consecutive built-in-only sample confirms the disconnect and pauses.
         assert_eq!(
             policy.evaluate(true, true, true, false, BUILTIN_ONLY),
             BuiltinDisplayAction::AutoPause
         );
+        assert!(policy.auto_paused_for_builtin);
+    }
+
+    #[test]
+    fn clamshell_reconnect_auto_resumes_too() {
+        let mut policy = BuiltinDisplayPolicy::default();
+        assert_eq!(unplug(&mut policy), BuiltinDisplayAction::AutoPause);
         assert_eq!(
             policy.evaluate(true, false, true, false, CLAMSHELL),
             BuiltinDisplayAction::AutoResume
@@ -278,6 +368,10 @@ mod tests {
             policy.evaluate(true, false, true, false, BUILTIN_ONLY),
             BuiltinDisplayAction::None
         );
+        assert_eq!(
+            policy.evaluate(true, false, true, false, BUILTIN_ONLY),
+            BuiltinDisplayAction::None
+        );
         assert!(!policy.auto_paused_for_builtin);
 
         // Reconnecting external display NEVER auto-resumes a manual pause.
@@ -293,22 +387,24 @@ mod tests {
         let mut policy = BuiltinDisplayPolicy::default();
 
         // Auto-paused after unplugging external monitor.
-        assert_eq!(
-            policy.evaluate(true, true, true, false, BUILTIN_ONLY),
-            BuiltinDisplayAction::AutoPause
-        );
+        assert_eq!(unplug(&mut policy), BuiltinDisplayAction::AutoPause);
         assert!(policy.auto_paused_for_builtin);
 
         // User manually resumes while still on the built-in display.
-        policy.on_manual_resume(true, Some(BUILTIN_ONLY));
+        assert_eq!(
+            policy.on_start(true, true, Some(BUILTIN_ONLY)),
+            StartDecision::Start
+        );
         assert!(!policy.auto_paused_for_builtin);
 
         // Subsequent ticks on the same built-in display must NOT re-pause the user.
-        assert_eq!(
-            policy.evaluate(true, true, true, false, BUILTIN_ONLY),
-            BuiltinDisplayAction::None
-        );
-        assert!(!policy.auto_paused_for_builtin);
+        for _ in 0..3 {
+            assert_eq!(
+                policy.evaluate(true, true, true, false, BUILTIN_ONLY),
+                BuiltinDisplayAction::None
+            );
+            assert!(!policy.auto_paused_for_builtin);
+        }
 
         // Connecting an external display changes topology and clears the suppression.
         assert_eq!(
@@ -317,11 +413,45 @@ mod tests {
         );
 
         // Disconnecting the external display again auto-pauses cleanly.
+        assert_eq!(unplug(&mut policy), BuiltinDisplayAction::AutoPause);
+        assert!(policy.auto_paused_for_builtin);
+    }
+
+    #[test]
+    fn internal_start_auto_pauses_immediately_on_builtin_without_suppressing_policy() {
+        // Granting Accessibility or finishing onboarding on an undocked laptop enters auto-pause
+        // immediately rather than tiling or marking a manual resume.
+        let mut policy = BuiltinDisplayPolicy::default();
         assert_eq!(
-            policy.evaluate(true, true, true, false, BUILTIN_ONLY),
-            BuiltinDisplayAction::AutoPause
+            policy.on_start(false, true, Some(BUILTIN_ONLY)),
+            StartDecision::AutoPause
         );
         assert!(policy.auto_paused_for_builtin);
+
+        // Connecting an external display resumes tiling immediately.
+        assert_eq!(
+            policy.evaluate(true, false, true, false, DOCKED),
+            BuiltinDisplayAction::AutoResume
+        );
+        assert!(!policy.auto_paused_for_builtin);
+
+        // An internal start while docked (e.g. failed-update recovery) starts tiling without
+        // suppressing future auto-pause when the external display is later unplugged.
+        assert_eq!(
+            policy.on_start(false, true, Some(DOCKED)),
+            StartDecision::Start
+        );
+        assert!(!policy.auto_paused_for_builtin);
+        assert_eq!(unplug(&mut policy), BuiltinDisplayAction::AutoPause);
+        assert!(policy.auto_paused_for_builtin);
+
+        // When the setting is off, an internal start tiles normally on built-in display.
+        policy.on_setting_changed(false);
+        assert_eq!(
+            policy.on_start(false, false, Some(BUILTIN_ONLY)),
+            StartDecision::Start
+        );
+        assert!(!policy.auto_paused_for_builtin);
     }
 
     #[test]
@@ -350,10 +480,7 @@ mod tests {
         assert!(!policy.should_start_auto_paused(false, Some(BUILTIN_ONLY)));
 
         // Auto-pause, then disable the setting: reconnecting must not auto-resume.
-        assert_eq!(
-            policy.evaluate(true, true, true, false, BUILTIN_ONLY),
-            BuiltinDisplayAction::AutoPause
-        );
+        assert_eq!(unplug(&mut policy), BuiltinDisplayAction::AutoPause);
         policy.on_setting_changed(false);
         assert!(!policy.auto_paused_for_builtin);
         assert_eq!(

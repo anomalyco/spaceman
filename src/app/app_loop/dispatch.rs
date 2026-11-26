@@ -59,6 +59,9 @@ pub(in crate::app) enum WorkerLifecycle {
 pub(in crate::app) struct WorkerDispatch {
     commands: Sender<WorkerCommand>,
     lifecycle: WorkerLifecycle,
+    /// Terminal flag set once the worker channel disconnects or rejects a send;
+    /// prevents resuming a dead worker into a silent zombie.
+    gone: bool,
 }
 
 impl WorkerDispatch {
@@ -66,12 +69,18 @@ impl WorkerDispatch {
         Self {
             commands,
             lifecycle: WorkerLifecycle::Idle,
+            gone: false,
         }
     }
 
     #[cfg(test)]
     pub(in crate::app) const fn lifecycle(&self) -> WorkerLifecycle {
         self.lifecycle
+    }
+
+    /// True once the worker thread has disconnected; this state is terminal.
+    pub(in crate::app) const fn is_gone(&self) -> bool {
+        self.gone
     }
 
     pub(in crate::app) const fn is_busy(&self) -> bool {
@@ -119,8 +128,13 @@ impl WorkerDispatch {
     /// Sends an ordinary command. Callers send only while the worker is not
     /// busy; a restoration owed stays owed until the command finishes.
     pub(in crate::app) fn send(&mut self, command: WorkerCommand) -> bool {
+        if self.gone {
+            return false;
+        }
         let interruptible = command.interruptible();
         if self.commands.send(command).is_err() {
+            self.lifecycle = WorkerLifecycle::Idle;
+            self.gone = true;
             return false;
         }
         self.lifecycle = match self.lifecycle {
@@ -180,22 +194,29 @@ impl WorkerDispatch {
     }
 
     fn send_restore_of(&mut self, kind: RestoreKind) -> bool {
+        if self.gone {
+            return false;
+        }
         let outputs = macos::outputs().ok();
         let command = match kind {
             RestoreKind::Restore => WorkerCommand::RestoreAll(outputs),
             RestoreKind::Undo => WorkerCommand::UndoArrangement(outputs),
         };
         let sent = self.commands.send(command).is_ok();
-        self.lifecycle = if sent {
-            WorkerLifecycle::Restoring { kind, again: None }
+        if sent {
+            self.lifecycle = WorkerLifecycle::Restoring { kind, again: None };
         } else {
-            WorkerLifecycle::Idle
-        };
+            self.lifecycle = WorkerLifecycle::Idle;
+            self.gone = true;
+        }
         sent
     }
 
     /// Restore every window now, or once the command in flight finishes.
     pub(in crate::app) fn request_restore(&mut self, kind: RestoreKind) {
+        if self.gone {
+            return;
+        }
         match self.lifecycle {
             WorkerLifecycle::Running {
                 interruptible,
@@ -259,6 +280,9 @@ impl WorkerDispatch {
 
     /// The restoration in flight left windows parked; retry it on the timer.
     pub(in crate::app) fn defer_restore_retry(&mut self) {
+        if self.gone {
+            return;
+        }
         self.lifecycle = match self.lifecycle {
             WorkerLifecycle::Restoring {
                 kind,
@@ -294,9 +318,48 @@ impl WorkerDispatch {
 
     pub(in crate::app) fn reset_disconnected(&mut self) {
         self.lifecycle = WorkerLifecycle::Idle;
+        self.gone = true;
     }
 
     pub(in crate::app) fn stop(&self) {
         drop(self.commands.send(WorkerCommand::Stop));
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::sync::mpsc;
+
+    use super::*;
+
+    #[test]
+    fn disconnected_worker_enters_terminal_gone_state() {
+        let (tx, rx) = mpsc::channel();
+        let mut dispatch = WorkerDispatch::new(tx);
+        assert!(!dispatch.is_gone());
+
+        dispatch.reset_disconnected();
+        assert!(dispatch.is_gone());
+        assert!(!dispatch.is_busy());
+        assert!(!dispatch.is_restoring());
+        assert!(!dispatch.is_restoring_or_pending());
+
+        // Even while the receiver still exists, a gone dispatch refuses all transitions.
+        assert!(!dispatch.send(WorkerCommand::Stop));
+        assert!(!dispatch.send_restore());
+        dispatch.request_restore(RestoreKind::Restore);
+        dispatch.defer_restore_retry();
+        assert_eq!(dispatch.start_pending_restore(), None);
+        assert!(dispatch.is_gone());
+        assert!(!dispatch.is_busy());
+        assert!(!dispatch.is_restoring_or_pending());
+        assert!(rx.try_recv().is_err());
+
+        // Dropping the receiver also transitions a fresh dispatch to gone on send failure.
+        let (tx2, rx2) = mpsc::channel();
+        drop(rx2);
+        let mut dispatch2 = WorkerDispatch::new(tx2);
+        assert!(!dispatch2.send(WorkerCommand::Stop));
+        assert!(dispatch2.is_gone());
     }
 }

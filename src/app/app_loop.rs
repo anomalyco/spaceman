@@ -126,6 +126,8 @@ pub struct MainThreadAgent {
     update_revision: u64,
     /// Tiling was on when Install & restart began, so a failed install resumes it.
     resume_after_update: bool,
+    /// An internal start is pending (e.g. failed-update recovery) and runs as non-manual.
+    pending_automatic_start: bool,
     setup: setup::SetupRequests,
 }
 
@@ -242,6 +244,7 @@ impl MainThreadAgent {
             updater: crate::updater::Updater::start(),
             update_revision: 0,
             resume_after_update: false,
+            pending_automatic_start: false,
             setup: setup::SetupRequests::default(),
         };
         status_item::set_update(agent.updater.status().ready_version());
@@ -484,6 +487,7 @@ impl MainThreadAgent {
 
     fn stop_automatic_and_restore(&mut self, kind: RestoreKind) {
         self.automatic = false;
+        self.pending_automatic_start = false;
         self.builtin_display.clear_auto_pause();
         self.cancelled.store(true, Ordering::Release);
         self.hotkeys = None;
@@ -526,7 +530,7 @@ impl MainThreadAgent {
         self.ui_dirty = true;
         status_item::set_status(&message);
         if std::mem::take(&mut self.resume_after_update) {
-            drop(self.actions_sender.send(Action::ToggleAutomatic));
+            self.pending_automatic_start = true;
         }
     }
 
@@ -627,7 +631,7 @@ impl MainThreadAgent {
             match self.startup_tiling.accessibility_granted() {
                 TilingStart::Now => {
                     self.awaiting_accessibility = false;
-                    drop(self.actions_sender.send(Action::ToggleAutomatic));
+                    self.start_automatic(false);
                 }
                 TilingStart::AfterSetup => {
                     status_item::set_status("Setup in progress · tiling starts when you finish");

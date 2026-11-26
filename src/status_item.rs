@@ -402,8 +402,11 @@ pub fn set_workspace_menu(displays: &[DisplayWorkspaces]) {
         for item in controller.workspace_items.drain(..) {
             controller.menu.removeItem(&item);
         }
-        let items = workspaces::items(displays, &controller.target, marker);
         let start = controller.menu.indexOfItem(&controller.automatic);
+        if usize::try_from(start).is_err() {
+            return;
+        }
+        let items = workspaces::items(displays, &controller.target, marker);
         for (offset, item) in (start..).zip(&items) {
             controller.menu.insertItem_atIndex(item, offset);
         }
@@ -499,7 +502,7 @@ struct ButtonState {
 impl ButtonState {
     const fn new() -> Self {
         Self {
-            automatic: true,
+            automatic: false,
             has_layouts: false,
             layouts: Vec::new(),
             numbers: Vec::new(),
@@ -781,8 +784,20 @@ mod tests {
             portrait: false,
             display: None,
         };
+        // Launches dimmed/paused until automatic tiling is explicitly enabled, avoiding a
+        // bright flash when starting paused or auto-paused.
         let mut state = ButtonState::new();
         state.set_numbers(&[1, 6]);
+        assert_eq!(
+            state.visual(),
+            ButtonVisual {
+                alpha: PAUSED_ALPHA,
+                content: ButtonContent::Paused,
+            }
+        );
+
+        // Enabling automatic tiling reveals the stored numbers at full brightness.
+        state.set_automatic(true);
         assert_eq!(
             state.visual(),
             ButtonVisual {

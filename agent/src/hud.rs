@@ -141,12 +141,16 @@ impl HudOverlay {
         }
     }
 
+    fn clear_hover(&mut self) {
+        self.hovered_app = None;
+        self.hovered_workspace = None;
+    }
+
     pub(super) fn set_hovered(&mut self, inside: bool, tx: &mut Tx) {
         let now_ms = self.now_ms();
         self.flow.set_hovered(inside, now_ms);
         if !inside && !self.flow.is_held() {
-            self.hovered_app = None;
-            self.hovered_workspace = None;
+            self.clear_hover();
         }
         self.schedule_wake(now_ms, tx);
     }
@@ -211,9 +215,11 @@ impl HudOverlay {
         if !self.flow.is_up() {
             return;
         }
+        let Some(row) = self.flow.current() else {
+            return;
+        };
         let target = self.hovered_app.clone().or_else(|| {
             let workspace = self.hovered_workspace?;
-            let row = self.flow.current()?;
             let entry = row
                 .workspaces
                 .iter()
@@ -376,6 +382,7 @@ impl HudDriver {
             panel.display = None;
             panel.handle.update_if(|overlay, _| {
                 overlay.flow.dismiss();
+                overlay.clear_hover();
                 if let Some(handle) = &overlay.handle {
                     handle.hide();
                 }
@@ -391,6 +398,7 @@ impl HudDriver {
                 handle.set_display(DisplayTarget::Primary);
             }
             overlay.display = None;
+            overlay.clear_hover();
             let now_ms = overlay.now_ms();
             let handle = overlay.handle.clone();
             match overlay.flow.trigger_toast(toast, now_ms) {
@@ -416,9 +424,8 @@ impl HudDriver {
 
     pub fn set_enabled(&self, enabled: bool) {
         self.each(move |overlay, tx| {
-            let left = overlay
-                .flow
-                .set_enabled(enabled, spaceman::journal::unix_millis());
+            let now_ms = overlay.now_ms();
+            let left = overlay.flow.set_enabled(enabled, now_ms);
             if left {
                 tx.wake_after(Duration::from_millis(LEAVE_MS));
             }
@@ -492,6 +499,7 @@ impl Panels {
             if panel.display.is_some() && panel.display != display {
                 panel.handle.update_if(|overlay, _| {
                     overlay.flow.dismiss();
+                    overlay.clear_hover();
                     if let Some(handle) = &overlay.handle {
                         handle.hide();
                     }
@@ -548,7 +556,7 @@ fn reduce_motion() -> bool {
 }
 
 fn overlay_poll(overlay: &mut HudOverlay, _clock: f64, tx: &mut Tx) -> bool {
-    let now_ms = spaceman::journal::unix_millis();
+    let now_ms = overlay.now_ms();
     if overlay.flow.is_up()
         && let Some(display) = overlay.display
         && !display_ids().values().any(|id| *id == display)
@@ -556,6 +564,7 @@ fn overlay_poll(overlay: &mut HudOverlay, _clock: f64, tx: &mut Tx) -> bool {
         // Its display went away: Rune would move the panel to the main display, over that
         // display's own capsule.
         overlay.flow.dismiss();
+        overlay.clear_hover();
         if let Some(handle) = &overlay.handle {
             handle.hide();
         }
@@ -563,8 +572,7 @@ fn overlay_poll(overlay: &mut HudOverlay, _clock: f64, tx: &mut Tx) -> bool {
     }
     let tick = overlay.flow.tick(now_ms);
     if tick == HudTick::Gone {
-        overlay.hovered_app = None;
-        overlay.hovered_workspace = None;
+        overlay.clear_hover();
         if let Some(handle) = &overlay.handle {
             handle.hide();
         }

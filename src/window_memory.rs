@@ -51,6 +51,11 @@ pub const MAX_TITLE_LEN: usize = 512;
 pub const FRAME_MATCH_TOLERANCE: i32 = 8;
 /// Minimum fuzzy title similarity score (on a 0..=1000 scale) to match in Tier 3.
 const FUZZY_MATCH_THRESHOLD: u32 = 500;
+/// Minimum token Dice score (on a 0..=1000 scale) to match without a shared
+/// leading or trailing project/site anchor segment. Strictly above `500` so
+/// two-token titles sharing only one token (e.g. `anomalyco/a` vs `anomalyco/b`
+/// or `Report (2024)` vs `Report (2023)`) do not pair unrelated windows.
+const NON_ANCHOR_DICE_THRESHOLD: u32 = 550;
 
 /// Generic single-word tokens that never justify a fuzzy title match on their own.
 const GENERIC_TOKENS: &[&str] = &[
@@ -97,17 +102,24 @@ impl fmt::Debug for RememberedWindow {
 }
 
 impl RememberedWindow {
-    /// Whether two remembered placements represent the same settled state for
-    /// dirty-checking: workspace, frame, floating flag, document, and
-    /// case-insensitive trimmed title all agree.
+    /// Whether two remembered placements occupy the same workspace, frame, and
+    /// floating state, ignoring document and title enrichment.
     #[must_use]
-    pub fn same_identity(&self, other: &Self) -> bool {
+    pub fn same_placement(&self, other: &Self) -> bool {
         self.workspace == other.workspace
             && self.frame == other.frame
             && self.floating == other.floating
+    }
+
+    /// Whether two remembered placements represent the same settled state for
+    /// dirty-checking: placement, document, and counter-stripped normalized
+    /// title all agree.
+    #[must_use]
+    pub fn same_identity(&self, other: &Self) -> bool {
+        self.same_placement(other)
             && self.document == other.document
-            && normalized_exact_title(self.title.as_deref())
-                == normalized_exact_title(other.title.as_deref())
+            && normalized_identity_title(self.title.as_deref())
+                == normalized_identity_title(other.title.as_deref())
     }
 
     fn normalize(&mut self) {
@@ -145,6 +157,18 @@ fn normalize_bounded(raw: &str, max_chars: usize) -> Option<String> {
 pub(crate) fn normalized_exact_title(raw: Option<&str>) -> Option<String> {
     let trimmed = raw?.trim();
     (!trimmed.is_empty()).then(|| trimmed.to_lowercase())
+}
+
+fn normalized_identity_title(raw: Option<&str>) -> Option<String> {
+    let cleaned = strip_unread_counters(raw?);
+    (!cleaned.is_empty()).then_some(cleaned)
+}
+
+/// Whether two slices of remembered windows share the same placements
+/// (workspace, frame, and floating state), ignoring document and title churn.
+#[must_use]
+pub fn same_placement_list(left: &[RememberedWindow], right: &[RememberedWindow]) -> bool {
+    left.len() == right.len() && left.iter().zip(right).all(|(a, b)| a.same_placement(b))
 }
 
 /// Whether two slices of remembered windows are unchanged under
@@ -565,7 +589,7 @@ fn is_unread_counter(inner: &[char]) -> bool {
         return false;
     }
     let digits = trimmed.strip_suffix(&['+']).unwrap_or(&trimmed);
-    (1..=5).contains(&digits.len()) && digits.iter().all(char::is_ascii_digit)
+    (1..=3).contains(&digits.len()) && digits.iter().all(char::is_ascii_digit)
 }
 
 fn split_title_segments(cleaned: &str) -> Vec<String> {
@@ -665,7 +689,10 @@ fn fuzzy_segments_score(left: &[String], right: &[String]) -> Option<u32> {
         .intersection(&right_tokens)
         .map(String::as_str)
         .collect();
-    if !shared_tokens.iter().any(|token| !is_generic_token(token)) {
+    if !shared_tokens
+        .iter()
+        .any(|token| is_non_generic_token(token))
+    {
         return None;
     }
 
@@ -673,7 +700,7 @@ fn fuzzy_segments_score(left: &[String], right: &[String]) -> Option<u32> {
         u32::try_from((2_000 * shared_tokens.len()) / (left_tokens.len() + right_tokens.len()))
             .unwrap_or(1000);
 
-    let mut best = if dice_millis >= FUZZY_MATCH_THRESHOLD {
+    let mut best = if dice_millis >= NON_ANCHOR_DICE_THRESHOLD {
         dice_millis
     } else {
         0
@@ -711,13 +738,17 @@ fn tokenize_segments(segments: &[String]) -> BTreeSet<String> {
 
 fn tokenize_str(text: &str) -> BTreeSet<String> {
     text.split(|c: char| !c.is_alphanumeric())
-        .filter(|token| token.chars().count() >= 2 && !token.chars().all(|c| c.is_ascii_digit()))
+        .filter(|token| token.chars().count() >= 2)
         .map(str::to_owned)
         .collect()
 }
 
 fn has_non_generic_token(tokens: &BTreeSet<String>) -> bool {
-    tokens.iter().any(|token| !is_generic_token(token))
+    tokens.iter().any(|token| is_non_generic_token(token))
+}
+
+fn is_non_generic_token(token: &str) -> bool {
+    !is_generic_token(token) && !token.chars().all(|c| c.is_ascii_digit())
 }
 
 fn is_generic_token(token: &str) -> bool {
@@ -858,6 +889,19 @@ mod tests {
             None
         );
         assert_eq!(fuzzy_title_score("Window 1", "Window 2"), None);
+        // 4-digit years are not unread counters and must not collapse distinct windows.
+        assert_eq!(fuzzy_title_score("Report (2024)", "Report (2023)"), None);
+        assert_eq!(fuzzy_title_score("Notes 2024", "Draft 2024"), None);
+        // Unread counters up to 3 digits (plus optional '+') still match.
+        assert_eq!(
+            fuzzy_title_score("Inbox (999+) - Gmail", "Inbox (12) - Gmail"),
+            Some(1000)
+        );
+        // Sharing only 1 of 2 tokens (e.g. a shared org prefix) must not pair unrelated windows.
+        assert_eq!(
+            fuzzy_title_score("anomalyco/spaceman", "anomalyco/other"),
+            None
+        );
 
         // End-to-end assign with identical frames reopened in reverse order.
         let same = frame(0);
@@ -995,14 +1039,24 @@ mod tests {
             )],
             1
         ));
-        // Case and outer whitespace differences on title do not mark dirty.
+        // Case, outer whitespace, and unread-counter differences on title do not mark dirty.
         assert!(!memory.record(
             "com.example.App",
             vec![placed_with(
                 2,
                 0,
                 Some("file:///Users/example/a"),
-                Some("  alpha  ")
+                Some("  alpha (12)  ")
+            )],
+            2
+        ));
+        assert!(!memory.record(
+            "com.example.App",
+            vec![placed_with(
+                2,
+                0,
+                Some("file:///Users/example/a"),
+                Some("Alpha (99+)")
             )],
             2
         ));
@@ -1019,6 +1073,28 @@ mod tests {
             3
         ));
         assert_eq!(memory.get("com.example.App").unwrap().updated_at, 3);
+        // 4-digit years are preserved as distinct titles, not unread counters.
+        assert!(memory.record(
+            "com.example.App",
+            vec![placed_with(
+                2,
+                0,
+                Some("file:///Users/example/a"),
+                Some("Report (2024)")
+            )],
+            4
+        ));
+        assert!(memory.record(
+            "com.example.App",
+            vec![placed_with(
+                2,
+                0,
+                Some("file:///Users/example/a"),
+                Some("Report (2023)")
+            )],
+            5
+        ));
+        assert_eq!(memory.get("com.example.App").unwrap().updated_at, 5);
         assert!(!memory.record("com.example.App", Vec::new(), 4));
         assert_eq!(memory.get("com.example.App").unwrap().windows.len(), 1);
     }

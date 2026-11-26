@@ -1,10 +1,10 @@
-use std::collections::BTreeMap;
+use std::{collections::BTreeMap, sync::Arc};
 
 use crate::{
     journal::{CORRECTION_WINDOW, PlacementSource},
     window_memory::{
-        RememberedWindow, WindowCandidate, WindowMemory, normalize_document, normalize_title,
-        same_window_list,
+        MAX_DOCUMENT_LEN, MAX_TITLE_LEN, RememberedWindow, WindowCandidate, WindowMemory,
+        same_placement_list, same_window_list,
     },
 };
 
@@ -33,8 +33,8 @@ pub(super) struct RecalledPlacement {
 /// the window is parked off-screen so inactive workspaces keep their identity.
 #[derive(Clone, Default)]
 pub(super) struct WindowIdentity {
-    document: Option<String>,
-    title: Option<String>,
+    document: Option<Arc<str>>,
+    title: Option<Arc<str>>,
 }
 
 /// One relaunched application instance claiming its remembered placements.
@@ -421,6 +421,9 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
         server_frames: &HashMap<u32, crate::Rect>,
         observation: &crate::NativeObservation,
     ) {
+        if server_frames.is_empty() && !observation.applications.is_empty() {
+            return;
+        }
         for app in &observation.applications {
             let crate::AppObservation::Complete { windows, .. } = app else {
                 continue;
@@ -429,8 +432,8 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
                 self.memory.identities.insert(
                     window.id.clone(),
                     WindowIdentity {
-                        document: window.document.as_deref().and_then(normalize_document),
-                        title: window.title.as_deref().and_then(normalize_title),
+                        document: normalize_arc(window.document.as_ref(), MAX_DOCUMENT_LEN),
+                        title: normalize_arc(window.title.as_ref(), MAX_TITLE_LEN),
                     },
                 );
             }
@@ -468,8 +471,9 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
                     workspace,
                     frame,
                     floating,
-                    document: identity.and_then(|entry| entry.document.clone()),
-                    title: identity.and_then(|entry| entry.title.clone()),
+                    document: identity
+                        .and_then(|entry| entry.document.as_deref().map(str::to_owned)),
+                    title: identity.and_then(|entry| entry.title.as_deref().map(str::to_owned)),
                 },
             ));
         };
@@ -505,14 +509,17 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
                 self.memory.pending.remove(&bundle_id);
                 continue;
             }
-            match self.memory.pending.get(&bundle_id) {
-                Some((pending, since)) if same_window_list(pending, &windows) => {
+            match self.memory.pending.get_mut(&bundle_id) {
+                Some((pending, since)) if same_placement_list(pending, &windows) => {
+                    *pending = windows;
                     if now.duration_since(*since) >= MEMORY_SETTLE {
-                        self.memory.pending.remove(&bundle_id);
-                        let count = windows.len();
+                        let Some((settled, _)) = self.memory.pending.remove(&bundle_id) else {
+                            continue;
+                        };
+                        let count = settled.len();
                         if self.memory.memory.record(
                             &bundle_id,
-                            windows,
+                            settled,
                             crate::journal::unix_millis() / 1_000,
                         ) {
                             recorded.push((bundle_id, count));
@@ -536,6 +543,26 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
             log_event!("failed to persist window memory: {error}");
         }
     }
+}
+
+/// Trim and bound an observed `Arc<str>` without allocating when it is already
+/// clean and within `max_chars`.
+fn normalize_arc(raw: Option<&Arc<str>>, max_chars: usize) -> Option<Arc<str>> {
+    let arc = raw?;
+    let trimmed = arc.trim();
+    if trimmed.is_empty() {
+        return None;
+    }
+    if trimmed.len() == arc.len()
+        && (arc.len() <= max_chars || arc.chars().nth(max_chars).is_none())
+    {
+        return Some(Arc::clone(arc));
+    }
+    let bounded = match trimmed.char_indices().nth(max_chars) {
+        Some((byte_index, _)) => trimmed[..byte_index].trim_end(),
+        None => trimmed,
+    };
+    (!bounded.is_empty()).then(|| Arc::from(bounded))
 }
 
 /// Bare executables without a macOS bundle identifier all observe as `"unknown"`.
