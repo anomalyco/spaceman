@@ -148,7 +148,8 @@ with no page reloading and no extra permission. The new window goes straight to 
 ahead of any `route` rule for the app, and focus stays on the window you were in. Add `--follow` to
 switch to the target with the tab. If the window has a single tab, or the app has no such command,
 `move-tab` moves the whole window, exactly like `move`. A tab whose window has not appeared within
-800 ms is left where the app put it. A second `move-tab` sent while an earlier tab's window is
+800 ms is left where the app put it. If an `ignore` rule matches the tab left behind, the sent tab
+still reaches its workspace and the tab left behind stays unmanaged. A second `move-tab` sent while an earlier tab's window is
 still on its way waits for that window first (up to the same 800 ms), so each tab reaches its own
 workspace, and then sends the next tab of the same group, even after an earlier `--follow` moved
 focus away from it. Without `--follow`, focus then stays on the tab you were in. `move-tab` has no default shortcut; bind one in

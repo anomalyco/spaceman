@@ -279,12 +279,13 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
     }
 
     /// Before `app`'s window affinities freeze: its first window that was not on
-    /// screen before the press, unowned and not ignored, came from the detach.
+    /// screen before the press and unowned came from the detach.
     /// Returns the window to route to the target and the target.
     ///
     /// Chromium opens the tab in that new window. An AppKit tab group instead
     /// moves the tab's own window (`source_window`) out and shows its next
-    /// tab's window in place, so that one takes over the source slot.
+    /// tab's window in place, so that one takes over the source slot — unless
+    /// an Ignore rule matches it: then the slot closes and it stays unmanaged.
     pub(super) fn claim_detached_tab(
         &mut self,
         app: &crate::ObservedApplication,
@@ -298,13 +299,24 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
             return None;
         }
         let onscreen_before = pending.onscreen_before.as_ref()?;
-        let new = windows.iter().find(|window| {
-            window.id != pending.source_window
-                && !onscreen_before.contains(&window.id.window_id)
-                && self.workspaces.residency(&window.id).is_none()
-                && !self.parked.contains_key(&window.id)
-                && !self.config.patch(&app.bundle_id, window).is_ignored()
-        })?;
+        let fresh: Vec<&crate::ObservedWindow> = windows
+            .iter()
+            .filter(|window| {
+                window.id != pending.source_window
+                    && !onscreen_before.contains(&window.id.window_id)
+                    && self.workspaces.residency(&window.id).is_none()
+                    && !self.parked.contains_key(&window.id)
+            })
+            .collect();
+        // An ignored window is never sent anywhere, but it may be the tab an
+        // AppKit tab group shows in place of the one that moved out (#670).
+        let (new, new_ignored) = match fresh
+            .iter()
+            .find(|window| !self.config.patch(&app.bundle_id, window).is_ignored())
+        {
+            Some(window) => (*window, false),
+            None => (*fresh.first()?, true),
+        };
         let source = pending.source_window.clone();
         let target = pending.target_workspace;
         let source_now = windows
@@ -325,7 +337,18 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
                 }
             }
             _ => false,
-        } && self.hand_slot_to(&source, &new.id);
+        };
+        let tab_group = tab_group
+            && if new_ignored {
+                // Its tile or float closes: an ignored window takes no slot.
+                self.release_slot(&source)
+            } else {
+                self.hand_slot_to(&source, &new.id)
+            };
+        if new_ignored && !tab_group {
+            // The tab itself opened in a window an Ignore rule matches.
+            return None;
+        }
         let (detached, remaining) = if tab_group {
             (source, new.id.clone())
         } else {
@@ -358,6 +381,19 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
             return true;
         }
         self.workspaces.hand_float_to(from, to)
+    }
+
+    /// Removes `window`'s tile or float, leaving it unowned.
+    fn release_slot(&mut self, window: &crate::PhysicalWindowId) -> bool {
+        let Some(owner) = self
+            .workspaces
+            .workspace_of(window)
+            .or_else(|| self.workspaces.floating_workspace_of(window))
+        else {
+            return false;
+        };
+        self.forget_window(owner, window);
+        true
     }
 
     /// Per-window evidence about `window` on `workspace`, which no longer owns it.
