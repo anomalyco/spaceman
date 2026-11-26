@@ -185,7 +185,9 @@ Where a new window goes (first match wins)                 // ws.adoption
 │   built-in default (Stickies, Calculator, 1Password and other utilities float; src/defaults.rs),
 │   over the window's traits (non-resizable floats), each deciding only what the ones before left
 │   open (src/config/disposition.rs). action = "tile" tiles a built-in float again; a route rule
-│   for a built-in float floats it on the routed workspace
+│   for a built-in float floats it on the routed workspace, and a bundle-only route rule floats
+│   an app's first window there even when it is a dialog or splash (an Open/Save panel shown
+│   before any other window is parked with a hidden routed workspace; #252, #687)
 ├── ignore rule        -> never managed
 ├── route rule         -> that workspace (parked if hidden), joined before any display reconciles,
 │                         so a failed park leaves it unowned and the next cycle routes it again;
@@ -206,7 +208,8 @@ Where a new window goes (first match wins)                 // ws.adoption
 │   as floating; a remembered float moves to its remembered position on that workspace's
 │   display, keeping the size the app reopened at)
 ├── float / pin rule, built-in float, dialog / non-resizable (no tile rule) -> floating on the
-│   active workspace under the window's center; each float belongs to its own workspace, so two
+│   active workspace under the window's center (unless a route rule above sends it
+│   elsewhere); each float belongs to its own workspace, so two
 │   Stickies notes can live on workspaces 1 and 2
 └── otherwise          -> tiled on the active workspace of the display under the window's center
 
