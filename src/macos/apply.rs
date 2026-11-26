@@ -677,14 +677,23 @@ fn resolve_managed_window<T>(
 /// Reads `AXMinimized` from the cached handle only, with a short timeout, so
 /// an unresponsive app cannot hold up the cycle; no handle means no evidence.
 pub(super) fn cached_window_is_minimized(id: &PhysicalWindowId) -> bool {
+    cached_window_flag(id, "AXMinimized")
+}
+
+/// Whether the cached window is in macOS native fullscreen (`AXFullScreen`).
+pub(super) fn cached_window_is_fullscreen(id: &PhysicalWindowId) -> bool {
+    cached_window_flag(id, "AXFullScreen")
+}
+
+fn cached_window_flag(id: &PhysicalWindowId, attribute: &'static str) -> bool {
     let Some(window) = MANAGED_WINDOWS.with(|windows| windows.borrow().get(id).cloned()) else {
         return false;
     };
     // SAFETY: `window` is a live cached `AXUIElement`; the timeout is restored below.
     let _: AXError = unsafe { window.set_messaging_timeout(0.05) };
-    let minimized = optional_bool_attribute(&window, "AXMinimized").unwrap_or(false);
+    let value = optional_bool_attribute(&window, attribute).unwrap_or(false);
     set_ax_timeout(&window);
-    minimized
+    value
 }
 
 pub(super) fn cache_managed_window(id: &PhysicalWindowId, window: &AXUIElement) {
