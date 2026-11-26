@@ -1,12 +1,13 @@
 //! Click-to-record: a shortcut's keys, pressed, listen for a new chord. The global hotkeys are
 //! held off meanwhile (`host::set_shortcut_recording`), so the chord reaches the recorder rather
 //! than moving windows. Esc on its own cancels, ⌫ unbinds, and a chord without ⌥, ⌃ or ⌘, or one
-//! another shortcut uses, keeps listening and says why.
+//! another shortcut uses (under either spelling of a Shift chord, `alt+shift+=` or `alt++`),
+//! keeps listening and says why.
 
 use rune::{Mods, PhysicalInput, PhysicalKeyCode};
 use spaceman::{
     WorkspaceId,
-    shortcuts::{self, Chord, Modifiers, Shortcuts},
+    shortcuts::{self, Chord, Key, Modifiers, Shortcuts},
 };
 
 use super::catalog::{self, Action, Occupant};
@@ -299,18 +300,46 @@ pub fn running_named_workspaces(ui: &Ui) -> Vec<WorkspaceId> {
     }
 }
 
-/// Whether `action` may take `chord`: refused while another shortcut runs it.
+/// Whether `action` may take `chord`: refused while another shortcut runs it, under this
+/// spelling or under `twin`, the other spelling of the same keys.
 pub fn check(
     shortcuts: &Shortcuts,
     named_workspaces: &[WorkspaceId],
     action: &Action,
     chord: Chord,
+    twin: Option<Chord>,
 ) -> Result<(), String> {
-    match catalog::occupant(shortcuts, named_workspaces, chord) {
-        Some(Occupant::Action(other)) if other.id == action.id => Ok(()),
-        Some(occupant) => Err(format!("Used by {}", occupant.title())),
-        None => Ok(()),
+    for spelling in std::iter::once(chord).chain(twin) {
+        match catalog::occupant(shortcuts, named_workspaces, spelling) {
+            Some(Occupant::Action(other)) if other.id == action.id => {}
+            Some(occupant) => return Err(format!("Used by {}", occupant.title())),
+            None => {}
+        }
     }
+    Ok(())
+}
+
+/// The other spelling of a Shift chord's keys: on a US layout Option+Shift+`=` types `+`, so
+/// it is also `alt++`, and the hotkeys register both on the same key. `shifted` names what
+/// a key types with Shift held. Letters and digits have no twin: `alt+H` is `alt+h`.
+fn shifted_twin(chord: Chord, shifted: impl Fn(Key) -> Option<char>) -> Option<Chord> {
+    if !chord.modifiers.shift {
+        return None;
+    }
+    let typed = shifted(chord.key)?;
+    if typed.is_alphanumeric() || typed.is_whitespace() {
+        return None;
+    }
+    let modifiers = Modifiers {
+        shift: false,
+        ..chord.modifiers
+    };
+    if !modifiers.can_bind() {
+        return None;
+    }
+    shortcuts::parse_chord(&format!("{}+{typed}", modifiers.source()))
+        .ok()
+        .filter(|twin| twin.key != chord.key)
 }
 
 pub fn begin(ui: &mut Ui, action: &'static str) {
@@ -364,6 +393,16 @@ pub fn on_input(ui: &mut Ui, event: &PhysicalInput) -> bool {
 
 /// Saves what a press recorded, or keeps listening with why it was refused.
 pub fn record(ui: &mut Ui, id: &'static str, outcome: Press) {
+    record_with(ui, id, outcome, shortcuts::shifted_character);
+}
+
+/// [`record`], with `shifted` naming what a key types with Shift on the active layout.
+fn record_with(
+    ui: &mut Ui,
+    id: &'static str,
+    outcome: Press,
+    shifted: impl Fn(Key) -> Option<char>,
+) {
     let Some(action) = catalog::find(id) else {
         cancel(ui);
         return;
@@ -388,7 +427,13 @@ pub fn record(ui: &mut Ui, id: &'static str, outcome: Press) {
             });
             return;
         }
-        Press::Chord(chord) => match check(&shortcuts, &named, action, chord) {
+        Press::Chord(chord) => match check(
+            &shortcuts,
+            &named,
+            action,
+            chord,
+            shifted_twin(chord, shifted),
+        ) {
             Ok(()) => {
                 save(ui, id, |doc| {
                     doc.set_shortcut(action.command, default, Some(chord));
