@@ -7,6 +7,8 @@
 //! snapshot and the incoming tab was tiled as a new window. The incoming tab takes the float
 //! instead: its workspace, why it floats, and its pin. While both tabs are still listed at
 //! the same frame, the incoming one is held for a bounded settle rather than adopted.
+//! A Scratchpad window that is shown floats too, and its tab switch hands over its
+//! Scratchpad entry the same way, so Toggle still hides the group (#754).
 
 use super::tab_handoff::TAB_HANDOFF_SETTLE;
 use super::*;
@@ -55,10 +57,7 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
         let tolerance = crate::reconcile::DEFAULT_FRAME_TOLERANCE;
         let float = windows.iter().find(|other| {
             other.id != window.id
-                && matches!(
-                    self.workspaces.residency(&other.id),
-                    Some(crate::workspace::Residency::Floating { .. })
-                )
+                && self.workspaces.floating_workspace_of(&other.id).is_some()
                 && !self.parked.contains_key(&other.id)
                 && other.frame.approximately_equals(window.frame, tolerance)
         })?;

@@ -273,9 +273,11 @@ impl Workspaces {
     }
 
     /// Hands `from`'s float to `to` (a native tab took its place). Returns whether it had one.
+    /// A shown scratchpad window hands over its scratchpad entry, toggle order and size
+    /// included, so the group stays in the scratchpad (#754).
     pub(crate) fn hand_float_to(&mut self, from: &PhysicalWindowId, to: &PhysicalWindowId) -> bool {
         match self.residency.get(from) {
-            Some(residency @ Residency::Floating { .. }) => {
+            Some(residency) if residency.floating_workspace().is_some() => {
                 let former_tile = self.residency.former_tiles.contains(from);
                 self.forget_floating(from);
                 self.residency.set(to.clone(), residency);
