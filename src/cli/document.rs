@@ -525,16 +525,35 @@ impl ConfigDoc {
         path: &Path,
         edit: impl FnOnce(&mut Self) -> Result<(T, bool), String>,
     ) -> Result<T, String> {
+        Self::edit_locked_removing(path, |doc| {
+            edit(doc).map(|(result, changed)| (result, changed.then(Vec::new)))
+        })
+    }
+
+    /// [`Self::edit_locked`] for an edit that removes rules: it reports the zero-based
+    /// positions, in the file as read, of the rules it removed (`None` for no change). Those
+    /// entries leave the file with their own comments even when another rule holds the same
+    /// values.
+    pub(crate) fn edit_locked_removing<T>(
+        path: &Path,
+        edit: impl FnOnce(&mut Self) -> Result<(T, Option<Vec<usize>>), String>,
+    ) -> Result<T, String> {
         let _lock = lock_config(path)
             .map_err(|error| format!("failed to lock {}: {error}", path.display()))?;
         let source = read_source(path)?;
         let mut doc = Self::from_source(path, source.as_deref())?;
-        let (result, changed) = edit(&mut doc)?;
-        if changed {
+        let (result, removed_rules) = edit(&mut doc)?;
+        if let Some(removed_rules) = removed_rules {
             let rendered = doc.render_toml()?;
             let text = source
                 .as_deref()
-                .and_then(|source| Self::merged(source, &rendered))
+                .and_then(|source| {
+                    if removed_rules.is_empty() {
+                        return Self::merged(source, &rendered);
+                    }
+                    let trimmed = super::merge::remove_entries(source, "rules", &removed_rules)?;
+                    Self::merged(&trimmed, &rendered)
+                })
                 .unwrap_or(rendered);
             if source.as_deref() != Some(text.as_str()) {
                 write_config_atomic(path, text.as_bytes())

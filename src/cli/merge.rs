@@ -16,6 +16,39 @@ pub(crate) fn merge_into(source: &str, rendered: &str) -> Option<String> {
     Some(doc.to_string())
 }
 
+/// `source` without the entries of its `key` array at the zero-based `positions`, each with the
+/// comments attached to it, or `None` when `key` is not an array or a position is past its end.
+///
+/// [`merge_into`] matches entries by value, so it cannot tell which of two equal entries an
+/// edit removed. An edit that removes entries by position drops them here first; the merge then
+/// pairs the rest one to one.
+pub(crate) fn remove_entries(source: &str, key: &str, positions: &[usize]) -> Option<String> {
+    let mut doc = source.parse::<DocumentMut>().ok()?;
+    let mut positions = positions.to_vec();
+    positions.sort_unstable();
+    positions.dedup();
+    match doc.as_table_mut().get_mut(key)? {
+        Item::ArrayOfTables(tables) => {
+            if positions.last().is_some_and(|&last| last >= tables.len()) {
+                return None;
+            }
+            for &position in positions.iter().rev() {
+                tables.remove(position);
+            }
+        }
+        Item::Value(Value::Array(values)) => {
+            if positions.last().is_some_and(|&last| last >= values.len()) {
+                return None;
+            }
+            for &position in positions.iter().rev() {
+                values.remove(position);
+            }
+        }
+        _ => return None,
+    }
+    Some(doc.to_string())
+}
+
 fn merge_table(old: &mut Table, new: &Table) {
     let stale: Vec<String> = old
         .iter()

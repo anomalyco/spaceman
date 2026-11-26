@@ -25,7 +25,7 @@ The complete example is [config.example.toml](../config.example.toml).
 `spaceman config set|reset`, `spaceman rules add|remove`, and `spaceman workspaces assign|clear`
 edit the file in place: they change only the key or entry they name (and remove a table they
 empty), and keep every other comment, key order, and formatting. A comment directly above a key or
-entry they remove goes with it. A command that changes nothing leaves the file untouched.
+entry they remove goes with it, even when another entry has the same values. A command that changes nothing leaves the file untouched.
 
 ## Current Schema
 
