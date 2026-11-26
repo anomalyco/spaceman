@@ -34,6 +34,8 @@ pub(super) struct RecalledPlacement {
 #[derive(Clone, Default)]
 pub(super) struct WindowIdentity {
     document: Option<Arc<str>>,
+    /// The full observed title: title rules match all of it, so it is bounded to
+    /// [`MAX_TITLE_LEN`] only when it is written to window memory (#650).
     title: Option<Arc<str>>,
 }
 
@@ -433,7 +435,11 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
                     window.id.clone(),
                     WindowIdentity {
                         document: normalize_arc(window.document.as_ref(), MAX_DOCUMENT_LEN),
-                        title: normalize_arc(window.title.as_ref(), MAX_TITLE_LEN),
+                        title: window
+                            .title
+                            .as_ref()
+                            .filter(|title| !title.trim().is_empty())
+                            .cloned(),
                     },
                 );
             }
@@ -473,7 +479,9 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
                     floating,
                     document: identity
                         .and_then(|entry| entry.document.as_deref().map(str::to_owned)),
-                    title: identity.and_then(|entry| entry.title.as_deref().map(str::to_owned)),
+                    title: identity.and_then(|entry| {
+                        normalize_arc(entry.title.as_ref(), MAX_TITLE_LEN).map(|t| t.to_string())
+                    }),
                 },
             ));
         };

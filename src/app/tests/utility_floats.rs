@@ -291,6 +291,16 @@ fn ctl_pin_floats_and_pins_the_focused_window_then_unpins_where_it_is_seen() {
 
 #[test]
 fn a_pin_rule_reload_leaves_a_parked_note_an_earlier_title_rule_floats() {
+    a_pin_rule_reload_leaves_a_parked_note_titled("B1 Quiet");
+}
+
+#[test]
+fn a_pin_rule_reload_leaves_a_parked_note_matched_past_the_remembered_title_length() {
+    let long = format!("{} Quiet", "a".repeat(crate::window_memory::MAX_TITLE_LEN + 8));
+    a_pin_rule_reload_leaves_a_parked_note_titled(&long);
+}
+
+fn a_pin_rule_reload_leaves_a_parked_note_titled(quiet_title: &str) {
     let quiet = sticky(1);
     let public = sticky(2);
     let notes = [(quiet.clone(), note(600)), (public.clone(), note(300))];
@@ -306,7 +316,7 @@ fn a_pin_rule_reload_leaves_a_parked_note_an_earlier_title_rule_floats() {
     else {
         unreachable!()
     };
-    windows[0].title = Some("B1 Quiet".into());
+    windows[0].title = Some(quiet_title.into());
     windows[1].title = Some("B2 Public".into());
     let mut runtime = runtime_with_config(backend, rules("float"));
     let cancelled = AtomicBool::new(false);
