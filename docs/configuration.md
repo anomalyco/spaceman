@@ -132,7 +132,9 @@ overrides the default for what it decides: `action = "tile"` tiles one of these 
   incoming tab that takes over its tile's slot stays on that tile's workspace, even under a
   `windows = "all"` rule. A window that appears exactly at one of its app's tiles mid tab switch
   (the old tab still listed there, or focus not on it yet) waits up to a second for that switch
-  to settle before such a rule routes it as a new window.
+  to settle before such a rule routes it as a new window. If the tile's own window is still
+  there and still focused when that second is up, the app moved that tab out of its group (its
+  own Move Tab to New Window): the group keeps the tile and the moved-out tab takes the route.
 - `ignore` leaves the window entirely alone: never tiled, never owned by a workspace, never moved or
   parked. Use it for applications that insist on positioning their own windows. A previously managed
   window is released the next time it is observed on screen, including a window from a hidden

@@ -288,3 +288,47 @@ fn a_native_tab_after_a_focusless_snapshot_keeps_its_slot_under_a_route_all_rule
     );
     assert!(!runtime.parked.contains_key(&replacement));
 }
+
+/// #756: the app's own "Move Tab to New Window" moves the keyed tab's window out of its group
+/// and shows the group's next tab in place, while the moved window stays listed and keyed.
+/// Past the handoff settle the rule routed the group's tab as new and left the moved tab on
+/// the tile. The group keeps the tile now, and the moved tab takes the route. Reported by
+/// @coygeek.
+#[test]
+fn an_app_detached_tab_takes_the_route_all_rule_and_its_group_keeps_the_tile() {
+    let (detached, group) = (window(10), window(11));
+    let (mut runtime, accepted) = tiled_on_one(&detached);
+    let slot = runtime
+        .workspaces
+        .engine(WorkspaceId::ONE)
+        .slot_for_window(&detached);
+    runtime.backend.frames.insert(group.clone(), accepted);
+    runtime.backend.focused = Some(detached.clone());
+    runtime.backend.observation = Some(observation_for_windows(
+        "com.example.Test",
+        &detached,
+        &[(detached.clone(), accepted), (group.clone(), accepted)],
+    ));
+    runtime.cycle(outputs(), &AtomicBool::new(false)).unwrap();
+    assert_eq!(runtime.workspaces.workspace_of_any(&group), None);
+
+    runtime.backend.advance(cycle::TAB_HANDOFF_SETTLE);
+    runtime.cycle(outputs(), &AtomicBool::new(false)).unwrap();
+
+    assert_eq!(
+        runtime.workspaces.workspace_of(&group),
+        Some(WorkspaceId::ONE)
+    );
+    assert_eq!(
+        runtime
+            .workspaces
+            .engine(WorkspaceId::ONE)
+            .slot_for_window(&group),
+        slot
+    );
+    assert!(!runtime.parked.contains_key(&group));
+    assert_eq!(
+        runtime.workspaces.workspace_of(&detached),
+        Some(WorkspaceId::SIX)
+    );
+}

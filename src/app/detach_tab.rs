@@ -368,7 +368,7 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
     }
 
     /// Gives `from`'s tile or float to `to`, leaving `from` unowned.
-    fn hand_slot_to(
+    pub(super) fn hand_slot_to(
         &mut self,
         from: &crate::PhysicalWindowId,
         to: &crate::PhysicalWindowId,

@@ -20,7 +20,7 @@ Automatic tiling                                        // tile.auto
 └── Native tab replaces its window -> same slot, order, weight, nesting
     ├── Any app (Finder, Safari, Terminal...) -> when the evidence is unambiguous (one window out, one in, focus moved to it, at the tile's frame or, for an app that caps its window size, where the old tab was)
     │   ├── Under a route rule with windows = "all" -> the incoming tab still keeps the slot on its tile's workspace, not the rule's
-    │   │   └── Caught mid-switch (old tab still listed, or focus not there yet) at the tile's frame -> held up to a second for the evidence instead of routed, then routed as a new window (#706)
+    │   │   └── Caught mid-switch (old tab still listed, or focus not there yet) at the tile's frame -> held up to a second for the evidence instead of routed, then routed as a new window (#706), unless the tile's window is still there and focused: the app's own Move Tab to New Window, so the held window keeps the tile and the moved-out tab is routed (#756)
     │   ├── A snapshot mid-switch with no focused window -> the app's last focused tab still counts as the outgoing one, so the incoming tab keeps the slot (#718)
     │   ├── Right after a pointer resize is released -> the incoming tab keeps the resized tile's side and width (#624)
     │   ├── Selected while the tile's title-bar drag is still held -> the release commits the drop and the incoming tab, where the drag left the group, keeps the tile and its split sizes (#750)
