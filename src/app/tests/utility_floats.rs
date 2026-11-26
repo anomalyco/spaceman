@@ -246,6 +246,46 @@ fn a_pin_rule_added_while_a_note_is_parked_brings_it_back() {
 }
 
 #[test]
+fn a_pin_rule_added_while_a_tile_is_parked_floats_and_brings_it_back() {
+    let editor = window(10);
+    let mut runtime = runtime(FakeBackend {
+        frames: HashMap::from([(editor.clone(), frame(50))]),
+        observation: Some(observation(&editor, frame(50))),
+        ..FakeBackend::default()
+    });
+    let cancelled = AtomicBool::new(false);
+    runtime.cycle(outputs(), &cancelled).unwrap();
+    assert_eq!(
+        runtime.workspaces.workspace_of(&editor),
+        Some(WorkspaceId::ONE)
+    );
+    let tiled_at = runtime.backend.frames[&editor];
+    runtime
+        .switch(WorkspaceId::TWO, outputs(), &cancelled)
+        .unwrap();
+    assert!(runtime.parked.contains_key(&editor));
+
+    runtime.backend.advance(Duration::from_secs(3));
+    runtime.replace_config(
+        Config::parse("version = 1\n[[rules]]\nbundle_id = 'com.example.Test'\naction = 'pin'")
+            .unwrap(),
+    );
+    runtime.cycle(outputs(), &cancelled).unwrap();
+
+    assert_eq!(runtime.workspaces.workspace_of(&editor), None);
+    assert_eq!(
+        runtime.workspaces.floating_workspace_of(&editor),
+        Some(WorkspaceId::ONE)
+    );
+    assert!(runtime.workspaces.is_pinned(&editor));
+    assert!(!runtime.parked.contains_key(&editor));
+    assert_eq!(runtime.backend.frames[&editor], tiled_at);
+    // It came from a tile, so its app's first-window route stays used (#664).
+    assert!(runtime.workspaces.app_holds_route(&editor.app));
+    assert_eq!(active(&runtime), Some(WorkspaceId::TWO));
+}
+
+#[test]
 fn ctl_pin_floats_and_pins_the_focused_window_then_unpins_where_it_is_seen() {
     let editor = window(10);
     let mut runtime = runtime(FakeBackend {
