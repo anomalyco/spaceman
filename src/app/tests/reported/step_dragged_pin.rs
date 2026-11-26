@@ -1,6 +1,7 @@
 //! #561: `switch next` from a pin dragged to another display steps the display the
-//! pin is on, never the one showing its home workspace; `move-workspace` keeps moving the
-//! pin's home. Reported by @coygeek.
+//! pin is on (#606: even with its center in that display's menu bar strip), never the one
+//! showing its home workspace; `move-workspace` keeps moving the pin's home. Reported by
+//! @coygeek.
 
 use super::super::*;
 use crate::WorkspaceStep;
@@ -192,4 +193,25 @@ fn move_workspace_from_a_dragged_pin_still_moves_its_home() {
     );
     let moved = rt.backend.persisted_monitors.first().map(|moved| moved.0);
     assert_eq!(moved, Some(ws(4)), "only switch next|prev follows the pin");
+}
+
+/// #606: a pin dragged so its center sits in the right portrait's menu bar strip, above its
+/// usable top, is still on the right display. Reported by @coygeek.
+#[test]
+fn switch_next_from_a_pin_centered_in_a_menu_strip_steps_that_display() {
+    // Centers 11 points above and 29 points below the right portrait's usable top (y=-539).
+    for y in [-660, -620] {
+        let (mut rt, displays) = dragged_pin(rect(2930, y, 420, 220));
+        execute(
+            &mut rt,
+            &displays,
+            WorkerAction::StepWorkspace(WorkspaceStep::Next),
+        );
+        assert_eq!(
+            visible(&rt, &displays),
+            [1, 4, 9],
+            "y={y}: right 7 steps to 9"
+        );
+        assert_eq!(rt.workspaces.workspace_of_any(&win(PIN)), Some(ws(4)));
+    }
 }

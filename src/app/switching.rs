@@ -638,11 +638,21 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
             .backend
             .window_server_frame(window)
             .or_else(|| self.backend.frame(window).ok())
-            && let Some(resolved) = visible
+        {
+            if let Some(resolved) = visible
                 .iter()
                 .find(|resolved| resolved.output.contains_center(frame))
-        {
-            return Some(resolved.clone());
+            {
+                return Some(resolved.clone());
+            }
+            // A center in a display's menu bar or Dock strip is on that display, though
+            // outside its usable frame (#606).
+            if let Some(resolved) = visible
+                .iter()
+                .find(|resolved| resolved.screen.contains_center(frame))
+            {
+                return Some(resolved.clone());
+            }
         }
         if pinned && let Some(home) = owner {
             let display_id = outputs
