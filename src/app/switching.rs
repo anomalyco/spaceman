@@ -563,7 +563,10 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
             // A pending restore may land after rollback. Supersede that write
             // even when its recovery entry has not yet been retired.
             let outcome = self.park_window(window, output, outputs);
-            if !matches!(outcome, macos::ApplyOutcome::Applied | macos::ApplyOutcome::Gone) {
+            if !matches!(
+                outcome,
+                macos::ApplyOutcome::Applied | macos::ApplyOutcome::Gone
+            ) {
                 // An app that is not answering cannot be read, so the park
                 // above was never sent, while the restore written on the
                 // window's cached handle still lands once the app answers.

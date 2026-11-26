@@ -37,13 +37,9 @@ fn a_window_whose_app_stalls_mid_switch_stays_parked_when_the_app_answers_again(
             .is_err()
     );
     assert!(
-        runtime
-            .backend
-            .queued_writes
-            .iter()
-            .any(|(window, frame)| {
-                *window == stalled && crate::geometry::shows_on(*frame, &displays)
-            }),
+        runtime.backend.queued_writes.iter().any(|(window, frame)| {
+            *window == stalled && crate::geometry::shows_on(*frame, &displays)
+        }),
         "the restore reached the app before the switch gave up"
     );
 

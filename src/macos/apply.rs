@@ -659,7 +659,12 @@ fn resolve_managed_window<T>(
         Err(AXError::InvalidUIElement) => {
             return (WindowLookup::Missing, Err(WindowAccessError::Gone));
         }
-        Err(_) => return (WindowLookup::Unanswered, Err(WindowAccessError::Unavailable)),
+        Err(_) => {
+            return (
+                WindowLookup::Unanswered,
+                Err(WindowAccessError::Unavailable),
+            );
+        }
     };
     for window in cf_array_items::<AXUIElement>(&windows) {
         set_ax_timeout(window);

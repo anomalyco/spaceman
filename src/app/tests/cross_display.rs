@@ -359,8 +359,15 @@ fn a_recalled_window_keeps_its_placement_across_a_refused_first_park() {
         rt.restore_window_memory(memory);
 
         let status = rt.cycle(outputs(), &AtomicBool::new(false)).unwrap();
-        assert!(status.failed > 0, "floating={floating}: the park is refused");
-        assert_eq!(rt.workspaces.workspace_of_any(&id), None, "floating={floating}");
+        assert!(
+            status.failed > 0,
+            "floating={floating}: the park is refused"
+        );
+        assert_eq!(
+            rt.workspaces.workspace_of_any(&id),
+            None,
+            "floating={floating}"
+        );
         assert!(!rt.parked.contains_key(&id), "floating={floating}");
 
         rt.backend.refuses_position = None;

@@ -298,7 +298,8 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
             }
             match outcome {
                 macos::ApplyOutcome::Applied => {
-                    self.parked.park_applied_from(&window, self.backend.now(), from);
+                    self.parked
+                        .park_applied_from(&window, self.backend.now(), from);
                 }
                 macos::ApplyOutcome::Gone => {
                     restored.extend(self.parked.remove(&window).map(|r| (window.clone(), r)));
@@ -483,7 +484,12 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
             original,
         );
         let outcome = self.backend.set_parked_position(window, target);
-        log_event!("park from recovery: {:?} from {:?} ({:?})", window, original, outcome);
+        log_event!(
+            "park from recovery: {:?} from {:?} ({:?})",
+            window,
+            original,
+            outcome
+        );
         outcome
     }
 
@@ -602,7 +608,8 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
         let outcome = self.backend.set_parked_position(window, parked);
         log_event!("park: {:?} from {:?} ({:?})", window, recovery, outcome);
         if matches!(outcome, macos::ApplyOutcome::Applied) {
-            self.parked.park_applied_from(window, self.backend.now(), frame);
+            self.parked
+                .park_applied_from(window, self.backend.now(), frame);
         } else {
             // Undo onto the frame it had, not the display it was heading to.
             if recovery != original && !self.record_recovery(window, original) {

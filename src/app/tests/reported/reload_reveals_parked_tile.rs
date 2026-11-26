@@ -63,6 +63,8 @@ fn reload_revealed_tile_stays_on_its_new_display_after_a_pending_restore() {
         .server_frames
         .insert(tile.clone(), parked_at);
     runtime.backend.frozen_server_frames = true;
+    // Let the preceding park write age out of the restore retry throttle.
+    runtime.backend.advance(RESTORE_RETRY_INTERVAL * 2);
     runtime.replace_config(config(Some("secondary")));
     retile(&mut runtime, &displays);
     assert!(secondary.contains_center(runtime.backend.frames[&tile]));
@@ -71,9 +73,16 @@ fn reload_revealed_tile_stays_on_its_new_display_after_a_pending_restore() {
     runtime.backend.frozen_server_frames = false;
     let now_at = runtime.backend.frames[&tile];
     runtime.backend.server_frames.insert(tile.clone(), now_at);
+    runtime.backend.calls.clear();
     runtime.backend.advance(RESTORE_RETRY_INTERVAL * 2);
     retile(&mut runtime, &displays);
     retile(&mut runtime, &displays);
+    assert!(
+        runtime.backend.calls.iter().all(|call| !matches!(
+            call, BackendCall::SetPosition(window, _) if window == &tile
+        )),
+        "a laid-out tile must not retry its old-display recovery write"
+    );
 
     let final_frame = runtime.backend.frames[&tile];
     assert!(

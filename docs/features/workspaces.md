@@ -476,7 +476,8 @@ on the same letter.
   reassignment in config (`reassign_hidden_float.rs`, issue 543) and a shown workspace's float
   doing the same (`reassign_visible_float.rs`, issue 665); a reload that reveals a hidden
   workspace on its new display lays its parked tiles out there for good, even while their restore
-  is unconfirmed (`reload_reveals_parked_tile.rs`, issue 701); HUD rows after moving an empty
+  is unconfirmed, with no later recovery-position write (the test advances past the park-write
+  throttle before reloading; `reload_reveals_parked_tile.rs`, issue 701); HUD rows after moving an empty
   workspace (`hud_rows_after_move.rs`, plus
   `moving_an_empty_workspace_away_retires_its_slot_on_the_old_display` in `agent/src/hud/tests.rs`,
   issue 419); a deleted named workspace (`config_removed_named.rs`, issue 424); Option+Tab after
@@ -570,7 +571,8 @@ on the same letter.
   `a_pin_rule_added_while_a_tile_is_parked_floats_and_brings_it_back` (#678, its app's
   first-window route stays used),
   `a_pin_rule_matches_a_parked_window_whose_app_was_never_observed` and
-  `a_never_observed_parked_note_keeps_an_earlier_title_rule_over_a_pin_rule` (#697),
+  `a_never_observed_parked_note_keeps_an_earlier_title_rule_over_a_pin_rule` (#697, all three
+  notes start on the display being switched, with ownership checked before parking),
   `a_pin_rule_reload_leaves_a_parked_note_an_earlier_title_rule_floats` (#549), and
   `ctl_pin_floats_and_pins_the_focused_window_then_unpins_where_it_is_seen`. Unit,
   `src/config.rs`: `built_in_float_defaults_apply_only_after_user_rules`,

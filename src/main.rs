@@ -14,11 +14,11 @@ use std::{
 mod cli;
 
 use serde::{Deserialize, Serialize};
+#[cfg(target_os = "macos")]
+use spaceman::live::window_scope::WindowScope;
 use spaceman::{
     Engine, Model, NativeObservation, Reconciliation, ReconciliationEvidence, Settings, reconcile,
 };
-#[cfg(target_os = "macos")]
-use spaceman::live::window_scope::WindowScope;
 
 #[derive(Deserialize)]
 struct Replay {
