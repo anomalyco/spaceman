@@ -92,7 +92,8 @@ Config:   spaceman config set layout dwindle|columns; spaceman config set gaps.i
 ```
 
 Input arriving while the worker is busy queues in order (up to 64); queued input is dropped on
-pause, quit, or hotkey loss.
+pause, quit, or hotkey loss. A `spaceman ctl` command is admitted to the queue before it replies,
+so a full queue fails that command with `Input queue full; command was not queued` (#712).
 
 ## Existing Checks
 

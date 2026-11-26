@@ -556,13 +556,22 @@ impl MainThreadAgent {
     }
 
     fn queue_worker_input(&mut self, input: QueuedInput) {
+        // A rejection is already in the log and the menu status.
+        self.admit_worker_input(input).ok();
+    }
+
+    /// Queues `input`, or reports that the queue is full and returns that
+    /// error so a `spaceman ctl` caller sees it too (#712).
+    fn admit_worker_input(&mut self, input: QueuedInput) -> Result<(), &'static str> {
         self.last_activity = Instant::now();
-        if let Err(error) = self.pending_inputs.push(input) {
+        self.ui_dirty = true;
+        let admitted = self.pending_inputs.push(input);
+        if let Err(error) = admitted {
             log_event!("{error}");
             self.last_error = Some(error.into());
             status_item::set_status(error);
         }
-        self.ui_dirty = true;
+        admitted
     }
 
     fn maybe_publish_ui(&mut self) {
