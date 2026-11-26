@@ -373,6 +373,27 @@ impl RawShortcuts {
     }
 }
 
+/// What the key `key` names types with Shift held on the active keyboard layout: `+` for `=`
+/// on a US layout. `None` when it types nothing else, the layout can't say, or off macOS.
+#[must_use]
+pub fn shifted_character(key: Key) -> Option<char> {
+    #[cfg(target_os = "macos")]
+    {
+        use crate::keyboard_layout::{LayoutSnapshot, LogicalKey, SemanticKey};
+        let logical = match key {
+            Key::Character(character) => LogicalKey::Character(character),
+            Key::Number(number) => LogicalKey::Semantic(SemanticKey::Workspace(number)),
+            Key::Code(_) => return None,
+        };
+        LayoutSnapshot::current().ok()?.shifted(logical)
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        let _ = key;
+        None
+    }
+}
+
 /// Parses `alt+shift+left`, `cmd+ctrl+1`, `alt+-`, or `option+=`: modifiers and one key,
 /// joined by `+`. A trailing `++` is the `+` key.
 pub fn parse_chord(source: &str) -> Result<Chord, String> {

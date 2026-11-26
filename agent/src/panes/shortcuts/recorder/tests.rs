@@ -402,3 +402,62 @@ fn control_an_unrelated_chord_changes_nothing() {
     ]);
     assert_eq!(chords, Vec::<String>::new());
 }
+
+/// What a US layout types with Shift on the keys these tests press.
+fn us_shifted(key: Key) -> Option<char> {
+    match key {
+        Key::Character('=') => Some('+'),
+        Key::Character('/') => Some('?'),
+        Key::Character('h') => Some('H'),
+        Key::Number(1) => Some('!'),
+        _ => None,
+    }
+}
+
+#[test]
+fn a_shift_chord_bound_under_its_typed_character_is_refused() {
+    let mut ui = listening("focus-left");
+    ui.doc =
+        crate::rules::Doc::parse("version = 1\n[shortcuts.bindings]\n\"alt++\" = \"layout\"\n");
+    let before = ui.doc.source();
+    // Option+Shift+`=` types `+`: the same keys as `alt++`, which flips the split.
+    record_with(
+        &mut ui,
+        "focus-left",
+        us(K::Equal, mods(true, false, true, false)),
+        us_shifted,
+    );
+    assert_eq!(ui.shortcut_capture.listening(), Some("focus-left"));
+    assert_eq!(message(&ui), Some("Used by Flip split"));
+    assert_eq!(ui.doc.source(), before);
+    // An unused Shift chord still records.
+    record_with(
+        &mut ui,
+        "focus-left",
+        us(K::Slash, mods(true, false, true, false)),
+        us_shifted,
+    );
+    assert_eq!(
+        ui.shortcut_capture,
+        Capture::Saved {
+            action: "focus-left"
+        }
+    );
+    assert_eq!(
+        ui.doc.shortcuts().binding(parse_chord("alt+shift+/").unwrap()),
+        Some(Some(&shortcuts::Command::Focus(spaceman::Direction::Left)))
+    );
+}
+
+#[test]
+fn only_a_shifted_symbol_has_a_twin_spelling() {
+    let twin = |source: &str| shifted_twin(parse_chord(source).unwrap(), us_shifted);
+    assert_eq!(twin("alt+shift+="), Some(parse_chord("alt++").unwrap()));
+    assert_eq!(
+        twin("ctrl+alt+shift+1"),
+        Some(parse_chord("ctrl+alt+!").unwrap())
+    );
+    assert_eq!(twin("alt+="), None);
+    assert_eq!(twin("alt+shift+h"), None);
+    assert_eq!(twin("alt+shift+left"), None);
+}

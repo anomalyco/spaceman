@@ -396,9 +396,10 @@ While Settings records, every global shortcut is held off so the chord reaches i
 minute). `esc` on its own cancels (with `⌥`, `⌃`, or `⌘` it is recorded like any other key), `⌫`
 or `Delete` on its own clears the shortcut (`none`), a chord without `⌥`, `⌃`, or `⌘` is refused,
 so is a numeric keypad key (a binding can't tell it from the main key), and so is a chord another
-shortcut uses, naming it. Base modifier sets `modifier`, and Reset to defaults removes the
-`[shortcuts]` table. Comments and other bindings
-in the file are kept.
+shortcut uses, naming it. A Shift chord is taken under either spelling: on a US layout
+`Option`+`Shift`+`=` is both `alt+shift+=` and `alt++`, so a binding written either way refuses it.
+Base modifier sets `modifier`, and Reset to defaults removes the `[shortcuts]` table. Comments and
+other bindings in the file are kept.
 
 ## Labs
 
