@@ -265,11 +265,15 @@ pub fn reconcile(
                     }
                 }
 
-                next.continuity
-                    .entry(app.id.clone())
-                    .or_default()
-                    .previous_focused
-                    .clone_from(focused);
+                // A snapshot with no focused window (focus mid native-tab switch, or on a
+                // tab not listed yet) proves nothing about focus; keep the last one known so
+                // the incoming tab still replaces the outgoing one (#718).
+                if let Some(focused) = focused {
+                    next.continuity
+                        .entry(app.id.clone())
+                        .or_default()
+                        .previous_focused = Some(focused.clone());
+                }
             }
         }
     }

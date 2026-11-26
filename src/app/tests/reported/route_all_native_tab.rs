@@ -241,3 +241,50 @@ fn a_new_window_at_a_tiles_frame_follows_the_route_all_rule_after_the_settle() {
         Some(WorkspaceId::SIX)
     );
 }
+
+/// #718: a native tab switch can pass through a snapshot with no focused window, the outgoing
+/// tab still listed at its tile. That snapshot erased which tab was focused, so the incoming
+/// tab could no longer prove it replaced the outgoing one, and after the settle the rule
+/// routed it to its workspace. Reported by @coygeek.
+#[test]
+fn a_native_tab_after_a_focusless_snapshot_keeps_its_slot_under_a_route_all_rule() {
+    let (previous, replacement) = (window(10), window(11));
+    let (mut runtime, accepted) = tiled_on_one(&previous);
+    let slot = runtime
+        .workspaces
+        .engine(WorkspaceId::ONE)
+        .slot_for_window(&previous);
+
+    // Mid-switch: the outgoing tab still listed, but the app reports no focused window.
+    runtime.backend.focused = None;
+    let mut focusless = observation(&previous, accepted);
+    let crate::AppObservation::Complete { focused, .. } = &mut focusless.applications[0] else {
+        unreachable!();
+    };
+    *focused = None;
+    runtime.backend.observation = Some(focusless);
+    runtime.cycle(outputs(), &AtomicBool::new(false)).unwrap();
+
+    // Settled: the incoming tab focused at the tile's frame, the outgoing one gone.
+    runtime.backend.advance(Duration::from_millis(100));
+    runtime.backend.frames.remove(&previous);
+    runtime.backend.frames.insert(replacement.clone(), accepted);
+    runtime.backend.focused = Some(replacement.clone());
+    runtime.backend.observation = Some(observation(&replacement, accepted));
+    runtime.cycle(outputs(), &AtomicBool::new(false)).unwrap();
+    runtime.backend.advance(cycle::TAB_HANDOFF_SETTLE);
+    runtime.cycle(outputs(), &AtomicBool::new(false)).unwrap();
+
+    assert_eq!(
+        runtime.workspaces.workspace_of(&replacement),
+        Some(WorkspaceId::ONE)
+    );
+    assert_eq!(
+        runtime
+            .workspaces
+            .engine(WorkspaceId::ONE)
+            .slot_for_window(&replacement),
+        slot
+    );
+    assert!(!runtime.parked.contains_key(&replacement));
+}
