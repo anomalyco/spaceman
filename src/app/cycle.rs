@@ -1,6 +1,7 @@
 mod affinity;
 mod deck;
 mod float_tab;
+mod hidden_tab;
 mod omission;
 mod readback;
 mod routing;
@@ -226,6 +227,9 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
         }
         let empty_server_frames = HashMap::new();
         let server_frames = server_snapshot.as_ref().unwrap_or(&empty_server_frames);
+        // Recovery records this cycle did not create: a hidden tab group's outgoing tab may
+        // only hand over its tile when it was on screen going in (#753).
+        let parked_before: HashSet<_> = self.parked.keys().cloned().collect();
         self.recover_stale_parked_windows(&outputs, server_frames);
         self.pin_parked_windows_by_rule();
         self.restore_visible(&visible, cancelled, &mut failed);
@@ -240,7 +244,7 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
             .snapshot(0, &outputs)
             .map_err(|error| format!("Observation error: {error}"))?;
         let mut affinity_policy =
-            self.freeze_window_affinities(&observation, &visible, server_frames)?;
+            self.freeze_window_affinities(&observation, &visible, server_frames, &parked_before)?;
         self.route_before_reconcile(
             &mut affinity_policy,
             &observation,

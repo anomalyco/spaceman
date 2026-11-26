@@ -25,6 +25,7 @@ Automatic tiling                                        // tile.auto
     │   ├── Right after a pointer resize is released -> the incoming tab keeps the resized tile's side and width (#624)
     │   ├── Selected while the tile's title-bar drag is still held -> the release commits the drop and the incoming tab, where the drag left the group, keeps the tile and its split sizes (#750)
     │   └── Old tab ordered out before the new one is on screen -> while another tab of the group is listed at the tile's corner, the tile waits up to 300 ms for it, so it still keeps side and width (#707), also when the new tab is on screen but not yet listed by Accessibility (#719), and when the app has other tiles, such as a second tab group focus passes through first (#749); a close with no other window of the app at that corner does not wait
+    ├── Selected while Pause shows its tile's hidden workspace -> on Resume the tab now shown, the one window of the app at the group's corner, takes the tile and parks with its workspace, so showing that workspace is never blocked by the tab left behind; a window parked before that cycle (another Space, or closed but kept alive) keeps its tile and recovery frame (#753)
     ├── Ghostty -> ambiguous evidence also holds the slot for a bounded settle
     └── In a floating tab group -> the incoming tab, the one new window of the app where the outgoing tab was, takes its float (workspace, manual or automatic, pin), so the group stays floating where it was and parks with its workspace; caught mid-switch with the old tab still listed at that frame, it waits up to a second before it is adopted as a new window (#747)
 
@@ -223,6 +224,11 @@ so a full queue fails that command with `Input queue full; command was not queue
 - `src/app/tests/reported/float_native_tab.rs`: the incoming tab of a floated group keeps the
   float, also when it is listed beside the outgoing tab first, and a window that only shares a
   float's frame is adopted after the wait (#747).
+- `src/app/tests/reported/paused_tab_switch.rs`: a tab selected while Pause showed its hidden
+  group takes the group's tile on Resume, whether or not Resume parked the old tab first, and
+  workspace 2 then opens with all its windows; two new windows at the group's corner claim
+  nothing, and a window parked before that cycle (on another Space) keeps its tile and recovery
+  frame (#753).
 - Fixture replay: `cargo run -- replay fixtures/ghostty-tab-replacement.json` (reconciliation of a
   native-tab replacement, without the runtime).
 - Live harness (not run): `scripts/live-ghostty-tabs.sh` for native-tab slot preservation.
