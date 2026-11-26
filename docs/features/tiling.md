@@ -26,7 +26,9 @@ Automatic tiling                                        // tile.auto
 Focus                                                   // tile.focus
 ├── Option+H/J/K/L / ctl focus <dir> -> nearest tile in that direction, crossing displays
 │   ├── [labs] recent_focus -> of several tiles bordering the focused one on that side, the most
-│   │   recently focused (in-memory, per tile slot; floats don't count), else the nearest
+│   │   recently focused (in-memory, per tile slot; floats don't count), else the nearest;
+│   │   only the part of the edge a window really covers counts, so a size-capped window
+│   │   doesn't border across the gap it leaves (#648)
 │   ├── Into another display's workspace -> the window it left (tile or float) is remembered, so
 │   │   Option+Tab back refocuses it (#639)
 │   └── In Fullscreen Layout -> previous/next tile in stable order (see fullscreen-layout.md)
@@ -130,12 +132,17 @@ pause, quit, or hotkey loss.
 - Unit, `src/navigation.rs` and `src/runtime.rs`: `[labs] recent_focus` picks the most recently
   focused bordering tile and never a further one (`the_most_recent_bordering_tile_wins`,
   `recency_never_reaches_past_a_nearer_tile`), a short shared edge of a few points still borders
-  while a 1-point corner miss does not (`a_short_shared_edge_still_borders`, #525), and the
+  while a 1-point corner miss does not (`a_short_shared_edge_still_borders`, #525), a window
+  capped short of its tile does not border across the gap
+  (`a_window_capped_short_of_its_tile_does_not_border_across_the_gap`, #648) while one capped
+  along the direction still borders (`a_window_capped_along_the_direction_still_borders`), and the
   per-slot order ignores floats (`focus_recency_orders_tiles_and_ignores_floats`) and drops closed
   tiles, so a reused slot ID starts unranked (`a_reused_slot_id_starts_unranked`).
 - Unit (FakeBackend), `src/app/tests/recent_focus.rs`: with `1 | (2 / 3)`, left and back from 3
   returns to 3 with the Lab on (also when the second press comes before the new focus is
-  reported) and lands on 2 with it off; the `ctl debug` targets match the keys. No live test
+  reported) and lands on 2 with it off, and lands on 2 when 1's window is capped to 2's height
+  (`a_window_capped_short_of_its_tile_borders_only_what_it_reaches`, #648); the `ctl debug`
+  targets match the keys. No live test
   covers it yet.
 - Unit (FakeBackend), `src/app/tests/gestures.rs` and `src/app/tests/drag_path.rs`:
   non-destructive drag previews (path-independent side drops, fast cross-display drops, cancel

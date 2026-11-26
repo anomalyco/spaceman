@@ -512,23 +512,30 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
     }
 
     pub(super) fn spatial_target(
-        &self,
+        &mut self,
         focused: &crate::PhysicalWindowId,
         direction: Direction,
         outputs: &macos::DisplayOutputs,
     ) -> Option<(WorkspaceId, crate::PhysicalWindowId)> {
         let tiles = self.navigation_tiles(outputs);
-        // `[labs] recent_focus`: among tiles bordering the focused one, the
-        // most recently focused wins (#374).
-        let engine = if self.config.labs().recent_focus {
-            self.workspaces
-                .workspace_of(focused)
-                .map(|workspace| self.workspaces.engine(workspace))
+        // `[labs] recent_focus`: of the tiles whose accepted frames border the
+        // focused one (#648), the most recently focused wins (#374).
+        let eligible = if self.config.labs().recent_focus {
+            let frames = self.backend.window_server_frames().unwrap_or_default();
+            crate::navigation::bordering_accepted(&tiles, focused, direction, |window| {
+                frames.get(&window.window_id).copied()
+            })
         } else {
-            None
+            Vec::new()
         };
+        let engine = self
+            .workspaces
+            .workspace_of(focused)
+            .map(|workspace| self.workspaces.engine(workspace));
         crate::navigation::target_by_recency(&tiles, focused, direction, |window| {
-            engine.and_then(|engine| engine.focus_recency(window))
+            engine
+                .filter(|_| eligible.contains(window))
+                .and_then(|engine| engine.focus_recency(window))
         })
         .map(|target| (target.workspace, target.window.clone()))
     }
