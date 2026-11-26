@@ -82,6 +82,8 @@ Move workspace to another display                          // ws.move-workspace
 │   -> parks target's displaced workspace (which is only that display's lane history, even when
 │   another selector for the same display, such as a UUID, assigns it); the replacement is the
 │   workspace the source display showed last, whichever selector assigns it
+├── A replacement window minimized (⌘M) or hidden (⌘H) while away stays minimized or hidden, as
+│   on a switch; a tile leaves the layout and rejoins as a new tile
 ├── A float carried to a shorter display (its center off every display) still comes back
 └── Preserves Fullscreen Layout and focus on the moved workspace (focus history untouched); HUD on both displays
 
@@ -427,6 +429,7 @@ on the same letter.
   `move_workspace_to_empty_display_and_three_display_wrap_around`,
   `move_workspace_single_display_is_a_noop`,
   `move_workspace_preserves_fullscreen_layout_and_focused_tile`,
+  `move_workspace_leaves_a_replacement_tile_minimized_while_away_alone` (issue 682),
   `move_workspace_persisted_assignment_survives_config_reload`,
   `move_workspace_replaces_unplugged_assignment_and_rolls_back_on_error`;
   `src/config/write.rs`: `saving_a_workspace_monitor_keeps_title_contains_rules` (issue 574);

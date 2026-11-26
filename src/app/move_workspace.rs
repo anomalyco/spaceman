@@ -87,7 +87,7 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
         }
 
         let move_started = self.backend.now();
-        let source_incoming = source_replacement
+        let mut source_incoming = source_replacement
             .map(|workspace| self.workspaces.windows(workspace))
             .unwrap_or_default();
         let source_incoming_originals: HashMap<_, _> = source_incoming
@@ -185,6 +185,12 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
             return Err(format!(
                 "Workspace {moved_ws} stayed on {source_display_name} because replacement windows did not finish restoring"
             ));
+        }
+
+        // A window minimized or hidden while the replacement was away stays
+        // set aside, as on an explicit switch (#496, #682).
+        if let Some(replacement) = source_replacement {
+            self.release_set_aside(replacement, &mut source_incoming);
         }
 
         let mut failed = 0;
