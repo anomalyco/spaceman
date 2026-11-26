@@ -39,6 +39,8 @@ Blocked while on                                        // fullscreen.guards
 ├── Option+-/= resize, balance, Option+Shift+H/J/K/L reorder -> error "Exit Fullscreen Layout before ..."
 ├── Pointer drag/resize of tiles -> ignored; on release the tile fills its own display again,
 │   written exactly even when let go a point or two from its frame
+│   └── Leaving the mode while the button is held -> still ignored, even right after the drag
+│       starts; the release puts back the split
 └── Floating windows -> keep their own frame
 ```
 
@@ -77,6 +79,9 @@ independently.
 
 - `float.rs` `workspace_layout_commands_accept_a_focused_floating_window` (issue 135): entering and
   both exits work with a floating window focused.
+- `reported/fullscreen_early_toggle_drag.rs` (issue 619): leaving the mode right after a held
+  drag starts, before any preview, restores the split on release; a drag pressed after leaving
+  still moves across displays.
 - Unit tests listed above. Only `fullscreen_layout_activates_persisted_cross_app_focus_after_restart`
   exercises persistence through `WorkspaceState`; it does not restart a real process.
 - No live harness covers Fullscreen Layout. The back-to-front test proves the order of park requests

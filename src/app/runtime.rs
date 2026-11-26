@@ -63,6 +63,9 @@ pub(super) struct WorkspaceRuntime<B = MacWorkspaceBackend> {
     pub(super) focus: super::focus::FocusTracker,
     /// The pointer drag or resize being previewed, until mouse-up commits it.
     pub(super) gesture: Option<super::commands::GestureOverlay>,
+    /// When each workspace last left Fullscreen Layout by a toggle: a drag
+    /// whose button went down before then started in Fullscreen (#619).
+    pub(super) fullscreen_left_at: HashMap<WorkspaceId, Instant>,
     pub(super) exact_spacing_workspaces: HashSet<WorkspaceId>,
     pub(super) persisted_workspace_state: crate::workspace::WorkspaceState,
     /// Title-free placements that survive application relaunches and reboots.
@@ -163,10 +166,12 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
                         window,
                         point,
                         bounds,
+                        pressed_at,
                     } => self.drop_window_tracked(
                         window,
                         point,
                         bounds,
+                        pressed_at,
                         preview,
                         outputs.clone(),
                         cancelled,
@@ -384,6 +389,7 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
             config,
             focus: super::focus::FocusTracker::with_fullscreen_restore(fullscreen_restore),
             gesture: None,
+            fullscreen_left_at: HashMap::new(),
             exact_spacing_workspaces: WorkspaceId::all().filter(|_| has_spacing).collect(),
             persisted_workspace_state,
             memory: MemoryState::default(),

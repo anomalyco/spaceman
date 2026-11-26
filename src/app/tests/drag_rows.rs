@@ -107,6 +107,7 @@ fn drag_on(
                 window: window(id),
                 point,
                 bounds: Some(bounds),
+                pressed_at: None,
             },
             preview,
             outputs.clone(),
