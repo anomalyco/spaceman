@@ -92,6 +92,12 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
                         || self.parked.contains_key(&window)
                     {
                         self.omitted_windows.remove(&window);
+                    } else if server_frames.contains_key(&window.window_id)
+                        && self.backend.confirms_set_aside(&window)
+                    {
+                        // Minimized (⌘M) or its app hidden (⌘H): set aside, not closed. It
+                        // keeps its float, so restoring it brings it back floating (#699).
+                        self.omitted_windows.remove(&window);
                     } else if !self.omitted_float_is_settling(&window, &mut onscreen_frames) {
                         log_event!("forget floating {:?}: not observed and not parked", window);
                         self.workspaces.forget_floating(&window);

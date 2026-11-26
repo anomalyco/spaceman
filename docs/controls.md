@@ -85,9 +85,10 @@ not expanded. Removing or moving away the workspace's final tiled window exits F
 
 `Option+Shift+Space` floats the focused window: it leaves the tiles, keeps its exact frame and
 focus, and the remaining tiles re-fill the space it held. Floating is per window and follows that
-window's workspace, so it parks and restores with a switch and survives an agent restart; it clears
-when the window closes. A floating window moves, resizes, and moves between workspaces like any
-other window. Dragging a floating window to another display leaves it with its workspace unless
+window's workspace, so it parks and restores with a switch, survives an agent restart, and comes
+back floating after the window is minimized or its app hidden; it clears when the window closes.
+A floating window moves, resizes, and moves between workspaces like any other window. Dragging a
+floating window to another display leaves it with its workspace unless
 the `Dragged floats follow their display` Lab is on (Settings › Labs, or `[labs]
 float_follows_display`; see [Configuration › Labs](configuration.md#labs)): then a drag that ends
 with the window's center on another display gives it to the workspace showing there, at the frame
