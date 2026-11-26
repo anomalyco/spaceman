@@ -674,8 +674,9 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
     /// (#527). `hidden` is the workspace the move hides, if any (`target`
     /// when it hides none); its switch departure remembers it instead. The
     /// window a departure guard holds back is stale focus Spaceman already
-    /// left, not the user's.
-    fn remember_departing_visible_focus(
+    /// left, not the user's. Directional focus into another display's
+    /// workspace leaves the same way (#639).
+    pub(in crate::app) fn remember_departing_visible_focus(
         &mut self,
         focused: Option<crate::PhysicalWindowId>,
         target: WorkspaceId,

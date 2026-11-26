@@ -34,6 +34,17 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
         let Some(target) = self.focus_target(origin.as_ref(), direction, &outputs) else {
             return Ok(self.status(0, &outputs));
         };
+        // Focus crossing into another workspace leaves this one on screen:
+        // remember its window (tile or float) so back-and-forth returns to it
+        // (#639).
+        if let Some(target_workspace) = self.workspaces.workspace_of_any(&target) {
+            self.remember_departing_visible_focus(
+                origin.clone(),
+                target_workspace,
+                target_workspace,
+                &outputs,
+            );
+        }
         self.focus_tile(origin.or(left), &target, &outputs, CommandOrigin::Explicit)?;
         Ok(self.status(0, &outputs))
     }
