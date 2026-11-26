@@ -27,7 +27,7 @@ Automatic tiling                                        // tile.auto
     │   └── Old tab ordered out before the new one is on screen -> while another tab of the group is listed at the tile's corner, the tile waits up to 300 ms for it, so it still keeps side and width (#707), also when the new tab is on screen but not yet listed by Accessibility (#719), and when the app has other tiles, such as a second tab group focus passes through first (#749); a close with no other window of the app at that corner does not wait
     ├── Selected while Pause shows its tile's hidden workspace -> on Resume the tab now shown, the one window of the app at the group's corner, takes the tile and parks with its workspace, so showing that workspace is never blocked by the tab left behind; a window parked before that cycle (another Space, or closed but kept alive) keeps its tile and recovery frame (#753)
     ├── Ghostty -> ambiguous evidence also holds the slot for a bounded settle
-    └── In a floating tab group -> the incoming tab, the one new window of the app where the outgoing tab was, takes its float (workspace, manual or automatic, pin), so the group stays floating where it was and parks with its workspace; caught mid-switch with the old tab still listed at that frame, it waits up to a second before it is adopted as a new window (#747)
+    └── In a floating tab group -> the incoming tab, the one new window of the app where the outgoing tab was, takes its float (workspace, manual or automatic, pin), so the group stays floating where it was and parks with its workspace; caught mid-switch with the old tab still listed at that frame, it waits up to a second before it is adopted as a new window (#747); right after a desktop switch, a window of the same app at the float's frame on the arriving desktop neither takes the float nor waits for it (#769)
 
 Focus                                                   // tile.focus
 ├── Option+H/J/K/L / ctl focus <dir> -> nearest tile in that direction, crossing displays
@@ -223,7 +223,9 @@ so a full queue fails that command with `Input queue full; command was not queue
   non-Ghostty tab change keeps the tile's slot and order.
 - `src/app/tests/reported/float_native_tab.rs`: the incoming tab of a floated group keeps the
   float, also when it is listed beside the outgoing tab first, and a window that only shares a
-  float's frame is adopted after the wait (#747).
+  float's frame is adopted after the wait (#747);
+  `a_window_on_the_arriving_desktop_at_a_floats_frame_does_not_take_the_float`: right after a
+  desktop switch, a same-app window at a departed float's frame stays a tile (#769).
 - `src/app/tests/reported/paused_tab_switch.rs`: a tab selected while Pause showed its hidden
   group takes the group's tile on Resume, whether or not Resume parked the old tab first, and
   workspace 2 then opens with all its windows; two new windows at the group's corner claim
@@ -243,6 +245,11 @@ so a full queue fails that command with `Input queue full; command was not queue
 
 ## Gotchas
 
+- For about 2.7 s after macOS reports a desktop switch (the 700 ms slide settle plus the 2 s
+  arrival window; 3.5 s after a trackpad swipe's fingers lift), a floating tab group's float is
+  not handed to its incoming tab and the incoming tab is not held: a window that disappears then
+  is taken to be on the desktop just left (#769, as in #431). A real tab switch in a floating
+  group in that window loses its float, and the incoming tab is likely adopted as a tile.
 - Settings › Rules shows a `tile` rule only for a built-in float, as `· tiled` on its chip under
   `Floating by default`. Tiling is the default for every other app, so the map has nowhere to
   draw its tile rule: edit those with `spaceman rules` or `config.toml`. The Workspace HUD's

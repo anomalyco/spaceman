@@ -236,3 +236,27 @@ fn the_incoming_tab_of_a_shown_scratchpad_group_stays_in_the_scratchpad() {
         vec![neighbor.clone()]
     );
 }
+
+/// #769: leaving a desktop orders a hand float out while the window server still lists it at
+/// its frame, and a window of its app on the arriving desktop can sit at that same frame. That
+/// window is not a tab replacing the float: it must not take the float (or wait for it).
+/// Reported by @coygeek.
+#[test]
+fn a_window_on_the_arriving_desktop_at_a_floats_frame_does_not_take_the_float() {
+    let (mut runtime, tab, arriving, neighbor) = floated_group();
+    runtime.backend.space_changed_at = Some(runtime.backend.now());
+    runtime
+        .backend
+        .advance(SPACE_TRANSITION_SETTLE + Duration::from_millis(100));
+    select_next_tab(&mut runtime, &tab, &arriving, &neighbor);
+
+    runtime
+        .cycle(studio_display(), &AtomicBool::new(false))
+        .unwrap();
+
+    assert_eq!(runtime.workspaces.floating_workspace_of(&arriving), None);
+    assert_eq!(
+        runtime.workspaces.workspace_of(&arriving),
+        Some(WorkspaceId::ONE)
+    );
+}
