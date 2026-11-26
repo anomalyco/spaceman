@@ -3,6 +3,10 @@ use super::*;
 /// One prompt retry while AX and the window server settle, without raising
 /// the steady-state observation rate for a minimized or unresponsive app.
 const CLOSE_RECHECK: Duration = Duration::from_millis(75);
+/// How long an app's one tile, ordered out while another surface of its native tab group is
+/// listed at the tile's corner, waits for that tab before an empty AXWindows list may confirm
+/// a close: AppKit can order the outgoing tab out before the incoming one is on screen (#707).
+const TAB_SWITCH_SETTLE: Duration = Duration::from_millis(300);
 
 pub(in crate::app) struct Omission {
     since: Instant,
@@ -33,6 +37,14 @@ impl Omission {
     /// fallback refresh.
     pub(super) fn next_recheck(&self, now: Instant) -> Instant {
         (now + CLOSE_RECHECK).min(self.since + OMISSION_SETTLE)
+    }
+
+    fn awaits_incoming_tab(&self, now: Instant) -> bool {
+        now.duration_since(self.since) < TAB_SWITCH_SETTLE
+    }
+
+    fn next_tab_recheck(&self, now: Instant) -> Instant {
+        (now + CLOSE_RECHECK).min(self.since + TAB_SWITCH_SETTLE)
     }
 
     fn should_probe(&mut self, now: Instant) -> bool {
@@ -80,6 +92,7 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
         workspace: WorkspaceId,
         window: &crate::PhysicalWindowId,
         sibling_visible_without_drag: bool,
+        server_frames: &HashMap<u32, crate::Rect>,
         now: Instant,
         close_recheck: &mut Option<Instant>,
     ) -> bool {
@@ -112,6 +125,19 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
         if !self.parked.contains_key(window) && self.backend.confirms_set_aside(window) {
             return false;
         }
+        // Between an AppKit tab leaving the screen and the next arriving, the app has no
+        // window on screen and can report an empty AXWindows list, which would confirm a
+        // close and give the incoming tab a new tile (#707).
+        let awaiting_tab = probe && omission.awaits_incoming_tab(now);
+        let tab_deadline = omission.next_tab_recheck(now);
+        if awaiting_tab && self.has_sibling_tab_surface(window, server_frames) {
+            *close_recheck =
+                Some(close_recheck.map_or(tab_deadline, |other| other.min(tab_deadline)));
+            return true;
+        }
+        let Some(omission) = self.omitted_windows.get_mut(window) else {
+            return true;
+        };
         if probe && omission.should_probe(now) && self.backend.confirms_no_windows(&window.app) {
             return false;
         }
@@ -192,6 +218,42 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
                 ),
             };
         }
+    }
+
+    /// Whether the window server lists another window of `window`'s app, held by no
+    /// workspace and not parked, at the omitted tile's top-left corner: the other surface of
+    /// its native tab group. AppKit keeps a group's tabs as separate windows at the group's
+    /// origin, and a tab not shown since a resize can still have its old size. An older
+    /// window the app keeps ordered out at that same corner also counts; it only delays that
+    /// close by [`TAB_SWITCH_SETTLE`].
+    fn has_sibling_tab_surface(
+        &mut self,
+        window: &crate::PhysicalWindowId,
+        server_frames: &HashMap<u32, crate::Rect>,
+    ) -> bool {
+        let Some(&frame) = server_frames.get(&window.window_id) else {
+            return false;
+        };
+        let tolerance = crate::reconcile::DEFAULT_FRAME_TOLERANCE;
+        let nearby: HashSet<u32> = server_frames
+            .iter()
+            .filter(|(id, other)| {
+                **id != window.window_id && other.position_approximately_equals(frame, tolerance)
+            })
+            .map(|(id, _)| *id)
+            .collect();
+        if nearby.is_empty() {
+            return false;
+        }
+        self.backend
+            .window_owners(&nearby)
+            .into_iter()
+            .filter(|(_, owner)| *owner == window.app)
+            .any(|(window_id, app)| {
+                let sibling = crate::PhysicalWindowId { app, window_id };
+                self.workspaces.workspace_of_any(&sibling).is_none()
+                    && !self.parked.contains_key(&sibling)
+            })
     }
 
     /// Apps the snapshot omitted entirely keep their slots while the window
@@ -321,6 +383,7 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
                 workspace,
                 &window,
                 sibling_on_screen && !observation.mouse_down,
+                server_frames,
                 now,
                 close_recheck,
             ) {
