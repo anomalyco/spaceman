@@ -116,6 +116,10 @@ fn key_name(
     character: impl Fn(PhysicalKeyCode) -> Option<char>,
 ) -> Option<String> {
     use PhysicalKeyCode as K;
+    if is_keypad(key) {
+        // `[shortcuts]` names no keypad key, so `return` or `1` would register on the main key.
+        return None;
+    }
     let named = match key {
         K::Digit0 => "0",
         K::Digit1 => "1",
@@ -131,7 +135,7 @@ fn key_name(
         K::ArrowRight => "right",
         K::ArrowUp => "up",
         K::ArrowDown => "down",
-        K::Enter | K::NumpadEnter => "return",
+        K::Enter => "return",
         K::Tab => "tab",
         K::Space => "space",
         K::Escape => "escape",
@@ -159,6 +163,44 @@ fn key_name(
         }
     };
     Some(named.into())
+}
+
+/// Whether `key` is on the numeric keypad, which a shortcut can't name apart from its main twin.
+fn is_keypad(key: PhysicalKeyCode) -> bool {
+    use PhysicalKeyCode as K;
+    matches!(
+        key,
+        K::Numpad0
+            | K::Numpad1
+            | K::Numpad2
+            | K::Numpad3
+            | K::Numpad4
+            | K::Numpad5
+            | K::Numpad6
+            | K::Numpad7
+            | K::Numpad8
+            | K::Numpad9
+            | K::NumpadAdd
+            | K::NumpadBackspace
+            | K::NumpadClear
+            | K::NumpadClearEntry
+            | K::NumpadComma
+            | K::NumpadDecimal
+            | K::NumpadDivide
+            | K::NumpadEnter
+            | K::NumpadEqual
+            | K::NumpadHash
+            | K::NumpadMemoryAdd
+            | K::NumpadMemoryClear
+            | K::NumpadMemoryRecall
+            | K::NumpadMemoryStore
+            | K::NumpadMemorySubtract
+            | K::NumpadMultiply
+            | K::NumpadParenLeft
+            | K::NumpadParenRight
+            | K::NumpadStar
+            | K::NumpadSubtract
+    )
 }
 
 /// The character a US layout types on a character key, when the active layout can't say.

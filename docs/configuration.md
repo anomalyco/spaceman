@@ -392,7 +392,9 @@ to `[shortcuts.bindings]` and registered at once, and the built-in chord it repl
 While Settings records, every global shortcut is held off so the chord reaches it (for at most a
 minute). `esc` on its own cancels (with `⌥`, `⌃`, or `⌘` it is recorded like any other key), `⌫`
 or `Delete` on its own clears the shortcut (`none`), a chord without `⌥`, `⌃`, or `⌘` is refused,
-and so is a chord another shortcut uses, naming it. Base modifier sets `modifier`, and Reset to defaults removes the `[shortcuts]` table. Comments and other bindings
+so is a numeric keypad key (a binding can't tell it from the main key), and so is a chord another
+shortcut uses, naming it. Base modifier sets `modifier`, and Reset to defaults removes the
+`[shortcuts]` table. Comments and other bindings
 in the file are kept.
 
 ## Labs
