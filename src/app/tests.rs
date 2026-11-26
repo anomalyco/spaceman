@@ -92,6 +92,8 @@ struct FakeBackend {
     close_probes: Vec<AppInstanceId>,
     /// Windows whose app is hidden or which are minimized.
     set_aside: HashSet<crate::PhysicalWindowId>,
+    /// Windows in macOS native fullscreen, on their own Space.
+    native_fullscreen: HashSet<crate::PhysicalWindowId>,
     frames: HashMap<crate::PhysicalWindowId, crate::Rect>,
     server_frames: HashMap<crate::PhysicalWindowId, crate::Rect>,
     /// Windows the window server still lists but has ordered out (closed
@@ -272,6 +274,10 @@ impl WorkspaceBackend for FakeBackend {
 
     fn confirms_set_aside(&mut self, window: &crate::PhysicalWindowId) -> bool {
         self.set_aside.contains(window)
+    }
+
+    fn confirms_native_fullscreen(&mut self, window: &crate::PhysicalWindowId) -> bool {
+        self.native_fullscreen.contains(window)
     }
 
     fn snapshot(

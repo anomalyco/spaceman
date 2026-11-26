@@ -502,6 +502,12 @@ pub(crate) fn confirms_set_aside(window: &PhysicalWindowId) -> bool {
     })
 }
 
+/// The window is in macOS native fullscreen, on its own Space. Observation
+/// skips such a window, so its tile leaves the layout until it exits (#740).
+pub(crate) fn confirms_native_fullscreen(window: &PhysicalWindowId) -> bool {
+    running_application(&window.app).is_some() && apply::cached_window_is_fullscreen(window)
+}
+
 fn observe_application(
     application: &NSRunningApplication,
     pid: i32,

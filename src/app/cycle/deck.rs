@@ -1,18 +1,20 @@
 //! How a workspace's deck mode reaches its placements, and Fullscreen Layout
-//! through a hide or minimize of every tile (#668).
+//! through a hide or minimize of every tile (#668), or a tile entering macOS
+//! native fullscreen, as a web video's fullscreen button does (#740).
 //!
-//! A tile hidden (⌘H) or minimized (⌘M) releases its slot so its siblings
-//! reflow, and an emptied workspace always falls back to the split layout.
-//! While a workspace is in Fullscreen Layout, every tile that leaves that way
-//! is remembered, one at a time or together. When the last tile leaves by a
-//! hide or minimize, the workspace holds those windows until something next
+//! A tile hidden (⌘H), minimized (⌘M) or in native fullscreen releases its
+//! slot so its siblings reflow, and an emptied workspace always falls back to
+//! the split layout. While a workspace is in Fullscreen Layout, every tile
+//! that leaves that way is remembered, one at a time or together. When the
+//! last tile leaves that way, the workspace holds those windows until something next
 //! arrives: if one of them comes back, the mode comes back with it. A close
 //! or a move away emptying the workspace, a toggle, or another window
 //! arriving first ends it. All of this lives in memory only.
 use super::*;
 use crate::workspace::DeckMode;
 
-/// A Fullscreen Layout workspace's tiles that left by a hide or minimize.
+/// A Fullscreen Layout workspace's tiles that left by a hide or minimize, or
+/// into native fullscreen.
 #[derive(Debug, Default)]
 pub(in crate::app) struct SetAsideTiles {
     windows: HashSet<crate::PhysicalWindowId>,
@@ -133,16 +135,19 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
         let set_aside: Vec<_> = before
             .iter()
             .filter(|window| !bound.contains(*window))
-            .filter(|window| self.backend.confirms_set_aside(window))
+            .filter(|window| {
+                self.backend.confirms_set_aside(window)
+                    || self.backend.confirms_native_fullscreen(window)
+            })
             .cloned()
             .collect();
         self.note_set_aside_tiles(workspace, set_aside);
     }
 
-    /// Record `set_aside`, Fullscreen Layout tiles macOS confirmed hidden or
-    /// minimized and that just left `workspace`. When the workspace is now
-    /// empty, hold the mode if the last tiles left that way; otherwise (a
-    /// close or a move away) forget the record.
+    /// Record `set_aside`, Fullscreen Layout tiles macOS confirmed hidden,
+    /// minimized or in native fullscreen and that just left `workspace`. When
+    /// the workspace is now empty, hold the mode if the last tiles left that
+    /// way; otherwise (a close or a move away) forget the record.
     pub(in crate::app) fn note_set_aside_tiles(
         &mut self,
         workspace: WorkspaceId,
@@ -160,7 +165,7 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
         if empty {
             tiles.held = true;
             log_event!(
-                "fullscreen layout: workspace {} emptied by hide or minimize; holding the mode for {} window(s)",
+                "fullscreen layout: workspace {} emptied by hide, minimize or native fullscreen; holding the mode for {} window(s)",
                 workspace,
                 tiles.windows.len()
             );

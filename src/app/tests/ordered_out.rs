@@ -583,3 +583,43 @@ fn a_set_aside_tile_routed_back_while_hidden_resumes_fullscreen_layout() {
     assert!(runtime.workspaces.deck(WorkspaceId::ONE).is_monocle());
     assert_eq!(runtime.backend.frames[&first], column(0, 2560));
 }
+
+/// #740: a web video's fullscreen button puts the browser window, the
+/// workspace's one Fullscreen Layout tile, into macOS native fullscreen.
+/// Observation skips it while the window server shows it on its own Space,
+/// so its slot is released once the omission settles; leaving the video's
+/// fullscreen brings Fullscreen Layout back with it.
+#[test]
+fn leaving_native_fullscreen_resumes_fullscreen_layout() {
+    let (mut runtime, first, second) = fullscreen_pair(Config::default());
+    let cancelled = AtomicBool::new(false);
+    let full = column(0, 2560);
+
+    // `first` is minimized: `second` is the workspace's one tile.
+    set_aside(&mut runtime, &first);
+    runtime.backend.observation = Some(apps_observation(&[("com.example.Second", &second, full)]));
+    runtime.cycle(studio_display(), &cancelled).unwrap();
+    assert_eq!(runtime.workspaces.workspace_of(&first), None);
+    assert!(runtime.workspaces.deck(WorkspaceId::ONE).is_monocle());
+
+    // `second` enters native fullscreen and stays there past the settle.
+    runtime.backend.frames.remove(&second);
+    runtime.backend.server_frames.insert(second.clone(), full);
+    runtime.backend.native_fullscreen.insert(second.clone());
+    runtime.backend.focused = None;
+    runtime.backend.observation = Some(apps_observation(&[]));
+    runtime.cycle(studio_display(), &cancelled).unwrap();
+    runtime.backend.advance(OMISSION_SETTLE * 2);
+    runtime.cycle(studio_display(), &cancelled).unwrap();
+    assert_eq!(runtime.workspaces.workspace_of(&second), None);
+
+    runtime.backend.native_fullscreen.remove(&second);
+    bring_back(&mut runtime, &[("com.example.Second", &second)]);
+
+    assert_eq!(
+        runtime.workspaces.workspace_of(&second),
+        Some(WorkspaceId::ONE)
+    );
+    assert!(runtime.workspaces.deck(WorkspaceId::ONE).is_monocle());
+    assert_eq!(runtime.backend.frames[&second], full);
+}
