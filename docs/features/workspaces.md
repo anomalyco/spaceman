@@ -556,8 +556,10 @@ on the same letter.
   `same_size_reopened_windows_match_by_document_and_fuzzy_title_in_reverse_order`;
   `src/window_memory.rs`: `exact_document_wins_over_same_size_windows_in_reverse_order`,
   `exact_normalized_title_wins_over_same_size_windows_in_reverse_order`,
-  `fuzzy_title_matches_unread_counters_and_project_segments_without_false_positives`, and
-  `sizes_match_before_creation_order`. Whether AppKit restores a quit app's windows in creation
+  `fuzzy_title_matches_unread_counters_and_project_segments_without_false_positives`,
+  `single_segment_utility_title_does_not_keep_shared_suffix_as_identity` (a shared app suffix is
+  ignored even when a one-part title such as `Quick Help` reopens alongside it, so exact frames
+  decide, issue 623), and `sizes_match_before_creation_order`. Whether AppKit restores a quit app's windows in creation
   order on real hardware is not covered.
 - Unit (FakeBackend), `src/app/tests/parking.rs`: parking without minimizing, re-parking windows that
   drift back, honoring windows that keep un-parking (parking exemption, working tree), and keeping

@@ -624,49 +624,64 @@ fn split_title_segments(cleaned: &str) -> Vec<String> {
 }
 
 /// Strip a shared leading or trailing app-chrome segment (such as
-/// `"google chrome"` or `"visual studio code"`) when at least 3 titles are
-/// present and every non-empty title has `>= 2` segments sharing that exact
-/// leading or trailing segment.
+/// `"google chrome"` or `"visual studio code"`) when at least 3 multi-segment
+/// titles are present and every one of them shares that exact leading or
+/// trailing segment. Single-segment titles (a utility window's bare
+/// `"Quick Help"`) cannot carry the chrome, so they neither block the strip
+/// nor are changed by it.
 fn strip_common_chrome_segments(
     cand_segs: &mut [Option<Vec<String>>],
     rem_segs: &mut [Option<Vec<String>>],
 ) {
-    let total = cand_segs.iter().flatten().count() + rem_segs.iter().flatten().count();
-    if total < 3 {
+    // The participants are fixed up front: once any of them is down to one
+    // segment, stripping stops, exactly as when every title participates.
+    let participants: Vec<bool> = cand_segs
+        .iter()
+        .chain(rem_segs.iter())
+        .map(|segs| segs.as_ref().is_some_and(|segs| segs.len() >= 2))
+        .collect();
+    if participants.iter().filter(|&&is_in| is_in).count() < 3 {
         return;
     }
     loop {
-        let all_multi = cand_segs
-            .iter()
-            .chain(rem_segs.iter())
-            .flatten()
-            .all(|segs| segs.len() >= 2);
-        if !all_multi {
+        let multi = || {
+            cand_segs
+                .iter()
+                .chain(rem_segs.iter())
+                .zip(&participants)
+                .filter_map(|(segs, &is_in)| is_in.then_some(segs.as_ref()).flatten())
+        };
+        if !multi().all(|segs| segs.len() >= 2) {
             break;
         }
         let common_tail = {
-            let mut iter = cand_segs.iter().chain(rem_segs.iter()).flatten();
+            let mut iter = multi();
             let first = iter.next().and_then(|s| s.last()).cloned();
             first.filter(|tail| iter.all(|segs| segs.last() == Some(tail)))
         };
-        if common_tail.is_some() {
-            for segs in cand_segs.iter_mut().chain(rem_segs.iter_mut()).flatten() {
-                segs.pop();
-            }
-            continue;
-        }
         let common_head = {
-            let mut iter = cand_segs.iter().chain(rem_segs.iter()).flatten();
+            let mut iter = multi();
             let first = iter.next().and_then(|s| s.first()).cloned();
             first.filter(|head| iter.all(|segs| segs.first() == Some(head)))
         };
-        if common_head.is_some() {
-            for segs in cand_segs.iter_mut().chain(rem_segs.iter_mut()).flatten() {
+        let strip_tail = common_tail.is_some();
+        if !strip_tail && common_head.is_none() {
+            break;
+        }
+        for (segs, &is_in) in cand_segs
+            .iter_mut()
+            .chain(rem_segs.iter_mut())
+            .zip(&participants)
+        {
+            let Some(segs) = segs.as_mut().filter(|_| is_in) else {
+                continue;
+            };
+            if strip_tail {
+                segs.pop();
+            } else {
                 segs.remove(0);
             }
-            continue;
         }
-        break;
     }
 }
 
@@ -950,6 +965,49 @@ mod tests {
             ],
         );
         assert_eq!(assignments, vec![(10, 2), (20, 0), (30, 1)]);
+    }
+
+    #[test]
+    fn single_segment_utility_title_does_not_keep_shared_suffix_as_identity() {
+        // #623: a bare "Workspace Help" kept " — Project Browser" from being
+        // stripped, so the suffix alone paired Tasks with Ledger and swapped two
+        // windows that each reopened at their exact saved frame.
+        let at = |x: i32, y: i32| Rect {
+            x,
+            y,
+            width: 560,
+            height: 400,
+        };
+        let entry = |workspace: u8, frame: Rect, title: &str| RememberedWindow {
+            workspace: WorkspaceId::new(workspace).unwrap(),
+            frame,
+            floating: true,
+            document: None,
+            title: Some(title.to_owned()),
+        };
+        for suffix in ["", " — Project Browser"] {
+            let workspace_help = format!("Workspace Help{suffix}");
+            let quick_help = format!("Quick Help{suffix}");
+            let remembered = [
+                entry(2, at(300, 320), "Ledger — Project Browser"),
+                entry(6, at(-1150, 100), &workspace_help),
+                entry(8, at(2820, 100), "Issue Roadmap — GitHub — Project Browser"),
+            ];
+            let assignments = assign(
+                &remembered,
+                &[
+                    cand(1, at(2820, 100), None, Some("Tasks — Project Browser")),
+                    cand(
+                        2,
+                        at(300, 320),
+                        None,
+                        Some("Calendar — Local Office — Project Browser"),
+                    ),
+                    cand(3, at(-1150, 100), None, Some(&quick_help)),
+                ],
+            );
+            assert_eq!(assignments, vec![(1, 2), (2, 0), (3, 1)], "suffix {suffix:?}");
+        }
     }
 
     #[test]
