@@ -163,8 +163,10 @@ impl MainThreadAgent {
                     let next = !self.hud;
                     match (self.callbacks.save_hud)(next) {
                         Ok(()) => {
+                            // Leave `config_stamp` for the probe: the save keeps any hand edit
+                            // already on disk, and the probe's reading of it applies the rest
+                            // (shortcuts, Labs) along with this value.
                             self.hud = next;
-                            self.config_stamp = crate::config::modified();
                             status_item::set_hud(next);
                             self.publish_ui(true);
                         }
@@ -176,14 +178,14 @@ impl MainThreadAgent {
                     }
                 }
                 Action::SetHud(enabled) => {
+                    // As for `ToggleHud`, the probe's next reading applies the whole saved file.
                     self.hud = enabled;
-                    self.config_stamp = crate::config::modified();
                     status_item::set_hud(enabled);
                     self.ui_dirty = true;
                 }
                 Action::SetPauseOnBuiltinDisplay(enabled) => {
+                    // As for `ToggleHud`, the probe's next reading applies the whole saved file.
                     self.set_pause_on_builtin_display(enabled);
-                    self.config_stamp = crate::config::modified();
                     self.ui_dirty = true;
                 }
                 Action::CheckForUpdates => {
