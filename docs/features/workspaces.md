@@ -113,7 +113,8 @@ Empty workspace chosen on another display (Lab)            // ws.empty-choice
 
 Move window without switching                              // ws.move-window
 ├── Option+Shift+<ws> / ctl move <ws> -> window parked on target, current workspace reflows and
-│                                        hands focus to a remaining visible window (if any)
+│                                        hands focus to a remaining visible window (if any); a
+│                                        window minimized or hidden there stays set aside (#743)
 ├── Target on screen on another display -> tiled there (a floating window is carried over, same
 │   size and relative place); focus follows it and Option+Tab goes back
 ├── Target hidden on another display -> parked off the edge of the display it is on; its recovery
@@ -680,7 +681,9 @@ on the same letter.
   Fullscreen Layout), while `move --follow` switches straight to the target workspace without an
   intermediate handoff. When a later window of a `move-app` refuses its move, the windows already
   moved stay on the target and focus still leaves the parked focused window for a visible window on
-  the source (#688).
+  the source (#688). A float the user minimized or hid on the source is never the handoff target:
+  with only that float left, focus stays guarded on the moved window, and with a tile still
+  showing, the tile gets focus even if the float was the last one focused (#743).
 - Unit (FakeBackend), `src/app/tests/move_tab.rs`: a detached tab goes straight to a hidden
   workspace (never tiled on the source) ahead of a route rule while focus stays on the source,
   `--follow` switches to it, a visible target on another display tiles it, an AppKit tab group's
