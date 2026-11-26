@@ -173,3 +173,38 @@ fn settled_click_on_a_visible_sibling_keeps_focus() {
     assert_eq!(focus_calls(&rt, 10), 0);
     assert_eq!(rt.backend.focused, Some(win(61)));
 }
+
+/// #657: the sibling the app hands focus to is itself pinned on another
+/// display. It counts as the workspace that display shows, so the requested
+/// window is focused again; a pin on the target's own display keeps focus.
+#[test]
+fn a_pinned_sibling_on_another_display_is_reclaimed_once() {
+    let displays = side_by_side();
+    let config = Config::parse(
+        "version = 1\n[[workspaces]]\nworkspace = 9\nmonitor = 'third-id'\n",
+    )
+    .unwrap();
+    for (pin_display, reclaimed) in [(2, 1), (0, 0)] {
+        let mut rt = runtime_with_config(FakeBackend::default(), config.clone());
+        bind(&mut rt, ws(1), &win(10));
+        rt.workspaces
+            .float(win(61), ws(9), crate::workspace::FloatCause::Manual);
+        assert!(rt.workspaces.pin(win(61)));
+        let output = displays.displays()[pin_display].frame;
+        rt.backend
+            .frames
+            .insert(win(61), rect(output.x + 260, output.y + 100, 560, 400));
+        rt.workspaces.switch(ws(9));
+        rt.workspaces.switch(ws(1));
+        let shown = rt.visible_workspaces(&displays);
+        assert!(shown.iter().any(|resolved| resolved.workspace == ws(9)));
+
+        assert!(rt.request_focus(&win(10), [None]));
+        rt.backend.calls.clear();
+        report(&mut rt, 61);
+        rt.backend.advance(Duration::from_millis(50));
+        rt.reclaim_from_sibling(&win(61), &shown);
+        rt.reclaim_from_sibling(&win(61), &shown);
+        assert_eq!(focus_calls(&rt, 10), reclaimed, "pin on display {pin_display}");
+    }
+}

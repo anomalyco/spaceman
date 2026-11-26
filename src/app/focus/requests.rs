@@ -64,7 +64,8 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
     /// another display already shows, which would leave the keys there
     /// (#591). That is the app's doing, not the user's: focus the requested
     /// window again; the request still settles at its original deadline, so
-    /// an app that insists is followed after that.
+    /// an app that insists is followed after that. A pinned sibling counts as
+    /// the workspace its display shows, never its hidden home (#657).
     pub(in crate::app) fn reclaim_from_sibling(
         &mut self,
         reported: &crate::PhysicalWindowId,
@@ -72,21 +73,28 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
     ) {
         let is_shown =
             |workspace: WorkspaceId| visible.iter().any(|shown| shown.workspace == workspace);
-        // A pinned, new, unmanaged or scratchpad window keeps focus.
-        if self.workspaces.is_pinned(reported) {
+        let now = self.backend.now();
+        let Some(target) = self.focus.sibling_target(now, reported) else {
+            return;
+        };
+        let Some(target_workspace) = self
+            .workspaces
+            .workspace_of_any(&target)
+            .filter(|workspace| is_shown(*workspace))
+        else {
+            return;
+        };
+        // A new, unmanaged or scratchpad window keeps focus, and so does a pin
+        // whose frame is unreadable or that shares the target's display.
+        let reported_workspace = if self.workspaces.is_pinned(reported) {
+            self.visible_workspace_under(reported, visible)
+                .map(|shown| shown.workspace)
+        } else {
+            self.workspaces.workspace_of_any(reported)
+        };
+        if reported_workspace.is_none_or(|workspace| workspace == target_workspace) {
             return;
         }
-        let Some(reported_workspace) = self.workspaces.workspace_of_any(reported) else {
-            return;
-        };
-        let now = self.backend.now();
-        let Some(target) = self.focus.sibling_target(now, reported).filter(|target| {
-            self.workspaces
-                .workspace_of_any(target)
-                .is_some_and(|workspace| workspace != reported_workspace && is_shown(workspace))
-        }) else {
-            return;
-        };
         // Refocus once per sibling; later reports of it are already explained.
         if !self.focus.explain_as_target(reported) {
             return;

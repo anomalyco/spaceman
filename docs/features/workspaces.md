@@ -59,7 +59,9 @@ Back-and-forth                                             // ws.back-and-forth
 ├── A focused pinned window counts as the workspace its display shows, never its hidden home
 ├── Target already on screen -> focus moves there, no display changes, nothing is parked
 │   ├── Its app handing focus to its other window on another display as it activates -> focus
-│   │   goes back to the target's window (once, while the request settles)
+│   │   goes back to the target's window (once, while the request settles); a pinned one
+│   │   counts as the workspace its display shows, so a pin on the target's own display
+│   │   keeps focus
 │   └── Press again -> bounces back to the workspace the focus came from, refocusing the
 │       window (tile or float) it left there
 ├── Target on screen but empty -> only shows its HUD; focus history is left alone
@@ -446,7 +448,8 @@ on the same letter.
   lagging focus reports (`back_and_forth_stale_report.rs`,
   `back_and_forth_fast_shortcuts.rs`, issue 399); Option+Tab from a focused pin
   (`back_and_forth_pinned_focus.rs`, issue 526), including when the target's app hands focus to
-  its window on another shown display (`back_and_forth_visible_sibling.rs`, issue 591); a first-window route staying used after its
+  its window on another shown display, even one that is itself pinned there
+  (`back_and_forth_visible_sibling.rs`, issues 591 and 657); a first-window route staying used after its
   window is floated by hand, and still routing later windows with `[labs] route_all_windows`
   (`route_after_manual_float.rs`, issue 551); a numbered move under a lagging report
   (`numbered_move_stale_report.rs`, issue 397); no follow after closing all of the frontmost
