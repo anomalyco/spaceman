@@ -4,15 +4,25 @@
 //! reorders keys. [`merge_into`] instead applies the difference between the file and that rendering
 //! to the file's own syntax tree: keys and entries the edit did not change keep their text,
 //! comments, and order; changed values keep the comments around them; removed keys and entries go
-//! with the comments attached to them; new ones are added beside their siblings.
+//! with the comments attached to them; new ones are added beside their siblings. A comment a
+//! blank line sets off from a removed key or entry is not attached to it: it stays, moved onto
+//! what follows (the next key, the next table, or the end of the file), as Settings does.
 
-use toml_edit::{Array, ArrayOfTables, DocumentMut, InlineTable, Item, Table, TableLike, Value};
+use toml_edit::{
+    Array, ArrayOfTables, Decor, DocumentMut, InlineTable, Item, RawString, Table, TableLike, Value,
+};
+
+/// Comments set off from removed keys and entries, each with the document position of the table
+/// header it sat under (`None` before every header), waiting to move onto the next table.
+type Kept = Vec<(Option<isize>, String)>;
 
 /// The `source` file with `rendered`'s content, or `None` when either fails to parse.
 pub(crate) fn merge_into(source: &str, rendered: &str) -> Option<String> {
     let mut doc = source.parse::<DocumentMut>().ok()?;
     let target = rendered.parse::<DocumentMut>().ok()?;
-    merge_table(doc.as_table_mut(), target.as_table());
+    let mut kept = Kept::new();
+    merge_table(doc.as_table_mut(), target.as_table(), None, &mut kept);
+    restore(&mut doc, kept);
     Some(doc.to_string())
 }
 
@@ -27,10 +37,14 @@ pub(crate) fn remove_entries(source: &str, key: &str, positions: &[usize]) -> Op
     let mut positions = positions.to_vec();
     positions.sort_unstable();
     positions.dedup();
+    let mut kept = Kept::new();
     match doc.as_table_mut().get_mut(key)? {
         Item::ArrayOfTables(tables) => {
             if positions.last().is_some_and(|&last| last >= tables.len()) {
                 return None;
+            }
+            for &position in &positions {
+                keep_entry_comment(tables.get(position)?, &mut kept);
             }
             for &position in positions.iter().rev() {
                 tables.remove(position);
@@ -40,30 +54,75 @@ pub(crate) fn remove_entries(source: &str, key: &str, positions: &[usize]) -> Op
             if positions.last().is_some_and(|&last| last >= values.len()) {
                 return None;
             }
-            for &position in positions.iter().rev() {
-                values.remove(position);
-            }
+            let steps = values
+                .iter()
+                .enumerate()
+                .filter(|(index, _)| positions.binary_search(index).is_err())
+                .map(|(index, value)| (Some(index), value.clone()))
+                .collect();
+            rebuild_array(values, steps);
         }
         _ => return None,
     }
+    restore(&mut doc, kept);
     Some(doc.to_string())
 }
 
-fn merge_table(old: &mut Table, new: &Table) {
+/// `header` is the document position of the table header `old`'s keys print under.
+fn merge_table(old: &mut Table, new: &Table, header: Option<isize>, kept: &mut Kept) {
     let stale: Vec<String> = old
         .iter()
         .filter(|(key, _)| new.get(key).is_none_or(Item::is_none))
         .map(|(key, _)| key.to_owned())
         .collect();
-    for key in stale {
-        old.remove(&key);
+    // Each removed value key's set-off comment, grouped by the surviving value key that follows.
+    let mut moves: Vec<(Option<String>, String)> = Vec::new();
+    for key in &stale {
+        let Some(item) = old.get(key) else { continue };
+        if !item.is_value() {
+            keep_removed(item, header, kept);
+            continue;
+        }
+        let Some(comment) = old
+            .key(key)
+            .and_then(|name| set_off(name.leaf_decor().prefix()))
+        else {
+            continue;
+        };
+        let next = old
+            .iter()
+            .skip_while(|(name, _)| *name != key.as_str())
+            .skip(1)
+            .find(|(name, item)| {
+                item.is_value() && !stale.iter().any(|gone| gone.as_str() == *name)
+            })
+            .map(|(name, _)| name.to_owned());
+        if let Some((target, text)) = moves.last_mut()
+            && *target == next
+        {
+            push_comment(text, &comment);
+        } else {
+            moves.push((next, comment));
+        }
+    }
+    for key in &stale {
+        old.remove(key);
+    }
+    for (next, comment) in moves {
+        if let Some(next) = next
+            && let Some(mut name) = old.key_mut(&next)
+        {
+            prepend(name.leaf_decor_mut(), &comment);
+        } else {
+            kept.push((header, comment));
+        }
     }
     for (key, item) in new.iter() {
         if item.is_none() {
             continue;
         }
         match old.get_mut(key) {
-            Some(existing) => merge_item(existing, item),
+            Some(existing) => merge_item(existing, item, header, kept),
             None => {
                 if item.is_value() && old.is_implicit() && !old.is_dotted() {
                     old.set_implicit(false);
@@ -74,16 +133,22 @@ fn merge_table(old: &mut Table, new: &Table) {
     }
 }
 
-fn merge_item(old: &mut Item, new: &Item) {
+fn merge_item(old: &mut Item, new: &Item, header: Option<isize>, kept: &mut Kept) {
     if same_item(old, new) {
         return;
     }
     match (old, new) {
-        (Item::Table(old), Item::Table(new)) => merge_table(old, new),
-        (Item::Table(old), Item::Value(Value::InlineTable(new))) => {
-            merge_table(old, &new.clone().into_table());
+        (Item::Table(old), Item::Table(new)) => {
+            let header = header_position(old).or(header);
+            merge_table(old, new, header, kept);
         }
-        (Item::ArrayOfTables(old), Item::ArrayOfTables(new)) => merge_tables(old, new),
+        (Item::Table(old), Item::Value(Value::InlineTable(new))) => {
+            let header = header_position(old).or(header);
+            merge_table(old, &new.clone().into_table(), header, kept);
+        }
+        (Item::ArrayOfTables(old), Item::ArrayOfTables(new)) => {
+            merge_tables(old, new, header, kept);
+        }
         (Item::Value(old), Item::Value(new)) => merge_value(old, new),
         (Item::Value(old), Item::Table(new)) if old.is_inline_table() => {
             merge_value(old, &Value::InlineTable(new.clone().into_inline_table()));
@@ -95,20 +160,34 @@ fn merge_item(old: &mut Item, new: &Item) {
     }
 }
 
-fn merge_tables(old: &mut ArrayOfTables, new: &ArrayOfTables) {
+fn merge_tables(
+    old: &mut ArrayOfTables,
+    new: &ArrayOfTables,
+    header: Option<isize>,
+    kept: &mut Kept,
+) {
     let olds: Vec<&Table> = old.iter().collect();
     let news: Vec<&Table> = new.iter().collect();
     let plan = align(olds.len(), news.len(), |i, j| same_tables(olds[i], news[j]));
     let mut merged = ArrayOfTables::new();
+    let mut next_old = 0;
     for (from, j) in plan {
         merged.push(match from {
             Some(i) => {
+                for gone in &olds[next_old..i] {
+                    keep_entry_comment(gone, kept);
+                }
+                next_old = i + 1;
                 let mut table = olds[i].clone();
-                merge_table(&mut table, news[j]);
+                let header = header_position(&table).or(header);
+                merge_table(&mut table, news[j], header, kept);
                 table
             }
             None => detach_table(news[j]),
         });
+    }
+    for gone in &olds[next_old..] {
+        keep_entry_comment(gone, kept);
     }
     *old = merged;
 }
@@ -151,21 +230,187 @@ fn merge_array(old: &mut Array, new: &Array) {
     let olds: Vec<&Value> = old.iter().collect();
     let news: Vec<&Value> = new.iter().collect();
     let plan = align(olds.len(), news.len(), |i, j| same_value(olds[i], news[j]));
-    let mut merged = Array::new();
-    for (from, j) in plan {
-        merged.push_formatted(match from {
+    let steps = plan
+        .into_iter()
+        .map(|(from, j)| match from {
             Some(i) => {
                 let mut value = olds[i].clone();
                 merge_value(&mut value, news[j]);
-                value
+                (Some(i), value)
             }
-            None => news[j].clone(),
-        });
+            None => (None, news[j].clone()),
+        })
+        .collect();
+    rebuild_array(old, steps);
+}
+
+/// Replaces `old`'s elements with `steps`, each the old element it continues (in order), if any,
+/// and its value. An old element no step continues leaves the array; a comment set off above it
+/// moves onto the next element that stays, or before the closing bracket.
+fn rebuild_array(old: &mut Array, steps: Vec<(Option<usize>, Value)>) {
+    let mut merged = Array::new();
+    let mut pending = String::new();
+    let mut next_old = 0;
+    for (from, mut value) in steps {
+        if let Some(i) = from {
+            for gone in old.iter().take(i).skip(next_old) {
+                if let Some(comment) = set_off(gone.decor().prefix()) {
+                    push_comment(&mut pending, &comment);
+                }
+            }
+            next_old = i + 1;
+            if !pending.is_empty() {
+                prepend(value.decor_mut(), &pending);
+                pending.clear();
+            }
+        }
+        merged.push_formatted(value);
     }
-    merged.set_trailing(old.trailing().clone());
+    for gone in old.iter().skip(next_old) {
+        if let Some(comment) = set_off(gone.decor().prefix()) {
+            push_comment(&mut pending, &comment);
+        }
+    }
+    if pending.is_empty() {
+        merged.set_trailing(old.trailing().clone());
+    } else {
+        let trailing = old.trailing().as_str().unwrap_or_default();
+        let comment = if trailing.starts_with(['\r', '\n']) {
+            pending.trim_end()
+        } else {
+            pending.as_str()
+        };
+        merged.set_trailing(format!("{comment}{trailing}"));
+    }
     merged.set_trailing_comma(old.trailing_comma());
     *merged.decor_mut() = old.decor().clone();
     *old = merged;
+}
+
+/// The position of the header `table` prints under its own name, if it has one.
+fn header_position(table: &Table) -> Option<isize> {
+    (!table.is_implicit() && !table.is_dotted())
+        .then(|| table.position())
+        .flatten()
+}
+
+/// Keeps the comments set off inside a removed table or array of tables: above its header, and
+/// above each of its keys (a removed `[[entry]]`'s own keys go with it).
+fn keep_removed(item: &Item, header: Option<isize>, kept: &mut Kept) {
+    match item {
+        Item::Table(table) => {
+            let position = header_position(table);
+            if position.is_some()
+                && let Some(comment) = set_off(table.decor().prefix())
+            {
+                kept.push((position, comment));
+            }
+            let header = position.or(header);
+            for (key, item) in table.iter() {
+                if !item.is_value() {
+                    keep_removed(item, header, kept);
+                } else if let Some(comment) = table
+                    .key(key)
+                    .and_then(|name| set_off(name.leaf_decor().prefix()))
+                {
+                    kept.push((header, comment));
+                }
+            }
+        }
+        Item::ArrayOfTables(tables) => {
+            for table in tables.iter() {
+                keep_entry_comment(table, kept);
+            }
+        }
+        _ => {}
+    }
+}
+
+/// Keeps the comment set off above a removed `[[entry]]` header.
+fn keep_entry_comment(table: &Table, kept: &mut Kept) {
+    if let Some(comment) = set_off(table.decor().prefix()) {
+        kept.push((table.position(), comment));
+    }
+}
+
+/// Moves each kept comment onto the first table header after the one it sat under, or to the end
+/// of the file, in document order.
+fn restore(doc: &mut DocumentMut, mut kept: Kept) {
+    kept.sort_by_key(|(position, _)| position.unwrap_or(isize::MIN));
+    for (position, comment) in kept.into_iter().rev() {
+        if let Some(table) = next_table(doc.as_table_mut(), position.unwrap_or(isize::MIN)) {
+            prepend(table.decor_mut(), &comment);
+        } else {
+            let trailing = doc.trailing().as_str().unwrap_or_default();
+            let trailing = format!("{comment}{trailing}");
+            doc.set_trailing(trailing);
+        }
+    }
+}
+
+/// The header table that comes first after document position `after`.
+fn next_table(table: &mut Table, after: isize) -> Option<&mut Table> {
+    fn walk<'a>(table: &'a mut Table, after: isize, best: &mut Option<(isize, &'a mut Table)>) {
+        for (_, item) in table.iter_mut() {
+            let subs: Vec<&mut Table> = match item {
+                Item::Table(sub) => vec![sub],
+                Item::ArrayOfTables(array) => array.iter_mut().collect(),
+                _ => continue,
+            };
+            for sub in subs {
+                match header_position(sub) {
+                    Some(position)
+                        if position > after
+                            && best.as_ref().is_none_or(|(current, _)| position < *current) =>
+                    {
+                        *best = Some((position, sub));
+                    }
+                    _ => walk(sub, after, best),
+                }
+            }
+        }
+    }
+    let mut best = None;
+    walk(table, after, &mut best);
+    best.map(|(_, table)| table)
+}
+
+/// The comment lines in a removed item's leading whitespace that a blank line sets off from it,
+/// ending in a newline; the comment directly above the item is attached to it and goes with it.
+fn set_off(prefix: Option<&RawString>) -> Option<String> {
+    let text = prefix?.as_str()?;
+    let mut blank_end = None;
+    let mut offset = 0;
+    for line in text.split_inclusive('\n') {
+        offset += line.len();
+        // A whole line only: the indent before the item itself isn't a blank line.
+        if line.ends_with('\n') && line.trim().is_empty() {
+            blank_end = Some(offset);
+        }
+    }
+    let kept = text[..blank_end?].trim_end();
+    kept.contains('#').then(|| format!("{kept}\n"))
+}
+
+fn push_comment(text: &mut String, comment: &str) {
+    if !text.is_empty() {
+        text.push('\n');
+    }
+    text.push_str(comment);
+}
+
+/// Puts `comment` above what `decor` leads, a blank line still setting it off.
+fn prepend(decor: &mut Decor, comment: &str) {
+    let existing = decor
+        .prefix()
+        .and_then(RawString::as_str)
+        .unwrap_or_default();
+    let prefix = if existing.starts_with(['\r', '\n']) {
+        format!("{comment}{existing}")
+    } else {
+        format!("{comment}\n{existing}")
+    };
+    decor.set_prefix(prefix);
 }
 
 /// For each new element in order, the old element it continues, if any. Equal lengths pair
