@@ -128,7 +128,8 @@ frame could not be read) puts the siblings back where the saved layout has them.
 While the worker is busy, keyboard commands and completed pointer gestures are queued in arrival
 order. Repeated relative commands (resize, focus, move, and toggles) are not discarded. The queue holds
 up to 64 pending inputs; excess input is rejected with `Input queue full; command was not queued` in
-the menu status and log. Pausing, quitting, or losing hotkeys clears pending input so it cannot replay
+the menu status and log. A `spaceman ctl` command gets that error as its own reply and exits
+non-zero, so its `queued` reply always means the command was admitted. Pausing, quitting, or losing hotkeys clears pending input so it cannot replay
 after resuming. A gesture is classified from its starting and final geometry even if the worker was
 too busy to show a preview. Pointer tracking reads window-server geometry rather than making
 synchronous Accessibility requests on the main thread.
