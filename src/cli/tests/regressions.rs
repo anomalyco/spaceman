@@ -647,3 +647,25 @@ fn removing_one_of_two_equal_rules_keeps_the_survivors_own_comments() {
         assert_eq!(temp.read(), before.replace(gone, ""), "{index}");
     }
 }
+
+#[test]
+fn removing_a_key_or_entry_keeps_the_comment_a_blank_line_sets_off_from_it() {
+    const GAPS: &str = "version = 1\n\n[settings.gaps]\nouter = 12 # Keep outer\n# Detached gap notes\n\n# Attached left-edge note\nleft = 20 # Left edge\n\n# EOF note\n";
+    const LEFT: &str = "\n# Attached left-edge note\nleft = 20 # Left edge\n";
+    const WORKSPACES: &str = "version = 1\n\n# Office notes\n[[workspaces]]\nworkspace = 2\nmonitor = \"secondary\"\n\n# Detached workspace notes\n\n# Attached workspace note\n[[workspaces]]\nworkspace = 6\nmonitor = \"secondary\" # Six\n\n# Seven\n[[workspaces]]\nworkspace = 7\nmonitor = \"main\"\n\n# EOF note\n";
+    const SIX: &str = "\n# Attached workspace note\n[[workspaces]]\nworkspace = 6\nmonitor = \"secondary\" # Six\n";
+    let temp = TempConfig::new("set-off-comments");
+
+    for (before, args, gone) in [
+        (GAPS, &["config", "reset", "gaps.left"][..], LEFT),
+        (WORKSPACES, &["workspaces", "clear", "6"][..], SIX),
+    ] {
+        temp.write(before);
+        let after = before.replace(gone, "");
+        for _ in 0..2 {
+            let outcome = temp.run(args);
+            assert_eq!(outcome.exit_code, 0, "{args:?}: {:?}", outcome.stderr);
+            assert_eq!(temp.read(), after, "{args:?}");
+        }
+    }
+}
