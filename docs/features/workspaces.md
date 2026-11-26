@@ -524,7 +524,10 @@ on the same letter.
   `only_swipes_with_the_configured_finger_count_are_admitted`, `src/app/input.rs`)
   and the Shortcuts row in
   `agent/src/panes/shortcuts/tests.rs`, and visible stranded-window recovery
-  after display disconnect in `src/app/tests/display_disconnect.rs` (issue 150). Live CGEventTap
+  after display disconnect in `src/app/tests/display_disconnect.rs` (issue 150), which leaves
+  a float restoring from the Dock at its own frame
+  (`a_float_restoring_from_the_dock_is_not_moved_as_stranded` in
+  `src/app/tests/float_regressions.rs`, issue 710). Live CGEventTap
   callback delivery in `src/macos/swipes.rs` is not covered.
 - Unit (FakeBackend), `src/app/tests/reconciliation.rs`: adoption order
   (`bundle_route_applies_to_initial_window_while_secondary_windows_stay_on_active_workspace`,
