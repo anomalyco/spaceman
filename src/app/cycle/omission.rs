@@ -11,6 +11,8 @@ const TAB_SWITCH_SETTLE: Duration = Duration::from_millis(300);
 pub(in crate::app) struct Omission {
     since: Instant,
     probe: Probe,
+    /// An omitted float a Space slide left on a desktop that isn't shown (#768).
+    off_desktop: bool,
 }
 
 enum Probe {
@@ -24,6 +26,7 @@ impl Omission {
         Self {
             since,
             probe: Probe::First,
+            off_desktop: false,
         }
     }
 
@@ -85,6 +88,62 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
                 Omission::new(now)
             })
             .is_settling(now)
+    }
+
+    /// An owned float a Complete snapshot omits because a macOS Space slide
+    /// left it on a desktop that isn't shown: the window server still lists it,
+    /// off screen, and the slide settled moments ago. Its app is observed only
+    /// because it has another window on the shown desktop (#768). The float
+    /// keeps its workspace until it is observed again or the window server
+    /// drops it (a real close); a float ordered out with no slide just settled
+    /// is not kept. Known gap: a float closed within `SLIDE_ARRIVAL_WINDOW` (2 s)
+    /// of a slide by an app that orders closed windows out instead of
+    /// destroying them is kept too, until the window server drops it.
+    pub(super) fn omitted_float_is_on_another_desktop(
+        &mut self,
+        window: &crate::PhysicalWindowId,
+        server_frames: &HashMap<u32, crate::Rect>,
+        onscreen: &mut Option<Option<HashMap<u32, crate::Rect>>>,
+    ) -> bool {
+        if !server_frames.contains_key(&window.window_id) {
+            return false;
+        }
+        let frames = onscreen.get_or_insert_with(|| self.backend.onscreen_window_frames());
+        let Some(frames) = frames.as_ref() else {
+            return false;
+        };
+        if frames.contains_key(&window.window_id) {
+            // Back on screen: an omission from here on is a fresh one with its own
+            // settle (#179), not the one the slide began.
+            if self
+                .omitted_windows
+                .get(window)
+                .is_some_and(|omission| omission.off_desktop)
+            {
+                self.omitted_windows.remove(window);
+            }
+            return false;
+        }
+        if self
+            .omitted_windows
+            .get(window)
+            .is_some_and(|omission| omission.off_desktop)
+        {
+            return true;
+        }
+        if !self.space_slide_just_settled() {
+            return false;
+        }
+        log_event!(
+            "observation omitted floating {:?}: off screen after a Space slide; keeping its float on the desktop it left",
+            window
+        );
+        let now = self.backend.now();
+        self.omitted_windows
+            .entry(window.clone())
+            .or_insert_with(|| Omission::new(now))
+            .off_desktop = true;
+        true
     }
 
     pub(super) fn ordered_out_window_is_settling(

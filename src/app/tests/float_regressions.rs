@@ -1,6 +1,7 @@
 //! Floating-window regressions: rule origin across a restart (#160) and within a session
 //! (#493), focus next from and through floats (#178), and a float omitted from one snapshot
-//! (#179), and a minimized float restored (#699) through its restore animation (#710).
+//! (#179), a minimized float restored (#699) through its restore animation (#710), and a float
+//! left on another macOS desktop (#768).
 use super::*;
 
 fn act(runtime: &mut WorkspaceRuntime<FakeBackend>, action: WorkerAction) -> Result<(), String> {
@@ -312,6 +313,59 @@ fn an_omitted_float_off_screen_or_past_the_settle_is_forgotten() {
         window(20),
         cycle::Omission::new(Instant::now() - OMISSION_SETTLE * 2),
     );
+    act(&mut runtime, WorkerAction::Retile).unwrap();
+    assert_eq!(runtime.workspaces.floating_workspace_of(&window(20)), None);
+}
+
+/// #768: a float a desktop switch leaves on the desktop it left keeps its float while its app's
+/// window on the shown desktop keeps the app observed, and floats again when it is back on
+/// screen. Once the window server drops it (closed), it is forgotten.
+#[test]
+fn a_float_left_on_another_desktop_keeps_floating() {
+    let mut runtime = floated_second_window();
+    let original = runtime.backend.frames[&window(20)];
+    runtime.backend.space_changed_at = Some(runtime.backend.now() - Duration::from_secs(1));
+    runtime.backend.ordered_out.insert(20);
+    omit_float(&mut runtime);
+    runtime.backend.advance(OMISSION_SETTLE * 5);
+    act(&mut runtime, WorkerAction::Retile).unwrap();
+    assert_eq!(
+        runtime.workspaces.floating_workspace_of(&window(20)),
+        Some(WorkspaceId::ONE)
+    );
+
+    // Back on screen, but left out of the first snapshot after the return (#179): it gets
+    // a fresh settle instead of the omission the slide began.
+    runtime.backend.ordered_out.clear();
+    omit_float(&mut runtime);
+    assert_eq!(
+        runtime.workspaces.floating_workspace_of(&window(20)),
+        Some(WorkspaceId::ONE)
+    );
+
+    runtime.backend.observation = Some(observation_for_windows(
+        "com.example.Test",
+        &window(10),
+        &[(window(10), frame(50)), (window(20), original)],
+    ));
+    act(&mut runtime, WorkerAction::Retile).unwrap();
+    assert_eq!(
+        runtime.workspaces.floating_workspace_of(&window(20)),
+        Some(WorkspaceId::ONE)
+    );
+    assert_eq!(
+        runtime.workspaces.engine(WorkspaceId::ONE).bound_windows(),
+        vec![window(10)]
+    );
+    assert_eq!(runtime.backend.frames[&window(20)], original);
+
+    // Off the shown desktop again, then closed there.
+    runtime.backend.space_changed_at = Some(runtime.backend.now() - Duration::from_secs(1));
+    runtime.backend.ordered_out.insert(20);
+    omit_float(&mut runtime);
+    runtime.backend.frames.remove(&window(20));
+    runtime.backend.server_frames.remove(&window(20));
+    runtime.backend.advance(OMISSION_SETTLE * 5);
     act(&mut runtime, WorkerAction::Retile).unwrap();
     assert_eq!(runtime.workspaces.floating_workspace_of(&window(20)), None);
 }

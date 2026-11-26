@@ -257,6 +257,8 @@ Settings › Rules                                           // ws.rules-pane
 Pinned floats                                              // ws.pin
 ├── action = "pin" rule, spaceman ctl pin, or a [shortcuts.bindings] chord bound to "pin" on the focused window (floats it first; again unpins)
 ├── Never parked by a switch, a move or a display change: shows on every workspace of its display
+├── Left on a macOS desktop that isn't shown, it stays pinned (or a hand float stays floating) even
+│   when its app has a window on the desktop shown, and comes back that way (#768)
 ├── Keeps its owning workspace for memory and the HUD; unpinning hands it to the workspace showing it
 ├── A pin rule added while the window is parked brings it back (matched by bundle and the full title
 │   it last showed, so an earlier title rule still wins; title rules wait until it is observed);
@@ -591,6 +593,7 @@ on the same letter.
   `pin_rule_parses_and_rejects_a_workspace`, `title_contains_matches_case_insensitively_in_memory`;
   `src/workspace/tests.rs`: `hand_pins_persist_for_floating_windows_and_rule_pins_do_not`,
   `pinned_floats_do_not_place_their_app_on_a_workspace`;
+  `src/app/tests/float_regressions.rs`: `a_float_left_on_another_desktop_keeps_floating` (#768);
   `agent/src/map/tests.rs`: `pin_and_title_contains_rules_round_trip_as_non_app_wide_floats`.
 - Unit, Settings › Rules and the HUD menu: `agent/src/main.rs`
   `settings_opens_on_general_not_on_rules`; `agent/src/map/tests.rs`

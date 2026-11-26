@@ -119,6 +119,13 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
                     ) {
                         // The tab group now shows another tab, which keeps the float (#747).
                         self.omitted_windows.remove(&window);
+                    } else if self.omitted_float_is_on_another_desktop(
+                        &window,
+                        server_frames,
+                        &mut onscreen_frames,
+                    ) {
+                        // Left on the desktop a Space slide left; its omission entry
+                        // remembers that until the window is observed again (#768).
                     } else if !self.omitted_float_is_settling(&window, &mut onscreen_frames) {
                         log_event!("forget floating {:?}: not observed and not parked", window);
                         self.workspaces.forget_floating(&window);
