@@ -267,6 +267,8 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
         if is_floating {
             self.workspaces.own_floating(window.clone(), target);
         } else {
+            // Its group may show another tab where it was before it gets there (#759).
+            self.note_departed_tile(&window, source);
             let source_canvas = self.layout_settings(source_output).canvas();
             let target_canvas = self.layout_settings(target_output).canvas();
             self.workspaces

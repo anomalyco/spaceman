@@ -222,6 +222,19 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
                         Some(handoff_recheck.map_or(deadline, |at: Instant| at.min(deadline)));
                     FrozenWindowAffinity::Ignored
                 } else if !floating
+                    && let Some(owner) = self.claim_moved_tab_tile(
+                        &app.bundle_id,
+                        window,
+                        windows,
+                        server_frames,
+                        &mut onscreen_frames,
+                    )
+                {
+                    // The tab its group shows in place of a tile just moved away (#759).
+                    app_owns_window = true;
+                    app_owns_tiled = true;
+                    FrozenWindowAffinity::Owned(owner)
+                } else if !floating
                     && let Some(owner) = self.claim_hidden_tab_tile(
                         &app.bundle_id,
                         window,

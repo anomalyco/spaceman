@@ -22,6 +22,7 @@ mod fullscreen_near_return_drag;
 mod held_swap_numbered_move;
 mod hud_rows_after_move;
 mod missing_drop_sample;
+mod move_app_tab_switch;
 mod move_back_reveals_last_shown;
 mod move_tab_follow_pointer;
 mod native_tab_after_resize;

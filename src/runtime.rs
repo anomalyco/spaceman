@@ -543,6 +543,21 @@ impl Engine {
         true
     }
 
+    /// Where `window`'s tile here was last asked to go and last seen.
+    pub(crate) fn known_frames(&self, window: &PhysicalWindowId) -> Vec<crate::Rect> {
+        let Some(slot) = self.slot_for_window(window) else {
+            return Vec::new();
+        };
+        [
+            self.evidence.previous_placements.get(&slot),
+            self.evidence.previous_frames.get(&slot),
+        ]
+        .into_iter()
+        .flatten()
+        .copied()
+        .collect()
+    }
+
     pub(crate) fn slot_for_window(&self, window: &PhysicalWindowId) -> Option<crate::SlotId> {
         self.model
             .workspace
