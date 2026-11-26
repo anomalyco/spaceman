@@ -398,7 +398,8 @@ or `Delete` on its own clears the shortcut (`none`), a chord without `⌥`, `⌃
 so is a numeric keypad key (a binding can't tell it from the main key), and so is a chord another
 shortcut uses, naming it. A Shift chord is taken under either spelling: on a US layout
 `Option`+`Shift`+`=` is both `alt+shift+=` and `alt++`, so a binding written either way refuses it.
-Base modifier sets `modifier`, and Reset to defaults removes the `[shortcuts]` table. Comments and
+The reason stays in the recorder after the keys come up, until a modifier is pressed for the next
+attempt. Base modifier sets `modifier`, and Reset to defaults removes the `[shortcuts]` table. Comments and
 other bindings in the file are kept.
 
 ## Labs
