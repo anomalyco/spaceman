@@ -171,19 +171,27 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
         }
     }
 
-    /// A config reload can assign a workspace to another display while its
-    /// floats are parked. Tiles are laid out on the new display when it shows;
-    /// a parked float restores to its recovery frame, so that frame moves from
-    /// the display the workspace left onto its new one, same size and place
-    /// (#543). The float stays parked until the workspace is shown.
+    /// A config reload can assign a workspace to another display. Tiles are
+    /// laid out on the new display when it shows; its floats on the display it
+    /// left move with it, same size and place on the display. A parked float
+    /// restores to its recovery frame, so that frame moves (#543). A float
+    /// still on screen, its workspace shown when the assignment changed, would
+    /// otherwise be parked from where it stands and come back on the old
+    /// display (#665): it parks now with a recovery frame on the new display,
+    /// or moves there if the workspace shows there already.
     /// `homes_before` holds each workspace's display, in `WorkspaceId::all`
     /// order, before the reload.
-    pub(super) fn carry_parked_floats_to_new_homes(
+    pub(super) fn carry_floats_to_new_homes(
         &mut self,
         homes_before: &[crate::Rect],
         outputs: &macos::DisplayOutputs,
     ) {
         let displays: Vec<_> = outputs.frames().collect();
+        let visible: HashSet<_> = self
+            .visible_workspaces(outputs)
+            .into_iter()
+            .map(|resolved| resolved.workspace)
+            .collect();
         for (workspace, &from) in WorkspaceId::all().zip(homes_before) {
             let to = output_for(&self.workspaces, workspace, outputs);
             if to == from {
@@ -192,25 +200,40 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
             let floats: Vec<_> = self
                 .workspaces
                 .floating_entries()
-                .filter(|(window, owner)| {
-                    *owner == workspace
-                        && !self.workspaces.is_pinned(window)
-                        && self.parked.contains_key(window)
-                })
+                .filter(|(window, owner)| *owner == workspace && !self.stays_on_screen(window))
                 .map(|(window, _)| window.clone())
                 .collect();
             for window in floats {
-                let Some(&recovery) = self.parked.get(&window) else {
-                    continue;
-                };
-                if Self::display_for_frame(recovery, &displays) != Some(from) {
+                if let Some(&recovery) = self.parked.get(&window) {
+                    if Self::display_for_frame(recovery, &displays) != Some(from) {
+                        continue;
+                    }
+                    let relocated =
+                        super::move_workspace::translate_frame_to_output(recovery, from, to);
+                    let recorded = self.record_recovery(&window, relocated);
+                    log_event!(
+                        "config reload: workspace {workspace} moved displays; parked floating {window:?} restores at {relocated:?} (recorded {recorded})"
+                    );
                     continue;
                 }
-                let relocated =
-                    super::move_workspace::translate_frame_to_output(recovery, from, to);
-                let recorded = self.record_recovery(&window, relocated);
+                let Some(frame) = self
+                    .backend
+                    .window_server_frame(&window)
+                    .or_else(|| self.backend.frame(&window).ok())
+                else {
+                    continue;
+                };
+                if Self::display_for_frame(frame, &displays) != Some(from) {
+                    continue;
+                }
+                let outcome = if visible.contains(&workspace) {
+                    let target = super::move_workspace::translate_frame_to_output(frame, from, to);
+                    self.backend.set_position(&window, target)
+                } else {
+                    self.park_window_across(&window, from, to, outputs)
+                };
                 log_event!(
-                    "config reload: workspace {workspace} moved displays; parked floating {window:?} restores at {relocated:?} (recorded {recorded})"
+                    "config reload: workspace {workspace} moved displays; carry floating {window:?} ({outcome:?})"
                 );
             }
         }

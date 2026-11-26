@@ -127,7 +127,7 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
         self.config = config;
         self.unmovable_stale.forget_ignored();
         if let Some(outputs) = &known {
-            self.carry_parked_floats_to_new_homes(&homes_before, outputs);
+            self.carry_floats_to_new_homes(&homes_before, outputs);
         }
     }
 

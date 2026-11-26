@@ -442,7 +442,8 @@ on the same letter.
   (`restored_cross_selector_history.rs`, issue 401); a tall float's round trip
   (`tall_float_round_trip.rs`, issue 403); floats returning on reconnect
   (`reconnect_carries_floats.rs`, issue 405) and a hidden workspace's parked float following a
-  reassignment in config (`reassign_hidden_float.rs`, issue 543); HUD rows after moving an empty
+  reassignment in config (`reassign_hidden_float.rs`, issue 543) and a shown workspace's float
+  doing the same (`reassign_visible_float.rs`, issue 665); HUD rows after moving an empty
   workspace (`hud_rows_after_move.rs`, plus
   `moving_an_empty_workspace_away_retires_its_slot_on_the_old_display` in `agent/src/hud/tests.rs`,
   issue 419); a deleted named workspace (`config_removed_named.rs`, issue 424); Option+Tab after
@@ -693,8 +694,8 @@ on the same letter.
   logs `hotkey: <name> pressed but macOS did not deliver it`, registers every shortcut again (at
   most every 5 s) and runs the missed action. Each delivered press logs `hotkey: <name>`.
 - Config edits (rules, display assignments, and HUD settings) reload automatically before the next
-  command (a hidden workspace's parked floats move with a new assignment and show on its new
-  display); new named-workspace hotkeys register on the next app start, and `ctl restart` exits
+  command (a workspace's floats move with a new assignment and show on its new display, whether
+  they were parked or still on screen when it changed); new named-workspace hotkeys register on the next app start, and `ctl restart` exits
   without relaunching.
 - The HUD's first appearance after launch only fades in: its panel has drawn nothing yet for the
   capsule to rise from. Every later one enters with the full motion.
