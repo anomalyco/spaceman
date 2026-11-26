@@ -421,6 +421,15 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
                 ) else {
                     continue;
                 };
+                if self.float_frame_is_transient(&window, frame, &displays) {
+                    log_event!(
+                        "keep floating {:?} on workspace {}: window-server frame {:?} is transient",
+                        window,
+                        workspace,
+                        frame
+                    );
+                    continue;
+                }
                 let target = clamp_into_output(frame, output);
                 let outcome = self.backend.set_position(&window, target);
                 log_event!(
@@ -476,6 +485,24 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
         }
         (self.backend.frame(window).is_ok() && !self.backend.confirms_set_aside(window))
             .then_some(frame)
+    }
+
+    /// Whether an off-display window-server `frame` of a float is a passing
+    /// animation rather than a stranded window: while macOS restores a minimized
+    /// window it briefly reports a small frame near the Dock, but Accessibility
+    /// still reports the window's own frame. A float is stranded only when
+    /// Accessibility agrees on its size and also places it off every display (#710).
+    fn float_frame_is_transient(
+        &mut self,
+        window: &crate::PhysicalWindowId,
+        frame: crate::Rect,
+        displays: &[crate::Rect],
+    ) -> bool {
+        let Ok(own) = self.backend.frame(window) else {
+            return false;
+        };
+        (own.width, own.height) != (frame.width, frame.height)
+            || displays.iter().any(|display| display.contains_center(own))
     }
 
     /// Where a recovery frame is restored: itself while it shows on a connected

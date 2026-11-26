@@ -1,6 +1,6 @@
 //! Floating-window regressions: rule origin across a restart (#160) and within a session
 //! (#493), focus next from and through floats (#178), and a float omitted from one snapshot
-//! (#179), and a minimized float restored (#699).
+//! (#179), and a minimized float restored (#699) through its restore animation (#710).
 use super::*;
 
 fn act(runtime: &mut WorkspaceRuntime<FakeBackend>, action: WorkerAction) -> Result<(), String> {
@@ -354,6 +354,47 @@ fn a_minimized_float_floats_again_when_restored() {
     runtime.backend.focused = Some(window(20));
     act(&mut runtime, WorkerAction::ToggleFloat).unwrap();
     assert_eq!(runtime.workspaces.floating_workspace_of(&window(20)), None);
+}
+
+/// #710: while macOS restores a minimized float, the window server briefly reports a small
+/// frame near the Dock, off every display, while Accessibility still reports the float's own
+/// frame. That passing frame is not a stranded window, so the float keeps its place; one that
+/// Accessibility also places off every display is still recovered.
+#[test]
+fn a_float_restoring_from_the_dock_is_not_moved_as_stranded() {
+    let mut runtime = floated_second_window();
+    let original = runtime.backend.frames[&window(20)];
+    let dock = crate::Rect {
+        x: 900,
+        y: 820,
+        width: 61,
+        height: 48,
+    };
+    runtime.backend.server_frames.insert(window(20), dock);
+    runtime.backend.calls.clear();
+    act(&mut runtime, WorkerAction::Retile).unwrap();
+    assert!(
+        !runtime.backend.calls.iter().any(|call| matches!(
+            call,
+            BackendCall::SetPosition(moved, _) if moved == &window(20)
+        )),
+        "a restore animation frame must not move the float"
+    );
+    assert_eq!(runtime.backend.frames[&window(20)], original);
+    assert_eq!(
+        runtime.workspaces.floating_workspace_of(&window(20)),
+        Some(WorkspaceId::ONE)
+    );
+
+    runtime.backend.server_frames.clear();
+    let stranded = crate::Rect {
+        x: 900,
+        y: 820,
+        ..original
+    };
+    runtime.backend.frames.insert(window(20), stranded);
+    act(&mut runtime, WorkerAction::Retile).unwrap();
+    assert_ne!(runtime.backend.frames[&window(20)], stranded);
 }
 
 #[test]
