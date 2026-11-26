@@ -608,7 +608,8 @@ During a 60-second recall window, eligible windows claim remembered placements: 
 a remembered frame within 8 pixels, then one whose size alone matches within 8 pixels (a note
 reopened somewhere else), then the remaining windows in creation order. A
 claimed window joins its remembered workspace (hidden if that workspace is not visible, and floating
-again if it was saved floating). Windows beyond the remembered count, windows opened after the
+again if it was saved floating, at its remembered position but at the size the application
+reopened it at). Windows beyond the remembered count, windows opened after the
 recall window closes, and placements on workspaces that are no longer enabled or managed are adopted
 on the active workspace.
 
