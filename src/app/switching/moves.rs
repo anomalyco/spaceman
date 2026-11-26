@@ -83,15 +83,25 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
             .filter(|source| *source != target);
         let mut status: Option<CycleStatus> = None;
         let mut retired_failed = 0;
+        let mut refused = None;
         for window in windows {
-            match self.move_window_outcome(
+            let outcome = match self.move_window_outcome(
                 window,
                 target,
                 false,
                 outputs.clone(),
                 cancelled,
                 CommandOrigin::Passive,
-            )? {
+            ) {
+                Ok(outcome) => outcome,
+                Err(error) => {
+                    // Windows already moved stay moved, so focus still has
+                    // to leave the one parked off screen (#688).
+                    refused = Some(error);
+                    break;
+                }
+            };
+            match outcome {
                 MoveWindowOutcome::Moved(mut moved) => {
                     moved.failed += status.map_or(retired_failed, |earlier| earlier.failed);
                     retired_failed = 0;
@@ -111,6 +121,7 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
         if status.is_some()
             && !self.is_visible(target, &outputs)
             && let (Some(focused), Some(source)) = (focused_before, focused_source)
+            && (refused.is_none() || self.workspaces.workspace_of_any(&focused) == Some(target))
             && self.is_visible(source, &outputs)
         {
             self.handoff_focus_after_park(
@@ -121,6 +132,9 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
                 CommandOrigin::Passive,
             );
             self.persist_workspace_state_if_changed()?;
+        }
+        if let Some(error) = refused {
+            return Err(error);
         }
         status.ok_or_else(|| format!("No managed window found for {bundle_id}"))
     }

@@ -112,6 +112,9 @@ struct FakeBackend {
     position_outcome: Option<macos::ApplyOutcome>,
     /// Position writes macOS clamps back, leaving the window where it was.
     refuses_position: Option<fn(crate::Rect) -> bool>,
+    /// Windows that refuse every parking write (an app rejecting off-screen
+    /// coordinates).
+    refuses_parking: HashSet<crate::PhysicalWindowId>,
     /// Widths windows refuse to shrink below, clamped synchronously like AppKit.
     minimum_widths: HashMap<crate::PhysicalWindowId, i32>,
     /// Skips managed writes to windows already within the write tolerance of
@@ -372,6 +375,9 @@ impl WorkspaceBackend for FakeBackend {
         target: crate::Rect,
     ) -> macos::ApplyOutcome {
         self.parked_writes.push(window.clone());
+        if self.refuses_parking.contains(window) {
+            return macos::ApplyOutcome::Unavailable;
+        }
         self.set_position(window, target)
     }
 
