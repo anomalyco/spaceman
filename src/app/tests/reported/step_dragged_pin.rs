@@ -1,7 +1,8 @@
 //! #561: `switch next` from a pin dragged to another display steps the display the
 //! pin is on (#606: even with its center in that display's menu bar strip), never the one
 //! showing its home workspace; `move-workspace` keeps moving the pin's home. Reported by
-//! @coygeek.
+//! @coygeek. #652: the same holds for an ordinary float dragged away while Dragged Floats
+//! Follow Their Display is off, so it keeps its workspace.
 
 use super::super::*;
 use crate::WorkspaceStep;
@@ -112,6 +113,14 @@ fn observe(
 
 /// Tiles on 1, 5, 8 and 9, and a pin from 4 dragged to `pin_frame`; 1, 4 and 7 show.
 fn dragged_pin(pin_frame: crate::Rect) -> (WorkspaceRuntime<FakeBackend>, macos::DisplayOutputs) {
+    dragged_float(pin_frame, true)
+}
+
+/// Tiles on 1, 5, 8 and 9, and a float (pinned or not) from 4 dragged to `frame`.
+fn dragged_float(
+    pin_frame: crate::Rect,
+    pinned: bool,
+) -> (WorkspaceRuntime<FakeBackend>, macos::DisplayOutputs) {
     let displays = portraits();
     let mut rt = runtime_with_config(FakeBackend::default(), Config::parse(CONFIG).unwrap());
     let mut placed = Vec::new();
@@ -128,7 +137,7 @@ fn dragged_pin(pin_frame: crate::Rect) -> (WorkspaceRuntime<FakeBackend>, macos:
         if id == PIN {
             rt.workspaces
                 .float(window.clone(), ws(4), crate::workspace::FloatCause::Manual);
-            assert!(rt.workspaces.pin(window.clone()));
+            assert!(!pinned || rt.workspaces.pin(window.clone()));
         } else {
             bind(&mut rt, ws(workspace), &window);
         }
@@ -214,4 +223,29 @@ fn switch_next_from_a_pin_centered_in_a_menu_strip_steps_that_display() {
         );
         assert_eq!(rt.workspaces.workspace_of_any(&win(PIN)), Some(ws(4)));
     }
+}
+
+/// #652: an ordinary float dragged right keeps workspace 4; `switch next` steps the right
+/// display it is on, and `move-workspace` still moves 4.
+#[test]
+fn switch_next_from_an_unpinned_float_dragged_right_steps_the_right_display() {
+    let (mut rt, displays) = dragged_float(rect(2815, 103, 500, 340), false);
+    assert!(!rt.workspaces.is_pinned(&win(PIN)));
+    execute(
+        &mut rt,
+        &displays,
+        WorkerAction::StepWorkspace(WorkspaceStep::Next),
+    );
+    assert_eq!(visible(&rt, &displays), [1, 4, 9], "right 7 steps to 9");
+    assert_eq!(rt.workspaces.workspace_of_any(&win(PIN)), Some(ws(4)));
+
+    let (mut rt, displays) = dragged_float(rect(2815, 103, 500, 340), false);
+    let main = displays.selector_for(&displays.displays()[0]);
+    execute(
+        &mut rt,
+        &displays,
+        WorkerAction::MoveWorkspaceToDisplay(DisplayTarget::Selector(main)),
+    );
+    let moved = rt.backend.persisted_monitors.first().map(|moved| moved.0);
+    assert_eq!(moved, Some(ws(4)));
 }

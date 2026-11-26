@@ -25,11 +25,10 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
         let reported_focused = self.backend.focused_window();
         let (mut source_resolved, focused_window) =
             self.focused_visible_workspace(&visible, &outputs)?;
-        // `move-workspace` still moves a pinned window's home workspace when it
-        // is shown, even after the pin was dragged to another display (#561).
+        // `move-workspace` still moves a float's own workspace when it is shown, even
+        // after the float was dragged to another display without joining it (#561, #652).
         if let Some(window) = focused_window.as_ref()
-            && self.workspaces.is_pinned(window)
-            && let Some(home) = self.workspaces.workspace_of_any(window)
+            && let Some(home) = self.workspaces.floating_workspace_of(window)
             && let Some(home_resolved) = visible.iter().find(|entry| entry.workspace == home)
         {
             source_resolved = home_resolved.clone();
@@ -463,6 +462,20 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
         outputs: &macos::DisplayOutputs,
     ) -> Result<(ResolvedWorkspace, Option<crate::PhysicalWindowId>), String> {
         let focused = self.current_focus();
+        // A float keeps its workspace when dragged to another display (always for a pin,
+        // and for any float while Dragged Floats Follow Their Display is off), so the focused
+        // display is the one it is on (#652). A shown Scratchpad window is not a float here:
+        // it stays with the workspace it was summoned onto, so a toggle still hides it.
+        if let Some(window) = focused.as_ref()
+            && !self.parked.contains_key(window)
+            && matches!(
+                self.workspaces.residency(window),
+                Some(crate::workspace::Residency::Floating { .. })
+            )
+            && let Some(resolved) = self.visible_workspace_under(window, visible)
+        {
+            return Ok((resolved, Some(window.clone())));
+        }
         if let Some(window) = focused.as_ref()
             && let Some(resolved) = self.shown_workspace_for(window, visible, outputs)
         {
@@ -483,6 +496,28 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
             .cloned()
             .map(|resolved| (resolved, focused))
             .ok_or_else(|| "No active workspace is available".into())
+    }
+
+    /// The visible workspace whose display holds `window`'s live frame center, counting a
+    /// center in that display's menu bar or Dock strip as on it (#606).
+    pub(super) fn visible_workspace_under(
+        &mut self,
+        window: &crate::PhysicalWindowId,
+        visible: &[ResolvedWorkspace],
+    ) -> Option<ResolvedWorkspace> {
+        let frame = self
+            .backend
+            .window_server_frame(window)
+            .or_else(|| self.backend.frame(window).ok())?;
+        visible
+            .iter()
+            .find(|resolved| resolved.output.contains_center(frame))
+            .or_else(|| {
+                visible
+                    .iter()
+                    .find(|resolved| resolved.screen.contains_center(frame))
+            })
+            .cloned()
     }
 
     fn pick_source_replacement(

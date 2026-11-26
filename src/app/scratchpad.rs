@@ -133,9 +133,10 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
         self.summon_scratchpad(window, &target, outputs, cancelled)
     }
 
-    /// The visible workspace a toggle acts on: the focused window's (or the
-    /// display a dragged pin or unmanaged window sits on, #556), else the last
-    /// focused workspace, else the main display's.
+    /// The visible workspace a toggle acts on: the one showing on the display the
+    /// focused float (pinned or not, #556/#652) or unmanaged window sits on, else the
+    /// focused window's own workspace (a shown Scratchpad window's is the one it was
+    /// summoned onto), else the last focused workspace, else the main display's.
     fn scratchpad_target(
         &mut self,
         outputs: &macos::DisplayOutputs,
