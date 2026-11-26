@@ -242,6 +242,8 @@ so a full queue fails that command with `Input queue full; command was not queue
   from refusals visible right after the write, and kept until the window closes or Spaceman
   restarts. Apps that clamp
   later (Electron aspect ratios) are still recorded as constrained instead of fought every cycle.
+  A window the app moves as well as resizes right after a write is not clamping: its tile is
+  written again, and only a window that keeps doing so is left where it settles (#723).
   If the requested split cannot fit, Spaceman tries grouping one adjacent pair of root children
   on the other axis. It checks both width and height and keeps window order. Automatic fits
   are temporary; the requested layout returns when it fits again. A resize or balance while a

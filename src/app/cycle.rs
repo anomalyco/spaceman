@@ -554,12 +554,23 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
                     && observed.height.abs_diff(target.height)
                         <= settings.frame_tolerance.unsigned_abs()
                     && !screen.contains_center(observed);
+                // A late clamp (an Electron aspect ratio) only resizes the window
+                // where it was put; a frame whose top-left corner moved too is
+                // the app placing the window itself, not refusing its tile, so it
+                // is written again, within the usual attempt limit (#723).
+                let clamped_in_place = observed.position_approximately_equals(
+                    target,
+                    settings.frame_tolerance,
+                );
                 if self.applied[workspace.index()]
                     .remove(window)
                     .is_some_and(|applied| applied.target == target)
                     && !moved_away
                 {
-                    self.constrained[workspace.index()].insert(window.clone(), (target, observed));
+                    if clamped_in_place {
+                        self.constrained[workspace.index()]
+                            .insert(window.clone(), (target, observed));
+                    }
                     record_apply_attempt(
                         &mut self.apply_attempts[workspace.index()],
                         workspace,
