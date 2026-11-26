@@ -1,7 +1,9 @@
 mod affinity;
+mod deck;
 mod omission;
 mod readback;
 mod routing;
+pub(super) use deck::SetAsideTiles;
 pub(super) use omission::Omission;
 #[cfg(test)]
 pub(super) use readback::ASYNC_BOUNCE_SETTLE;
@@ -441,6 +443,7 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
             |app| self.backend.is_process_running(app),
             |app| server_frames.is_none() || apps_with_window_server_evidence.contains(app),
         );
+        let fullscreen_before = self.fullscreen_tiles_before(workspace);
         let reconciliation = self
             .workspaces
             .engine_mut(workspace)
@@ -461,10 +464,16 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
                 self.note_placement(window, source, owner);
             }
         }
-        let inserted_here = reconciliation
+        let inserted: Vec<_> = reconciliation
             .decisions
             .iter()
-            .any(|decision| matches!(decision, Decision::WindowInserted { .. }));
+            .filter_map(|decision| match decision {
+                Decision::WindowInserted { window, .. } => Some(window),
+                _ => None,
+            })
+            .collect();
+        let inserted_here = !inserted.is_empty();
+        self.settle_fullscreen_set_aside(workspace, &fullscreen_before, &inserted);
         let bound: HashSet<_> = self
             .workspaces
             .engine(workspace)

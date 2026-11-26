@@ -66,6 +66,9 @@ pub(super) struct WorkspaceRuntime<B = MacWorkspaceBackend> {
     /// When each workspace last left Fullscreen Layout by a toggle: a drag
     /// whose button went down before then started in Fullscreen (#619).
     pub(super) fullscreen_left_at: HashMap<WorkspaceId, Instant>,
+    /// Fullscreen Layout tiles each workspace lost to a hide or minimize,
+    /// whose return brings the mode back once it emptied (#668).
+    pub(super) fullscreen_set_aside: HashMap<WorkspaceId, cycle::SetAsideTiles>,
     pub(super) exact_spacing_workspaces: HashSet<WorkspaceId>,
     pub(super) persisted_workspace_state: crate::workspace::WorkspaceState,
     /// Title-free placements that survive application relaunches and reboots.
@@ -390,6 +393,7 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
             focus: super::focus::FocusTracker::with_fullscreen_restore(fullscreen_restore),
             gesture: None,
             fullscreen_left_at: HashMap::new(),
+            fullscreen_set_aside: HashMap::new(),
             exact_spacing_workspaces: WorkspaceId::all().filter(|_| has_spacing).collect(),
             persisted_workspace_state,
             memory: MemoryState::default(),
@@ -684,31 +688,6 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
         self.parked.forget_heals(window);
         self.inaccessible_since.remove(window);
         self.minimum_sizes.remove(window);
-    }
-
-    pub(super) fn clear_fullscreen_restore_if_inactive(&mut self, workspace: WorkspaceId) {
-        if !self.workspaces.deck(workspace).is_monocle() {
-            self.focus.settle_fullscreen(workspace);
-        }
-    }
-
-    /// Project the split tree's placements through the workspace's deck mode,
-    /// recording each tile's projected frame as its target.
-    pub(super) fn project_deck(
-        &mut self,
-        workspace: WorkspaceId,
-        placements: &mut [crate::Placement],
-        settings: &Settings,
-    ) {
-        let deck = self.workspaces.deck(workspace);
-        if deck == crate::workspace::DeckMode::Split {
-            return;
-        }
-        deck.place(placements, settings.single());
-        let engine = self.workspaces.engine_mut(workspace);
-        for placement in placements.iter() {
-            engine.record_placement_target(placement.slot, placement.frame);
-        }
     }
 
     pub(super) fn status(&self, failed: usize, outputs: &macos::DisplayOutputs) -> CycleStatus {

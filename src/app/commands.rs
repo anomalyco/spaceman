@@ -386,6 +386,7 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
             self.workspaces
                 .set_deck(workspace, crate::workspace::DeckMode::Split);
             self.fullscreen_left_at.insert(workspace, self.backend.now());
+            self.fullscreen_set_aside.remove(&workspace);
             self.focus.settle_fullscreen(workspace);
         }
         self.workspaces.engine_mut(workspace).toggle_axis();
@@ -405,6 +406,7 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
         let deck = self.workspaces.deck(workspace).toggled();
         self.workspaces.set_deck(workspace, deck);
         let enabled = deck.is_monocle();
+        self.fullscreen_set_aside.remove(&workspace);
         if !enabled {
             self.fullscreen_left_at.insert(workspace, self.backend.now());
         }
