@@ -19,6 +19,7 @@ Summon / hide (Option+\ / ctl scratchpad toggle)                    // scratchpa
 │   ├── Focused display: a focused float counts where it is, even dragged off its owner's display
 │   └── Size: as it last floated, else 3/4 of the display, never larger than the display
 ├── One shown there -> it parks again and focus returns to the tiles
+│   └── A shown native tab group that selected another tab is still the one shown (#754)
 └── Several windows -> each summon takes the next one in turn
 
 Leave the scratchpad                                                 // scratchpad.leave
@@ -47,7 +48,9 @@ Unit (FakeBackend), `src/app/tests/scratchpad.rs`:
 `the_scratchpad_does_nothing_while_the_lab_is_off`,
 `an_empty_scratchpad_toggle_is_a_clean_no_op`,
 `marking_a_focused_pin_hides_it_and_a_toggle_summons_it_at_its_size`
-(`src/app/tests/reported/scratchpad_mark_pin.rs`, #659), and
+(`src/app/tests/reported/scratchpad_mark_pin.rs`, #659),
+`the_incoming_tab_of_a_shown_scratchpad_group_stays_in_the_scratchpad`
+(`src/app/tests/reported/float_native_tab.rs`, #754), and
 `scratchpad_toggle_summons_onto_the_display_a_focused_pin_was_dragged_to`
 (`src/app/tests/three_display.rs`, #556, #652). Toggle order and summon frame: `src/scratchpad.rs`; membership is the window's residency in
 `src/workspace/residency.rs`, so a scratchpad window is never also a float or a tile;

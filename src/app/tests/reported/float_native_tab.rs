@@ -200,3 +200,34 @@ fn a_new_window_at_a_float_that_stays_listed_is_adopted_after_the_wait() {
         Some(WorkspaceId::ONE)
     );
 }
+
+/// #754: a native tab group shown from the Scratchpad selects another tab. The incoming tab
+/// takes the Scratchpad entry, so Toggle hides the group instead of finding the Scratchpad
+/// empty, and it summons again at the size it was shown at. Reported by @coygeek.
+#[test]
+fn the_incoming_tab_of_a_shown_scratchpad_group_stays_in_the_scratchpad() {
+    let (mut runtime, tab, next_tab, neighbor) = floated_group();
+    runtime.replace_config(Config::parse("version = 1\n[labs]\nscratchpad = true\n").unwrap());
+    let size = Some((FLOAT.width, FLOAT.height));
+    assert!(runtime.workspaces.stash(tab.clone(), size));
+    runtime.workspaces.show_scratchpad(&tab, WorkspaceId::ONE);
+    select_next_tab(&mut runtime, &tab, &next_tab, &neighbor);
+
+    runtime
+        .cycle(studio_display(), &AtomicBool::new(false))
+        .unwrap();
+
+    let pad = runtime.workspaces.scratchpad();
+    let entry = pad
+        .entry(&next_tab)
+        .expect("the incoming tab is in the scratchpad");
+    assert_eq!(entry.shown_on, Some(WorkspaceId::ONE));
+    assert_eq!(entry.size, size);
+    assert!(pad.entry(&tab).is_none());
+    assert_eq!(runtime.workspaces.workspace_of(&next_tab), None);
+    assert_eq!(runtime.backend.frames[&next_tab], FLOAT);
+    assert_eq!(
+        runtime.workspaces.engine(WorkspaceId::ONE).bound_windows(),
+        vec![neighbor.clone()]
+    );
+}

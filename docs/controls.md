@@ -177,7 +177,8 @@ the first time, never larger than the display), and focuses it; the tiles stay a
 Pressing `Option+\` again hides it and returns focus to the tiles. With several windows in the
 scratchpad, each press summons the next one in turn. A shown scratchpad window hides when its
 workspace is switched away and stays hidden until summoned again, on whichever workspace is then
-focused. `Option+Shift+\` on a shown scratchpad window tiles it on the current workspace. Moving it to
+focused. Selecting another tab of a shown native tab group keeps the group in the scratchpad.
+`Option+Shift+\` on a shown scratchpad window tiles it on the current workspace. Moving it to
 a workspace, tiling it with `Option+Shift+Space`, or closing it also takes it out of the
 scratchpad. `Scratchpad is empty` in the menu status means there was nothing to summon.
 
