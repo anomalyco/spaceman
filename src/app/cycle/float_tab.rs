@@ -8,6 +8,7 @@
 //! instead: its workspace, why it floats, and its pin. While both tabs are still listed at
 //! the same frame, the incoming one is held for a bounded settle rather than adopted.
 
+use super::tab_handoff::TAB_HANDOFF_SETTLE;
 use super::*;
 
 impl<B: WorkspaceBackend> WorkspaceRuntime<B> {

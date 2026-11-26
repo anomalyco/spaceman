@@ -194,13 +194,17 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
             let focus_on_new = focused.as_ref().is_some_and(|focused| {
                 !bound.contains(focused) && windows.iter().any(|window| &window.id == focused)
             });
+            // Only one of the app's tiles may be missing: a native tab switch replaces one
+            // window. Its app may hold other tiles here, such as a second tab group (#749).
+            let mut missing = bound
+                .iter()
+                .filter(|window| window.app == app.id && !observed.contains(*window));
+            let lone_missing = missing.next().filter(|_| missing.next().is_none());
             let awaiting_tab = !focus_on_new
                 && server_frames.is_some_and(|server_frames| {
-                    bound
-                        .iter()
-                        .filter(|window| window.app == app.id && !observed.contains(*window))
+                    lone_missing
                         .filter(|window| !onscreen_frames.contains_key(&window.window_id))
-                        .any(|window| {
+                        .is_some_and(|window| {
                             self.ordered_out_tab_awaits_successor(
                                 workspace,
                                 window,
@@ -254,10 +258,11 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
         }
     }
 
-    /// Whether `window`, its app's one tile on `workspace`, missing from a snapshot that still
-    /// lists the app and ordered out, waits briefly for the next tab of its native tab group:
-    /// mid-switch, Accessibility can list neither tab while the window server already shows
-    /// the incoming one, and the tile would otherwise retire before that tab is listed (#719).
+    /// Whether `window`, the one tile of its app on `workspace` missing from a snapshot that
+    /// still lists the app, and ordered out, waits briefly for the next tab of its native tab
+    /// group: mid-switch, Accessibility can list neither tab while the window server already
+    /// shows the incoming one (#719), or focus can pass through the app's other tab group
+    /// first (#749), and the tile would otherwise retire before that tab takes it.
     fn ordered_out_tab_awaits_successor(
         &mut self,
         workspace: WorkspaceId,
@@ -269,11 +274,7 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
         if !server_frames.contains_key(&window.window_id) || self.parked.contains_key(window) {
             return false;
         }
-        let slots = &self.workspaces.engine(workspace).model().workspace.slots;
-        let mut owned = slots.iter().filter(|slot| slot.belongs_to(&window.app));
-        let only_tile = owned.next().and_then(crate::Slot::bound_window) == Some(window)
-            && owned.next().is_none();
-        if !only_tile {
+        if self.workspaces.workspace_of(window) != Some(workspace) {
             return false;
         }
         if self
