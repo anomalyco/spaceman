@@ -578,10 +578,16 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
         if dragged.is_some() {
             return status;
         }
+        // A layout run while the button is held (a toggle mid-drag) writes
+        // nothing, so the exact write a spacing change asked for is still owed
+        // after release (#614).
+        let deferred = results
+            .iter()
+            .any(|result| matches!(result.outcome, macos::ApplyOutcome::Deferred));
         let status = self
             .refit_minimum_sizes(workspace, output, results, cancelled)
             .unwrap_or(status);
-        if !cancelled.load(Ordering::Acquire) {
+        if !deferred && !cancelled.load(Ordering::Acquire) {
             self.exact_spacing_workspaces.remove(&workspace);
         }
         status

@@ -194,9 +194,11 @@ pause, quit, or hotkey loss.
   equal weights give equal windows; Fullscreen Layout's capped frame; directional focus across gaps;
   a pointer resize, keyboard resize, `resize width` and balance through gaps.
   `src/app/tests/spacing.rs` covers the frames the runtime applies, `outer` with one edge at zero
-  included. `src/config.rs` and `src/cli/tests.rs` cover parsing, `outer`'s fallback and its
-  explicit edges, range errors and `spaceman config`; `agent/src/rules/tests.rs` covers Settings ›
-  Layout saves that keep comments, keep `outer` and its explicit zeros, and restore the file.
+  included, and a 2-point gap set during a held drag still reaching the seam after layout toggles
+  made while the button was held (#614). `src/config.rs` and `src/cli/tests.rs` cover parsing,
+  `outer`'s fallback and its explicit edges, range errors and `spaceman config`;
+  `agent/src/rules/tests.rs` covers Settings › Layout saves that keep comments, keep `outer` and
+  its explicit zeros, and restore the file.
 - `src/reconcile/tests.rs` `finder_tab_replacement_keeps_its_slot_and_place_in_the_row`: a
   non-Ghostty tab change keeps the tile's slot and order.
 - Fixture replay: `cargo run -- replay fixtures/ghostty-tab-replacement.json` (reconciliation of a
