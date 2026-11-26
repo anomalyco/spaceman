@@ -567,6 +567,9 @@ impl MainThreadAgent {
         if let QueuedInput::Action(WorkerAction::MarkWrong(moment @ None)) = &mut input {
             *moment = journal::WrongMoment::capture(&self.active_workspaces);
         }
+        if let QueuedInput::Action(action) = &input {
+            self.hover.note_action(action);
+        }
         self.last_activity = Instant::now();
         self.ui_dirty = true;
         let admitted = self.pending_inputs.push(input);
