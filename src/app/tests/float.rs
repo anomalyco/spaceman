@@ -515,6 +515,24 @@ fn visible_workspace_shortcuts_return_to_the_float_they_left() {
     assert_both_workspaces_stayed(&runtime);
 }
 
+/// #639: directional focus from the float to the other display's workspace,
+/// then Option+Tab back, refocuses that float rather than the remembered tile.
+#[test]
+fn directional_focus_then_back_and_forth_returns_to_the_float_it_left() {
+    let (mut runtime, main, floating) = float_focused_beside_a_visible_workspace();
+    let cancelled = AtomicBool::new(false);
+
+    runtime
+        .focus_relative(Direction::Left, outputs(), &cancelled)
+        .unwrap();
+    assert_eq!(runtime.backend.focused, Some(main));
+    runtime
+        .workspace_back_and_forth(outputs(), &cancelled)
+        .unwrap();
+    assert_eq!(runtime.backend.focused, Some(floating));
+    assert_both_workspaces_stayed(&runtime);
+}
+
 /// #633: the remembered float of a workspace still on screen was minimized
 /// (⌘M) or its app hidden (⌘H) after focus left it. Its shortcut focuses the
 /// workspace's tile and leaves the float set aside.

@@ -27,6 +27,8 @@ Focus                                                   // tile.focus
 ├── Option+H/J/K/L / ctl focus <dir> -> nearest tile in that direction, crossing displays
 │   ├── [labs] recent_focus -> of several tiles bordering the focused one on that side, the most
 │   │   recently focused (in-memory, per tile slot; floats don't count), else the nearest
+│   ├── Into another display's workspace -> the window it left (tile or float) is remembered, so
+│   │   Option+Tab back refocuses it (#639)
 │   └── In Fullscreen Layout -> previous/next tile in stable order (see fullscreen-layout.md)
 ├── Option+` / ctl focus next        -> next window: tiles in stable order, then floats, wrapping
 │   ├── Option+Shift+` / ctl focus prev -> the same ring, backward
