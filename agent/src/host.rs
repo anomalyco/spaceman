@@ -76,9 +76,27 @@ pub fn shortcuts_saved(shortcuts: spaceman::shortcuts::Shortcuts) {
 pub fn bring_window_forward(window: &rune::AppHandle<Ui>) {
     window.set_dock_icon(true);
     if let Some(mtm) = MainThreadMarker::new() {
+        move_settings_to_active_space(mtm);
         NSApplication::sharedApplication(mtm).activate();
     }
     window.open();
+}
+
+/// Lets an already-open Settings window come to the desktop (Space) in use when Spaceman
+/// activates, instead of macOS switching to the desktop it was left on. A window not yet
+/// created opens on the active desktop anyway.
+fn move_settings_to_active_space(mtm: MainThreadMarker) {
+    use objc2_app_kit::NSWindowCollectionBehavior;
+    for window in NSApplication::sharedApplication(mtm).windows().iter() {
+        // The HUD's panels keep their own behavior; only the titled Settings window moves.
+        if window.title().to_string() != "Spaceman" {
+            continue;
+        }
+        let behavior = window.collectionBehavior();
+        if !behavior.contains(NSWindowCollectionBehavior::MoveToActiveSpace) {
+            window.setCollectionBehavior(behavior | NSWindowCollectionBehavior::MoveToActiveSpace);
+        }
+    }
 }
 
 /// Keeps the setup window above other apps' windows without activating it, so the Try it

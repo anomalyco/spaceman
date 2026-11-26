@@ -212,6 +212,10 @@ workspace's) or `Off` (no icon; open Spaceman again for Settings), `[settings] m
   the result), or `Install Spaceman <version> and Restart` once an update is downloaded and verified;
 - `Quit Spaceman` (`⌘Q`).
 
+`Settings...`, `Check for Updates...`, and the other ways of opening Settings bring an already-open
+Settings window to the macOS desktop (Space) you are on, rather than switching to the desktop it was
+left on (#760).
+
 If macOS reports that the login item requires approval, the menu label says
 `Launch at Login (Approval Required...)`; choosing it opens Login Items settings. Registration does
 not bypass macOS consent and does not affect the currently running process.
