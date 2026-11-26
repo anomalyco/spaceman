@@ -1,6 +1,6 @@
 //! Floating-window regressions: rule origin across a restart (#160) and within a session
 //! (#493), focus next from and through floats (#178), and a float omitted from one snapshot
-//! (#179).
+//! (#179), and a minimized float restored (#699).
 use super::*;
 
 fn act(runtime: &mut WorkspaceRuntime<FakeBackend>, action: WorkerAction) -> Result<(), String> {
@@ -313,6 +313,46 @@ fn an_omitted_float_off_screen_or_past_the_settle_is_forgotten() {
         cycle::Omission::new(Instant::now() - OMISSION_SETTLE * 2),
     );
     act(&mut runtime, WorkerAction::Retile).unwrap();
+    assert_eq!(runtime.workspaces.floating_workspace_of(&window(20)), None);
+}
+
+/// #699: a float the user minimized (⌘M) leaves the snapshot and the screen, but stays
+/// listed by the window server. It keeps its float, so restoring it brings it back floating
+/// at its own frame instead of as a new tile; Toggle Float still tiles it.
+#[test]
+fn a_minimized_float_floats_again_when_restored() {
+    let mut runtime = floated_second_window();
+    let original = runtime.backend.frames[&window(20)];
+    runtime.backend.set_aside.insert(window(20));
+    runtime.backend.ordered_out.insert(20);
+    omit_float(&mut runtime);
+    runtime.backend.advance(OMISSION_SETTLE * 2);
+    act(&mut runtime, WorkerAction::Retile).unwrap();
+    assert_eq!(
+        runtime.workspaces.floating_workspace_of(&window(20)),
+        Some(WorkspaceId::ONE)
+    );
+
+    runtime.backend.set_aside.clear();
+    runtime.backend.ordered_out.clear();
+    runtime.backend.observation = Some(observation_for_windows(
+        "com.example.Test",
+        &window(10),
+        &[(window(10), frame(50)), (window(20), original)],
+    ));
+    act(&mut runtime, WorkerAction::Retile).unwrap();
+    assert_eq!(
+        runtime.workspaces.floating_workspace_of(&window(20)),
+        Some(WorkspaceId::ONE)
+    );
+    assert_eq!(
+        runtime.workspaces.engine(WorkspaceId::ONE).bound_windows(),
+        vec![window(10)]
+    );
+    assert_eq!(runtime.backend.frames[&window(20)], original);
+
+    runtime.backend.focused = Some(window(20));
+    act(&mut runtime, WorkerAction::ToggleFloat).unwrap();
     assert_eq!(runtime.workspaces.floating_workspace_of(&window(20)), None);
 }
 
