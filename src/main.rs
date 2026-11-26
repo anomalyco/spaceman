@@ -1,5 +1,5 @@
 use std::{
-    collections::{HashMap, HashSet},
+    collections::HashMap,
     env, fs,
     io::{self, Write},
     process::ExitCode,
@@ -17,6 +17,8 @@ use serde::{Deserialize, Serialize};
 use spaceman::{
     Engine, Model, NativeObservation, Reconciliation, ReconciliationEvidence, Settings, reconcile,
 };
+#[cfg(target_os = "macos")]
+use spaceman::live::window_scope::WindowScope;
 
 #[derive(Deserialize)]
 struct Replay {
@@ -470,102 +472,6 @@ fn run_persistent(should_apply: bool) -> Result<String, String> {
         "revision": engine.revision(),
     })
     .to_string())
-}
-
-#[cfg(target_os = "macos")]
-struct WindowScope {
-    app: spaceman::AppInstanceId,
-    bundle_id: String,
-    frame: spaceman::Rect,
-    output: spaceman::Rect,
-    excluded_window_ids: HashSet<u32>,
-    authorized_window_ids: HashSet<u32>,
-    missing_cycles: u8,
-}
-
-#[cfg(target_os = "macos")]
-impl WindowScope {
-    fn discover(
-        observation: &NativeObservation,
-        window_id: u32,
-        output: spaceman::Rect,
-    ) -> Result<Self, String> {
-        observation
-            .applications
-            .iter()
-            .find_map(|app| match app {
-                spaceman::AppObservation::Complete { app, windows, .. } => windows
-                    .iter()
-                    .find(|window| window.id.window_id == window_id)
-                    .map(|window| Self {
-                        app: app.id.clone(),
-                        bundle_id: app.bundle_id.clone(),
-                        frame: window.frame,
-                        output,
-                        excluded_window_ids: windows
-                            .iter()
-                            .filter(|existing| existing.id.window_id != window_id)
-                            .map(|existing| existing.id.window_id)
-                            .collect(),
-                        authorized_window_ids: HashSet::from([window_id]),
-                        missing_cycles: 0,
-                    }),
-                _ => None,
-            })
-            .ok_or_else(|| format!("window {window_id} is not currently eligible"))
-    }
-
-    fn filter(&mut self, observation: &mut NativeObservation) {
-        let mut scoped = observation
-            .applications
-            .drain(..)
-            .find(|app| app.app_id() == &self.app);
-        if let Some(spaceman::AppObservation::Complete {
-            focused, windows, ..
-        }) = &mut scoped
-        {
-            windows.retain(|window| {
-                !self.excluded_window_ids.contains(&window.id.window_id)
-                    && window.frame.approximately_equals(self.frame, 100)
-            });
-            let selected = focused
-                .as_ref()
-                .and_then(|focused| windows.iter().find(|window| window.id == *focused))
-                .or_else(|| {
-                    windows
-                        .iter()
-                        .find(|window| self.authorized_window_ids.contains(&window.id.window_id))
-                })
-                .or_else(|| (windows.len() == 1).then(|| &windows[0]))
-                .map(|window| window.id.clone());
-            windows.retain(|window| selected.as_ref() == Some(&window.id));
-            if let Some(selected) = selected {
-                self.authorized_window_ids.insert(selected.window_id);
-                *focused = focused.take().filter(|focused| focused == &selected);
-                self.missing_cycles = 0;
-                if let Some(scoped) = scoped {
-                    observation.applications = vec![scoped];
-                }
-                return;
-            }
-        }
-        self.missing_cycles = self.missing_cycles.saturating_add(1);
-        observation.applications = vec![if self.missing_cycles <= 8 {
-            spaceman::AppObservation::Unavailable {
-                app: self.app.clone(),
-                error: "scoped window is settling or absent".into(),
-            }
-        } else {
-            spaceman::AppObservation::Complete {
-                app: spaceman::ObservedApplication {
-                    id: self.app.clone(),
-                    bundle_id: self.bundle_id.clone(),
-                },
-                focused: None,
-                windows: Vec::new(),
-            }
-        }];
-    }
 }
 
 fn run_replay(path: &str) -> Result<ReplayOutput, String> {
