@@ -157,6 +157,16 @@ fn route_huddle_into_columns(
     tiled: &[crate::PhysicalWindowId],
     arrange: impl FnOnce(&mut WorkspaceRuntime<FakeBackend>),
 ) -> (WorkspaceRuntime<FakeBackend>, crate::PhysicalWindowId) {
+    route_huddle_into("columns", tiled, arrange)
+}
+
+/// Routes a new `Huddle` window from the main display into visible workspace 6 in `layout`,
+/// which already tiles `tiled` and is first arranged by `arrange`. Returns the routed window.
+fn route_huddle_into(
+    layout: &str,
+    tiled: &[crate::PhysicalWindowId],
+    arrange: impl FnOnce(&mut WorkspaceRuntime<FakeBackend>),
+) -> (WorkspaceRuntime<FakeBackend>, crate::PhysicalWindowId) {
     let created = window(40);
     let mut windows: Vec<_> = tiled
         .iter()
@@ -177,9 +187,9 @@ fn route_huddle_into_columns(
         ..FakeBackend::default()
     };
     backend.frames.extend(windows);
-    let config = Config::parse(
-        "version = 1\n[settings]\nlayout = 'columns'\n[[rules]]\nbundle_id = 'com.example.Test'\ntitle = 'Huddle'\naction = 'route'\nworkspace = 6",
-    )
+    let config = Config::parse(&format!(
+        "version = 1\n[settings]\nlayout = '{layout}'\n[[rules]]\nbundle_id = 'com.example.Test'\ntitle = 'Huddle'\naction = 'route'\nworkspace = 6",
+    ))
     .unwrap();
     let mut runtime = runtime_with_config(backend, config);
     for window in tiled {
@@ -236,6 +246,26 @@ fn columns_route_joins_a_nested_focused_split_and_keeps_the_other_column() {
     assert_eq!(frames[&right].width, column[0].width, "{frames:?}");
     assert!(frames[&right].x > column[0].x, "{frames:?}");
     assert!(frames[&right].height > column[0].height * 2, "{frames:?}");
+}
+
+#[test]
+fn dwindle_route_splits_the_clicked_tile_not_the_one_remembered_from_the_last_visit() {
+    let (left, right) = (window(30), window(31));
+    let (runtime, created) = route_huddle_into("dwindle", &[left.clone(), right.clone()], |rt| {
+        // `left` had focus when workspace 6 was last switched to; a click then focused `right`.
+        rt.workspaces.remember_focus(WorkspaceId::SIX, &left);
+        rt.workspaces
+            .engine_mut(WorkspaceId::SIX)
+            .remember_insertion_focus(&right);
+    });
+
+    // `right` is split; `left` keeps its full-height column (#603).
+    let frames = &runtime.backend.frames;
+    assert!(frames[&left].x < frames[&right].x, "{frames:?}");
+    assert_eq!(frames[&created].x, frames[&right].x, "{frames:?}");
+    assert_eq!(frames[&created].width, frames[&right].width, "{frames:?}");
+    assert!(frames[&left].height > frames[&right].height, "{frames:?}");
+    assert!(frames[&left].height > frames[&created].height, "{frames:?}");
 }
 
 #[test]

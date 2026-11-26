@@ -187,8 +187,9 @@ Where a new window goes (first match wins)                 // ws.adoption
 │                         unless the rule says windows = "all" and [labs] route_all_windows is
 │                         on (src/config.rs, src/app/cycle/affinity.rs); in Columns it joins
 │                         the destination workspace's focused tile split as if it had opened
-│                         there, or its root when no focused tile is left
-│                         (src/app/cycle/routing.rs)
+│                         there, or its root when no focused tile is left; in Dwindle it
+│                         splits that workspace's focused tile, including one just clicked
+│                         while it shows (#603) (src/app/cycle/routing.rs)
 ├── remembered placement (startup window, first 60 s, the app relaunched within 30 s of
 │   quitting, a returning app, or a new process presenting 2+ windows at once whose memory spans
 │   2+ workspaces) -> remembered workspace, matched by frame, then size, then creation order
@@ -503,6 +504,8 @@ on the same letter.
   `columns_route_into_a_visible_workspace_joins_its_focused_tile_split` and
   `columns_route_joins_a_nested_focused_split_and_keeps_the_other_column` (in
   `src/app/tests/rules.rs`, issue 494),
+  `dwindle_route_splits_the_clicked_tile_not_the_one_remembered_from_the_last_visit` (in
+  `src/app/tests/rules.rs`, issue 603),
   `ignore_rule_releases_the_window_and_never_adopts_it`,
   `floating_rule_owns_window_without_adding_it_to_layout`,
   `new_window_opens_on_active_workspace_even_when_app_has_window_on_inactive_workspace`), display fallback

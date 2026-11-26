@@ -103,18 +103,19 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
         }
     }
 
-    /// Where a window routed to `workspace` joins its tiles: next to its last focused tile in
-    /// a dwindle layout; in columns, in the split of the tile a window opened there would join,
-    /// else the root (#494).
+    /// Where a window routed to `workspace` joins its tiles: the tile a window opened there
+    /// would split — in dwindle, the workspace's focused tile (a click on a shown workspace
+    /// included, #603), else the one remembered from its last visit; in columns, that tile's
+    /// split, else the root (#494).
     fn insertion_anchor(&self, workspace: WorkspaceId) -> Option<crate::SlotId> {
+        let engine = self.workspaces.engine(workspace);
         match self.config.layout() {
-            crate::config::LayoutMode::Dwindle => self
-                .workspaces
-                .preferred_focus(workspace)
-                .and_then(|window| self.workspaces.engine(workspace).slot_for_window(&window)),
-            crate::config::LayoutMode::Columns => {
-                self.workspaces.engine(workspace).insertion_focus()
-            }
+            crate::config::LayoutMode::Dwindle => engine.insertion_focus().or_else(|| {
+                self.workspaces
+                    .preferred_focus(workspace)
+                    .and_then(|window| engine.slot_for_window(&window))
+            }),
+            crate::config::LayoutMode::Columns => engine.insertion_focus(),
         }
     }
 
