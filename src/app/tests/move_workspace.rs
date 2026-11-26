@@ -563,3 +563,64 @@ fn workspace_back_and_forth_switches_a_hidden_workspace_on_another_display() {
     );
     assert_eq!(runtime.backend.focused, Some(six));
 }
+
+#[test]
+fn move_workspace_leaves_a_replacement_tile_minimized_while_away_alone() {
+    let moved = window(10);
+    let minimized = window(20);
+    let kept = window(21);
+    let (minimized_normal, kept_normal) = (frame(100), frame(600));
+    let mut backend = FakeBackend {
+        focused: Some(moved.clone()),
+        ..FakeBackend::default()
+    };
+    backend.frames.insert(moved.clone(), frame(50));
+    backend
+        .frames
+        .insert(minimized.clone(), main_parked_frame(minimized_normal));
+    backend
+        .frames
+        .insert(kept.clone(), main_parked_frame(kept_normal));
+    let mut runtime = runtime_with_parked(
+        backend,
+        [
+            (minimized.clone(), minimized_normal),
+            (kept.clone(), kept_normal),
+        ],
+    );
+    bind(&mut runtime, WorkspaceId::ONE, &moved);
+    bind(&mut runtime, WorkspaceId::THREE, &minimized);
+    bind(&mut runtime, WorkspaceId::THREE, &kept);
+    runtime
+        .workspaces
+        .set_deck(WorkspaceId::THREE, crate::workspace::DeckMode::Monocle);
+    runtime
+        .workspaces
+        .remember_focus(WorkspaceId::THREE, &minimized);
+    runtime.workspaces.switch(WorkspaceId::THREE);
+    runtime.workspaces.switch(WorkspaceId::ONE);
+
+    // Minimized from the Dock while workspace 3 is away.
+    runtime.backend.set_aside.insert(minimized.clone());
+    runtime.backend.ordered_out.insert(minimized.window_id);
+    runtime
+        .move_workspace_to_display(DisplayTarget::Next, outputs(), &AtomicBool::new(false))
+        .unwrap();
+
+    assert_eq!(
+        runtime.workspaces.active_for(&DisplaySelector::Main),
+        Some(WorkspaceId::THREE)
+    );
+    assert!(!runtime.parked.contains_key(&minimized));
+    assert_eq!(runtime.workspaces.workspace_of(&minimized), None);
+    assert_eq!(
+        runtime.workspaces.workspace_of(&kept),
+        Some(WorkspaceId::THREE)
+    );
+    assert_eq!(runtime.backend.frames[&kept], outputs().main().frame);
+    assert!(runtime.backend.calls.iter().all(|call| !matches!(
+        call,
+        BackendCall::Focus(window) | BackendCall::Raise(window) | BackendCall::Apply(window, _)
+            if window == &minimized
+    )));
+}

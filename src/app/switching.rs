@@ -378,8 +378,9 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
     /// visible workspace; a float keeps its place but is not focused. Only
     /// windows the window server does not show on screen are asked, so an
     /// ordinary switch makes no extra Accessibility reads. Returns the
-    /// set-aside floats.
-    fn release_set_aside(
+    /// set-aside floats. Move Workspace runs it on the workspace it reveals
+    /// on the source display, too (#682).
+    pub(super) fn release_set_aside(
         &mut self,
         workspace: WorkspaceId,
         incoming: &mut Vec<crate::PhysicalWindowId>,
@@ -405,7 +406,7 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
                 continue;
             }
             log_event!(
-                "switch: releasing {:?}, minimized or hidden while workspace {} was away",
+                "releasing {:?}, minimized or hidden while workspace {} was away",
                 window,
                 workspace
             );
