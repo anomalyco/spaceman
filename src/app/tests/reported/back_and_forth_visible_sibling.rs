@@ -146,10 +146,10 @@ fn back_and_forth_from_a_pin_reclaims_focus_from_a_visible_sibling() {
     rt.backend.advance(super::super::super::focus::FOCUS_SETTLE);
     execute(&mut rt, &displays, WorkerAction::Retile);
     execute(&mut rt, &displays, WorkerAction::WorkspaceBackAndForth);
-    let focused = rt.backend.focused.as_ref().map(|window| window.window_id);
-    assert!(
-        matches!(focused, Some(60 | 61)),
-        "second press returns to 6, got {focused:?}"
+    assert_eq!(
+        rt.backend.focused,
+        Some(win(70)),
+        "second press returns to 6 and the pin it left there (#676)"
     );
     assert_eq!(visible(&rt, &displays), [1, 6, 9], "7 stays hidden");
 }

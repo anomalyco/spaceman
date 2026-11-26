@@ -686,7 +686,7 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
             && departing != target
             && departing != hidden
         {
-            self.workspaces.remember_focus(departing, &window);
+            self.workspaces.remember_shown_focus(departing, &window);
         }
     }
 
@@ -699,7 +699,19 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
         from: Option<WorkspaceId>,
         outputs: &macos::DisplayOutputs,
     ) -> Result<CycleStatus, String> {
-        let windows = self.shown_focus_candidates(workspace);
+        let mut windows = self.shown_focus_candidates(workspace);
+        // A pin focus left here (its home hidden or elsewhere) is refocused
+        // while it still shows on this workspace's display (#676).
+        let visible = self.visible_workspaces(outputs);
+        if let Some(pin) = self.workspaces.preferred_float_focus(workspace)
+            && !windows.contains(&pin)
+            && self
+                .shown_workspace_for(&pin, &visible, outputs)
+                .is_some_and(|resolved| resolved.workspace == workspace)
+            && !self.backend.confirms_set_aside(&pin)
+        {
+            windows.push(pin);
+        }
         let output = output_for(&self.workspaces, workspace, outputs);
         if !windows.is_empty() {
             let focused = self.backend.focused_window();

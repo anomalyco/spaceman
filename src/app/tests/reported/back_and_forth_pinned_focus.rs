@@ -122,10 +122,10 @@ fn back_and_forth_from_a_pin_skips_its_hidden_home() {
     assert_eq!(visible(&rt, &displays), [1, 6, 9]);
 
     execute(&mut rt, &displays, WorkerAction::WorkspaceBackAndForth);
-    let focused = rt.backend.focused.as_ref().map(|window| window.window_id);
-    assert!(
-        matches!(focused, Some(60 | 61)),
-        "second press returns to 6, got {focused:?}"
+    assert_eq!(
+        rt.backend.focused,
+        Some(win(70)),
+        "second press returns to 6 and refocuses the pin it left there (#676)"
     );
     assert_eq!(visible(&rt, &displays), [1, 6, 9], "7 stays hidden");
     assert!(!rt.parked.contains_key(&win(70)), "the pin stays on screen");
@@ -199,10 +199,77 @@ monitor = 'third-id'
     execute(&mut rt, &displays, WorkerAction::WorkspaceBackAndForth);
     assert_eq!(
         rt.backend.focused,
-        Some(win(10)),
-        "second press returns to 1"
+        Some(win(70)),
+        "second press returns to 1 and the pin it left there (#676)"
     );
     assert_eq!(visible(&rt, &displays), [1, 6, 9]);
+}
+
+/// #676: the return press refocuses a pin dragged onto another display, not
+/// that display's tile, while the pin's home stays hidden.
+#[test]
+fn back_and_forth_returns_to_a_dragged_pin_on_another_display() {
+    let displays = side_by_side();
+    let config = Config::parse(
+        "version = 1\n[settings]\nlayout = 'columns'\n[[workspaces]]\nworkspace = 9\nmonitor = 'third-id'\n",
+    )
+    .unwrap();
+    let mut rt = runtime_with_config(FakeBackend::default(), config);
+    let mut applications = Vec::new();
+    // Pin 70 lives on workspace 7; workspaces 6 and 7 share the left display.
+    for (id, workspace) in [(10, 1), (60, 6), (90, 9), (70, 7)] {
+        let window = win(id);
+        let display = match workspace {
+            6 | 7 => 1,
+            9 => 2,
+            _ => 0,
+        };
+        let output = displays.displays()[display].frame;
+        let frame = rect(output.x + 200, output.y + 800, 500, 340);
+        rt.backend.frames.insert(window.clone(), frame);
+        if id == 70 {
+            rt.workspaces
+                .float(window.clone(), ws(7), crate::workspace::FloatCause::Manual);
+            assert!(rt.workspaces.pin(window.clone()));
+        } else {
+            bind(&mut rt, ws(workspace), &window);
+        }
+        applications
+            .extend(observation_for(&format!("com.example.Test{id}"), &window, frame).applications);
+    }
+    rt.backend.observation = Some(crate::NativeObservation {
+        cycle: 0,
+        mouse_down: false,
+        applications,
+    });
+    report(&mut rt, 10);
+    execute(&mut rt, &displays, WorkerAction::Retile);
+    for workspace in [7, 6, 1] {
+        execute(
+            &mut rt,
+            &displays,
+            WorkerAction::SwitchWorkspace(ws(workspace)),
+        );
+    }
+    assert_eq!(visible(&rt, &displays), [1, 6, 9]);
+
+    // Drag pin 70 onto the right display (showing 9) and focus it there.
+    let right_frame = rect(2840, 144, 560, 380);
+    rt.backend.frames.insert(win(70), right_frame);
+    rt.backend.server_frames.insert(win(70), right_frame);
+    report(&mut rt, 70);
+
+    execute(&mut rt, &displays, WorkerAction::WorkspaceBackAndForth);
+    assert_eq!(rt.backend.focused, Some(win(10)), "first press goes to 1");
+    execute(&mut rt, &displays, WorkerAction::WorkspaceBackAndForth);
+    assert_eq!(
+        rt.backend.focused,
+        Some(win(70)),
+        "second press refocuses the pin, not 9's tile"
+    );
+    assert_eq!(visible(&rt, &displays), [1, 6, 9], "7 stays hidden");
+    assert_eq!(rt.workspaces.workspace_of_any(&win(70)), Some(ws(7)));
+    assert!(!rt.parked.contains_key(&win(70)), "the pin stays on screen");
 }
 
 #[test]

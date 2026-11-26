@@ -63,7 +63,8 @@ Back-and-forth                                             // ws.back-and-forth
 │   │   counts as the workspace its display shows, so a pin on the target's own display
 │   │   keeps focus
 │   └── Press again -> bounces back to the workspace the focus came from, refocusing the
-│       window (tile or float) it left there
+│       window (tile or float) it left there, including a pin from another workspace while it
+│       still sits on that display
 ├── Target on screen but empty -> only shows its HUD; focus history is left alone
 └── Target hidden -> its own display switches to it and focuses its remembered tile
 
@@ -450,7 +451,8 @@ on the same letter.
   issue 419); a deleted named workspace (`config_removed_named.rs`, issue 424); Option+Tab after
   lagging focus reports (`back_and_forth_stale_report.rs`,
   `back_and_forth_fast_shortcuts.rs`, issue 399); Option+Tab from a focused pin
-  (`back_and_forth_pinned_focus.rs`, issue 526), including when the target's app hands focus to
+  (`back_and_forth_pinned_focus.rs`, issue 526), the return press refocusing that pin, even one
+  dragged onto another display (issue 676), including when the target's app hands focus to
   its window on another shown display, even one that is itself pinned there
   (`back_and_forth_visible_sibling.rs`, issues 591 and 657); a first-window route staying used after its
   window is floated by hand, and still routing later windows with `[labs] route_all_windows`
