@@ -223,7 +223,7 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
         let empty_server_frames = HashMap::new();
         let server_frames = server_snapshot.as_ref().unwrap_or(&empty_server_frames);
         self.recover_stale_parked_windows(&outputs, server_frames);
-        self.pin_parked_floats_by_rule();
+        self.pin_parked_windows_by_rule();
         self.restore_visible(&visible, cancelled, &mut failed);
         let mut fullscreen_hud =
             self.park_inactive(&outputs, &visible, server_frames, cancelled, &mut failed);

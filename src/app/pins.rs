@@ -6,6 +6,7 @@
 //! and restart still restore every parked window, a pinned one included.
 
 use super::*;
+use crate::workspace::FloatCause;
 
 impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
     /// Whether `window` stays on screen through workspace switches: it is pinned, or its app
@@ -52,27 +53,39 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
         Some(self.config.patch(bundle_id, &probe))
     }
 
-    /// A `pin` rule that arrived while a float was parked: no observation lists a parked
+    /// A `pin` rule that arrived while a window was parked: no observation lists a parked
     /// window, so judge it by its app's bundle and its last observed title (an earlier title
-    /// rule keeps precedence, #549), and let restore_visible bring it back.
-    pub(super) fn pin_parked_floats_by_rule(&mut self) {
+    /// rule keeps precedence, #549), and let restore_visible bring it back. A parked tile
+    /// leaves its workspace's tiles and floats there first, as a shown tile would (#678).
+    pub(super) fn pin_parked_windows_by_rule(&mut self) {
         let parked: Vec<_> = self
             .parked
             .iter()
             .filter(|(window, _)| {
-                self.workspaces.floating_workspace_of(window).is_some()
+                self.workspaces.workspace_of_any(window).is_some()
                     && !self.workspaces.is_pinned(window)
             })
             .map(|(window, frame)| (window.clone(), *frame))
             .collect();
         for (window, frame) in parked {
-            if self
+            if !self
                 .parked_disposition(&window, frame)
                 .is_some_and(crate::config::DispositionPatch::pins)
             {
-                log_event!("pin rule now matches parked {:?}; showing it", window);
-                self.workspaces.set_rule_pinned(&window, true);
+                continue;
             }
+            if let Some(workspace) = self.workspaces.workspace_of(&window) {
+                // As when a rule floats a shown tile: it keeps its app's first-window route
+                // used (#664).
+                self.forget_window(workspace, &window);
+                self.workspaces
+                    .float_former_tile(window.clone(), workspace, FloatCause::Automatic);
+            }
+            if self.workspaces.floating_workspace_of(&window).is_none() {
+                continue;
+            }
+            log_event!("pin rule now matches parked {:?}; showing it", window);
+            self.workspaces.set_rule_pinned(&window, true);
         }
     }
 
