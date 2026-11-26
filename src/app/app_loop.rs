@@ -671,6 +671,13 @@ impl MainThreadAgent {
             running_shortcuts: self
                 .previous_shortcuts_run()
                 .then(|| self.shortcuts.clone()),
+            shortcut_workspaces: Some(
+                self.hotkey_workspaces
+                    .iter()
+                    .copied()
+                    .filter(|workspace| workspace.letter().is_some())
+                    .collect(),
+            ),
         }
     }
 }

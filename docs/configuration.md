@@ -384,7 +384,8 @@ says so (`Still runs ⌃⌥Y`, or `Not running yet`). A workspace the saved tabl
 (with `defaults = false`) but the previous one still runs gets its own row, `Not set` with the keys
 that still run (`Still runs ⌃⌥1…9, 0`). Once tiling is paused, or the previous shortcuts could not be registered again
 either, only the reason stays. Workspaces enabled by a config edit still get their shortcuts on the
-next start. The menu-bar workspace list keeps showing the built-in
+next start; until then Settings › Shortcuts keeps naming the built-in shortcut that still runs on
+that letter (`⌥H` stays Focus Left). The menu-bar workspace list keeps showing the built-in
 `Option`+number/letter hints next to each workspace. Settings › Workspaces names workspace 10's
 keys from `[shortcuts]` (`Workspace 10 (⌃⌥0)` with a `ctrl+alt` base), and none when no shortcut
 switches to it.

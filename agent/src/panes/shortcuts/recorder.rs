@@ -280,6 +280,25 @@ pub fn enabled_named_workspaces(ui: &Ui) -> Vec<WorkspaceId> {
     named
 }
 
+/// Named workspaces whose shortcuts run in this session: the set the agent registered at
+/// startup, or [`enabled_named_workspaces`] when no agent says. A workspace enabled by a config
+/// edit since then doesn't take its letter from a built-in shortcut until the next start.
+pub fn running_named_workspaces(ui: &Ui) -> Vec<WorkspaceId> {
+    match ui.agent.as_ref().and_then(|agent| agent.shortcut_workspaces.as_ref()) {
+        Some(registered) => {
+            let mut named = registered
+                .iter()
+                .copied()
+                .filter(|workspace| workspace.letter().is_some())
+                .collect::<Vec<_>>();
+            named.sort();
+            named.dedup();
+            named
+        }
+        None => enabled_named_workspaces(ui),
+    }
+}
+
 /// Whether `action` may take `chord`: refused while another shortcut runs it.
 pub fn check(
     shortcuts: &Shortcuts,
@@ -350,10 +369,13 @@ pub fn record(ui: &mut Ui, id: &'static str, outcome: Press) {
         return;
     };
     let shortcuts = ui.doc.shortcuts();
-    let named = enabled_named_workspaces(ui);
+    // What the saved table replaces follows the config, so it stays right after a restart; what
+    // occupies a chord follows the shortcuts that run now.
+    let configured = enabled_named_workspaces(ui);
+    let named = running_named_workspaces(ui);
     let default = action
         .default_chord(shortcuts.modifier)
-        .filter(|chord| catalog::named_workspace_for_key(&named, chord.key).is_none());
+        .filter(|chord| catalog::named_workspace_for_key(&configured, chord.key).is_none());
     let refused = match outcome {
         Press::Ignore => return,
         Press::Cancel => {

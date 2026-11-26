@@ -113,6 +113,7 @@ pub(crate) fn reset_fixture(ui: &mut Ui, pane: Pane) {
         ],
         last_error: None,
         running_shortcuts: None,
+        shortcut_workspaces: None,
     });
 }
 
