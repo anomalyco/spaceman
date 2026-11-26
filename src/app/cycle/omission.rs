@@ -158,6 +158,7 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
         &mut self,
         workspace: WorkspaceId,
         observation: &mut crate::NativeObservation,
+        server_frames: Option<&HashMap<u32, crate::Rect>>,
         onscreen_frames: Option<&HashMap<u32, crate::Rect>>,
         close_recheck: &mut Option<Instant>,
     ) {
@@ -180,9 +181,42 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
             });
         let now = self.backend.now();
         for app_observation in &mut observation.applications {
-            let crate::AppObservation::Complete { app, .. } = app_observation else {
+            let crate::AppObservation::Complete {
+                app,
+                focused,
+                windows,
+            } = app_observation
+            else {
                 continue;
             };
+            // The app's focused window is a new one in the snapshot: reconciliation can
+            // already tell whether it replaces a tile, so it needs no hold.
+            let focus_on_new = focused.as_ref().is_some_and(|focused| {
+                !bound.contains(focused) && windows.iter().any(|window| &window.id == focused)
+            });
+            let awaiting_tab = !focus_on_new
+                && server_frames.is_some_and(|server_frames| {
+                    bound
+                        .iter()
+                        .filter(|window| window.app == app.id && !observed.contains(*window))
+                        .filter(|window| !onscreen_frames.contains_key(&window.window_id))
+                        .any(|window| {
+                            self.ordered_out_tab_awaits_successor(
+                                workspace,
+                                window,
+                                server_frames,
+                                now,
+                                close_recheck,
+                            )
+                        })
+                });
+            if awaiting_tab {
+                *app_observation = crate::AppObservation::Unavailable {
+                    app: app.id.clone(),
+                    error: "native tab switch settling".into(),
+                };
+                continue;
+            }
             let settling = bound
                 .iter()
                 .filter(|window| window.app == app.id && !observed.contains(*window))
@@ -218,6 +252,52 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
                 ),
             };
         }
+    }
+
+    /// Whether `window`, its app's one tile on `workspace`, missing from a snapshot that still
+    /// lists the app and ordered out, waits briefly for the next tab of its native tab group:
+    /// mid-switch, Accessibility can list neither tab while the window server already shows
+    /// the incoming one, and the tile would otherwise retire before that tab is listed (#719).
+    fn ordered_out_tab_awaits_successor(
+        &mut self,
+        workspace: WorkspaceId,
+        window: &crate::PhysicalWindowId,
+        server_frames: &HashMap<u32, crate::Rect>,
+        now: Instant,
+        close_recheck: &mut Option<Instant>,
+    ) -> bool {
+        if !server_frames.contains_key(&window.window_id) || self.parked.contains_key(window) {
+            return false;
+        }
+        let slots = &self.workspaces.engine(workspace).model().workspace.slots;
+        let mut owned = slots.iter().filter(|slot| slot.belongs_to(&window.app));
+        let only_tile = owned.next().and_then(crate::Slot::bound_window) == Some(window)
+            && owned.next().is_none();
+        if !only_tile {
+            return false;
+        }
+        if self
+            .omitted_windows
+            .get(window)
+            .is_some_and(|omission| !omission.awaits_incoming_tab(now))
+            || self.backend.confirms_set_aside(window)
+            || !self.has_sibling_tab_surface(window, server_frames)
+        {
+            return false;
+        }
+        let omission = self
+            .omitted_windows
+            .entry(window.clone())
+            .or_insert_with(|| {
+                log_event!(
+                    "observation omitted {:?}: ordered out beside another tab of its group; keeping its slot",
+                    window
+                );
+                Omission::new(now)
+            });
+        let deadline = omission.next_tab_recheck(now);
+        *close_recheck = Some(close_recheck.map_or(deadline, |other| other.min(deadline)));
+        true
     }
 
     /// Whether the window server lists another window of `window`'s app, held by no

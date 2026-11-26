@@ -23,7 +23,7 @@ Automatic tiling                                        // tile.auto
     │   │   └── Caught mid-switch (old tab still listed, or focus not there yet) at the tile's frame -> held up to a second for the evidence instead of routed, then routed as a new window (#706)
     │   ├── A snapshot mid-switch with no focused window -> the app's last focused tab still counts as the outgoing one, so the incoming tab keeps the slot (#718)
     │   ├── Right after a pointer resize is released -> the incoming tab keeps the resized tile's side and width (#624)
-    │   └── Old tab ordered out before the new one is on screen -> while another tab of the group is listed at the tile's corner, the tile waits up to 300 ms for it, so it still keeps side and width (#707); a close with no other window of the app at that corner does not wait
+    │   └── Old tab ordered out before the new one is on screen -> while another tab of the group is listed at the tile's corner, the tile waits up to 300 ms for it, so it still keeps side and width (#707), also when the new tab is on screen but not yet listed by Accessibility (#719); a close with no other window of the app at that corner does not wait
     └── Ghostty -> ambiguous evidence also holds the slot for a bounded settle
 
 Focus                                                   // tile.focus
@@ -262,7 +262,9 @@ so a full queue fails that command with `Input queue full; command was not queue
   lists another window of the app, held by no workspace, at the tile's top-left corner, as it
   does a native tab group's next tab (#707). The check then waits up to 300 ms for that tab to
   take the tile over; an older window the app keeps ordered out at that same corner delays a
-  close the same way. An inconclusive check gets one retry after 75 ms. A surface that stays
+  close the same way. The same 300 ms wait applies while the app's next tab is already on
+  screen but Accessibility lists neither tab yet (#719), unless the app's focused window is
+  already a new one there. An inconclusive check gets one retry after 75 ms. A surface that stays
   ordered out then follows the usual two-second settling period. Minimizing an app's only window
   (Command-M) or hiding the app (Command-H) skips that period: macOS confirms it, so the siblings
   reflow at once, and the window comes back as a new tile at the end of the layout. While nothing on the display is observed (another macOS Space

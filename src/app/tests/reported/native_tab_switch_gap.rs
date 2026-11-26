@@ -188,3 +188,84 @@ fn a_window_closed_by_ordering_it_out_gives_up_its_tile_at_once() {
     assert_eq!(runtime.backend.frames[&neighbor], column(0, 2560));
     assert!(status.close_recheck.is_none());
 }
+
+/// #719: the window server already shows the incoming tab at the tile's frame, so the snapshot
+/// still lists the app, but Accessibility lists neither tab yet and the outgoing one is ordered
+/// out. Retiring the tile there gave the incoming tab a new tile beside its neighbor a cycle
+/// later.
+fn listed_mid_switch() -> (
+    WorkspaceRuntime<FakeBackend>,
+    crate::PhysicalWindowId,
+    crate::PhysicalWindowId,
+    crate::PhysicalWindowId,
+) {
+    let (mut runtime, tab, next_tab, neighbor) = mid_switch(true);
+    let tab_frame = runtime.backend.server_frames[&tab];
+    let right = runtime.backend.frames[&neighbor];
+    runtime.backend.frames.insert(next_tab.clone(), tab_frame);
+    runtime.backend.ordered_out.remove(&next_tab.window_id);
+    runtime.backend.observation = Some(observe(vec![
+        app(TABS, None, &[], &tab.app),
+        app(OTHER, None, &[(&neighbor, right)], &neighbor.app),
+    ]));
+    (runtime, tab, next_tab, neighbor)
+}
+
+#[test]
+fn a_native_tab_not_yet_listed_while_its_app_is_keeps_the_tile() {
+    let (mut runtime, tab, next_tab, neighbor) = listed_mid_switch();
+    let slot = runtime
+        .workspaces
+        .engine(WorkspaceId::ONE)
+        .slot_for_window(&tab);
+    let (tab_frame, neighbor_frame) = (
+        runtime.backend.server_frames[&tab],
+        runtime.backend.frames[&neighbor],
+    );
+
+    let status = runtime
+        .cycle(studio_display(), &AtomicBool::new(false))
+        .unwrap();
+    assert_eq!(runtime.workspaces.workspace_of(&tab), Some(WorkspaceId::ONE));
+    assert_eq!(runtime.workspaces.workspace_of(&next_tab), None);
+    let recheck = status.close_recheck.expect("a prompt follow-up");
+    assert!(recheck <= runtime.backend.now() + Duration::from_millis(75));
+    assert_eq!(runtime.backend.frames[&neighbor], neighbor_frame);
+
+    runtime.backend.advance(Duration::from_millis(75));
+    runtime.backend.focused = Some(next_tab.clone());
+    runtime.backend.observation = Some(observe(vec![
+        app(TABS, Some(&next_tab), &[(&next_tab, tab_frame)], &tab.app),
+        app(OTHER, None, &[(&neighbor, neighbor_frame)], &neighbor.app),
+    ]));
+    runtime
+        .cycle(studio_display(), &AtomicBool::new(false))
+        .unwrap();
+
+    assert_eq!(
+        runtime
+            .workspaces
+            .engine(WorkspaceId::ONE)
+            .slot_for_window(&next_tab),
+        slot
+    );
+    assert_eq!(runtime.backend.frames[&next_tab], tab_frame);
+    assert_eq!(runtime.backend.frames[&neighbor], neighbor_frame);
+}
+
+#[test]
+fn a_listed_app_whose_next_tab_never_shows_up_gives_up_the_tile_after_the_short_wait() {
+    let (mut runtime, tab, _, neighbor) = listed_mid_switch();
+    runtime
+        .cycle(studio_display(), &AtomicBool::new(false))
+        .unwrap();
+    assert_eq!(runtime.workspaces.workspace_of(&tab), Some(WorkspaceId::ONE));
+
+    runtime.backend.advance(Duration::from_millis(300));
+    runtime
+        .cycle(studio_display(), &AtomicBool::new(false))
+        .unwrap();
+
+    assert_eq!(runtime.workspaces.workspace_of(&tab), None);
+    assert_eq!(runtime.backend.frames[&neighbor], column(0, 2560));
+}
