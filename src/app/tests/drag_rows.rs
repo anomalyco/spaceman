@@ -347,3 +347,27 @@ fn toggling_split_mid_drag_after_starting_in_fullscreen_does_not_drop() {
     );
     assert!(rt.gesture.is_none());
 }
+
+#[test]
+fn a_side_band_crossing_its_menu_bar_strip_stays_unarmed() {
+    // 20 on top of 10 as rows, then dragged by a point inside the right band.
+    let docked_right = [(10, 0, 25, 720, 2535), (20, 720, 25, 720, 2535)];
+    let rows_first = || {
+        let mut rt = columns(&[10, 20], labs_on());
+        drag(&mut rt, 20, (1080, 1200), &[], (720, 5));
+        assert_eq!(layout(&rt), rows(20, 10));
+        rt
+    };
+    // Up into the menu bar strip above the band and back: never out of the side band (#612).
+    let mut rt = rows_first();
+    drag(&mut rt, 20, (1420, 600), &[(1420, 700), (1420, 5)], (1420, 650));
+    assert_eq!(layout(&rt), rows(20, 10));
+    // The control that stays below the menu bar holds the rows too.
+    let mut rt = rows_first();
+    drag(&mut rt, 20, (1420, 600), &[(1420, 700), (1420, 40)], (1420, 650));
+    assert_eq!(layout(&rt), rows(20, 10));
+    // Leaving the band sideways still arms it.
+    let mut rt = rows_first();
+    drag(&mut rt, 20, (1420, 600), &[(1000, 600)], (1420, 650));
+    assert_eq!(layout(&rt), docked_right);
+}

@@ -331,10 +331,15 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
         bounds: Option<PointerBounds>,
         outputs: &macos::DisplayOutputs,
     ) -> DropTarget {
-        if let Some(direction) = display_edge_drop(point, source_output, usable, bounds) {
+        let rows = self.config.labs().portrait_edge_rows;
+        // With row bands, a side band also covers the menu bar and Dock strips at its
+        // ends, so a pointer that only crossed into them has not left the side (#612).
+        let strips = (rows && usable.height > usable.width)
+            .then(|| display_screen(source_output, outputs));
+        if let Some(direction) = display_edge_drop(point, source_output, usable, bounds, strips) {
             return DropTarget::DisplayEdge(direction);
         }
-        if self.config.labs().portrait_edge_rows
+        if rows
             && let Some(direction) = display_row_drop(point, source_output, usable, bounds, outputs)
         {
             return DropTarget::DisplayEdge(direction);
@@ -455,23 +460,45 @@ pub(in crate::app) fn display_edge_bands(
     (left, right)
 }
 
+/// The full bounds of the display whose tiled area is `output`, or `output` itself.
+fn display_screen(output: crate::Rect, outputs: &macos::DisplayOutputs) -> crate::Rect {
+    outputs
+        .displays()
+        .iter()
+        .zip(outputs.screens())
+        .find(|(display, _)| display.frame == output)
+        .map_or(output, |(_, screen)| screen)
+}
+
+/// `strips`, when given, is the display's full bounds: a side band then arms only once
+/// the pointer has left it together with the menu bar and Dock strips at its ends.
 fn display_edge_drop(
     point: (i32, i32),
     output: crate::Rect,
     usable: crate::Rect,
     bounds: Option<PointerBounds>,
+    strips: Option<crate::Rect>,
 ) -> Option<Direction> {
     if !output.contains(point.0, point.1) {
         return None;
     }
     let (left, right) = display_edge_bands(output, usable);
-    if left.contains(point.0, point.1) {
-        let armed = bounds.is_none_or(|bounds| !bounds.entirely_inside(left));
-        return armed.then_some(Direction::Left);
-    }
-    if right.contains(point.0, point.1) {
-        let armed = bounds.is_none_or(|bounds| !bounds.entirely_inside(right));
-        return armed.then_some(Direction::Right);
+    let arming = |side: crate::Rect| {
+        strips.map_or(side, |screen| {
+            let y = screen.y.min(side.y);
+            let end = (screen.y + screen.height).max(side.y + side.height);
+            crate::Rect {
+                y,
+                height: end - y,
+                ..side
+            }
+        })
+    };
+    for (side, direction) in [(left, Direction::Left), (right, Direction::Right)] {
+        if side.contains(point.0, point.1) {
+            let armed = bounds.is_none_or(|bounds| !bounds.entirely_inside(arming(side)));
+            return armed.then_some(direction);
+        }
     }
     None
 }
@@ -524,12 +551,7 @@ fn display_row_drop(
     if left.contains(point.0, point.1) || right.contains(point.0, point.1) {
         return None;
     }
-    let screen = outputs
-        .displays()
-        .iter()
-        .zip(outputs.screens())
-        .find(|(display, _)| display.frame == output)
-        .map_or(output, |(_, screen)| screen);
+    let screen = display_screen(output, outputs);
     let (top, bottom) = display_row_bands(output, usable, screen)?;
     let (band, row) = [(top, Direction::Up), (bottom, Direction::Down)]
         .into_iter()

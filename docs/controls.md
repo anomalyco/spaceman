@@ -104,7 +104,9 @@ whose tiled area is taller than it is wide also has bands along its top and bott
 rules: dropping there docks the window into a full-width, half-height row on that edge. These bands
 also cover the menu bar and any Dock strip above or below the tiled area. Where a side band and a top
 or bottom band meet, the side band wins, even before the pointer has left it, and that includes
-the corners of the menu bar and Dock strips. Landscape and square displays are unchanged.
+the corners of the menu bar and Dock strips. Those corners count as part of the side band for arming
+too, so a drag that only goes up or down into a strip and back has not left the side band.
+Landscape and square displays are unchanged.
 Dropping onto another display moves the window to that display's active workspace, the one shown
 there at mouse-up, even if that display switched workspaces, or its workspace moved to another
 display, while the button was held. Resizing a
