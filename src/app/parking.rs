@@ -152,6 +152,7 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
             server_frames,
             visible,
         };
+        let lost = self.displays.lost_displays().to_vec();
         let mut fullscreen_hud = None;
         // Hidden scratchpad windows intentionally have no workspace owner, so
         // re-park any background bounds reassertions here before affinity sees them.
@@ -231,13 +232,19 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
                 .copied()
                 .unwrap_or(frame);
             let recovery = if !crate::geometry::shows_on(frame, &displays) {
-                if self.backend.confirms_set_aside(&window) {
+                if !crate::geometry::shows_on(frame, &lost)
+                    || self.backend.confirms_set_aside(&window)
+                {
+                    // The app keeps this window off-screen itself (or it is minimized /
+                    // hidden). There is nothing to hide and no on-screen frame worth
+                    // recording for recovery.
+                    log_event!("park skip: {:?} already off-screen at {:?}", window, frame);
                     continue;
                 }
-                // A live managed window left off-screen (for example on a workspace
-                // that became hidden when its display was unplugged) still needs a
-                // clamped recovery frame on `output` and an explicit park write, so
-                // Pause/Quit or returning to the workspace brings it back on screen.
+                // A live managed window left off-screen by the display that just went
+                // away still needs a clamped recovery frame on `output` and an explicit
+                // park write, so Pause/Quit or returning to the workspace brings it back
+                // on screen.
                 crate::geometry::onto_displays(frame, &[], output)
             } else {
                 frame
@@ -493,7 +500,8 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
         let was_parked = self.parked.contains_key(window);
         let displays = outputs.frames().collect::<Vec<_>>();
         let recovery_frame = if !crate::geometry::shows_on(frame, &displays) && !was_parked {
-            if self.workspaces.workspace_of_any(window).is_none()
+            if !crate::geometry::shows_on(frame, self.displays.lost_displays())
+                || self.workspaces.workspace_of_any(window).is_none()
                 || self.backend.confirms_set_aside(window)
             {
                 // The app keeps this window off-screen itself (or it is minimized
