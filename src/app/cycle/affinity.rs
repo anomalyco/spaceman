@@ -11,7 +11,7 @@ pub(super) enum FrozenWindowAffinity {
     Floating,
     ExplicitRoute(WorkspaceId),
     /// The window a `move-tab` detach opened, sent to its target ahead of any
-    /// route rule.
+    /// route rule, or the tab an app's own detach moved out of its group (#756).
     DetachedTab(WorkspaceId),
     /// The app's existing workspace, or a remembered placement a relaunched
     /// application's window claimed.
@@ -121,7 +121,9 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
                 }
             }
             self.prepare_recall(app, windows);
-            let detached_tab = self.claim_detached_tab(app, windows);
+            let detached_tab = self.claim_detached_tab(app, windows).or_else(|| {
+                self.claim_app_detached_tab(app, focused.as_ref(), windows, visible)
+            });
             let mut app_owns_window = self.workspaces.app_owns_windows(&app.id);
             let mut app_owns_tiled = self.workspaces.app_holds_route(&app.id);
             for window in windows {
