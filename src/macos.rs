@@ -597,7 +597,9 @@ enum WindowObservation {
     Ignored,
 }
 
-const MIN_MANAGEABLE_WINDOW_DIMENSION: i32 = 64;
+// Matches the smallest tile the layout makes (and `resize` accepts), so a tile
+// sized down to it stays managed instead of dropping out of its workspace (#702).
+const MIN_MANAGEABLE_WINDOW_DIMENSION: i32 = crate::layout_tree::MIN_TILE_EXTENT;
 
 fn observe_window(
     id: PhysicalWindowId,
