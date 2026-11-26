@@ -9,6 +9,11 @@
 //! the same frame, the incoming one is held for a bounded settle rather than adopted.
 //! A Scratchpad window that is shown floats too, and its tab switch hands over its
 //! Scratchpad entry the same way, so Toggle still hides the group (#754).
+//!
+//! Right after a macOS Space slide, though, a float the snapshot omits is on the desktop the
+//! slide left, still listed by the window server at its frame, and a window of its app at
+//! that frame is on the arriving desktop, not a tab that replaced it: neither hands over nor
+//! holds (#769).
 
 use super::tab_handoff::TAB_HANDOFF_SETTLE;
 use super::*;
@@ -27,6 +32,9 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
         let Some(&frame) = server_frames.get(&outgoing.window_id) else {
             return false;
         };
+        if self.space_slide_just_settled() {
+            return false;
+        }
         let mut incoming = windows
             .iter()
             .filter(|window| self.is_unowned_tab_at(bundle_id, window, frame));
@@ -51,7 +59,9 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
         window: &crate::ObservedWindow,
         windows: &[crate::ObservedWindow],
     ) -> Option<Instant> {
-        if !self.is_unowned_tab_at(bundle_id, window, window.frame) {
+        if !self.is_unowned_tab_at(bundle_id, window, window.frame)
+            || self.space_slide_just_settled()
+        {
             return None;
         }
         let tolerance = crate::reconcile::DEFAULT_FRAME_TOLERANCE;
