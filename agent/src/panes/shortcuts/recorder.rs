@@ -1,7 +1,7 @@
 //! Click-to-record: a shortcut's keys, pressed, listen for a new chord. The global hotkeys are
 //! held off meanwhile (`host::set_shortcut_recording`), so the chord reaches the recorder rather
-//! than moving windows. Esc cancels, ⌫ unbinds, and a chord without ⌥, ⌃ or ⌘, or one another
-//! shortcut uses, keeps listening and says why.
+//! than moving windows. Esc on its own cancels, ⌫ unbinds, and a chord without ⌥, ⌃ or ⌘, or one
+//! another shortcut uses, keeps listening and says why.
 
 use rune::{Mods, PhysicalInput, PhysicalKeyCode};
 use spaceman::{
@@ -82,7 +82,7 @@ pub fn press(
         | K::SuperRight
         | K::CapsLock
         | K::Fn => return Press::Ignore,
-        K::Escape => return Press::Cancel,
+        K::Escape if !held.can_bind() => return Press::Cancel,
         K::Backspace | K::Delete if !held.can_bind() => return Press::Unbind,
         _ => match key_name(key, character) {
             Some(name) => name,
@@ -134,6 +134,7 @@ fn key_name(
         K::Enter | K::NumpadEnter => "return",
         K::Tab => "tab",
         K::Space => "space",
+        K::Escape => "escape",
         K::Backspace => "backspace",
         K::Delete => "forwarddelete",
         K::Home => "home",

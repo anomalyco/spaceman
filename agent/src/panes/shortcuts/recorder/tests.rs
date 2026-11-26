@@ -70,7 +70,15 @@ fn bare_and_shift_only_keys_are_refused() {
 #[test]
 fn escape_cancels_and_a_bare_delete_unbinds() {
     assert_eq!(us(K::Escape, Mods::default()), Press::Cancel);
-    assert_eq!(us(K::Escape, ALT), Press::Cancel);
+    assert_eq!(
+        us(K::Escape, mods(false, false, true, false)),
+        Press::Cancel
+    );
+    assert_eq!(us(K::Escape, ALT), chord("alt+escape"));
+    assert_eq!(
+        us(K::Escape, mods(true, true, false, false)),
+        chord("ctrl+alt+escape")
+    );
     assert_eq!(us(K::Backspace, Mods::default()), Press::Unbind);
     assert_eq!(
         us(K::Delete, mods(false, false, true, false)),

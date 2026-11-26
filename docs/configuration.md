@@ -390,9 +390,9 @@ switches to it.
 Settings › Shortcuts edits the same table. Click a shortcut's keys and press a new chord: it is saved
 to `[shortcuts.bindings]` and registered at once, and the built-in chord it replaces gets `none`.
 While Settings records, every global shortcut is held off so the chord reaches it (for at most a
-minute). `esc` cancels, `⌫` or `Delete` on its own clears the shortcut (`none`), a chord without
-`⌥`, `⌃`, or `⌘` is refused, and so is a chord another shortcut uses, naming it. Base modifier
-sets `modifier`, and Reset to defaults removes the `[shortcuts]` table. Comments and other bindings
+minute). `esc` on its own cancels (with `⌥`, `⌃`, or `⌘` it is recorded like any other key), `⌫`
+or `Delete` on its own clears the shortcut (`none`), a chord without `⌥`, `⌃`, or `⌘` is refused,
+and so is a chord another shortcut uses, naming it. Base modifier sets `modifier`, and Reset to defaults removes the `[shortcuts]` table. Comments and other bindings
 in the file are kept.
 
 ## Labs
