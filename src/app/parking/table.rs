@@ -34,8 +34,14 @@ enum ParkPhase {
     /// Recorded and off-screen (or not yet moved). `reparks` counts re-parks the app undid
     /// in a row.
     Resting { reparks: u8 },
-    /// A park write applied at `issued_at` may still be landing.
-    Settling { issued_at: Instant, reparks: u8 },
+    /// A park write applied at `issued_at` may still be landing. `from` is where the window
+    /// was on screen when a first park was issued (in memory only), which a stale readback
+    /// still reports; none for a re-park or a park whose starting frame is not known.
+    Settling {
+        issued_at: Instant,
+        reparks: u8,
+        from: Option<Rect>,
+    },
     /// A restore write applied at `last_write_at` awaits window-server confirmation. A
     /// scratchpad summon restores to `destination` rather than the recovery frame.
     Restoring {
@@ -194,23 +200,41 @@ impl ParkTable {
         self.display_settled(window);
     }
 
+    /// A park write landed for a window that was on screen at `from`.
+    pub(in crate::app) fn park_applied_from(
+        &mut self,
+        window: &PhysicalWindowId,
+        now: Instant,
+        from: Rect,
+    ) {
+        self.settle(window, now, 0, Some(from));
+        self.display_settled(window);
+    }
+
     /// A park was issued but may not have landed (mid Space slide); the window settles,
     /// still due any re-park for the current displays.
     pub(in crate::app) fn park_issued(&mut self, window: &PhysicalWindowId, now: Instant) {
-        self.settle(window, now, 0);
+        self.settle(window, now, 0, None);
     }
 
     /// A re-park of a window the app moved back on screen landed.
     pub(in crate::app) fn repark_applied(&mut self, window: &PhysicalWindowId, now: Instant) {
-        self.settle(window, now, 1);
+        self.settle(window, now, 1, None);
         self.display_settled(window);
     }
 
-    fn settle(&mut self, window: &PhysicalWindowId, issued_at: Instant, more_reparks: u8) {
+    fn settle(
+        &mut self,
+        window: &PhysicalWindowId,
+        issued_at: Instant,
+        more_reparks: u8,
+        from: Option<Rect>,
+    ) {
         if let Some(record) = self.records.get_mut(window) {
             record.phase = ParkPhase::Settling {
                 issued_at,
                 reparks: record.reparks().saturating_add(more_reparks),
+                from,
             };
         }
     }
@@ -292,6 +316,27 @@ impl ParkTable {
     pub(in crate::app) fn settling(&self, window: &PhysicalWindowId, now: Instant) -> bool {
         self.last_write(window)
             .is_some_and(|at| now.saturating_duration_since(at) < PARK_SETTLE_GRACE)
+    }
+
+    /// Where the window was on screen when its first park was issued, while that park is
+    /// still settling. None after a re-park the app undid, or when the frame is unknown.
+    #[must_use]
+    pub(in crate::app) fn settling_from(
+        &self,
+        window: &PhysicalWindowId,
+        now: Instant,
+    ) -> Option<Rect> {
+        if !self.settling(window, now) {
+            return None;
+        }
+        match self.records.get(window)?.phase {
+            ParkPhase::Settling {
+                reparks: 0,
+                from: Some(from),
+                ..
+            } => Some(from),
+            _ => None,
+        }
     }
 
     /// The window is off-screen; once it has stayed there past the settle grace, the app has

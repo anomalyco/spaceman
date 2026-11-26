@@ -590,7 +590,9 @@ on the same letter.
   order on real hardware is not covered.
 - Unit (FakeBackend), `src/app/tests/parking.rs`: parking without minimizing, re-parking windows that
   drift back, honoring windows that keep un-parking (parking exemption, working tree), and keeping
-  slots when Accessibility briefly cannot find a hidden window.
+  slots when Accessibility briefly cannot find a hidden window. `src/app/tests/settle_grace.rs`:
+  `background_unhide_during_a_fresh_park_is_re_parked_without_waiting_for_the_grace` and
+  `stale_readback_after_a_cross_display_park_waits_out_the_grace`.
 - Unit, `src/geometry.rs`: `parking_leaves_a_single_corner_pixel_on_screen`,
   `a_window_held_above_its_parking_corner_is_still_parked`,
   `a_window_held_up_by_its_title_bar_stays_off_a_shorter_neighbor`,
@@ -697,6 +699,10 @@ on the same letter.
   parked on other workspaces back to their last on-screen frames. Right after a Space slide only the
   focused window counts as summoned; the others are re-parked, not re-homed (#489,
   `leaving_native_fullscreen_re_parks_the_apps_windows_from_other_workspaces`).
+- A window moved back on screen in the background while its first park is still settling, away
+  from where it was parked from (an app unhidden in the background, #693), is re-parked at once
+  instead of after the two-second grace. A readback still at the pre-park spot keeps waiting, so a
+  stale report is never counted as the app undoing the park.
 - Focus-follow switches workspaces as a side effect of any app activation, including ones the user
   did not intend (an app raising itself). Each `focus follow` line in `agent.log` records recent
   input timing and whether Command was held, so Command-Tab can be told apart from self-activation.
