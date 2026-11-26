@@ -22,6 +22,7 @@ mod hud_rows_after_move;
 mod missing_drop_sample;
 mod move_back_reveals_last_shown;
 mod move_tab_follow_pointer;
+mod native_tab_after_resize;
 mod new_window_dock_affinity;
 mod numbered_move_stale_report;
 mod parked_sibling_takes_focus;
