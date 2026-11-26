@@ -86,7 +86,8 @@ pub(super) trait WorkspaceBackend {
     }
     fn focused_window(&mut self) -> Option<crate::PhysicalWindowId>;
     fn frontmost_application(&mut self) -> Option<AppInstanceId>;
-    /// Diagnostics only: recent user input timing for focus-follow logs.
+    /// Recent user input timing, for focus-follow logs and to tell a late app
+    /// handoff from the user's own focus change (#737).
     fn recent_input(&mut self) -> Option<macos::RecentInput> {
         None
     }

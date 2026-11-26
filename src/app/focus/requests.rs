@@ -66,6 +66,10 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
     /// window again; the request still settles at its original deadline, so
     /// an app that insists is followed after that. A pinned sibling counts as
     /// the workspace its display shows, never its hidden home (#657).
+    ///
+    /// An app can activate late, handing focus over after the request settled
+    /// (#737). Until `SIBLING_HANDOFF` has passed with no key press or
+    /// click since the request, that sibling is refocused away from once too.
     pub(in crate::app) fn reclaim_from_sibling(
         &mut self,
         reported: &crate::PhysicalWindowId,
@@ -74,8 +78,12 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
         let is_shown =
             |workspace: WorkspaceId| visible.iter().any(|shown| shown.workspace == workspace);
         let now = self.backend.now();
-        let Some(target) = self.focus.sibling_target(now, reported) else {
-            return;
+        let (target, late) = match self.focus.sibling_target(now, reported) {
+            Some(target) => (target, false),
+            None => match self.focus.late_sibling_target(now, reported) {
+                Some((target, issued_at)) if !self.input_since(now, issued_at) => (target, true),
+                _ => return,
+            },
         };
         let Some(target_workspace) = self
             .workspaces
@@ -95,6 +103,18 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
         if reported_workspace.is_none_or(|workspace| workspace == target_workspace) {
             return;
         }
+        if late {
+            if !self.backend.focus_window(&target) {
+                return;
+            }
+            self.focus.reclaim_late(now, reported);
+            log_event!(
+                "focus follow: {:?} took focus late from requested {:?}; focusing it again",
+                reported,
+                target
+            );
+            return;
+        }
         // Refocus once per sibling; later reports of it are already explained.
         if !self.focus.explain_as_target(reported) {
             return;
@@ -105,6 +125,16 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
             target
         );
         let _: bool = self.backend.focus_window(&target);
+    }
+
+    /// Whether the user pressed a key or clicked since `since`. With no
+    /// reading it may have been, so a late report is followed as before.
+    fn input_since(&mut self, now: Instant, since: Instant) -> bool {
+        let Some(input) = self.backend.recent_input() else {
+            return true;
+        };
+        let elapsed = now.saturating_duration_since(since).as_secs_f64();
+        input.key_down.min(input.mouse_down) < elapsed
     }
 
     /// Guards the focus left behind so focus follow does not chase it.
