@@ -11,6 +11,8 @@ Switch workspace                                           // ws.switch
 ├── Incoming parked windows revealed -> laid out -> outgoing windows parked off-screen
 │   ├── A window minimized (⌘M) or hidden (⌘H) while away -> back at its frame but left minimized
 │   │   or hidden and never focused; a tile leaves the layout and rejoins as a new tile
+│   ├── A fixed-size window under a `tile` rule -> moved to its tile's corner at its own size;
+│   │   the layout still counts as done, so the switch completes
 │   └── Reveal not confirmed by the window server in time -> switch rolled back, old workspace stays
 │       (a window whose app was not responding stays hidden when that app recovers)
 ├── Focus -> last-focused tile of the incoming workspace, keyboard focus included
@@ -417,8 +419,10 @@ on the same letter.
   switch or move (issue 148) and relocating from a third display onto the target display (issue
   152), and `move_app_moves_every_managed_window_of_the_app` (issue 121) and
   `move_app_moves_floating_windows_too` (issue 136). Unit, `src/macos/apply.rs`: a refused size write
-  before a move no longer stops the move; focusing raises the window before bringing its app
-  forward, and either `AXFrontmost` or AppKit activation brings the app forward (issue 92).
+  before a move no longer stops the move; a window that moves but cannot resize is constrained,
+  not unavailable, so it never rolls back a switch (issue 726, `src/macos/apply/frame.rs`);
+  focusing raises the window before bringing its app forward, and either `AXFrontmost` or AppKit
+  activation brings the app forward (issue 92).
 - Unit (FakeBackend), `src/app/tests/focus.rs`:
   `a_workspace_switch_that_cannot_focus_keeps_the_focus_restore_pending`,
   `a_workspace_switch_that_focuses_settles_the_focus_restore`,
