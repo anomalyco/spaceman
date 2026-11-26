@@ -52,6 +52,8 @@ pub(super) struct WorkspaceRuntime<B = MacWorkspaceBackend> {
     pub(super) omitted_windows: HashMap<crate::PhysicalWindowId, cycle::Omission>,
     /// Incoming native tabs held from a route mid-handoff, and since when (#706).
     pub(super) tab_handoffs: HashMap<crate::PhysicalWindowId, Instant>,
+    /// Tiles just moved to another workspace, by the tab they took, and where they were (#759).
+    pub(super) departed_tiles: HashMap<crate::PhysicalWindowId, cycle::DepartedTile>,
     /// Owned windows Accessibility reports gone while the window server still
     /// lists them, and when that began.
     pub(super) inaccessible_since: HashMap<crate::PhysicalWindowId, Instant>,
@@ -389,6 +391,7 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
             parked: parked.into(),
             omitted_windows: HashMap::new(),
             tab_handoffs: HashMap::new(),
+            departed_tiles: HashMap::new(),
             inaccessible_since: HashMap::new(),
             minimum_sizes: HashMap::new(),
             unmovable_stale: super::stale_parked::UnmovableStale::default(),

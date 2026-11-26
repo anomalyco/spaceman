@@ -2,11 +2,15 @@ mod affinity;
 mod deck;
 mod float_tab;
 mod hidden_tab;
+mod moved_tab;
 mod omission;
 mod readback;
 mod routing;
 mod tab_handoff;
 pub(super) use deck::SetAsideTiles;
+pub(super) use moved_tab::DepartedTile;
+#[cfg(test)]
+pub(super) use moved_tab::MOVED_TAB_SETTLE;
 pub(super) use omission::Omission;
 #[cfg(test)]
 pub(super) use readback::ASYNC_BOUNCE_SETTLE;

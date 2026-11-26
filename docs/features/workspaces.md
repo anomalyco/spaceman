@@ -120,6 +120,9 @@ Move window without switching                              // ws.move-window
 ├── Target hidden on another display -> parked off the edge of the display it is on; its recovery
 │   frame moves onto the target's display, so showing the workspace brings it up there
 ├── ctl move-app <bundle-id> <ws>     -> every current window of that app, tiled or floating, in one request
+│   └── Another native tab selected while the move runs -> when a moved tile's tab is ordered out
+│       within 2 s of the move and the one unowned window of the app is where that tile was, that
+│       window takes the moved tile, so the tab group follows to the target (#759)
 └── [labs] float_follows_display: a float dragged with its center onto another display moves to the
     workspace showing there, keeping its frame (src/app/commands/float_drop.rs); same display, no
     workspace there, pinned or Scratchpad windows, and app or macOS moves change nothing
@@ -684,6 +687,10 @@ on the same letter.
   the source (#688). A float the user minimized or hid on the source is never the handoff target:
   with only that float left, focus stays guarded on the moved window, and with a tile still
   showing, the tile gets focus even if the float was the last one focused (#743).
+- Unit (FakeBackend), `src/app/tests/reported/move_app_tab_switch.rs`: a tab selected in a group
+  just as `move-app` runs takes the moved tile on the visible target workspace on another display,
+  while two new windows where the tile was, or a tab selected after the 2 s settle, claim nothing
+  (#759).
 - Unit (FakeBackend), `src/app/tests/move_tab.rs`: a detached tab goes straight to a hidden
   workspace (never tiled on the source) ahead of a route rule while focus stays on the source,
   `--follow` switches to it, a visible target on another display tiles it, an AppKit tab group's
