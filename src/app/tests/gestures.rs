@@ -436,3 +436,47 @@ fn a_held_cross_display_drop_follows_a_destination_switch() {
     assert_eq!(runtime.workspaces.workspace_of(&dragged), Some(seven));
     assert!(!runtime.parked.contains_key(&dragged));
 }
+
+/// #605: the workspace under a held cross-display drag moves to another
+/// display; releasing where the preview was shown drops onto the workspace
+/// shown under the pointer now, not the one that moved away.
+#[test]
+fn a_held_cross_display_drop_stays_under_the_pointer_when_its_workspace_moves() {
+    let dragged = window(10);
+    let sibling = window(11);
+    let shown = window(20);
+    let mut backend = FakeBackend {
+        focused: Some(dragged.clone()),
+        ..FakeBackend::default()
+    };
+    backend.frames.insert(dragged.clone(), frame(50));
+    backend.frames.insert(sibling.clone(), frame(500));
+    backend.frames.insert(shown.clone(), frame(1050));
+    let mut runtime = runtime(backend);
+    bind(&mut runtime, WorkspaceId::ONE, &dragged);
+    bind(&mut runtime, WorkspaceId::ONE, &sibling);
+    bind(&mut runtime, WorkspaceId::SIX, &shown);
+    let cancelled = AtomicBool::new(false);
+    let point = (1500, 400);
+
+    runtime
+        .drop_window(dragged.clone(), point, true, three_outputs(), &cancelled)
+        .unwrap();
+    runtime
+        .switch(WorkspaceId::SIX, three_outputs(), &cancelled)
+        .unwrap();
+    runtime.backend.focused = Some(shown.clone());
+    runtime
+        .move_workspace_to_display(DisplayTarget::Next, three_outputs(), &cancelled)
+        .unwrap();
+    let now_under = runtime.shown_at(point, &three_outputs());
+    assert!(runtime.is_visible(WorkspaceId::SIX, &three_outputs()));
+    assert!(now_under.is_some_and(|workspace| workspace != WorkspaceId::SIX));
+
+    runtime
+        .drop_window(dragged.clone(), point, false, three_outputs(), &cancelled)
+        .unwrap();
+
+    assert_eq!(runtime.workspaces.workspace_of(&dragged), now_under);
+    assert_eq!(runtime.workspaces.workspace_of(&shown), Some(WorkspaceId::SIX));
+}

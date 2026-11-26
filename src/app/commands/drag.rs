@@ -108,11 +108,15 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
         // Released where the last preview was shown, with the pointer nowhere
         // new since, the drop is what that preview showed, even if settings
         // changed in between (#390). A destination workspace that stopped
-        // being shown while the button was held no longer stands (#550).
+        // being shown on the display under the pointer while the button was
+        // held no longer stands, whether it was hidden (#550) or moved to
+        // another display (#605).
         let shown = shown.filter(|(at, target)| {
             *at == point
                 && match target {
-                    DropTarget::OtherWorkspace(workspace) => self.is_visible(*workspace, &outputs),
+                    DropTarget::OtherWorkspace(workspace) => {
+                        self.shown_at(point, &outputs) == Some(*workspace)
+                    }
                     _ => true,
                 }
         });
@@ -349,17 +353,25 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
                 }
             };
         }
-        if let Some(display) = outputs.display_at(point)
-            && let Some(target) = self
-                .visible_workspaces(outputs)
-                .into_iter()
-                .find(|resolved| resolved.display_id == display.id)
-                .map(|resolved| resolved.workspace)
+        if let Some(target) = self.shown_at(point, outputs)
             && target != source
         {
             return DropTarget::OtherWorkspace(target);
         }
         DropTarget::None
+    }
+
+    /// The workspace shown on the display under `point`, if any.
+    pub(in crate::app) fn shown_at(
+        &self,
+        point: (i32, i32),
+        outputs: &macos::DisplayOutputs,
+    ) -> Option<WorkspaceId> {
+        let display = outputs.display_at(point)?;
+        self.visible_workspaces(outputs)
+            .into_iter()
+            .find(|resolved| resolved.display_id == display.id)
+            .map(|resolved| resolved.workspace)
     }
 
     #[allow(clippy::too_many_arguments)]
