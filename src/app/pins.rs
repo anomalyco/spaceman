@@ -36,6 +36,37 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
         self.disposition_with_title(window, frame, title)
     }
 
+    /// Read a parked window's bundle and title from its running app when no observation in
+    /// this run has listed it, as after a restart with every window of its app minimized
+    /// (#697), and remember them as an observation would. Judged the way
+    /// `stale_window_ignored` judges a window: `false` while a title rule could decide but the
+    /// title could not be read yet, so the window is not judged this cycle and is read again
+    /// on the next.
+    fn learn_unobserved_window(&mut self, window: &crate::PhysicalWindowId) -> bool {
+        if self.memory.identities.contains_key(window) {
+            return true;
+        }
+        if let Some(bundle_id) = self.memory.bundles.get(&window.app)
+            && !self.config.has_title_rules(bundle_id)
+        {
+            return true;
+        }
+        let Some(probe) = self.backend.window_rule_probe(window) else {
+            return true;
+        };
+        if !probe.resolved && self.config.has_title_rules(&probe.bundle_id) {
+            return false;
+        }
+        if probe.resolved {
+            self.memory.note_probed_title(window, probe.title);
+        }
+        self.memory
+            .bundles
+            .entry(window.app.clone())
+            .or_insert(probe.bundle_id);
+        true
+    }
+
     fn disposition_with_title(
         &self,
         window: &crate::PhysicalWindowId,
@@ -55,8 +86,10 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
 
     /// A `pin` rule that arrived while a window was parked: no observation lists a parked
     /// window, so judge it by its app's bundle and its last observed title (an earlier title
-    /// rule keeps precedence, #549), and let restore_visible bring it back. A parked tile
-    /// leaves its workspace's tiles and floats there first, as a shown tile would (#678).
+    /// rule keeps precedence, #549), and let restore_visible bring it back. A window never
+    /// observed in this run (its app's windows all minimized since a restart) is read from its
+    /// running app instead (#697). A parked tile leaves its workspace's tiles and floats there
+    /// first, as a shown tile would (#678).
     pub(super) fn pin_parked_windows_by_rule(&mut self) {
         let parked: Vec<_> = self
             .parked
@@ -68,9 +101,11 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
             .map(|(window, frame)| (window.clone(), *frame))
             .collect();
         for (window, frame) in parked {
-            if !self
-                .parked_disposition(&window, frame)
-                .is_some_and(crate::config::DispositionPatch::pins)
+            let ready = self.learn_unobserved_window(&window);
+            if !ready
+                || !self
+                    .parked_disposition(&window, frame)
+                    .is_some_and(crate::config::DispositionPatch::pins)
             {
                 continue;
             }

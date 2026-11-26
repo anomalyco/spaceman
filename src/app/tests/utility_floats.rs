@@ -245,6 +245,99 @@ fn a_pin_rule_added_while_a_note_is_parked_brings_it_back() {
     assert_eq!(active(&runtime), Some(WorkspaceId::TWO));
 }
 
+/// As after a restart with every Stickies note minimized: no observation lists the app, so
+/// neither its bundle nor its notes' titles are known, and only the rule probe can read them.
+fn forget_stickies_as_after_a_restart(
+    runtime: &mut WorkspaceRuntime<FakeBackend>,
+    probes: &[(u32, Option<&'static str>, bool)],
+) {
+    runtime.memory.bundles.clear();
+    runtime.memory.identities.clear();
+    runtime.backend.observation = Some(crate::NativeObservation {
+        cycle: 0,
+        mouse_down: false,
+        applications: Vec::new(),
+    });
+    runtime.backend.rule_probes = probes
+        .iter()
+        .map(|&(id, title, resolved)| (id, (STICKIES, title, resolved)))
+        .collect();
+}
+
+#[test]
+fn a_pin_rule_matches_a_parked_window_whose_app_was_never_observed() {
+    // After a restart, an app whose every window is minimized is in no observation, so its
+    // bundle is not known yet; the pin rule still finds the window by asking its app (#697).
+    let window = sticky(1);
+    let mut runtime = runtime(stickies_backend(&[(window.clone(), note(600))]));
+    let cancelled = AtomicBool::new(false);
+    runtime.cycle(outputs(), &cancelled).unwrap();
+    runtime
+        .switch(WorkspaceId::TWO, outputs(), &cancelled)
+        .unwrap();
+    assert!(runtime.parked.contains_key(&window));
+
+    forget_stickies_as_after_a_restart(&mut runtime, &[(1, None, true)]);
+    runtime.backend.advance(Duration::from_secs(3));
+    runtime.replace_config(pin_config());
+    runtime.cycle(outputs(), &cancelled).unwrap();
+    runtime.cycle(outputs(), &cancelled).unwrap();
+
+    assert!(runtime.workspaces.is_pinned(&window));
+    assert!(!runtime.parked.contains_key(&window));
+    // Read once; the answer is remembered.
+    assert_eq!(runtime.backend.rule_probe_calls, vec![1]);
+}
+
+#[test]
+fn a_never_observed_parked_note_keeps_an_earlier_title_rule_over_a_pin_rule() {
+    // The title read from the running app decides as an observed one would (#549, #697); a
+    // title it could not read yet waits rather than let the bundle-wide pin win.
+    let (quiet, public, unread) = (sticky(1), sticky(2), sticky(3));
+    let notes = [
+        (quiet.clone(), note(600)),
+        (public.clone(), note(300)),
+        (unread.clone(), note(900)),
+    ];
+    let rules = |action: &str| {
+        Config::parse(&format!(
+            "version = 1\n[[rules]]\nbundle_id = '{STICKIES}'\ntitle_contains = 'qUiEt'\naction = 'float'\n[[rules]]\nbundle_id = '{STICKIES}'\naction = '{action}'"
+        ))
+        .unwrap()
+    };
+    let mut runtime = runtime_with_config(stickies_backend(&notes), rules("float"));
+    let cancelled = AtomicBool::new(false);
+    runtime.cycle(outputs(), &cancelled).unwrap();
+    runtime
+        .switch(WorkspaceId::TWO, outputs(), &cancelled)
+        .unwrap();
+    for (window, _) in &notes {
+        assert!(runtime.parked.contains_key(window));
+    }
+
+    forget_stickies_as_after_a_restart(
+        &mut runtime,
+        &[
+            (1, Some("C1 Quiet"), true),
+            (2, Some("C2 Public"), true),
+            (3, None, false),
+        ],
+    );
+    runtime.backend.advance(Duration::from_secs(3));
+    runtime.replace_config(rules("pin"));
+    for _ in 0..3 {
+        runtime.cycle(outputs(), &cancelled).unwrap();
+        assert!(runtime.workspaces.is_pinned(&public));
+        assert!(!runtime.parked.contains_key(&public));
+        for window in [&quiet, &unread] {
+            assert!(!runtime.workspaces.is_pinned(window));
+            assert!(runtime.parked.contains_key(window));
+        }
+        runtime.backend.advance(Duration::from_secs(3));
+    }
+    assert_eq!(active(&runtime), Some(WorkspaceId::TWO));
+}
+
 #[test]
 fn a_pin_rule_added_while_a_tile_is_parked_floats_and_brings_it_back() {
     let editor = window(10);
