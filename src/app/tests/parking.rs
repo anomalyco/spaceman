@@ -887,3 +887,50 @@ fn unowned_edge_window_is_cached_as_ignored_across_cycles() {
 
     assert!(runtime.unmovable_stale.is_ignored(overlay.window_id));
 }
+
+#[test]
+fn an_on_screen_window_an_ignore_rule_now_matches_is_released_instead_of_parked() {
+    // Pause restored a hidden workspace's window and an `ignore` rule for it was loaded
+    // before Resume: it stays where it is and leaves its workspace, while its sibling on the
+    // same hidden workspace still parks (#663).
+    let kept = window(10);
+    let sibling = window(11);
+    let (kept_frame, sibling_frame) = (frame(50), frame(400));
+    let mut backend = FakeBackend {
+        rule_probes: HashMap::from([
+            (10, ("com.example.Test", Some("Keep Visible"), true)),
+            (11, ("com.example.Test", Some("Other"), true)),
+        ]),
+        ..FakeBackend::default()
+    };
+    backend.frames.insert(kept.clone(), kept_frame);
+    backend.frames.insert(sibling.clone(), sibling_frame);
+    let config = Config::parse(
+        "version = 1\n[[rules]]\nbundle_id = 'com.example.Test'\ntitle = 'Keep Visible'\n\
+         action = 'ignore'\n[[rules]]\nbundle_id = 'com.example.Test'\naction = 'float'",
+    )
+    .unwrap();
+    let mut runtime = runtime_with_config(backend, config);
+    let hidden = WorkspaceId::new(2).unwrap();
+    bind(&mut runtime, hidden, &kept);
+    bind(&mut runtime, hidden, &sibling);
+
+    let mut failed = 0;
+    let outputs = outputs();
+    let visible = runtime.visible_workspaces(&outputs);
+    let server_frames = runtime.backend.window_server_frames().unwrap();
+    runtime.park_inactive(
+        &outputs,
+        &visible,
+        &server_frames,
+        &AtomicBool::new(false),
+        &mut failed,
+    );
+
+    assert_eq!(failed, 0);
+    assert_eq!(runtime.backend.frames[&kept], kept_frame);
+    assert!(!runtime.parked.contains_key(&kept));
+    assert_eq!(runtime.workspaces.workspace_of_any(&kept), None);
+    assert!(runtime.parked.contains_key(&sibling));
+    assert_eq!(runtime.backend.parked_writes, vec![sibling]);
+}

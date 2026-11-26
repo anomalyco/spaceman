@@ -866,3 +866,63 @@ fn restore_all_clamps_two_px_sliver_recovery_frame_onto_remaining_display() {
     );
     assert!(runtime.backend.persisted.is_empty());
 }
+
+#[test]
+fn a_window_stranded_on_an_unplugged_display_still_parks_when_an_ignore_rule_matches_it() {
+    // Only a window really on screen is released by a newly matching `ignore` rule (#663):
+    // one the unplug left off every remaining display keeps a clamped recovery frame, so
+    // Pause or its workspace brings it back where the user can see it.
+    let built_in = builtin_1512().displays()[0].clone();
+    let external = macos::DisplayOutput {
+        id: "external-1080p".into(),
+        name: "External".into(),
+        frame: crate::Rect {
+            x: 1512,
+            y: 0,
+            width: 1920,
+            height: 1080,
+        },
+        is_main: false,
+    };
+    let two_displays = macos::DisplayOutputs::new(vec![built_in.clone(), external]).unwrap();
+    let one_display = builtin_1512();
+    let stranded = app_window(12, 102);
+    let on_external = crate::Rect {
+        x: 1700,
+        y: 100,
+        width: 800,
+        height: 600,
+    };
+    let backend = FakeBackend {
+        frames: HashMap::from([(stranded.clone(), on_external)]),
+        rule_probes: HashMap::from([(102, ("com.example.Test", Some("Keep Visible"), true))]),
+        ..FakeBackend::default()
+    };
+    let config =
+        Config::parse("version = 1\n[[rules]]\nbundle_id = 'com.example.Test'\naction = 'ignore'")
+            .unwrap();
+    let mut runtime = runtime_with_config(backend, config);
+    let hidden = WorkspaceId::new(2).unwrap();
+    bind(&mut runtime, hidden, &stranded);
+    runtime.note_outputs(&two_displays);
+    runtime.note_outputs(&one_display);
+
+    let mut failed = 0;
+    let visible = runtime.visible_workspaces(&one_display);
+    let server_frames = runtime.backend.window_server_frames().unwrap();
+    runtime.park_inactive(
+        &one_display,
+        &visible,
+        &server_frames,
+        &AtomicBool::new(false),
+        &mut failed,
+    );
+
+    assert_eq!(runtime.workspaces.workspace_of_any(&stranded), Some(hidden));
+    let recorded = runtime
+        .parked
+        .get(&stranded)
+        .copied()
+        .expect("a stranded window keeps a recovery frame");
+    assert!(built_in.frame.contains_center(recorded));
+}

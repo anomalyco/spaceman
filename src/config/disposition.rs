@@ -92,6 +92,14 @@ impl DispositionPatch {
 }
 
 impl Config {
+    /// Whether any rule ignores windows. Built-in defaults never do.
+    #[must_use]
+    pub fn has_ignore_rules(&self) -> bool {
+        self.rules
+            .iter()
+            .any(|rule| rule.action == WindowDisposition::Ignored)
+    }
+
     /// Whether some rule that can match `bundle_id`'s windows looks at titles, so a window's
     /// disposition is unknown until its title is read.
     #[must_use]

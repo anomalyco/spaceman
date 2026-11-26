@@ -127,7 +127,8 @@ overrides the default for what it decides: `action = "tile"` tiles one of these 
   `windows = "all"` rule.
 - `ignore` leaves the window entirely alone: never tiled, never owned by a workspace, never moved or
   parked. Use it for applications that insist on positioning their own windows. A previously managed
-  window is released the next time it is observed on screen.
+  window is released the next time it is observed on screen, including a window from a hidden
+  workspace that Pause brought back: Resume leaves it where it is instead of hiding it again.
 
 During startup recovery, after a qualifying mid-session relaunch, or for an application marked to
 return, a window not matched by a `route` or `ignore` rule (including one matched by a `float` rule)

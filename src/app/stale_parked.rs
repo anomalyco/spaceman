@@ -210,11 +210,12 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
         }
     }
 
-    /// Whether an `ignore` rule covers a stale parked window, judged by its app's bundle and
-    /// its title like any observed window (#562). No observation has listed a just-relaunched
-    /// app yet, so its bundle comes from the window's owner. `None` when a title rule could
-    /// decide but the title could not be read yet: recovery waits rather than move it.
-    fn stale_window_ignored(
+    /// Whether an `ignore` rule covers a window no observation in hand lists (a stale parked
+    /// window, #562, or one about to be parked, #663), judged by its app's bundle and its title
+    /// like any observed window. A just-relaunched app's bundle comes from the window's owner.
+    /// `None` when a title rule could decide but the title could not be read yet: the caller
+    /// keeps its usual course rather than guess.
+    pub(super) fn stale_window_ignored(
         &mut self,
         window: &crate::PhysicalWindowId,
         frame: crate::Rect,

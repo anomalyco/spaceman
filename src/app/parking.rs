@@ -249,6 +249,18 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
             } else {
                 frame
             };
+            // A window still on screen that an `ignore` rule now matches (loaded during
+            // Pause, which restored it) is released where it is, not parked (#663).
+            // One left off-screen by a lost display still parks with its clamped recovery
+            // frame, so Pause or its workspace brings it back where the user can see it.
+            if crate::geometry::shows_on(frame, &displays)
+                && self.config.has_ignore_rules()
+                && self.stale_window_ignored(&window, frame) == Some(true)
+            {
+                log_event!("release {:?} from workspace {}: ignored", window, workspace);
+                self.forget_window(workspace, &window);
+                continue;
+            }
             let park_output = Self::display_for_frame(frame, &displays).unwrap_or(output);
             let target =
                 crate::geometry::parked_frame_clear_of(park_output, &displays, &screens, frame);
