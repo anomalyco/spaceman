@@ -116,7 +116,8 @@ impl LayoutTree {
 
     /// Like `sync_near`, where `shown` is the layout on display when it differs
     /// from this requested one (a minimum-size fit): Dwindle splits the anchor
-    /// tile along the longer side of the frame it actually has (#410).
+    /// tile along the longer side of the frame it actually has (#410), unless
+    /// a tile also left in this change, which makes that fit stale (#599).
     pub(crate) fn sync_shown(
         &mut self,
         fallback_axis: Axis,
@@ -130,6 +131,11 @@ impl LayoutTree {
         let existing = self.slots().into_iter().collect::<HashSet<_>>();
         if existing == retained && existing.len() == slots.len() {
             return false;
+        }
+        // A tile leaving in this same change reshapes its neighbors, so the
+        // fit on display no longer shows the frame the anchor will have (#599).
+        if !existing.is_subset(&retained) {
+            shown = None;
         }
         let reorient = mode == LayoutMode::Dwindle && output.width > 0 && output.height > 0;
         let root = std::mem::replace(
