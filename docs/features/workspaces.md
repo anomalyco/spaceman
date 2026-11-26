@@ -642,7 +642,9 @@ on the same letter.
   of the focused app via `move-app`) to an inactive workspace without `--follow` hands keyboard
   focus to a remaining visible tile or float on the current workspace (and remembers it in
   Fullscreen Layout), while `move --follow` switches straight to the target workspace without an
-  intermediate handoff.
+  intermediate handoff. When a later window of a `move-app` refuses its move, the windows already
+  moved stay on the target and focus still leaves the parked focused window for a visible window on
+  the source (#688).
 - Unit (FakeBackend), `src/app/tests/move_tab.rs`: a detached tab goes straight to a hidden
   workspace (never tiled on the source) ahead of a route rule while focus stays on the source,
   `--follow` switches to it, a visible target on another display tiles it, an AppKit tab group's

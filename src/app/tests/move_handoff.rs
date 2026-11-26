@@ -186,6 +186,52 @@ fn move_app_to_hidden_workspace_hands_focus_to_remaining_window_after_moving_all
 }
 
 #[test]
+fn move_app_hands_focus_away_from_a_parked_window_when_a_later_window_refuses() {
+    let app_a1 = app_window(1, 10);
+    let app_a2 = app_window(1, 11);
+    let app_b = app_window(2, 20);
+    let mut backend = FakeBackend {
+        focused: Some(app_a1.clone()),
+        frontmost: Some(app_a1.app.clone()),
+        ..FakeBackend::default()
+    };
+    backend.frames.insert(app_a1.clone(), frame(0));
+    backend.frames.insert(app_a2.clone(), frame(300));
+    backend.frames.insert(app_b.clone(), frame(600));
+    backend.refuses_parking.insert(app_a2.clone());
+    let mut rt = runtime(backend);
+    bind(&mut rt, WorkspaceId::ONE, &app_a1);
+    bind(&mut rt, WorkspaceId::ONE, &app_a2);
+    bind(&mut rt, WorkspaceId::ONE, &app_b);
+    rt.memory
+        .bundles
+        .insert(app_a1.app.clone(), "com.example.A".into());
+    rt.memory
+        .bundles
+        .insert(app_b.app.clone(), "com.example.B".into());
+
+    let result = rt.move_app(
+        "com.example.A",
+        WorkspaceId::TWO,
+        outputs(),
+        &AtomicBool::new(false),
+    );
+
+    let Err(error) = result else {
+        panic!("a refused park must fail the move");
+    };
+    assert_eq!(error, "Window could not be parked in the target workspace");
+    assert!(rt.parked.contains_key(&app_a1));
+    assert_eq!(rt.workspaces.workspace_of(&app_a1), Some(WorkspaceId::TWO));
+    assert_eq!(rt.workspaces.workspace_of(&app_a2), Some(WorkspaceId::ONE));
+    assert_ne!(rt.backend.focused.as_ref(), Some(&app_a1));
+    assert!(matches!(
+        rt.backend.focused.as_ref(),
+        Some(window) if *window == app_a2 || *window == app_b
+    ));
+}
+
+#[test]
 fn move_focused_in_fullscreen_layout_updates_remembered_focus_to_remaining_tile() {
     let first = app_window(1, 10);
     let second = app_window(2, 20);
