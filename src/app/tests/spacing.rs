@@ -100,7 +100,7 @@ fn a_config_without_spacing_tiles_edge_to_edge() {
 /// Mirrors `macos::apply::apply_element`'s tolerance short-circuit so tests
 /// prove both `cycle`'s placement filter and the native writer apply small
 /// spacing changes (e.g. 0 -> 4 pt inner gap, a 2 pt delta per tile).
-struct ToleranceAwareBackend(FakeBackend);
+pub(super) struct ToleranceAwareBackend(pub(super) FakeBackend);
 
 impl WorkspaceBackend for ToleranceAwareBackend {
     fn now(&self) -> Instant {

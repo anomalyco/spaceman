@@ -95,6 +95,9 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
             }
             self.gesture = None;
             self.forget_readback(source, &window);
+            // A tile let go a point or two from its frame is still inside the
+            // write tolerance, so restore it exactly (#613).
+            self.exact_spacing_workspaces.insert(source);
             let layout = self.layout_workspace(source, source_output, cancelled);
             return Ok(self.status(layout.failed, &outputs));
         }
