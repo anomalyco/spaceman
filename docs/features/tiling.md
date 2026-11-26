@@ -13,6 +13,7 @@ Automatic tiling                                        // tile.auto
 │   └── Creation or activation before the first visible frame -> briefly recheck for the foreground window
 ├── Window closes, moves away, or floats -> its slot retires, siblings reflow
 │   ├── In dwindle -> auto-chosen splits inside the space that grew re-orient outermost first to their new longer side (order and weights kept; user-arranged splits and legacy splits without a recorded origin keep their direction, and when such a split is left with one tile the next new tile joins it in that direction, #507)
+│   ├── Close and open seen together in dwindle -> the new tile splits the survivor by the space it has after the close, not its earlier minimum-size fit (#599)
 │   ├── Last app window closes but its surface lingers -> siblings reflow when the app confirms closure
 │   ├── Window closes while parked on a hidden workspace (app still running) -> forgotten once the window server stops listing it, so the workspace no longer counts as occupied for swipes and workspace steps (#553)
 │   └── App keeps its ordered-out window alive -> slot settles for two seconds
@@ -102,6 +103,7 @@ pause, quit, or hotkey loss.
   `dwindle_portrait_splits_vertically_first_then_alternates`,
   `dwindle_splits_focused_anchor_and_collapses_on_close`,
   `dwindle_keeps_a_flipped_root_axis_when_one_tile_is_left_and_another_joins`,
+  `dwindle_ignores_a_stale_fit_when_a_tile_closes_as_another_opens`,
   `columns_mode_preserves_flat_sibling_insertion`, `new_window_joins_the_focused_nested_split`,
   `dwindle_splits_the_focused_tile_along_its_longer_side`, and
   `corner_drag_moves_both_nested_boundaries` cover Dwindle/Columns insertion and diagonal resizing;
