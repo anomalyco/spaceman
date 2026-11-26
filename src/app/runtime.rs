@@ -613,6 +613,12 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
         let engine = self.workspaces.engine_mut(workspace);
         engine.fit_minimums(&settings, &self.minimum_sizes);
         let mut placements = engine.placements(&settings);
+        // These frames are now each tile's target, as a cycle would record them: a native
+        // tab arriving before the next cycle (just after a resize release) at its tile's new
+        // frame still inherits the tile (#624).
+        for placement in &placements {
+            engine.record_placement_target(placement.slot, placement.frame);
+        }
         self.project_deck(workspace, &mut placements, &settings);
         let attempts = &mut self.apply_attempts[workspace.index()];
         for placement in &placements {

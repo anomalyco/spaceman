@@ -19,7 +19,8 @@ Automatic tiling                                        // tile.auto
 │   └── App keeps its ordered-out window alive -> slot settles for two seconds
 └── Native tab replaces its window -> same slot, order, weight, nesting
     ├── Any app (Finder, Safari, Terminal...) -> when the evidence is unambiguous (one window out, one in, focus moved to it, at the tile's frame or, for an app that caps its window size, where the old tab was)
-    │   └── Under a route rule with windows = "all" -> the incoming tab still keeps the slot on its tile's workspace, not the rule's
+    │   ├── Under a route rule with windows = "all" -> the incoming tab still keeps the slot on its tile's workspace, not the rule's
+    │   └── Right after a pointer resize is released -> the incoming tab keeps the resized tile's side and width (#624)
     └── Ghostty -> ambiguous evidence also holds the slot for a bounded settle
 
 Focus                                                   // tile.focus
