@@ -346,7 +346,7 @@ impl Engine {
     }
 
     /// Put back a [`Self::layout_snapshot`]; slots and bindings are untouched.
-    pub(crate) fn restore_layout(&mut self, snapshot: LayoutSnapshot) {
+    pub(crate) fn restore_layout_snapshot(&mut self, snapshot: LayoutSnapshot) {
         self.layout = snapshot.layout;
         self.fit = snapshot.fit;
         self.invalidate();
