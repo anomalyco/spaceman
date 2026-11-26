@@ -88,7 +88,7 @@ pub struct HostCallbacks {
 
 use app_loop::AppLoopInit;
 use backend::*;
-use input::{GestureTracker, InputQueue, QueuedInput};
+use input::{GestureTracker, InputQueue, QueuedInput, held_by_space_change};
 use journal::JournalState;
 use memory::MemoryState;
 use parking::{ParkRecord, ParkTable};

@@ -105,6 +105,8 @@ pub struct MainThreadAgent {
     last_error: Option<String>,
     latest_debug: Option<RuntimeDebug>,
     pending_inputs: InputQueue,
+    /// A command waited out a Space slide's layout hold; retile before it runs (#770).
+    retile_before_input: bool,
     gesture_tracker: GestureTracker,
     last_refresh: Instant,
     observation_recheck: Option<Instant>,
@@ -231,6 +233,7 @@ impl MainThreadAgent {
             last_error: hotkey_error,
             latest_debug: None,
             pending_inputs: InputQueue::default(),
+            retile_before_input: false,
             gesture_tracker: GestureTracker::default(),
             last_refresh: initial_refresh,
             observation_recheck: None,
@@ -516,6 +519,7 @@ impl MainThreadAgent {
         self.release_hotkey_hold_on_stop();
         self.hotkey_delivery.clear();
         self.pending_inputs.clear();
+        self.retile_before_input = false;
         self.gesture_tracker.clear();
         self.ui_dirty = true;
         self.worker.request_restore(kind);

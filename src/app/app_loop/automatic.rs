@@ -106,7 +106,24 @@ impl MainThreadAgent {
         }
         self.tick_hover(mouse_down || self.mouse_was_down);
         self.mouse_was_down = mouse_down;
-        if !self.worker.is_busy()
+        let held = self.pending_inputs.front().and_then(|input| {
+            held_by_space_change(input, macos::last_active_space_change(), Instant::now())
+        });
+        if held.is_some() {
+            // A command on the focused window waits out the Space slide's
+            // layout hold, then runs after a retile binds the arriving
+            // desktop's windows (#770).
+            self.retile_before_input = true;
+        } else if self.retile_before_input && !self.worker.is_busy() {
+            self.cancelled.store(false, Ordering::Release);
+            if self
+                .worker
+                .send_with_outputs(|outputs| WorkerCommand::Action(WorkerAction::Retile, outputs))
+            {
+                self.retile_before_input = false;
+                self.last_refresh = Instant::now();
+            }
+        } else if !self.worker.is_busy()
             && let Some(input) = self.pending_inputs.front().cloned()
         {
             self.cancelled.store(false, Ordering::Release);

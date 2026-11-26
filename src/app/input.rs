@@ -119,6 +119,45 @@ pub(super) fn admits_action(
     !should_ignore_swipe(mouse_down, mouse_was_down, gesture_active)
 }
 
+/// Until when `input` waits after macOS reported a Space change at `changed`,
+/// if it does at `now`. Background cycles hold layout for
+/// `SPACE_TRANSITION_SETTLE` after the report, so the arriving desktop's
+/// windows are not bound yet and the desktop just left still holds tiles; a
+/// command on the focused window or its workspace run then would hand focus to
+/// a window on the old desktop, sending macOS back there, or find the focused
+/// window unmanaged and do nothing (#770). Such commands wait for the hold to
+/// end, and run after one retile. Switches, swipes and the other commands do
+/// not wait.
+pub(super) fn held_by_space_change(
+    input: &QueuedInput,
+    changed: Option<Instant>,
+    now: Instant,
+) -> Option<Instant> {
+    let QueuedInput::Action(action) = input else {
+        return None;
+    };
+    let focused_command = matches!(
+        action,
+        WorkerAction::MoveFocused(_)
+            | WorkerAction::MoveFocusedFollow(_)
+            | WorkerAction::MoveFocusedStep { .. }
+            | WorkerAction::MoveTab { .. }
+            | WorkerAction::CycleFocus
+            | WorkerAction::CycleFocusPrevious
+            | WorkerAction::Focus(_)
+            | WorkerAction::Reorder(_)
+            | WorkerAction::ToggleLayout
+            | WorkerAction::Resize(_)
+            | WorkerAction::ResizeTo(..)
+            | WorkerAction::Balance
+            | WorkerAction::ToggleFullscreenLayout
+            | WorkerAction::ToggleFloat
+            | WorkerAction::TogglePin
+    );
+    let until = changed? + super::SPACE_TRANSITION_SETTLE;
+    (focused_command && now < until).then_some(until)
+}
+
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub(super) enum QueuedInput {
     Action(WorkerAction),
@@ -492,6 +531,37 @@ mod tests {
             );
         }
         assert!(queue.is_empty());
+    }
+
+    /// A move or focus command just after macOS reports a Space change waits
+    /// out the layout hold instead of acting on the desktop just left (#770).
+    #[test]
+    fn focused_commands_wait_out_a_reported_space_change() {
+        let changed = Instant::now();
+        let settled = changed + crate::app::SPACE_TRANSITION_SETTLE;
+        let early = changed + std::time::Duration::from_millis(60);
+        let workspace = WorkspaceId::new(3).unwrap();
+        for action in [
+            WorkerAction::MoveFocused(workspace),
+            WorkerAction::CycleFocus,
+            WorkerAction::Focus(Direction::Right),
+        ] {
+            let input = QueuedInput::Action(action);
+            assert_eq!(
+                held_by_space_change(&input, Some(changed), early),
+                Some(settled)
+            );
+            assert_eq!(held_by_space_change(&input, Some(changed), settled), None);
+            assert_eq!(held_by_space_change(&input, None, early), None);
+        }
+        for action in [
+            WorkerAction::SwitchWorkspace(workspace),
+            WorkerAction::Swipe(crate::swipe::Swipe::Left, Fingers::Three, (0, 0)),
+            WorkerAction::Retile,
+        ] {
+            let input = QueuedInput::Action(action);
+            assert_eq!(held_by_space_change(&input, Some(changed), early), None);
+        }
     }
 
     #[test]
