@@ -103,6 +103,81 @@ fn move_focused_to_hidden_workspace_hands_focus_to_remaining_float_when_no_tiles
     assert!(rt.backend.calls.contains(&BackendCall::Focus(floating)));
 }
 
+/// #743: the only other window left on the source workspace is a float the
+/// user minimized. Moving the last tile to a hidden workspace must not focus
+/// it (that would bring it back out of the Dock); focus is left alone.
+#[test]
+fn move_focused_to_hidden_workspace_skips_a_minimized_remaining_float() {
+    let tile = app_window(1, 10);
+    let floating = app_window(2, 20);
+    let mut backend = FakeBackend {
+        focused: Some(tile.clone()),
+        frontmost: Some(tile.app.clone()),
+        ..FakeBackend::default()
+    };
+    backend.frames.insert(tile.clone(), frame(0));
+    backend.frames.insert(floating.clone(), frame(200));
+    backend.set_aside.insert(floating.clone());
+    backend.ordered_out.insert(floating.window_id);
+    let mut rt = runtime(backend);
+    bind(&mut rt, WorkspaceId::ONE, &tile);
+    rt.workspaces
+        .own_floating(floating.clone(), WorkspaceId::ONE);
+
+    rt.move_focused(WorkspaceId::TWO, outputs(), &AtomicBool::new(false))
+        .unwrap();
+
+    assert!(rt.parked.contains_key(&tile));
+    assert_eq!(
+        rt.workspaces.floating_workspace_of(&floating),
+        Some(WorkspaceId::ONE)
+    );
+    assert!(rt.backend.calls.iter().all(|call| !matches!(
+        call,
+        BackendCall::Focus(window) | BackendCall::Raise(window) if window == &floating
+    )));
+    assert_eq!(rt.focus.guarded_window(), Some(&tile));
+    assert_eq!(
+        rt.workspaces.active_for(&DisplaySelector::Main),
+        Some(WorkspaceId::ONE)
+    );
+}
+
+/// #743: a minimized float is passed over for a tile still on screen.
+#[test]
+fn move_focused_to_hidden_workspace_prefers_a_shown_tile_over_a_minimized_float() {
+    let first = app_window(1, 10);
+    let second = app_window(2, 20);
+    let floating = app_window(3, 30);
+    let mut backend = FakeBackend {
+        focused: Some(second.clone()),
+        frontmost: Some(second.app.clone()),
+        ..FakeBackend::default()
+    };
+    backend.frames.insert(first.clone(), frame(0));
+    backend.frames.insert(second.clone(), frame(500));
+    backend.frames.insert(floating.clone(), frame(200));
+    backend.set_aside.insert(floating.clone());
+    backend.ordered_out.insert(floating.window_id);
+    let mut rt = runtime(backend);
+    rt.workspaces
+        .own_floating(floating.clone(), WorkspaceId::ONE);
+    bind(&mut rt, WorkspaceId::ONE, &first);
+    bind(&mut rt, WorkspaceId::ONE, &second);
+    // The float was the workspace's last focused float before it was minimized.
+    rt.workspaces.remember_focus(WorkspaceId::ONE, &floating);
+    assert_eq!(
+        rt.workspaces.preferred_float_focus(WorkspaceId::ONE),
+        Some(floating.clone())
+    );
+
+    rt.move_focused(WorkspaceId::TWO, outputs(), &AtomicBool::new(false))
+        .unwrap();
+
+    assert_eq!(rt.backend.focused.as_ref(), Some(&first));
+    assert!(!rt.backend.calls.contains(&BackendCall::Focus(floating)));
+}
+
 #[test]
 fn move_focused_follow_skips_source_handoff_and_focuses_moved_window_on_target() {
     let first = app_window(1, 10);

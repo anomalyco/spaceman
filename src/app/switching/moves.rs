@@ -353,6 +353,8 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
     /// `moved` was parked on an inactive workspace, so focus never stays
     /// stranded on the off-screen window (#323). When `source` is now empty,
     /// focus stays suppressed on `moved` so focus-follow does not snap back.
+    /// A window the user minimized or hid is not a remaining window: focusing
+    /// it, as the remembered float, would bring it back (#743).
     fn handoff_focus_after_park(
         &mut self,
         source: WorkspaceId,
@@ -361,7 +363,7 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
         outputs: &macos::DisplayOutputs,
         origin: CommandOrigin,
     ) {
-        let remaining = self.workspaces.windows(source);
+        let remaining = self.shown_focus_candidates(source);
         if remaining.is_empty() {
             self.guard_departure(Some(moved.clone()), Some(moved.app.clone()));
             return;
