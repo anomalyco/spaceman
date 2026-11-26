@@ -623,7 +623,10 @@ on the same letter.
   covered.
 - Unit (FakeBackend), `src/app/tests/reconciliation.rs`:
   `an_app_that_quits_while_hidden_releases_its_tiles_and_recovery_metadata` (an app that quits
-  while its windows are parked frees their tiles without the workspace being shown).
+  while its windows are parked frees their tiles without the workspace being shown) and
+  `a_failed_incarnation_lookup_does_not_forget_a_hidden_app_the_window_server_still_lists` (a
+  running app whose process lookup briefly fails keeps its parked windows while the window server,
+  read directly, still lists them under its pid, issue 735).
 - Unit (FakeBackend), `src/app/tests/space_transitions.rs`:
   `cmd_tab_out_of_native_fullscreen_lands_on_the_target_workspace`,
   `a_focus_follow_a_space_slide_interrupts_is_retried` and

@@ -579,6 +579,42 @@ fn an_app_that_quits_while_hidden_releases_its_tiles_and_recovery_metadata() {
 }
 
 #[test]
+fn a_failed_incarnation_lookup_does_not_forget_a_hidden_app_the_window_server_still_lists() {
+    // #735: the incarnation lookup briefly misses a running app (`running_apps` is
+    // empty, as when `NSRunningApplication` returns nil), but the window server, which
+    // the sweep reads directly through `window_server_frame`, still lists its parked
+    // windows under the same pid.
+    let first = window(10);
+    let second = window(11);
+    let backend = FakeBackend {
+        observation: Some(crate::NativeObservation {
+            cycle: 0,
+            mouse_down: false,
+            applications: Vec::new(),
+        }),
+        running_apps: Some(HashSet::new()),
+        ..FakeBackend::default()
+    };
+    let mut runtime = runtime_with_parked(
+        backend,
+        [(first.clone(), frame(50)), (second.clone(), frame(500))],
+    );
+    let hidden = WorkspaceId::new(3).unwrap();
+    bind(&mut runtime, hidden, &first);
+    bind(&mut runtime, hidden, &second);
+    runtime.backend.frames.insert(first.clone(), frame(50));
+    runtime.backend.frames.insert(second.clone(), frame(500));
+    let cancelled = AtomicBool::new(false);
+
+    runtime.cycle(outputs(), &cancelled).unwrap();
+
+    assert_eq!(runtime.workspaces.workspace_of(&first), Some(hidden));
+    assert_eq!(runtime.workspaces.workspace_of(&second), Some(hidden));
+    assert!(runtime.parked.contains_key(&first));
+    assert!(runtime.parked.contains_key(&second));
+}
+
+#[test]
 fn asynchronously_clamped_window_settles_without_reapplying_every_cycle() {
     let main = window(10);
     let huddle = window(11);

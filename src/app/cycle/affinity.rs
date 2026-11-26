@@ -401,6 +401,19 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
                     .filter(|slot| slot.belongs_to(&app))
                     .map(|slot| slot.identity_window().clone())
                     .collect::<Vec<_>>();
+                // A failed incarnation lookup is not proof of exit (#735). A window ID
+                // belongs to the process that created it and dies with it, so the window
+                // server itself (read directly, without asking `NSRunningApplication`)
+                // still listing one of these windows under the app's pid means the app
+                // is alive.
+                if self.window_server_lists_app_window(&windows) {
+                    log_event!(
+                        "workspace {workspace}: keeping {app:?}: incarnation lookup failed but \
+                         the window server still lists its windows"
+                    );
+                    running.insert(app, true);
+                    continue;
+                }
                 self.note_departure(&app);
                 let canvas = self.known_workspace_canvas(workspace);
                 self.workspaces
@@ -420,5 +433,12 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
                 self.restore_windows(parked);
             }
         }
+    }
+
+    /// Whether the window server lists any of `windows` under its app's pid.
+    fn window_server_lists_app_window(&mut self, windows: &[crate::PhysicalWindowId]) -> bool {
+        windows
+            .iter()
+            .any(|window| self.backend.window_server_frame(window).is_some())
     }
 }

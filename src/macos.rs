@@ -356,8 +356,20 @@ pub(super) fn running_application(
 ) -> Option<objc2::rc::Retained<NSRunningApplication>> {
     autoreleasepool(|_| {
         NSRunningApplication::runningApplicationWithProcessIdentifier(id.pid)
-            .filter(|application| launch_time(application, id.pid) == id.launched_at)
+            .filter(|application| same_launch(launch_time(application, id.pid), id.launched_at))
     })
+}
+
+/// How far apart two reads of one process's launch time may be. `launchDate` and the
+/// kernel start time it falls back to differ by a few milliseconds (#735); a reused pid
+/// starts long after the process it replaces has exited.
+const LAUNCH_TIME_TOLERANCE_MS: u64 = 250;
+
+fn same_launch(observed: u64, recorded: u64) -> bool {
+    observed == recorded
+        || (observed != 0
+            && recorded != 0
+            && observed.abs_diff(recorded) <= LAUNCH_TIME_TOLERANCE_MS)
 }
 
 pub(super) fn process_incarnation_matches(id: &AppInstanceId) -> bool {
