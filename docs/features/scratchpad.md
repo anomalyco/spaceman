@@ -9,6 +9,7 @@ the `Scratchpad` toggle in Settings › Labs, or `[labs] scratchpad = true`; off
 ```ts
 Send to the scratchpad (Option+Shift+\ / ctl scratchpad mark)      // scratchpad.mark
 ├── Focused tile or floating window leaves its workspace; remaining tiles re-fill its space
+│   └── A pinned float drops its pin and leaves the workspace showing on its display
 ├── Recovery frame written to parked-windows.json, then the window parks off-screen
 └── Focus returns to the workspace's remembered tile
 
@@ -44,7 +45,9 @@ Unit (FakeBackend), `src/app/tests/scratchpad.rs`:
 `a_crash_while_hidden_restores_the_window_on_the_next_start`,
 `turning_the_lab_off_brings_hidden_windows_back`,
 `the_scratchpad_does_nothing_while_the_lab_is_off`,
-`an_empty_scratchpad_toggle_is_a_clean_no_op`, and
+`an_empty_scratchpad_toggle_is_a_clean_no_op`,
+`marking_a_focused_pin_hides_it_and_a_toggle_summons_it_at_its_size`
+(`src/app/tests/reported/scratchpad_mark_pin.rs`, #659), and
 `scratchpad_toggle_summons_onto_the_display_a_focused_pin_was_dragged_to`
 (`src/app/tests/three_display.rs`, #556, #652). Toggle order and summon frame: `src/scratchpad.rs`; membership is the window's residency in
 `src/workspace/residency.rs`, so a scratchpad window is never also a float or a tile;

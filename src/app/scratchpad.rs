@@ -51,10 +51,21 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
             // A window observed for the first time may not be bound yet.
             self.cycle(outputs.clone(), cancelled)?;
         }
-        let workspace = self
+        let home = self
             .workspaces
             .workspace_of_any(&window)
             .ok_or("Focused window is not managed by Spaceman")?;
+        // A pin shows on whichever workspace its display shows, which need not be its home, and
+        // stays on screen through every park, so it hides from there without its pin (#659).
+        let pinned = self.workspaces.is_pinned(&window);
+        let workspace = if pinned {
+            let visible = self.visible_workspaces(&outputs);
+            self.shown_workspace_for(&window, &visible, &outputs)
+                .ok_or("Focused window is not on an active workspace")?
+                .workspace
+        } else {
+            home
+        };
         if !self.is_visible(workspace, &outputs) {
             return Err("Focused window is not on an active workspace".into());
         }
@@ -73,13 +84,28 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
         // Parked while its workspace still owns it: the recovery frame is durable before the
         // window leaves the screen, and a crash before ownership changes restores it in place.
         let canvas = self.layout_settings(output).canvas();
+        // The Scratchpad drops a float's record, pin included, once it is hidden. A rule pin
+        // is judged again on the next observation; only a hand pin needs putting back.
+        let pinned_by_hand = pinned && self.workspaces.unpin(&window);
+        if pinned {
+            self.workspaces.set_rule_pinned(&window, false);
+            self.workspaces.own_floating(window.clone(), workspace);
+        }
         match self.park_window(&window, output, &outputs) {
             macos::ApplyOutcome::Applied if self.parked.contains_key(&window) => {}
             macos::ApplyOutcome::Gone => {
                 self.forget_window_on(workspace, &window, canvas);
                 return Err("Focused window has closed".into());
             }
-            _ => return Err("Focused window could not be moved off-screen".into()),
+            _ => {
+                if pinned {
+                    self.workspaces.own_floating(window.clone(), home);
+                }
+                if pinned_by_hand {
+                    self.workspaces.pin(window);
+                }
+                return Err("Focused window could not be moved off-screen".into());
+            }
         }
         self.forget_window_on(workspace, &window, canvas);
         self.workspaces.stash(window.clone(), size);

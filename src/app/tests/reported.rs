@@ -46,6 +46,7 @@ mod right_button_blocks_warp;
 mod route_after_manual_float;
 mod route_all_native_tab;
 mod route_menu_strip;
+mod scratchpad_mark_pin;
 mod step_dragged_pin;
 mod tall_float_round_trip;
 mod verify_drag_gap_reload;
