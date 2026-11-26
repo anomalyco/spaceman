@@ -56,6 +56,18 @@ impl HoverTracker {
         self.rest = None;
         self.armed = false;
     }
+
+    /// `action` was just queued. A keyboard or `ctl` focus change, or a
+    /// workspace switch, chose focus after the pointer last moved: a rest still
+    /// pending from that movement never takes focus back (#732).
+    pub(super) const fn note_action(&mut self, action: &WorkerAction) {
+        if matches!(
+            super::super::commands::CommandOrigin::of(action),
+            super::super::commands::CommandOrigin::Explicit
+        ) {
+            self.interrupt();
+        }
+    }
 }
 
 impl MainThreadAgent {
@@ -116,5 +128,27 @@ mod tests {
         assert_eq!(hover.observe(Some((40, 0)), at(400)), None);
         assert_eq!(hover.observe(Some((41, 0)), at(425)), None);
         assert_eq!(hover.observe(Some((41, 0)), at(575)), Some((41, 0)));
+    }
+
+    #[test]
+    fn a_focus_command_during_the_rest_cancels_the_pending_hover() {
+        // #732: the pointer moved onto a tile, and a direction command chose
+        // focus before the rest finished.
+        let start = Instant::now();
+        let at = |ms| start + Duration::from_millis(ms);
+        let mut hover = HoverTracker::default();
+        hover.observe(Some((350, 620)), at(0));
+        assert_eq!(hover.observe(Some((1770, 575)), at(25)), None);
+        hover.note_action(&WorkerAction::Focus(crate::Direction::Right));
+        hover.note_action(&WorkerAction::Focus(crate::Direction::Left));
+        assert_eq!(hover.observe(Some((1770, 575)), at(50)), None);
+        assert_eq!(hover.observe(Some((1770, 575)), at(700)), None);
+        // A fresh move hovers as usual.
+        assert_eq!(hover.observe(Some((1780, 575)), at(725)), None);
+        assert_eq!(hover.observe(Some((1780, 575)), at(875)), Some((1780, 575)));
+        // Actions that choose no focus leave a pending rest alone.
+        assert_eq!(hover.observe(Some((1790, 575)), at(900)), None);
+        hover.note_action(&WorkerAction::Balance);
+        assert_eq!(hover.observe(Some((1790, 575)), at(1050)), Some((1790, 575)));
     }
 }

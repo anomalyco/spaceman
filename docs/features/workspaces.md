@@ -167,6 +167,8 @@ Focus follows mouse ([labs] focus_follows_mouse, off)      // ws.focus-follows-m
 ├── Skipped when the pointer has moved on, rests where mouse follows focus warped it, a button is
 │   held, a drag or a Space slide is under way, or another window is in front of the point by the
 │   time the worker runs the hover (a float a queued workspace switch showed; #539)
+├── A keyboard or `ctl` focus command or workspace switch queued while the pointer is still
+│   settling cancels that rest; only a fresh move hovers again (#732; src/app/app_loop/hover.rs)
 └── The warp point is skipped only until the pointer leaves it: moving away (resting elsewhere or
     not) and back to that exact point hovers again (#522; src/app/tests/focus_follows_mouse.rs)
 
