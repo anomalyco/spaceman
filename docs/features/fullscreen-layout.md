@@ -75,7 +75,8 @@ Unit (FakeBackend), `src/app/tests/layout.rs`:
 `fullscreen_tiles_minimized_while_away_resume_fullscreen_layout`,
 `a_set_aside_tile_routed_back_while_hidden_resumes_fullscreen_layout`, and
 `a_different_window_arriving_first_ends_the_set_aside_fullscreen_hold` (issue 668), and
-`leaving_native_fullscreen_resumes_fullscreen_layout` (issue 740). They prove frames,
+`leaving_native_fullscreen_resumes_fullscreen_layout` (issue 740, a complete app snapshot omits
+the native-fullscreen window; an entirely absent app keeps its lone tile on another Space). They prove frames,
 persisted mode, and which window Spaceman asks to focus or raise; none observes real z-order.
 
 ## How To Get To It (User POV)

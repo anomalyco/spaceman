@@ -607,7 +607,9 @@ fn leaving_native_fullscreen_resumes_fullscreen_layout() {
     runtime.backend.server_frames.insert(second.clone(), full);
     runtime.backend.native_fullscreen.insert(second.clone());
     runtime.backend.focused = None;
-    runtime.backend.observation = Some(apps_observation(&[]));
+    // The app answers, but its fullscreen window is omitted by observation.
+    // Omitting the entire app would preserve its lone tile on another Space.
+    runtime.backend.observation = Some(apps_observation(&[("com.example.Second", &second, full)]));
     runtime.cycle(studio_display(), &cancelled).unwrap();
     runtime.backend.advance(OMISSION_SETTLE * 2);
     runtime.cycle(studio_display(), &cancelled).unwrap();

@@ -149,6 +149,9 @@ mod tests {
         // Actions that choose no focus leave a pending rest alone.
         assert_eq!(hover.observe(Some((1790, 575)), at(900)), None);
         hover.note_action(&WorkerAction::Balance);
-        assert_eq!(hover.observe(Some((1790, 575)), at(1050)), Some((1790, 575)));
+        assert_eq!(
+            hover.observe(Some((1790, 575)), at(1050)),
+            Some((1790, 575))
+        );
     }
 }

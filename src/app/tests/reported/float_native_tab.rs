@@ -178,7 +178,12 @@ fn a_new_window_at_a_float_that_stays_listed_is_adopted_after_the_wait() {
     let full = runtime.backend.frames[&neighbor];
     runtime.backend.frames.insert(next_tab.clone(), FLOAT);
     runtime.backend.observation = Some(observe(vec![
-        app(TABS, Some(&tab), &[(&tab, FLOAT), (&next_tab, FLOAT)], &tab.app),
+        app(
+            TABS,
+            Some(&tab),
+            &[(&tab, FLOAT), (&next_tab, FLOAT)],
+            &tab.app,
+        ),
         app(OTHER, None, &[(&neighbor, full)], &neighbor.app),
     ]));
     runtime

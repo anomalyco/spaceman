@@ -139,7 +139,10 @@ fn a_wrong_mark_snapshots_the_screen_it_was_accepted_on_not_the_settled_one() {
     let JournalEvent::Snapshot { arrangement } = &events[1] else {
         panic!("expected a snapshot after the mark, got {events:?}");
     };
-    assert_eq!(arrangement.active, vec![WorkspaceId::new(2).unwrap(), WorkspaceId::SIX]);
+    assert_eq!(
+        arrangement.active,
+        vec![WorkspaceId::new(2).unwrap(), WorkspaceId::SIX]
+    );
     assert_eq!(arrangement.windows[0].frame, Some(frame(50)));
     // The settled arrangement still follows, as a diff from the marked one.
     let JournalEvent::Diff {
@@ -148,7 +151,10 @@ fn a_wrong_mark_snapshots_the_screen_it_was_accepted_on_not_the_settled_one() {
     else {
         panic!("expected a diff to the settled frames, got {events:?}");
     };
-    assert_eq!(active.as_deref(), Some([WorkspaceId::ONE, WorkspaceId::SIX].as_slice()));
+    assert_eq!(
+        active.as_deref(),
+        Some([WorkspaceId::ONE, WorkspaceId::SIX].as_slice())
+    );
     assert_eq!(changes[0].after.as_ref().unwrap().frame, Some(frame(60)));
 }
 

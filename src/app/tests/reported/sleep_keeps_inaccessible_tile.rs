@@ -26,7 +26,9 @@ fn time_with_every_display_asleep_never_retires_a_listed_window() {
 
     // A background wake well past the grace, every display still asleep.
     runtime.backend.displays_asleep = true;
-    runtime.backend.advance(crate::app::parking::INACCESSIBLE_GRACE * 20);
+    runtime
+        .backend
+        .advance(crate::app::parking::INACCESSIBLE_GRACE * 20);
     runtime.cycle(outputs.clone(), &cancelled).unwrap();
     assert_eq!(runtime.workspaces.workspace_of(&live), Some(workspace));
     // A window the window server no longer lists still goes, asleep or not.
@@ -64,7 +66,9 @@ fn an_awake_grace_still_retires_a_persistently_inaccessible_window() {
     runtime.cycle(outputs.clone(), &cancelled).unwrap();
     runtime.backend.displays_asleep = false;
     runtime.cycle(outputs.clone(), &cancelled).unwrap();
-    runtime.backend.advance(crate::app::parking::INACCESSIBLE_GRACE);
+    runtime
+        .backend
+        .advance(crate::app::parking::INACCESSIBLE_GRACE);
     runtime.cycle(outputs, &cancelled).unwrap();
     assert_eq!(runtime.workspaces.workspace_of(&stuck), None);
 }

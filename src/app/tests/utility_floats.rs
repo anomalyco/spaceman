@@ -297,7 +297,8 @@ fn a_never_observed_parked_note_keeps_an_earlier_title_rule_over_a_pin_rule() {
     let notes = [
         (quiet.clone(), note(600)),
         (public.clone(), note(300)),
-        (unread.clone(), note(900)),
+        // Keep the center on main, whose right edge is x=1000.
+        (unread.clone(), note(750)),
     ];
     let rules = |action: &str| {
         Config::parse(&format!(
@@ -308,6 +309,12 @@ fn a_never_observed_parked_note_keeps_an_earlier_title_rule_over_a_pin_rule() {
     let mut runtime = runtime_with_config(stickies_backend(&notes), rules("float"));
     let cancelled = AtomicBool::new(false);
     runtime.cycle(outputs(), &cancelled).unwrap();
+    for (window, _) in &notes {
+        assert_eq!(
+            runtime.workspaces.floating_workspace_of(window),
+            Some(WorkspaceId::ONE)
+        );
+    }
     runtime
         .switch(WorkspaceId::TWO, outputs(), &cancelled)
         .unwrap();

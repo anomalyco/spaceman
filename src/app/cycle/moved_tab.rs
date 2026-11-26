@@ -39,7 +39,8 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
         let at = self.backend.now();
         self.departed_tiles
             .retain(|_, departed| at.saturating_duration_since(departed.at) < MOVED_TAB_SETTLE);
-        self.departed_tiles.insert(window.clone(), DepartedTile { frames, at });
+        self.departed_tiles
+            .insert(window.clone(), DepartedTile { frames, at });
     }
 
     /// When `incoming`, a window of its app's Complete snapshot `windows` that nothing owns,
@@ -67,7 +68,7 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
                 outgoing.app == incoming.id.app
                     && !windows.iter().any(|observed| observed.id == **outgoing)
                     && server_frames.contains_key(&outgoing.window_id)
-                    && !self.parked.contains_key(*outgoing)
+                    && !self.parked.contains_key(outgoing)
                     && departed
                         .frames
                         .iter()

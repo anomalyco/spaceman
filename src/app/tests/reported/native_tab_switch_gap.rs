@@ -88,11 +88,17 @@ fn mid_switch(
         runtime.backend.frames.insert(next_tab.clone(), stale);
         runtime.backend.ordered_out.insert(next_tab.window_id);
     }
-    runtime.backend.apps_confirming_no_windows.insert(tab.app.clone());
+    runtime
+        .backend
+        .apps_confirming_no_windows
+        .insert(tab.app.clone());
     runtime.backend.focused = None;
-    runtime.backend.observation = Some(observe(vec![
-        app(OTHER, None, &[(&neighbor, right)], &neighbor.app),
-    ]));
+    runtime.backend.observation = Some(observe(vec![app(
+        OTHER,
+        None,
+        &[(&neighbor, right)],
+        &neighbor.app,
+    )]));
     (runtime, tab, next_tab, neighbor)
 }
 
@@ -111,7 +117,10 @@ fn a_native_tab_arriving_after_its_predecessor_left_the_screen_keeps_the_tile() 
     let status = runtime
         .cycle(studio_display(), &AtomicBool::new(false))
         .unwrap();
-    assert_eq!(runtime.workspaces.workspace_of(&tab), Some(WorkspaceId::ONE));
+    assert_eq!(
+        runtime.workspaces.workspace_of(&tab),
+        Some(WorkspaceId::ONE)
+    );
     assert!(
         runtime.backend.close_probes.is_empty(),
         "an empty window list must not confirm a close mid tab switch"
@@ -150,7 +159,10 @@ fn a_tab_group_that_never_shows_its_next_tab_gives_up_the_tile_after_the_short_w
     runtime
         .cycle(studio_display(), &AtomicBool::new(false))
         .unwrap();
-    assert_eq!(runtime.workspaces.workspace_of(&tab), Some(WorkspaceId::ONE));
+    assert_eq!(
+        runtime.workspaces.workspace_of(&tab),
+        Some(WorkspaceId::ONE)
+    );
 
     runtime.backend.advance(Duration::from_millis(300));
     runtime
@@ -226,7 +238,10 @@ fn a_native_tab_not_yet_listed_while_its_app_is_keeps_the_tile() {
     let status = runtime
         .cycle(studio_display(), &AtomicBool::new(false))
         .unwrap();
-    assert_eq!(runtime.workspaces.workspace_of(&tab), Some(WorkspaceId::ONE));
+    assert_eq!(
+        runtime.workspaces.workspace_of(&tab),
+        Some(WorkspaceId::ONE)
+    );
     assert_eq!(runtime.workspaces.workspace_of(&next_tab), None);
     let recheck = status.close_recheck.expect("a prompt follow-up");
     assert!(recheck <= runtime.backend.now() + Duration::from_millis(75));
@@ -259,7 +274,10 @@ fn a_listed_app_whose_next_tab_never_shows_up_gives_up_the_tile_after_the_short_
     runtime
         .cycle(studio_display(), &AtomicBool::new(false))
         .unwrap();
-    assert_eq!(runtime.workspaces.workspace_of(&tab), Some(WorkspaceId::ONE));
+    assert_eq!(
+        runtime.workspaces.workspace_of(&tab),
+        Some(WorkspaceId::ONE)
+    );
 
     runtime.backend.advance(Duration::from_millis(300));
     runtime

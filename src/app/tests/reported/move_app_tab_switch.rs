@@ -163,7 +163,9 @@ fn a_tab_selected_long_after_the_move_is_a_new_window() {
     runtime
         .move_app(DOCUMENTS, WorkspaceId::SIX, outputs(), &cancelled)
         .unwrap();
-    runtime.backend.advance(cycle::MOVED_TAB_SETTLE + Duration::from_millis(1));
+    runtime
+        .backend
+        .advance(cycle::MOVED_TAB_SETTLE + Duration::from_millis(1));
     runtime.cycle(outputs(), &cancelled).unwrap();
 
     assert_ne!(

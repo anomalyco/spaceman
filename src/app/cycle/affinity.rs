@@ -127,9 +127,9 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
                 }
             }
             self.prepare_recall(app, windows);
-            let detached_tab = self.claim_detached_tab(app, windows).or_else(|| {
-                self.claim_app_detached_tab(app, focused.as_ref(), windows, visible)
-            });
+            let detached_tab = self
+                .claim_detached_tab(app, windows)
+                .or_else(|| self.claim_app_detached_tab(app, focused.as_ref(), windows, visible));
             let mut app_owns_window = self.workspaces.app_owns_windows(&app.id);
             let mut app_owns_tiled = self.workspaces.app_holds_route(&app.id);
             for window in windows {

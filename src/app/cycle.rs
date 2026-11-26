@@ -567,10 +567,8 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
                 // where it was put; a frame whose top-left corner moved too is
                 // the app placing the window itself, not refusing its tile, so it
                 // is written again, within the usual attempt limit (#723).
-                let clamped_in_place = observed.position_approximately_equals(
-                    target,
-                    settings.frame_tolerance,
-                );
+                let clamped_in_place =
+                    observed.position_approximately_equals(target, settings.frame_tolerance);
                 if self.applied[workspace.index()]
                     .remove(window)
                     .is_some_and(|applied| applied.target == target)
