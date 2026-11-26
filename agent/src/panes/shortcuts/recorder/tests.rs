@@ -275,6 +275,38 @@ fn recording_refuses_an_enabled_named_workspace_chord_and_accepts_it_when_absent
 }
 
 #[test]
+fn a_workspace_enabled_after_startup_leaves_its_letter_with_the_running_built_in() {
+    let h = spaceman::WorkspaceId::named('H').unwrap();
+    let mut ui = listening("focus-right");
+    ui.doc = crate::rules::Doc::parse(
+        "version = 1\n[[workspaces]]\nworkspace = 'H'\nmonitor = 'main'\n",
+    );
+    // H was added after startup: Option+H still runs Focus left.
+    ui.agent = Some(spaceman::app::UiAgentSnapshot {
+        shortcut_workspaces: Some(Vec::new()),
+        ..Default::default()
+    });
+    let focus_left = catalog::find("focus-left").unwrap();
+    let named = running_named_workspaces(&ui);
+    assert!(named.is_empty());
+    assert_eq!(
+        focus_left.chords(&ui.doc.shortcuts(), &named),
+        vec![parse_chord("alt+h").unwrap()]
+    );
+    record(&mut ui, "focus-right", us(K::KeyH, ALT));
+    assert_eq!(message(&ui), Some("Used by Focus left"));
+
+    // H registered at startup keeps its letter.
+    ui.agent = Some(spaceman::app::UiAgentSnapshot {
+        shortcut_workspaces: Some(vec![h]),
+        ..Default::default()
+    });
+    assert_eq!(running_named_workspaces(&ui), vec![h]);
+    record(&mut ui, "focus-right", us(K::KeyH, ALT));
+    assert_eq!(message(&ui), Some("Used by Switch to workspace H"));
+}
+
+#[test]
 fn changing_base_modifier_keeps_unbound_scratchpad_chord_in_place() {
     let mut ui = listening("balance");
     ui.doc = crate::rules::Doc::parse(

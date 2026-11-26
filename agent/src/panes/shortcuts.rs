@@ -52,7 +52,7 @@ use catalog::Action;
 
 pub fn pane(ui: &Ui, p: Paint) -> El {
     let shortcuts = ui.doc.shortcuts();
-    let named = recorder::enabled_named_workspaces(ui);
+    let named = recorder::running_named_workspaces(ui);
     let mut workspace_rows = family_rows(ui, p, &shortcuts, &named);
     workspace_rows.extend(action_rows(
         ui,
