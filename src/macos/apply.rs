@@ -23,6 +23,10 @@ use super::{
     mouse_down, observe_window, process_incarnation_matches, running_application,
 };
 
+mod frame;
+
+use frame::apply_element;
+
 #[derive(Debug, serde::Serialize)]
 pub struct ApplyResult {
     pub window: PhysicalWindowId,
@@ -558,77 +562,6 @@ fn apply_window(
     None
 }
 
-fn apply_element(
-    id: &PhysicalWindowId,
-    window: &AXUIElement,
-    target: Rect,
-    settings: &Settings,
-) -> ApplyResult {
-    let before = window_frame(window);
-    if before.is_some_and(|frame| frame.approximately_equals(target, settings.frame_tolerance)) {
-        return ApplyResult {
-            window: id.clone(),
-            target,
-            actual: before,
-            outcome: ApplyOutcome::Applied,
-        };
-    }
-    let wrote = write_frame(|| set_size(window, target), || set_position(window, target));
-    let mut actual = window_frame(window);
-    if wrote && arrived_short(before, target, actual, settings) {
-        // By the readback the app has seen its new screen; size it again.
-        let _: AXError = set_size(window, target);
-        actual = window_frame(window);
-    }
-    let outcome = match (wrote, actual) {
-        (_, Some(actual)) if actual.approximately_equals(target, settings.frame_tolerance) => {
-            ApplyOutcome::Applied
-        }
-        (true, Some(_)) => ApplyOutcome::Constrained,
-        _ => ApplyOutcome::Unavailable,
-    };
-    ApplyResult {
-        window: id.clone(),
-        target,
-        actual,
-        outcome,
-    }
-}
-
-/// Size, move, then size again. The first size write only helps a window
-/// that is leaving a smaller display fit where it lands, so it is best effort:
-/// a window that refuses it on its old display (a clamped or slow app) must
-/// still move. Whether the frame was written rests on the move and the final
-/// size alone.
-fn write_frame(
-    mut set_size: impl FnMut() -> AXError,
-    set_position: impl FnOnce() -> AXError,
-) -> bool {
-    let _: AXError = set_size();
-    let moved = set_position() == AXError::Success;
-    let sized = set_size() == AXError::Success;
-    moved && sized
-}
-
-/// Whether a window that came from another display landed at its target but
-/// short of its size. macOS fits the final size write to the display the
-/// window is leaving until the app sees its new screen, so a window moved onto
-/// a taller display stops at the old display's bottom edge (#428).
-fn arrived_short(
-    before: Option<Rect>,
-    target: Rect,
-    actual: Option<Rect>,
-    settings: &Settings,
-) -> bool {
-    let (Some(before), Some(actual)) = (before, actual) else {
-        return false;
-    };
-    let tolerance = settings.frame_tolerance;
-    !settings.output.contains_center(before)
-        && actual.position_approximately_equals(target, tolerance)
-        && (actual.height + tolerance < target.height || actual.width + tolerance < target.width)
-}
-
 fn without_window_animations<T>(app: &AppInstanceId, operation: impl FnOnce() -> T) -> T {
     let application = application_element(app.pid);
     let _animations = WindowAnimationGuard::new(&application);
@@ -804,9 +737,10 @@ mod tests {
     use objc2_core_foundation::CFString;
 
     use super::{
-        FRONTMOST_POLL, FRONTMOST_REASSERTS, WindowAccessError, WindowLookup, arrived_short,
-        confirm_frontmost, focus_sequence, interpret_ax_title, keep_cached_window,
-        keeps_failed_handle, warp_sequence, write_frame,
+        ApplyOutcome, FRONTMOST_POLL, FRONTMOST_REASSERTS, WindowAccessError, WindowLookup,
+        confirm_frontmost, focus_sequence,
+        frame::{FrameWrite, arrived_short, frame_outcome, write_frame},
+        interpret_ax_title, keep_cached_window, keeps_failed_handle, warp_sequence,
     };
     use crate::{AppInstanceId, PhysicalWindowId, Rect, Settings};
 
@@ -967,21 +901,75 @@ mod tests {
             },
         );
 
-        assert!(wrote);
+        assert!(wrote.written());
         assert_eq!(*calls.borrow(), ["size", "position", "size"]);
     }
 
     #[test]
     fn a_refused_move_or_final_size_is_not_written() {
-        assert!(!write_frame(
-            || AXError::Success,
-            || AXError::CannotComplete
-        ));
+        let refused_move = write_frame(|| AXError::Success, || AXError::CannotComplete);
+        assert!(!refused_move.written());
         let sizes = RefCell::new(vec![AXError::CannotComplete, AXError::Success]);
-        assert!(!write_frame(
-            || sizes.borrow_mut().pop().unwrap(),
-            || AXError::Success
-        ));
+        let write = write_frame(|| sizes.borrow_mut().pop().unwrap(), || AXError::Success);
+        assert_eq!(
+            write,
+            FrameWrite {
+                moved: true,
+                sized: false,
+            }
+        );
+        assert!(!write.written());
+    }
+
+    /// #726: a fixed-size window tiled by a `tile` rule refuses every size
+    /// write; moved to its tile's corner it keeps its own size there, which
+    /// must not block the layout of a workspace it is revealed with.
+    #[test]
+    fn a_window_that_moves_but_cannot_resize_is_constrained_not_unavailable() {
+        let tile = Rect {
+            x: 0,
+            y: 30,
+            width: 1280,
+            height: 1410,
+        };
+        let native = Rect {
+            width: 620,
+            height: 420,
+            ..tile
+        };
+        let moved_only = FrameWrite {
+            moved: true,
+            sized: false,
+        };
+        assert_eq!(
+            frame_outcome(moved_only, tile, Some(native), 0),
+            ApplyOutcome::Constrained
+        );
+        let elsewhere = Rect {
+            x: 900,
+            y: 600,
+            ..native
+        };
+        assert_eq!(
+            frame_outcome(moved_only, tile, Some(elsewhere), 0),
+            ApplyOutcome::Unavailable
+        );
+        let refused = FrameWrite {
+            moved: false,
+            sized: false,
+        };
+        assert_eq!(
+            frame_outcome(refused, tile, Some(native), 0),
+            ApplyOutcome::Unavailable
+        );
+        assert_eq!(
+            frame_outcome(refused, tile, Some(tile), 0),
+            ApplyOutcome::Applied
+        );
+        assert_eq!(
+            frame_outcome(moved_only, tile, None, 0),
+            ApplyOutcome::Unavailable
+        );
     }
 
     #[test]
