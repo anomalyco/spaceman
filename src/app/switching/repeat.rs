@@ -13,6 +13,27 @@ pub(in crate::app) enum RepeatSwitch {
 }
 
 impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
+    /// The windows of a workspace already on screen that selecting it may
+    /// focus. A window the user minimized (⌘M) or whose app they hid (⌘H) is
+    /// left out: focusing it, as the remembered float, would bring it back
+    /// (#633). Only windows the window server does not show are asked, so
+    /// an ordinary selection makes no extra Accessibility reads.
+    pub(super) fn shown_focus_candidates(
+        &mut self,
+        workspace: WorkspaceId,
+    ) -> Vec<crate::PhysicalWindowId> {
+        let mut windows = self.workspaces.windows(workspace);
+        let Some(onscreen) = self.backend.onscreen_window_frames() else {
+            return windows;
+        };
+        windows.retain(|window| {
+            onscreen.contains_key(&window.window_id)
+                || self.parked.contains_key(window)
+                || !self.backend.confirms_set_aside(window)
+        });
+        windows
+    }
+
     /// Step focus to the next tile of an already-focused workspace, wrapping at
     /// the end of the tile order. A workspace with one tile (or none) has
     /// nowhere to go, and a failed focus falls back to the plain re-focus, so

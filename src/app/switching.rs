@@ -81,7 +81,7 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
                 status.hud = Some(self.hud_for(workspace, UiHudKind::Workspace, None, &outputs));
                 return Ok(status);
             }
-            let windows = self.workspaces.windows(workspace);
+            let windows = self.shown_focus_candidates(workspace);
             if self.workspaces.deck(workspace).is_monocle()
                 && let Some(focused) = focused
                     .as_ref()
@@ -706,7 +706,7 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
         from: Option<WorkspaceId>,
         outputs: &macos::DisplayOutputs,
     ) -> Result<CycleStatus, String> {
-        let windows = self.workspaces.windows(workspace);
+        let windows = self.shown_focus_candidates(workspace);
         let output = output_for(&self.workspaces, workspace, outputs);
         if !windows.is_empty() {
             let focused = self.backend.focused_window();

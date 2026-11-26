@@ -514,3 +514,38 @@ fn visible_workspace_shortcuts_return_to_the_float_they_left() {
     assert_eq!(runtime.backend.focused, Some(floating));
     assert_both_workspaces_stayed(&runtime);
 }
+
+/// #633: the remembered float of a workspace still on screen was minimized
+/// (⌘M) or its app hidden (⌘H) after focus left it. Its shortcut focuses the
+/// workspace's tile and leaves the float set aside.
+#[test]
+fn visible_workspace_shortcut_skips_a_minimized_remembered_float() {
+    let (mut runtime, main, floating) = float_focused_beside_a_visible_workspace();
+    let tile = runtime
+        .workspaces
+        .preferred_focus(WorkspaceId::SIX)
+        .unwrap();
+    let cancelled = AtomicBool::new(false);
+
+    runtime
+        .switch(WorkspaceId::ONE, outputs(), &cancelled)
+        .unwrap();
+    assert_eq!(runtime.backend.focused, Some(main));
+    assert_eq!(
+        runtime.workspaces.preferred_float_focus(WorkspaceId::SIX),
+        Some(floating.clone())
+    );
+    runtime.backend.set_aside.insert(floating.clone());
+    runtime.backend.ordered_out.insert(floating.window_id);
+    runtime.backend.calls.clear();
+
+    runtime
+        .switch(WorkspaceId::SIX, outputs(), &cancelled)
+        .unwrap();
+    assert_eq!(runtime.backend.focused, Some(tile));
+    assert!(runtime.backend.calls.iter().all(|call| !matches!(
+        call,
+        BackendCall::Focus(window) | BackendCall::Raise(window) if window == &floating
+    )));
+    assert_both_workspaces_stayed(&runtime);
+}
