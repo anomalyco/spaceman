@@ -631,3 +631,19 @@ workspace = 2
         );
     }
 }
+
+#[test]
+fn removing_one_of_two_equal_rules_keeps_the_survivors_own_comments() {
+    const FIRST: &str = "# First copy\n[[rules]]\nbundle_id = \"test.example.documents\"\ntitle_contains = \"Planning\" # First inline\naction = \"route\"\nworkspace = 6\n\n";
+    const SECOND: &str = "# Second copy\n[[rules]]\nbundle_id = \"test.example.documents\"\ntitle_contains = \"Planning\" # Second inline\naction = \"route\"\nworkspace = 6\n\n";
+    const OTHER: &str = "# Notes\n[[rules]]\nbundle_id = \"com.apple.Notes\"\naction = \"float\"\n\n# End of file.\n";
+    let before = format!("version = 1\n\n{FIRST}{SECOND}{OTHER}");
+    let temp = TempConfig::new("equal-rules");
+
+    for (index, gone) in [("1", FIRST), ("2", SECOND)] {
+        temp.write(&before);
+        let outcome = temp.run(&["rules", "remove", index]);
+        assert_eq!(outcome.exit_code, 0, "{index}: {:?}", outcome.stderr);
+        assert_eq!(temp.read(), before.replace(gone, ""), "{index}");
+    }
+}

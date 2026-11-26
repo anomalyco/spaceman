@@ -441,8 +441,9 @@ fn run_remove(args: &[&str], path_override: Option<&Path>) -> Result<String, Str
     let (target, json) = parse_remove_args(args)?;
     let path = resolve_config_path(path_override)?;
 
-    let (removed, remaining) = ConfigDoc::edit_locked(&path, |doc| {
+    let (removed, remaining) = ConfigDoc::edit_locked_removing(&path, |doc| {
         let mut removed = Vec::new();
+        let mut positions = Vec::new();
         match target {
             RemoveTarget::Index(position) => {
                 if position == 0 || position > doc.rules.len() {
@@ -453,12 +454,14 @@ fn run_remove(args: &[&str], path_override: Option<&Path>) -> Result<String, Str
                 }
                 let rule = doc.rules.remove(position - 1);
                 removed.push(RuleView::from_doc(position, &rule));
+                positions.push(position - 1);
             }
             RemoveTarget::App(bundle_id) => {
                 let mut kept = Vec::with_capacity(doc.rules.len());
                 for (index, rule) in doc.rules.drain(..).enumerate() {
                     if rule.bundle_id.as_deref() == Some(bundle_id.as_str()) {
                         removed.push(RuleView::from_doc(index + 1, &rule));
+                        positions.push(index);
                     } else {
                         kept.push(rule);
                     }
@@ -470,7 +473,7 @@ fn run_remove(args: &[&str], path_override: Option<&Path>) -> Result<String, Str
             }
         }
         let remaining = doc.rules.len();
-        Ok(((removed, remaining), true))
+        Ok(((removed, remaining), Some(positions)))
     })?;
     if json {
         to_json_pretty(&RuleRemovedOutput {
