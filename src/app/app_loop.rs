@@ -562,7 +562,11 @@ impl MainThreadAgent {
 
     /// Queues `input`, or reports that the queue is full and returns that
     /// error so a `spaceman ctl` caller sees it too (#712).
-    fn admit_worker_input(&mut self, input: QueuedInput) -> Result<(), &'static str> {
+    fn admit_worker_input(&mut self, mut input: QueuedInput) -> Result<(), &'static str> {
+        // A mark records the screen as the user saw it, not after a busy worker settles (#715).
+        if let QueuedInput::Action(WorkerAction::MarkWrong(moment @ None)) = &mut input {
+            *moment = journal::WrongMoment::capture(&self.active_workspaces);
+        }
         self.last_activity = Instant::now();
         self.ui_dirty = true;
         let admitted = self.pending_inputs.push(input);

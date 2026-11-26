@@ -297,7 +297,9 @@ equalizes the focused tile's immediate split while respecting nested minimum siz
 touch the workspace's other splits. Neither has a default shortcut (see
 [Configuration › Shortcuts](configuration.md#shortcuts)). `hud` repeatedly renders sanitized
 runtime geometry in the terminal until interrupted. `ctl wrong` marks the journal the moment something looks wrong and
-writes a full arrangement snapshot, so `doctor` shows what the screen held then.
+writes a full arrangement snapshot, so `doctor` shows what the screen held then: window frames are
+read when the mark is accepted, even while a workspace switch is still settling, and what changed
+after the mark follows it.
 
 `ctl status` reports `mode`, `busy`, `active_workspaces`, and `last_error`. When the last completed
 cycle left window operations failed, `last_error` carries the same `N window operation(s) failed`

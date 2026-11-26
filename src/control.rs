@@ -263,7 +263,7 @@ fn parse_line(line: &str) -> Result<Command, String> {
             ScratchpadCommand::parse(command).ok_or("expected scratchpad toggle|mark")?,
         ),
         ["retile"] => WorkerAction::Retile,
-        ["wrong"] => WorkerAction::MarkWrong,
+        ["wrong"] => WorkerAction::MarkWrong(None),
         _ => return Err(format!("expected {COMMAND_USAGE}")),
     };
     Ok(Command::Queue(action))
@@ -281,7 +281,7 @@ mod tests {
             command => panic!("{line:?} parsed as {command:?}"),
         };
         assert_eq!(parse_line("status").unwrap(), Command::Status);
-        assert_eq!(queued("wrong"), WorkerAction::MarkWrong);
+        assert_eq!(queued("wrong"), WorkerAction::MarkWrong(None));
         assert_eq!(
             queued("back-and-forth"),
             WorkerAction::WorkspaceBackAndForth

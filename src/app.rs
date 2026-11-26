@@ -310,8 +310,9 @@ pub(crate) enum WorkerAction {
     ToggleFloat,
     /// Pin the focused window (floating it first) on every workspace, or unpin it.
     TogglePin,
-    /// Kit noticed something wrong: mark the journal and snapshot it.
-    MarkWrong,
+    /// Kit noticed something wrong: mark the journal and snapshot it. The
+    /// main thread fills in what the screen held as it accepts the mark.
+    MarkWrong(Option<Box<journal::WrongMoment>>),
     /// Move the open windows onto the workspaces the setup tour's plan gives them.
     Arrange(crate::onboarding_plan::Arrangement),
     /// The Scratchpad Lab: summon or hide, or send a window to or from it.
@@ -363,7 +364,7 @@ impl WorkerAction {
             Self::ToggleFullscreenLayout => "fullscreen layout toggle queued".into(),
             Self::ToggleFloat => "float toggle queued".into(),
             Self::TogglePin => "pin toggle queued".into(),
-            Self::MarkWrong => "marking the journal".into(),
+            Self::MarkWrong(_) => "marking the journal".into(),
             Self::Arrange(_) => "arrangement queued".into(),
             Self::Scratchpad(command) => format!("scratchpad {} queued", command.as_str()),
             Self::FocusHovered { .. } => "hover focus queued".into(),
