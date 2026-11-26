@@ -1,3 +1,5 @@
+pub mod window_scope;
+
 use std::collections::{HashMap, HashSet};
 
 use crate::{
