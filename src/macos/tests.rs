@@ -13,7 +13,7 @@ use super::{
         DialogHint, TitleBar, TitleButton, is_dialog, is_file_panel_identifier, is_ignored,
     },
     events::running_application_instances,
-    frontmost_application, is_process_incarnation_running, process_start_time,
+    frontmost_application, is_process_incarnation_running, process_start_time, same_launch,
 };
 
 /// Title bars measured on macOS 27.2 with `AXFullScreenButton`, `AXZoomButton`
@@ -24,6 +24,18 @@ fn bar(fullscreen: TitleButton, zoom: TitleButton, close: bool) -> TitleBar {
         zoom,
         close,
     }
+}
+
+#[test]
+fn launch_times_match_within_the_clock_tolerance() {
+    // `launchDate` and the kernel start time disagree by a few milliseconds (#735).
+    assert!(same_launch(1_000_000, 1_000_000));
+    assert!(same_launch(1_000_008, 1_000_000));
+    assert!(same_launch(1_000_000, 1_000_250));
+    assert!(!same_launch(1_000_000, 1_000_251));
+    assert!(!same_launch(0, 100));
+    assert!(!same_launch(100, 0));
+    assert!(same_launch(0, 0));
 }
 
 #[test]
