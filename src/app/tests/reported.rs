@@ -1,5 +1,6 @@
 //! Regression tests for reported issues, one file per report.
 
+mod app_moves_tile_once;
 mod back_and_forth_fast_shortcuts;
 mod back_and_forth_pinned_focus;
 mod back_and_forth_stale_report;
