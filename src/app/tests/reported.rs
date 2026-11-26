@@ -14,6 +14,7 @@ mod drop_focus_history;
 mod dwindle_split_after_focus;
 mod edge_return_busy;
 mod float_dock_release;
+mod float_native_tab;
 mod focus_ring_no_ax_window;
 mod fullscreen_early_toggle_drag;
 mod fullscreen_frame_move;
