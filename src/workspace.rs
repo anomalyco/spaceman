@@ -505,12 +505,31 @@ impl Workspaces {
         }
     }
 
+    /// Remember `window`, focused while `workspace` shows where it sits. A pin
+    /// from another workspace (its home hidden or elsewhere) counts as that
+    /// workspace's focused float, so coming back refocuses it (#676). The
+    /// caller has resolved the workspace the window shows on.
+    pub(crate) fn remember_shown_focus(
+        &mut self,
+        workspace: WorkspaceId,
+        window: &PhysicalWindowId,
+    ) {
+        if self.is_pinned(window) && self.floating_workspace_of(window) != Some(workspace) {
+            self.last_focused_float[workspace.index()] = Some(window.clone());
+        } else {
+            self.remember_focus(workspace, window);
+        }
+    }
+
     /// The workspace's most recently focused floating window, if it still
-    /// belongs to `workspace`.
+    /// belongs to `workspace` or is a pin (which may show on any workspace of
+    /// its display; callers check where it is).
     pub(crate) fn preferred_float_focus(&self, workspace: WorkspaceId) -> Option<PhysicalWindowId> {
         self.last_focused_float[workspace.index()]
             .as_ref()
-            .filter(|window| self.floating_workspace_of(window) == Some(workspace))
+            .filter(|window| {
+                self.floating_workspace_of(window) == Some(workspace) || self.is_pinned(window)
+            })
             .cloned()
     }
 
