@@ -317,8 +317,8 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
             WorkerAction::Scratchpad(command) => {
                 self.scratchpad_command(command, outputs, cancelled)
             }
-            WorkerAction::MarkWrong => {
-                self.mark_wrong();
+            WorkerAction::MarkWrong(moment) => {
+                self.mark_wrong(moment, &outputs);
                 Ok(self.status(0, &outputs))
             }
             WorkerAction::Arrange(arrangement) => self.arrange(&arrangement, outputs, cancelled),

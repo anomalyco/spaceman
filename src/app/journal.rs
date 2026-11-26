@@ -16,6 +16,28 @@ const JOURNAL_SNAPSHOT_INTERVAL: Duration = Duration::from_secs(30 * 60);
 /// size in character cells) before they count as misplaced.
 const MISPLACED_TOLERANCE: i32 = 16;
 
+/// What the screen held when the user marked it wrong, read on the main thread
+/// as the mark is accepted: the worker may still be busy with a switch, and by
+/// the time it gets to the mark the screen has settled into something else.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub(crate) struct WrongMoment {
+    pub(super) t: u64,
+    pub(super) active: Vec<WorkspaceId>,
+    pub(super) frames: HashMap<u32, crate::Rect>,
+}
+
+impl WrongMoment {
+    /// One window-server list copy (Core Graphics, not Accessibility), or
+    /// `None` when the window server didn't answer.
+    pub(super) fn capture(active: &[WorkspaceId]) -> Option<Box<Self>> {
+        Some(Box::new(Self {
+            t: crate::journal::unix_millis(),
+            active: active.to_vec(),
+            frames: macos::window_server_frames()?,
+        }))
+    }
+}
+
 #[derive(Default)]
 pub(super) struct JournalState {
     last_written: Option<Arrangement>,
@@ -73,13 +95,45 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
         });
     }
 
-    /// The user noticed something wrong. Mark the moment and force a full
-    /// snapshot on the next arrangement check, which follows every action.
-    pub(super) fn mark_wrong(&mut self) {
+    /// The user noticed something wrong. Mark the moment with a full snapshot
+    /// of what the screen held when the mark was accepted, even if a busy
+    /// switch settled since (#715); the arrangement check that follows every
+    /// action then journals what changed after it. Without a captured moment,
+    /// force a full snapshot on that check instead.
+    pub(super) fn mark_wrong(
+        &mut self,
+        moment: Option<Box<WrongMoment>>,
+        outputs: &macos::DisplayOutputs,
+    ) {
         log_event!("marked arrangement wrong");
-        self.journal_event(JournalEvent::MarkedWrong);
         self.journal.last_check = None;
-        self.journal.last_snapshot = None;
+        let Some(moment) = moment else {
+            self.journal_event(JournalEvent::MarkedWrong);
+            self.journal.last_snapshot = None;
+            return;
+        };
+        let WrongMoment { t, active, frames } = *moment;
+        self.backend.journal(&JournalLine {
+            t,
+            event: JournalEvent::MarkedWrong,
+        });
+        let arrangement = Arrangement {
+            displays: outputs.frames().collect(),
+            active,
+            windows: self
+                .arranged_windows(&frames)
+                .into_iter()
+                .map(|(_, window)| window)
+                .collect(),
+        };
+        self.backend.journal(&JournalLine {
+            t,
+            event: JournalEvent::Snapshot {
+                arrangement: arrangement.clone(),
+            },
+        });
+        self.journal.last_snapshot = Some(self.backend.now());
+        self.journal.last_written = Some(arrangement);
     }
 
     /// Compare the model with the window server and journal what changed.

@@ -89,7 +89,7 @@ impl From<UiAction> for Action {
                 Self::Worker(WorkerAction::SelectWorkspace(workspace))
             }
             UiAction::Retile => Self::Worker(WorkerAction::Retile),
-            UiAction::MarkWrong => Self::Worker(WorkerAction::MarkWrong),
+            UiAction::MarkWrong => Self::Worker(WorkerAction::MarkWrong(None)),
         }
     }
 }
