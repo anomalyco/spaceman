@@ -211,6 +211,26 @@ fn held_modifiers_show_and_clear_a_refusal() {
 }
 
 #[test]
+fn a_refusal_stays_while_a_two_modifier_chord_is_released() {
+    let mut ui = listening("focus-right");
+    let before = ui.doc.source();
+    let ctrl_alt = mods(true, true, false, false);
+    assert!(on_input(&mut ui, &PhysicalInput::Modifiers(ctrl_alt)));
+    record(&mut ui, "focus-right", us(K::NumpadEnter, ctrl_alt));
+    assert_eq!(message(&ui), Some(UNSUPPORTED));
+    // Control comes up first, leaving Option alone: still a bindable hold, but no new press.
+    assert!(on_input(&mut ui, &PhysicalInput::Modifiers(ALT)));
+    assert_eq!(message(&ui), Some(UNSUPPORTED));
+    assert!(on_input(&mut ui, &PhysicalInput::Modifiers(Mods::default())));
+    assert_eq!(message(&ui), Some(UNSUPPORTED));
+    assert_eq!(ui.shortcut_capture.listening(), Some("focus-right"));
+    assert_eq!(ui.doc.source(), before);
+    // Pressing a modifier again starts the next attempt.
+    assert!(on_input(&mut ui, &PhysicalInput::Modifiers(ALT)));
+    assert_eq!(message(&ui), None);
+}
+
+#[test]
 fn recording_refuses_an_enabled_named_workspace_chord_and_accepts_it_when_absent() {
     let mut ui = listening("balance");
     ui.doc = crate::rules::Doc::parse(

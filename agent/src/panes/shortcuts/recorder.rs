@@ -371,8 +371,11 @@ pub fn on_input(ui: &mut Ui, event: &PhysicalInput) -> bool {
         PhysicalInput::FocusLost => cancel(ui),
         PhysicalInput::Modifiers(mods) => {
             if let Capture::Listening { held, message, .. } = &mut ui.shortcut_capture {
+                let before = *held;
                 *held = modifiers(mods);
-                if held.can_bind() {
+                // A refusal stays while the chord's keys come up, in any order; pressing a
+                // modifier again starts the next attempt.
+                if held.can_bind() && pressed_more(before, *held) {
                     *message = None;
                 }
             }
@@ -389,6 +392,14 @@ pub fn on_input(ui: &mut Ui, event: &PhysicalInput) -> bool {
         PhysicalInput::Key { .. } => {}
     }
     true
+}
+
+/// Whether `after` holds a modifier `before` didn't.
+fn pressed_more(before: Modifiers, after: Modifiers) -> bool {
+    (after.command && !before.command)
+        || (after.control && !before.control)
+        || (after.option && !before.option)
+        || (after.shift && !before.shift)
 }
 
 /// Saves what a press recorded, or keeps listening with why it was refused.
