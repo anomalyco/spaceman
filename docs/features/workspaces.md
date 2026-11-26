@@ -115,6 +115,9 @@ Move window without switching                              // ws.move-window
 ├── Option+Shift+<ws> / ctl move <ws> -> window parked on target, current workspace reflows and
 │                                        hands focus to a remaining visible window (if any); a
 │                                        window minimized or hidden there stays set aside (#743)
+├── Within ~0.7 s after macOS reports a desktop change -> waits for the layout hold, retiles, then
+│   moves the focused window of the arriving desktop (#770); the same wait covers focus, resize,
+│   layout, float and pin commands
 ├── Target on screen on another display -> tiled there (a floating window is carried over, same
 │   size and relative place); focus follows it and Option+Tab goes back
 ├── Target hidden on another display -> parked off the edge of the display it is on; its recovery
@@ -684,6 +687,11 @@ on the same letter.
   after the last touch, so neither desktop's windows are written before the change. That delay is
   covered only in the test backend; macOS's own timing is not, nor is a desktop change made
   without the trackpad reporting the arriving desktop's windows before the change.
+- Unit, `src/app/input.rs`: `focused_commands_wait_out_a_reported_space_change` (#770): move,
+  focus-cycle and directional-focus commands queued within the hold after a reported Space change
+  wait until it settles; without a report they don't, and switches, swipes and retiles never wait.
+  The main loop's wait-then-retile-then-run sequencing (`src/app/app_loop/automatic.rs`) is not
+  covered.
 - Unit (FakeBackend), `src/app/tests/state_machine.rs`: a seeded, virtual-time run of 3,000 random
   switches, moves, floats, pins, scratchpad commands, drags, resizes, display changes, Space
   slides, restorations, window opens and closes and outside focus changes, checking after every
