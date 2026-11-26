@@ -160,6 +160,9 @@ struct FakeBackend {
     space_changed_at: Option<Instant>,
     /// When three or four fingers last touched the trackpad.
     space_gesture_at: Option<Instant>,
+    /// How long ago the user last typed or clicked; `None` (unknown) reads as
+    /// possible input, so a late sibling handoff is followed.
+    recent_input: Option<macos::RecentInput>,
     /// The next position write starts a Space slide (Cmd+Tab out of a
     /// native fullscreen app while a focus follow runs).
     space_change_on_position: bool,
@@ -464,6 +467,10 @@ impl WorkspaceBackend for FakeBackend {
 
     fn frontmost_application(&mut self) -> Option<AppInstanceId> {
         self.frontmost.clone()
+    }
+
+    fn recent_input(&mut self) -> Option<macos::RecentInput> {
+        self.recent_input
     }
 
     fn active_space_changed_at(&mut self) -> Option<Instant> {

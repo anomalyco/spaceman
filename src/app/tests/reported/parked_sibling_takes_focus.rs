@@ -197,3 +197,58 @@ fn unowned_sibling_keeps_focus() {
     assert_eq!(focus_calls(&rt, &b1()), 0);
     assert_eq!(shown(&rt, &displays), [3, 4, 7]);
 }
+
+/// #737: the app activates late, handing focus to its parked window after the
+/// switch's request settled on B1. With no input since, B1 is focused again
+/// once and the display stays; an app that insists is followed after that.
+/// Reported by @coygeek.
+#[test]
+fn late_parked_sibling_takes_focus() {
+    let displays = three_outputs();
+    let mut rt = switched_to_three(&displays);
+    let (b1, b2) = (b1(), b2());
+    // No key press or click for a minute.
+    rt.backend.recent_input = Some(macos::RecentInput {
+        key_down: 60.0,
+        mouse_down: 60.0,
+        modifiers_changed: 60.0,
+        command_held: false,
+    });
+    rt.backend.advance(super::super::super::focus::FOCUS_SETTLE);
+    act(&mut rt, &displays, WorkerAction::Retile);
+    rt.backend.advance(Duration::from_millis(300));
+    report(&mut rt, &b2);
+    act(&mut rt, &displays, WorkerAction::Retile);
+    assert_eq!(shown(&rt, &displays), [3, 4, 7]);
+    assert_eq!(rt.backend.focused.as_ref(), Some(&b1));
+    assert_eq!(focus_calls(&rt, &b1), 1);
+
+    report(&mut rt, &b2);
+    rt.backend.advance(super::super::super::focus::FOCUS_SETTLE);
+    act(&mut rt, &displays, WorkerAction::Retile);
+    assert_eq!(shown(&rt, &displays), [3, 4, 8]);
+    assert_eq!(rt.backend.focused.as_ref(), Some(&b2));
+}
+
+/// A key press after the switch (⌘` to the parked window) is the user's
+/// choice: the late report is followed.
+#[test]
+fn late_sibling_after_input_is_followed() {
+    let displays = three_outputs();
+    let mut rt = switched_to_three(&displays);
+    let b2 = b2();
+    rt.backend.advance(super::super::super::focus::FOCUS_SETTLE);
+    act(&mut rt, &displays, WorkerAction::Retile);
+    rt.backend.advance(Duration::from_millis(300));
+    rt.backend.recent_input = Some(macos::RecentInput {
+        key_down: 0.1,
+        mouse_down: 60.0,
+        modifiers_changed: 0.2,
+        command_held: true,
+    });
+    report(&mut rt, &b2);
+    act(&mut rt, &displays, WorkerAction::Retile);
+    assert_eq!(shown(&rt, &displays), [3, 4, 8]);
+    assert_eq!(rt.backend.focused.as_ref(), Some(&b2));
+    assert_eq!(focus_calls(&rt, &b1()), 0);
+}

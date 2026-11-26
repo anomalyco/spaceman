@@ -19,7 +19,8 @@ Switch workspace                                           // ws.switch
 │   (that window raised and made main, then its app brought forward with `AXFrontmost`), unless
 │   one of its windows already has focus (e.g. focus follow): that window keeps it. If the app
 │   hands focus to another of its windows on a hidden workspace as it comes forward, that
-│   window's workspace is not revealed and the chosen window is focused again
+│   window's workspace is not revealed and the chosen window is focused again, even when the
+│   app does so up to 1.5 s later with no key press or click in between (once per window)
 └── Already active -> stays and re-focuses its remembered tile (keeps current focus if it is there);
     a remembered window minimized or hidden since is skipped and stays set aside
     ├── Pressed again (`Option+<ws>` / `ctl switch`) while focus is on that workspace -> the

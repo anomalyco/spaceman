@@ -24,6 +24,11 @@ pub(super) use chosen::EmptyChoice;
 /// on the same target again.
 pub(super) const FOCUS_SETTLE: Duration = Duration::from_millis(250);
 
+/// How long after Spaceman focuses a window its app may still hand focus to
+/// another of its windows on a different workspace without any user input.
+/// Activation can lag well past [FOCUS_SETTLE] (#737).
+pub(super) const SIBLING_HANDOFF: Duration = Duration::from_millis(1500);
+
 /// How long after a failed focus follow a macOS Space change may still explain it.
 pub(super) const FAILED_FOLLOW_RETRY_WINDOW: Duration = Duration::from_secs(3);
 
@@ -35,6 +40,16 @@ pub(super) struct FocusRequest {
     /// window focus left and earlier targets in a run of quick presses.
     pub(super) stale: Vec<Option<PhysicalWindowId>>,
     pub(super) issued_at: Instant,
+}
+
+/// The last window Spaceman focused, kept after its request settles: an app
+/// that activates late can still hand focus to a sibling (#737).
+#[derive(Clone, Debug)]
+struct Handoff {
+    target: PhysicalWindowId,
+    issued_at: Instant,
+    /// Siblings already refocused away from, once each.
+    reclaimed: Vec<PhysicalWindowId>,
 }
 
 /// Focus left behind by a workspace switch, a move or a rollback. Focus follow
@@ -81,6 +96,8 @@ pub(super) struct FocusTracker {
     /// An empty workspace chosen on another display while a window there kept
     /// focus (`[labs] empty_workspace_focus`).
     empty_choice: Option<EmptyChoice>,
+    /// The last focus Spaceman requested, for a late sibling handoff.
+    handoff: Option<Handoff>,
     /// Restored Fullscreen Layout workspaces whose front tile is raised again
     /// on their first cycle after a restart.
     fullscreen_restore: HashSet<WorkspaceId>,
@@ -227,6 +244,11 @@ impl FocusTracker {
         stale.extend(left);
         // Spaceman focused a window, which ends any choice of an empty workspace.
         self.empty_choice = None;
+        self.handoff = Some(Handoff {
+            target: target.clone(),
+            issued_at: now,
+            reclaimed: Vec::new(),
+        });
         let mut unique = Vec::with_capacity(stale.len());
         for entry in stale {
             if entry.as_ref() != Some(&target) && !unique.contains(&entry) {
@@ -256,6 +278,28 @@ impl FocusTracker {
             .map(|request| request.target.clone())
     }
 
+    /// With no request in flight, the last target Spaceman focused and when,
+    /// while `reported` is another window of its app that has not taken focus
+    /// from it yet and the handoff window is open (#737).
+    pub(super) fn late_sibling_target(
+        &self,
+        now: Instant,
+        reported: &PhysicalWindowId,
+    ) -> Option<(PhysicalWindowId, Instant)> {
+        if self.in_flight(now).is_some() {
+            return None;
+        }
+        self.handoff
+            .as_ref()
+            .filter(|handoff| {
+                now.saturating_duration_since(handoff.issued_at) < SIBLING_HANDOFF
+                    && handoff.target != *reported
+                    && handoff.target.app == reported.app
+                    && !handoff.reclaimed.contains(reported)
+            })
+            .map(|handoff| (handoff.target.clone(), handoff.issued_at))
+    }
+
     /// Lets `reported` stand for the in-flight target until the request
     /// settles at its original deadline. Returns whether it is newly added.
     pub(super) fn explain_as_target(&mut self, reported: &PhysicalWindowId) -> bool {
@@ -270,7 +314,38 @@ impl FocusTracker {
             return false;
         }
         request.stale.push(Some(reported.clone()));
+        if let Some(handoff) = &mut self.handoff
+            && handoff.target == request.target
+            && !handoff.reclaimed.contains(reported)
+        {
+            handoff.reclaimed.push(reported.clone());
+        }
         true
+    }
+
+    /// Spaceman focused the handoff's target again after `reported` took
+    /// focus from it late: `reported` stands for the target for one more
+    /// settle, keeping any departure guard. The handoff window does not move,
+    /// and `reported` is not refocused away from again.
+    pub(super) fn reclaim_late(&mut self, now: Instant, reported: &PhysicalWindowId) {
+        let Some(handoff) = &mut self.handoff else {
+            return;
+        };
+        handoff.reclaimed.push(reported.clone());
+        let target = handoff.target.clone();
+        let departure = match std::mem::take(&mut self.phase) {
+            FocusPhase::Synced => None,
+            FocusPhase::GuardedDeparture { guard, .. } => Some(guard),
+            FocusPhase::InFlight { departure, .. } => departure,
+        };
+        self.phase = FocusPhase::InFlight {
+            request: FocusRequest {
+                target,
+                stale: vec![Some(reported.clone())],
+                issued_at: now,
+            },
+            departure,
+        };
     }
 
     /// Forgets the request, keeping any departure guard it carried.
