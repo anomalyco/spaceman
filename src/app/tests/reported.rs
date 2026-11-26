@@ -25,6 +25,7 @@ mod missing_drop_sample;
 mod move_back_reveals_last_shown;
 mod move_tab_follow_pointer;
 mod native_tab_after_resize;
+mod native_tab_during_drag;
 mod native_tab_second_group;
 mod native_tab_switch_gap;
 mod new_window_dock_affinity;

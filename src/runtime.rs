@@ -169,6 +169,11 @@ impl Engine {
         self.evidence.previous_placements.insert(slot, frame);
     }
 
+    /// Remember `frame` as where the slot's window was last seen, as a cycle would.
+    pub(crate) fn record_observed_frame(&mut self, slot: crate::SlotId, frame: crate::Rect) {
+        self.evidence.previous_frames.insert(slot, frame);
+    }
+
     pub(crate) fn toggle_axis(&mut self) {
         self.layout.toggle_root_axis();
         self.commit_layout();
