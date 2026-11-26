@@ -207,6 +207,40 @@ fn a_recall_closes_when_its_app_quits_and_recording_resumes() {
 }
 
 #[test]
+fn reordered_but_unchanged_placements_keep_settling() {
+    // A newer native tab taking an older window's slot moves that placement
+    // later in the creation-ordered list; nothing moved, so the arrangement
+    // must still settle on its original schedule (#630).
+    let first = window(10);
+    let second = window(11);
+    let mut runtime = runtime(backend_with(&[
+        (first.clone(), frame(50)),
+        (second.clone(), frame(500)),
+    ]));
+    let cancelled = AtomicBool::new(false);
+    runtime.cycle(outputs(), &cancelled).unwrap();
+    runtime.cycle(outputs(), &cancelled).unwrap();
+    assert!(runtime.memory.memory.is_empty());
+
+    let (pending, since) = runtime.memory.pending.get_mut(BUNDLE).unwrap();
+    let before = pending.clone();
+    pending.reverse();
+    assert!(
+        !crate::window_memory::same_placement_list(pending, &before),
+        "fixture needs distinct placements"
+    );
+    *since -= crate::app::memory::MEMORY_SETTLE;
+    runtime.cycle(outputs(), &cancelled).unwrap();
+
+    let remembered = runtime.memory.memory.get(BUNDLE).expect("settled");
+    assert!(crate::window_memory::same_placement_list(
+        &remembered.windows,
+        &before
+    ));
+    assert!(runtime.memory.pending.is_empty());
+}
+
+#[test]
 fn memory_records_only_arrangements_that_settle() {
     let first = window(10);
     let second = window(11);

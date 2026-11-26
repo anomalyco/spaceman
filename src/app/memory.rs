@@ -510,7 +510,10 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
                 continue;
             }
             match self.memory.pending.get_mut(&bundle_id) {
-                Some((pending, since)) if same_placement_list(pending, &windows) => {
+                // Order-insensitive: a newer native tab taking an older
+                // window's slot reorders the creation-ordered list without
+                // moving anything, and must not restart the settle timer.
+                Some((pending, since)) if same_placement_set(pending, &windows) => {
                     *pending = windows;
                     if now.duration_since(*since) >= MEMORY_SETTLE {
                         let Some((settled, _)) = self.memory.pending.remove(&bundle_id) else {
@@ -543,6 +546,27 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
             log_event!("failed to persist window memory: {error}");
         }
     }
+}
+
+/// Whether two placement lists hold the same placements in any order.
+fn same_placement_set(left: &[RememberedWindow], right: &[RememberedWindow]) -> bool {
+    if same_placement_list(left, right) {
+        return true;
+    }
+    if left.len() != right.len() {
+        return false;
+    }
+    let mut used = vec![false; right.len()];
+    left.iter().all(|placement| {
+        let found = right
+            .iter()
+            .zip(used.iter_mut())
+            .find(|(other, taken)| !**taken && placement.same_placement(other));
+        found.is_some_and(|(_, taken)| {
+            *taken = true;
+            true
+        })
+    })
 }
 
 /// Trim and bound an observed `Arc<str>` without allocating when it is already
