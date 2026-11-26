@@ -50,15 +50,15 @@ fn a_native_tab_switch_right_after_a_resize_release_keeps_the_resized_tile() {
     let mut rt = runtime(backend);
     bind(&mut rt, WorkspaceId::ONE, &tab);
     bind(&mut rt, WorkspaceId::ONE, &neighbor);
-    dispatch(&mut rt, WorkerCommand::Action(WorkerAction::Retile, one_output()));
+    dispatch(
+        &mut rt,
+        WorkerCommand::Action(WorkerAction::Retile, one_output()),
+    );
     let start = rt.backend.frames[&tab];
     assert_eq!(span(start), (0, 500));
     let sized = |width| crate::Rect { width, ..start };
     assert_eq!(span(rt.backend.frames[&neighbor]), (500, 500));
-    let slot = rt
-        .workspaces
-        .engine(WorkspaceId::ONE)
-        .slot_for_window(&tab);
+    let slot = rt.workspaces.engine(WorkspaceId::ONE).slot_for_window(&tab);
 
     // Drag the tab's right edge out to 580 and release.
     rt.backend.mouse_down = true;

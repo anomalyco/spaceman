@@ -336,7 +336,10 @@ fn a_pin_rule_reload_leaves_a_parked_note_an_earlier_title_rule_floats() {
 
 #[test]
 fn a_pin_rule_reload_leaves_a_parked_note_matched_past_the_remembered_title_length() {
-    let long = format!("{} Quiet", "a".repeat(crate::window_memory::MAX_TITLE_LEN + 8));
+    let long = format!(
+        "{} Quiet",
+        "a".repeat(crate::window_memory::MAX_TITLE_LEN + 8)
+    );
     a_pin_rule_reload_leaves_a_parked_note_titled(&long);
 }
 

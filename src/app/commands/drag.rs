@@ -345,8 +345,8 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
         let rows = self.config.labs().portrait_edge_rows;
         // With row bands, a side band also covers the menu bar and Dock strips at its
         // ends, so a pointer that only crossed into them has not left the side (#612).
-        let strips = (rows && usable.height > usable.width)
-            .then(|| display_screen(source_output, outputs));
+        let strips =
+            (rows && usable.height > usable.width).then(|| display_screen(source_output, outputs));
         if let Some(direction) = display_edge_drop(point, source_output, usable, bounds, strips) {
             return DropTarget::DisplayEdge(direction);
         }

@@ -448,6 +448,10 @@ fn layout_toggles_during_a_held_drag_keep_a_small_gap_change_owed() {
             runtime.backend.0.frames[&left],
             runtime.backend.0.frames[&right],
         );
-        assert_eq!((a.x, a.width, b.x, b.width), (0, 499, 501, 499), "toggles={toggles}");
+        assert_eq!(
+            (a.x, a.width, b.x, b.width),
+            (0, 499, 501, 499),
+            "toggles={toggles}"
+        );
     }
 }

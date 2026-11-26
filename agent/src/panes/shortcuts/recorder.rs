@@ -285,7 +285,11 @@ pub fn enabled_named_workspaces(ui: &Ui) -> Vec<WorkspaceId> {
 /// startup, or [`enabled_named_workspaces`] when no agent says. A workspace enabled by a config
 /// edit since then doesn't take its letter from a built-in shortcut until the next start.
 pub fn running_named_workspaces(ui: &Ui) -> Vec<WorkspaceId> {
-    match ui.agent.as_ref().and_then(|agent| agent.shortcut_workspaces.as_ref()) {
+    match ui
+        .agent
+        .as_ref()
+        .and_then(|agent| agent.shortcut_workspaces.as_ref())
+    {
         Some(registered) => {
             let mut named = registered
                 .iter()

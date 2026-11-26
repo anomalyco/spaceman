@@ -509,7 +509,9 @@ mod tests {
         let running = parse("[shortcuts]\nmodifier = \"ctrl+alt\"\n");
         let list = running_only_rows(&running, &saved, &[]);
         assert_eq!(
-            list.iter().map(|row| row.title.as_str()).collect::<Vec<_>>(),
+            list.iter()
+                .map(|row| row.title.as_str())
+                .collect::<Vec<_>>(),
             ["Switch to workspace 1–10", "Move window to workspace 1–10"]
         );
         assert_eq!(

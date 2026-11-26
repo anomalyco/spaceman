@@ -79,5 +79,8 @@ fn a_second_window_stays_put_after_a_late_rule_floats_the_routed_first_window() 
 
 #[test]
 fn a_first_window_that_floats_from_launch_leaves_the_route_to_the_second() {
-    assert_eq!(second_window_after_rule_float(false), Some(WorkspaceId::SIX));
+    assert_eq!(
+        second_window_after_rule_float(false),
+        Some(WorkspaceId::SIX)
+    );
 }

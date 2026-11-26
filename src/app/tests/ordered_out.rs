@@ -421,10 +421,20 @@ fn bring_back(
     let (left, right) = (column(0, 1280), column(1280, 1280));
     let mut observed = Vec::new();
     for (index, (bundle, window)) in windows.iter().enumerate() {
-        let frame = if index == 0 { left } else { right };
+        let returning = runtime.backend.set_aside.remove(*window);
         runtime.backend.server_frames.remove(*window);
         runtime.backend.ordered_out.remove(&window.window_id);
-        runtime.backend.set_aside.remove(*window);
+        let fallback = if index == 0 { left } else { right };
+        let frame = if returning {
+            fallback
+        } else {
+            runtime
+                .backend
+                .frames
+                .get(*window)
+                .copied()
+                .unwrap_or(fallback)
+        };
         runtime.backend.frames.insert((*window).clone(), frame);
         observed.push((*bundle, *window, frame));
     }

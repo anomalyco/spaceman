@@ -154,7 +154,8 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
                 if floating {
                     if let Some(owner) = self.workspaces.workspace_of(&window.id) {
                         self.forget_window(owner, &window.id);
-                        self.workspaces.float_former_tile(window.id.clone(), owner, cause);
+                        self.workspaces
+                            .float_former_tile(window.id.clone(), owner, cause);
                     }
                 } else if self.workspaces.floating_workspace_of(&window.id).is_some() {
                     self.workspaces.forget_floating(&window.id);
