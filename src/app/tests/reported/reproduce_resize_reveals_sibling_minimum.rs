@@ -117,6 +117,42 @@ fn an_absolute_resize_lands_when_a_sibling_first_reveals_its_minimum() {
     assert_eq!(after, [700, 266, 460]);
 }
 
+/// #607: A relative grow that first revealed a sibling's minimum moved the untargeted seam; the
+/// same grow with the minimum already known kept it. Reported by @coygeek.
+#[test]
+fn a_relative_grow_keeps_the_other_seam_when_a_sibling_first_reveals_its_minimum() {
+    let grow = |learn_first: bool| {
+        let mut runtime = new_rig("columns", 0, 9, 3, |id| if id == 3 { 460 } else { 0 });
+        let frames = |rt: &WorkspaceRuntime<FakeBackend>| {
+            [window(1), window(2), window(3)].map(|w| rt.backend.frames[&w])
+        };
+        assert_eq!(frames(&runtime).map(|f| f.width), [480, 480, 480]);
+        if learn_first {
+            runtime.backend.focused = Some(window(3));
+            command(
+                &mut runtime,
+                WorkerAction::ResizeTo(crate::Axis::Horizontal, 370),
+            );
+            command(&mut runtime, WorkerAction::Balance);
+            assert_eq!(frames(&runtime).map(|f| f.width), [480, 480, 480]);
+            assert!(!runtime.minimum_sizes.is_empty());
+        } else {
+            assert!(runtime.minimum_sizes.is_empty());
+        }
+        runtime.backend.focused = Some(window(2));
+        let status = command(&mut runtime, WorkerAction::Resize(ResizeDirection::Grow));
+        assert_eq!(status.failed, 0);
+        frames(&runtime)
+    };
+
+    let known = grow(true);
+    let first = grow(false);
+    assert_eq!(known.map(|f| f.width), [480, 500, 460]);
+    assert_eq!(first, known);
+    assert_eq!(first[1].x, 3040);
+    assert_eq!(first[2].x + first[2].width, RIGHT.x + RIGHT.width);
+}
+
 struct RecordingToleranceBackend {
     inner: FakeBackend,
     tolerances: Vec<i32>,

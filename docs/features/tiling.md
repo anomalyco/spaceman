@@ -50,6 +50,7 @@ Reorder                                                 // tile.reorder
 
 Size                                                    // tile.size
 ├── Option+- / Option+= / ctl resize shrink|grow -> 50 px at the immediate split
+│   └── Clamped at every minimum, even one a window first reveals during the resize
 ├── Pointer resize       -> split weights follow both edges of a corner drag, preview during the gesture
 │   └── On release         -> every tile is written exactly to its target, even a point or two off
 ├── ctl resize width|height <points> -> resize the focused window to that width/height at the
@@ -157,7 +158,9 @@ pause, quit, or hotkey loss.
   does not hide an adjacent display from directional focus and moves (#396), an emptied named
   workspace keeps its split direction across a restart (#402), absolute and keyboard resizes keep
   the 50-point floor past gaps and every known minimum (#407, #408, #409), reach an absolute width
-  that fits on the first try even when a sibling first reveals its minimum during it (#492), and
+  that fits on the first try even when a sibling first reveals its minimum during it (#492),
+  give the same seams to a grow or shrink whether a sibling's minimum is known or first revealed
+  by it (#607), and
   write a 1–2 point change exactly (#412), Dwindle splits the tile it shows (#410), and a retile
   learns every minimum a row reveals (#413). `src/app/input.rs` classifies a title-bar drag whose
   window changes size as it lands as a drop (#429).

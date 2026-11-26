@@ -38,6 +38,13 @@ pub struct Engine {
     pending: Option<CycleTicket>,
 }
 
+/// An engine's layout before an edit ([`Engine::layout_snapshot`]).
+#[derive(Clone, Debug)]
+pub(crate) struct LayoutSnapshot {
+    layout: LayoutTree,
+    fit: Option<DisplayFit>,
+}
+
 #[derive(Clone, Debug)]
 struct DisplayFit {
     output: crate::Rect,
@@ -328,6 +335,21 @@ impl Engine {
             .then(|| layout.fitted(settings.canvas(), &slots))
             .flatten();
         placements_for(fitted.as_ref().unwrap_or(layout), &self.model, settings)
+    }
+
+    /// The requested layout and the fit on display, to make an edit again from the same start.
+    pub(crate) fn layout_snapshot(&self) -> LayoutSnapshot {
+        LayoutSnapshot {
+            layout: self.layout.clone(),
+            fit: self.fit.clone(),
+        }
+    }
+
+    /// Put back a [`Self::layout_snapshot`]; slots and bindings are untouched.
+    pub(crate) fn restore_layout(&mut self, snapshot: LayoutSnapshot) {
+        self.layout = snapshot.layout;
+        self.fit = snapshot.fit;
+        self.invalidate();
     }
 
     /// Commit an already-edited layout tree as the workspace's requested layout.
