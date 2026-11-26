@@ -60,8 +60,9 @@ focus when the workspace becomes active again, keeping the remembered tile as a 
 closes, moves, or tiles. Pressing an already-active workspace shortcut again while one of that
 workspace's windows already has focus cycles through its tiles in stable order (wrapping around, in
 both split and Fullscreen Layout); if focus is on another display, the first press brings focus back
-to the workspace and a second press cycles. Clicking an already-active workspace in the menu bar or
-HUD preserves current focus.
+to the workspace and a second press cycles. A remembered window you have since minimized or hidden
+stays set aside, and focus goes to the workspace's remembered tile instead. Clicking an
+already-active workspace in the menu bar or HUD preserves current focus.
 
 Fullscreen Layout is a workspace mode: every tiled window receives the full display frame (less any
 `settings.gaps` edge padding, and centered at `settings.single_window_max_width` when set, and at
