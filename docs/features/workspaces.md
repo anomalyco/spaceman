@@ -188,7 +188,8 @@ Where a new window goes (first match wins)                 // ws.adoption
 │                         so a failed park leaves it unowned and the next cycle routes it again;
 │                         bundle-only route rules apply to the app's initial window while
 │                         secondary windows stay on the active workspace (a window floated by
-│                         hand or sent to the Scratchpad still counts as the initial one, #551),
+│                         hand, sent to the Scratchpad, or floated by a rule after it tiled
+│                         still counts as the initial one, #551, #664),
 │                         unless the rule says windows = "all" and [labs] route_all_windows is
 │                         on (src/config.rs, src/app/cycle/affinity.rs); in Columns it joins
 │                         the destination workspace's focused tile split as if it had opened
