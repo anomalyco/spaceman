@@ -279,9 +279,13 @@ Displays                                                    // ws.displays
 │   whether the edited workspace is the one shown or one hidden behind it
 ├── A workspace that moves display with a reconnect brings its floats from the display it left
 ├── Deleting the last declaration of an unused named workspace makes it unavailable at once
-└── Display added or removed -> hidden windows re-parked against the new displays; visible owned
-    windows left with their center off every remaining display keep their slots and snap back onto
-    their workspace's display
+├── Display added or removed -> hidden windows re-parked against the new displays; visible owned
+│   windows left with their center off every remaining display keep their slots and snap back onto
+│   their workspace's display
+└── Sleep: a window Accessibility cannot find while the window server still lists it keeps its
+    slot; it is forgotten only after 30 s unreachable with a display awake, never during a
+    background wake or lid sleep (#739); its app quitting or the window server dropping it still
+    retires it at once
 
 Workspace order ([settings] workspace_order)                // ws.order
 ├── The order the HUD row, the menu bar menu and three-finger swipes list a display's workspaces
@@ -612,6 +616,8 @@ on the same letter.
   slots when Accessibility briefly cannot find a hidden window. `src/app/tests/settle_grace.rs`:
   `background_unhide_during_a_fresh_park_is_re_parked_without_waiting_for_the_grace` and
   `stale_readback_after_a_cross_display_park_waits_out_the_grace`.
+  `src/app/tests/reported/sleep_keeps_inaccessible_tile.rs`: time with every display asleep never
+  runs out the Accessibility grace, and an awake grace still retires the window (#739).
 - Unit, `src/geometry.rs`: `parking_leaves_a_single_corner_pixel_on_screen`,
   `a_window_held_above_its_parking_corner_is_still_parked`,
   `a_window_held_up_by_its_title_bar_stays_off_a_shorter_neighbor`,

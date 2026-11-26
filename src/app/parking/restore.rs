@@ -25,7 +25,8 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
 
     /// Whether an Accessibility "gone" for `window` is real: the window
     /// server no longer lists it, its process exited, or Accessibility has
-    /// failed to find it for [`INACCESSIBLE_GRACE`]. A parked window never
+    /// failed to find it for [`INACCESSIBLE_GRACE`] while a display is awake
+    /// (time with every display asleep never counts, #739). A parked window never
     /// times out: Accessibility cannot reach a window on another macOS
     /// desktop, and dropping its recovery frame would strand it off screen
     /// (#328), so only the window server or its process may retire it.
@@ -58,6 +59,13 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
                 );
                 now
             });
+        if self.backend.displays_asleep() {
+            // Asleep, Accessibility misses windows that are still there; a
+            // background wake must not run out the grace (#739). It restarts
+            // once a display is awake to recheck.
+            self.inaccessible_since.insert(window.clone(), now);
+            return false;
+        }
         if now.saturating_duration_since(since) < INACCESSIBLE_GRACE {
             return false;
         }
