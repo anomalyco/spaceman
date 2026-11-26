@@ -21,6 +21,7 @@ Automatic tiling                                        // tile.auto
     ├── Any app (Finder, Safari, Terminal...) -> when the evidence is unambiguous (one window out, one in, focus moved to it, at the tile's frame or, for an app that caps its window size, where the old tab was)
     │   ├── Under a route rule with windows = "all" -> the incoming tab still keeps the slot on its tile's workspace, not the rule's
     │   │   └── Caught mid-switch (old tab still listed, or focus not there yet) at the tile's frame -> held up to a second for the evidence instead of routed, then routed as a new window (#706)
+    │   ├── A snapshot mid-switch with no focused window -> the app's last focused tab still counts as the outgoing one, so the incoming tab keeps the slot (#718)
     │   ├── Right after a pointer resize is released -> the incoming tab keeps the resized tile's side and width (#624)
     │   └── Old tab ordered out before the new one is on screen -> while another tab of the group is listed at the tile's corner, the tile waits up to 300 ms for it, so it still keeps side and width (#707); a close with no other window of the app at that corner does not wait
     └── Ghostty -> ambiguous evidence also holds the slot for a bounded settle
