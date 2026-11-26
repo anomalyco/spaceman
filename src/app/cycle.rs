@@ -592,6 +592,10 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
                 .backend
                 .apply_observed(&placements, &settings, cancelled);
             self.record_results(workspace, &results);
+            // A tile still parked (its workspace revealed by a config reload, its
+            // restore not yet confirmed) is on screen now: retire its recovery
+            // frame, or a restore retry writes it back over the tile (#701).
+            self.retire_laid_out(&results);
             let initially_failed = failed_results(&results);
             *failed += self
                 .refit_minimum_sizes(workspace, output, results, cancelled)

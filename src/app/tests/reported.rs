@@ -33,6 +33,7 @@ mod reassign_visible_float;
 mod reconnect_carries_floats;
 mod reconnect_dual_selector;
 mod refit_writes_seams_exactly;
+mod reload_reveals_parked_tile;
 mod reorder_edge_pointer;
 mod reproduce_dwindle_fitted_axis;
 mod reproduce_exact_resize_tolerance;
