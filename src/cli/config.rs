@@ -244,6 +244,7 @@ impl Key {
             Self::Lab(LabFeature::RouteAllWindows) => "labs.route_all_windows",
             Self::Lab(LabFeature::MenuBarIconStyle) => "labs.menu_bar_icon_style",
             Self::Lab(LabFeature::FocusFollowsMouse) => "labs.focus_follows_mouse",
+            Self::Lab(LabFeature::WindowOverlay) => "labs.window_overlay",
         }
     }
 

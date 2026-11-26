@@ -5,7 +5,7 @@ use crate::{
     onboarding_plan::{Arrangement, Inventory},
 };
 
-use super::{Action, WorkerAction};
+use super::{Action, UiWindowOverlay, WindowOverlayCommand, WorkerAction};
 
 /// Normalized preview coordinate space for HUD split rectangles.
 pub const HUD_PREVIEW_RECT: Rect = Rect {
@@ -64,6 +64,8 @@ pub enum UiAction {
     SwitchWorkspace(WorkspaceId),
     Retile,
     MarkWrong,
+    /// A Window overlay card's button.
+    WindowOverlay(WindowOverlayCommand),
 }
 
 impl From<UiAction> for Action {
@@ -90,6 +92,7 @@ impl From<UiAction> for Action {
             }
             UiAction::Retile => Self::Worker(WorkerAction::Retile),
             UiAction::MarkWrong => Self::Worker(WorkerAction::MarkWrong(None)),
+            UiAction::WindowOverlay(command) => Self::Worker(WorkerAction::WindowOverlay(command)),
         }
     }
 }
@@ -337,11 +340,19 @@ impl UiAgentSnapshot {
     }
 }
 
+/// The Window overlay Lab's chord was held long enough (with what it shows), or let go.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum UiWindowOverlayNews {
+    Show(UiWindowOverlay),
+    Hide,
+}
+
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
 pub struct UiNews {
     pub snapshot: Option<UiAgentSnapshot>,
     pub hud: Option<UiHudEvent>,
     pub toast: Option<UiHudToast>,
+    pub window_overlay: Option<UiWindowOverlayNews>,
     /// The open windows the setup tour asked for, title-free.
     pub inventory: Option<Inventory>,
     pub config_changed: bool,
@@ -353,6 +364,7 @@ struct SharedState {
     pending_snapshot: Option<UiAgentSnapshot>,
     pending_hud: Option<UiHudEvent>,
     pending_toast: Option<UiHudToast>,
+    pending_window_overlay: Option<UiWindowOverlayNews>,
     pending_inventory: Option<Inventory>,
     config_changed: bool,
     waker: Option<Arc<dyn Fn() + Send + Sync>>,
@@ -384,6 +396,7 @@ impl UiBridge {
         let has_news = shared.pending_snapshot.is_some()
             || shared.pending_hud.is_some()
             || shared.pending_toast.is_some()
+            || shared.pending_window_overlay.is_some()
             || shared.pending_inventory.is_some()
             || shared.config_changed;
         shared.waker = Some(Arc::clone(&waker));
@@ -403,6 +416,7 @@ impl UiBridge {
             snapshot: shared.pending_snapshot.take(),
             hud: shared.pending_hud.take(),
             toast: shared.pending_toast.take(),
+            window_overlay: shared.pending_window_overlay.take(),
             inventory: shared.pending_inventory.take(),
             config_changed: std::mem::take(&mut shared.config_changed),
         }
@@ -433,6 +447,20 @@ impl UiBridge {
                 .lock()
                 .unwrap_or_else(std::sync::PoisonError::into_inner);
             shared.pending_toast = Some(toast);
+            shared.waker.clone()
+        };
+        if let Some(waker) = waker {
+            waker();
+        }
+    }
+
+    pub(super) fn publish_window_overlay(&self, news: UiWindowOverlayNews) {
+        let waker = {
+            let mut shared = self
+                .shared
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
+            shared.pending_window_overlay = Some(news);
             shared.waker.clone()
         };
         if let Some(waker) = waker {
@@ -516,6 +544,7 @@ mod tests {
                 snapshot: Some(initial.clone()),
                 hud: None,
                 toast: None,
+                window_overlay: None,
                 inventory: None,
                 config_changed: false,
             }
@@ -534,6 +563,7 @@ mod tests {
                 snapshot: None,
                 hud: None,
                 toast: None,
+                window_overlay: None,
                 inventory: None,
                 config_changed: true,
             }
@@ -552,6 +582,7 @@ mod tests {
                 snapshot: None,
                 hud: Some(hud_event),
                 toast: None,
+                window_overlay: None,
                 inventory: None,
                 config_changed: false,
             }
@@ -565,6 +596,7 @@ mod tests {
                 snapshot: None,
                 hud: None,
                 toast: Some(toast),
+                window_overlay: None,
                 inventory: None,
                 config_changed: false,
             }
@@ -605,6 +637,21 @@ mod tests {
         assert_eq!(wakes.load(Ordering::SeqCst), 5);
         assert_eq!(bridge.take_news().inventory, Some(Inventory::default()));
         assert_eq!(bridge.take_news().inventory, None);
+
+        // The window overlay's buttons reach the worker, and its news comes back once.
+        let command = WindowOverlayCommand::Snapshot;
+        bridge.send(UiAction::WindowOverlay(command.clone()));
+        assert_eq!(
+            receiver.try_recv().ok(),
+            Some(Action::Worker(WorkerAction::WindowOverlay(command)))
+        );
+        bridge.publish_window_overlay(UiWindowOverlayNews::Hide);
+        assert_eq!(wakes.load(Ordering::SeqCst), 6);
+        assert_eq!(
+            bridge.take_news().window_overlay,
+            Some(UiWindowOverlayNews::Hide)
+        );
+        assert_eq!(bridge.take_news().window_overlay, None);
     }
 
     #[test]

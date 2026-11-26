@@ -28,6 +28,16 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
         let window = self
             .current_focus()
             .ok_or("Focused window is unavailable")?;
+        self.toggle_float_window(window, outputs, cancelled)
+    }
+
+    /// [`Self::toggle_float`] for `window`, focused or not (the Window overlay Lab's card).
+    pub(in crate::app) fn toggle_float_window(
+        &mut self,
+        window: crate::PhysicalWindowId,
+        outputs: macos::DisplayOutputs,
+        cancelled: &AtomicBool,
+    ) -> Result<CycleStatus, String> {
         if u32::try_from(window.app.pid).is_ok_and(|pid| pid == std::process::id()) {
             // Spaceman's own Settings or setup window is never managed: nothing to float.
             return Ok(self.status(0, &outputs));

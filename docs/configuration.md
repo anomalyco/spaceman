@@ -419,7 +419,7 @@ other bindings in the file are kept.
 them off Spaceman behaves exactly as if Labs did not exist: no extra shortcuts register and no
 command changes behavior. Unknown keys are config errors. Settings › Labs lists every switch,
 grouped by what it changes (`Windows`: Scratchpad, Portrait edge rows, Recent focus, Dragged
-floats follow their display, Single-window height, Route every window and Focus follows mouse; `Workspaces`: Swipe switch, Focus empty workspaces on other
+floats follow their display, Single-window height, Route every window, Focus follows mouse and Window overlay; `Workspaces`: Swipe switch, Focus empty workspaces on other
 displays, Workspace steps and Four-finger swipe; `Menu bar & HUD`: Physical display order and Menu bar icon style; `Settings`: Activity), and flipping one there
 writes the same key.
 
@@ -439,6 +439,7 @@ single_window_height = false          # optional (default: false); reads setting
 route_all_windows = false             # optional (default: false); reads a route rule's windows = "all"
 menu_bar_icon_style = false           # optional (default: false); reads settings.menu_bar_icon
 focus_follows_mouse = false           # optional (default: false); the tile the pointer rests on takes focus
+window_overlay = false                # optional (default: false); hold Option+Shift for per-window cards
 ```
 
 `scratchpad = true` enables the Scratchpad (see [Controls › Scratchpad](controls.md#scratchpad-lab)) and
@@ -494,6 +495,12 @@ Settings. The pointer resting where `settings.mouse_follows_focus` put it is not
 two work together without feeding each other. That holds only until the pointer moves: once you
 move it away, coming back to that spot is a hover like any other. In Settings it is
 `Labs › Windows › Focus follows mouse`.
+
+`window_overlay = true` shows a card over every visible window while you hold `Option+Shift` alone
+(the `[shortcuts] modifier` and Shift): buttons to float or tile it, pin it, turn its workspace's
+Fullscreen Layout on or off, swap it with a neighbouring tile, or send it to any workspace, all
+without focusing it (see [Controls › Window Overlay](controls.md#window-overlay-lab)). It applies
+live. In Settings it is `Labs › Windows › Window overlay`.
 
 `swipe_switch = true` makes Spaceman read `settings.trackpad_swipe` and turns the fixed three-finger
 swipe row in Settings › Shortcuts into the **Swipe to switch workspace** switch (see

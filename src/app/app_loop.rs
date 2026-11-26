@@ -13,6 +13,7 @@ mod live_shortcuts;
 mod probe;
 mod setup;
 mod status_text;
+mod window_overlay;
 
 #[cfg(test)]
 pub(super) use dispatch::{AfterCommand, WorkerLifecycle};
@@ -45,6 +46,8 @@ pub(super) struct AppLoopInit {
     pub(super) swipe_fingers: Fingers,
     /// `[labs] focus_follows_mouse` as loaded at startup; the config probe keeps it current.
     pub(super) focus_follows_mouse: bool,
+    /// `[labs] window_overlay` as loaded at startup; the config probe keeps it current.
+    pub(super) window_overlay: bool,
     /// `settings.pause_on_builtin_display` as loaded at startup; the config probe keeps it current.
     pub(super) pause_on_builtin_display: bool,
     pub(super) trusted: bool,
@@ -85,6 +88,8 @@ pub struct MainThreadAgent {
     /// The Focus follows mouse Lab: hover focuses tiles, timed by `hover`.
     focus_follows_mouse: bool,
     hover: hover::HoverTracker,
+    /// The Window overlay Lab, and whether its chord is held long enough to show it.
+    window_overlay: window_overlay::WindowOverlay,
     pause_on_builtin_display: bool,
     builtin_display: builtin_display::BuiltinDisplayPolicy,
     last_display_topology_check: Instant,
@@ -210,6 +215,7 @@ impl MainThreadAgent {
             swipe_fingers: init.swipe_fingers,
             focus_follows_mouse: init.focus_follows_mouse,
             hover: hover::HoverTracker::default(),
+            window_overlay: window_overlay::WindowOverlay::new(init.window_overlay),
             pause_on_builtin_display: init.pause_on_builtin_display,
             builtin_display,
             last_display_topology_check: Instant::now(),
@@ -372,6 +378,12 @@ impl MainThreadAgent {
                             self.bridge.publish_hud(hud);
                         }
                     }
+                    self.window_overlay_result(
+                        result
+                            .as_ref()
+                            .ok()
+                            .and_then(|status| status.window_overlay.as_ref()),
+                    );
                     self.ui_dirty = true;
                     show_result(result, status_text.as_deref());
                 }
@@ -438,6 +450,7 @@ impl MainThreadAgent {
 
         self.drain_controls();
         self.drain_actions();
+        self.tick_window_overlay();
 
         if self.worker.is_restoring()
             && !self.worker.is_busy()
@@ -620,6 +633,9 @@ impl MainThreadAgent {
                     if let Some(on) = probe.focus_follows_mouse {
                         self.focus_follows_mouse = on;
                         self.hover.interrupt();
+                    }
+                    if let Some(on) = probe.window_overlay {
+                        self.window_overlay.lab = on;
                     }
                     if let Some(on) = probe.pause_on_builtin_display {
                         self.set_pause_on_builtin_display(on);

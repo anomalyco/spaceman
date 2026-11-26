@@ -63,6 +63,8 @@ pub(crate) struct LabsDoc {
     pub menu_bar_icon_style: Option<bool>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub focus_follows_mouse: Option<bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub window_overlay: Option<bool>,
 }
 
 impl LabsDoc {
@@ -81,6 +83,7 @@ impl LabsDoc {
             && self.route_all_windows.is_none()
             && self.menu_bar_icon_style.is_none()
             && self.focus_follows_mouse.is_none()
+            && self.window_overlay.is_none()
     }
 
     /// The switch as the file asks for it: off while unset.
@@ -114,6 +117,7 @@ impl LabsDoc {
             LabFeature::RouteAllWindows => self.route_all_windows,
             LabFeature::MenuBarIconStyle => self.menu_bar_icon_style,
             LabFeature::FocusFollowsMouse => self.focus_follows_mouse,
+            LabFeature::WindowOverlay => self.window_overlay,
         }
     }
 
@@ -133,6 +137,7 @@ impl LabsDoc {
             LabFeature::RouteAllWindows => &mut self.route_all_windows,
             LabFeature::MenuBarIconStyle => &mut self.menu_bar_icon_style,
             LabFeature::FocusFollowsMouse => &mut self.focus_follows_mouse,
+            LabFeature::WindowOverlay => &mut self.window_overlay,
         }
     }
 }

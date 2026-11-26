@@ -150,6 +150,22 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
         cancelled: &AtomicBool,
     ) -> Result<CycleStatus, String> {
         let (window, workspace) = self.focused_active_workspace(&outputs, cancelled, true)?;
+        let origin = CommandOrigin::Explicit;
+        self.reorder_window(window, workspace, direction, outputs, cancelled, origin)
+    }
+
+    /// Swaps `window`, a tile of the visible `workspace`, with its neighbour toward
+    /// `direction`, or moves it on that way. Off the workspace's edge it moves to the
+    /// display there; an `Explicit` origin moves focus and the pointer with it.
+    pub(super) fn reorder_window(
+        &mut self,
+        window: crate::PhysicalWindowId,
+        workspace: WorkspaceId,
+        direction: Direction,
+        outputs: macos::DisplayOutputs,
+        cancelled: &AtomicBool,
+        origin: CommandOrigin,
+    ) -> Result<CycleStatus, String> {
         self.workspaces
             .deck(workspace)
             .require_split("reordering")?;
@@ -190,7 +206,12 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
         let Some(target) = crate::navigation::target(&candidates, &window, direction) else {
             return Ok(self.status(0, &outputs));
         };
-        self.move_window_explicit(window, target.workspace, outputs, cancelled)
+        let workspace = target.workspace;
+        if origin == CommandOrigin::Explicit {
+            self.move_window_explicit(window, workspace, outputs, cancelled)
+        } else {
+            self.move_window(window, workspace, outputs, cancelled)
+        }
     }
 
     /// A display whose workspace has no tiles offers no window to move toward,
@@ -403,6 +424,17 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
         cancelled: &AtomicBool,
     ) -> Result<CycleStatus, String> {
         let (window, workspace) = self.focused_owner_workspace(&outputs, cancelled)?;
+        self.toggle_fullscreen_with(window, workspace, outputs, cancelled)
+    }
+
+    /// Toggles `workspace`'s Fullscreen Layout with `window` in front.
+    pub(super) fn toggle_fullscreen_with(
+        &mut self,
+        window: crate::PhysicalWindowId,
+        workspace: WorkspaceId,
+        outputs: macos::DisplayOutputs,
+        cancelled: &AtomicBool,
+    ) -> Result<CycleStatus, String> {
         self.workspaces.remember_focus(workspace, &window);
         let deck = self.workspaces.deck(workspace).toggled();
         self.workspaces.set_deck(workspace, deck);

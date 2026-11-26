@@ -51,6 +51,11 @@ const GROUPS: [(&str, &str, &[Lab]); 4] = [
                 "Focus follows mouse",
                 "The tile the pointer rests on takes focus, without a click",
             ),
+            (
+                LabFeature::WindowOverlay,
+                "Window overlay",
+                "Hold ⌥⇧ for move, float, pin and swap controls on every window",
+            ),
         ],
     ),
     (
