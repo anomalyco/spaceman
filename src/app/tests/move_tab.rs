@@ -215,6 +215,50 @@ fn appkit_tab_group_keeps_its_slot_for_the_next_tab_and_sends_the_moved_tab() {
 }
 
 #[test]
+fn appkit_tab_group_sends_the_moved_tab_when_an_ignore_rule_matches_the_next_tab() {
+    // #670: the tab left behind matches Ignore; the moved tab still leaves.
+    let source = window(1);
+    let next = window(2);
+    let mut observation = observation_for(BUNDLE, &source, frame(0));
+    if let crate::AppObservation::Complete { windows, .. } = &mut observation.applications[0] {
+        windows[0].title = Some("Work Document".into());
+    }
+    let mut backend = FakeBackend {
+        focused: Some(source.clone()),
+        frontmost: Some(source.app.clone()),
+        observation: Some(observation),
+        tab_detach: Some(FakeTabDetach::TabGroup {
+            next: next.clone(),
+            moved_to: offset_frame(300, 300),
+        }),
+        ..FakeBackend::default()
+    };
+    backend.frames.insert(source.clone(), frame(0));
+    let config = Config::parse(&format!(
+        "version = 1\n[[rules]]\nbundle_id = '{BUNDLE}'\ntitle = 'Work Document'\naction = 'tile'\n\
+         [[rules]]\nbundle_id = '{BUNDLE}'\naction = 'ignore'"
+    ))
+    .unwrap();
+    let mut rt = runtime_with_config(backend, config);
+    bind(&mut rt, WorkspaceId::ONE, &source);
+    rt.cycle(outputs(), &AtomicBool::new(false)).unwrap();
+    rt.backend.calls.clear();
+
+    move_tab(&mut rt, WorkspaceId::TWO, true).unwrap();
+
+    assert_eq!(rt.workspaces.workspace_of(&source), Some(WorkspaceId::TWO));
+    assert!(rt.workspaces.windows(WorkspaceId::ONE).is_empty());
+    assert_eq!(rt.workspaces.workspace_of_any(&next), None);
+    assert!(!rt.parked.contains_key(&next));
+    assert_eq!(
+        rt.workspaces.active_for(&DisplaySelector::Main),
+        Some(WorkspaceId::TWO)
+    );
+    assert_eq!(rt.backend.focused.as_ref(), Some(&source));
+    assert!(rt.tab_detach.is_none());
+}
+
+#[test]
 fn single_tab_window_moves_whole_like_move() {
     let (mut rt, source) = tabbed_runtime(None, Config::default());
 
