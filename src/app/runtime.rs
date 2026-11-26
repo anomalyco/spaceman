@@ -71,9 +71,9 @@ pub(super) struct WorkspaceRuntime<B = MacWorkspaceBackend> {
     pub(super) displays: super::displays::DisplayWatch,
     /// A pressed "Move Tab to New Window" awaiting its new window.
     pub(super) tab_detach: Option<super::detach_tab::PendingTabDetach>,
-    /// `(detached, remaining)` from the latest settled tab detach, read by
-    /// `move_tab` when an AppKit tab group swaps the source window's ID.
-    pub(super) last_tab_detach_handoff: Option<(crate::PhysicalWindowId, crate::PhysicalWindowId)>,
+    /// The latest settled tab detach, read by the next `move_tab` shortly
+    /// after when an AppKit tab group swaps the source window's ID.
+    pub(super) last_tab_detach_handoff: Option<super::detach_tab::TabDetachHandoff>,
     /// The setup tour's arrangement: where it sends unowned windows, and how to undo it.
     pub(super) arranging: super::arrange::ArrangeState,
 }

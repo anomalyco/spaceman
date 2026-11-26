@@ -467,6 +467,191 @@ fn rapid_double_move_tab_follow_appkit_tab_group_follows_remaining() {
 }
 
 #[test]
+fn queued_move_tab_follow_detaches_the_next_tab_after_the_first_settled() {
+    // #597: both commands were queued before the first claim, but the first
+    // detach settled in an ordinary cycle before the second command ran.
+    let remaining = window(2);
+    let third = window(3);
+    let (mut rt, source) = tabbed_runtime(Some(FakeTabDetach::Silent), Config::default());
+
+    move_tab(&mut rt, WorkspaceId::SIX, true).unwrap();
+    let source_frame = rt.backend.frames[&source];
+    rt.backend
+        .frames
+        .insert(source.clone(), offset_frame(120, 120));
+    rt.backend.open_window(&remaining, source_frame);
+    rt.cycle(outputs(), &AtomicBool::new(false)).unwrap();
+    assert!(rt.tab_detach.is_none(), "the first detach settled");
+    assert_eq!(rt.workspaces.workspace_of(&source), Some(WorkspaceId::SIX));
+    assert_eq!(rt.backend.focused, Some(source.clone()), "followed");
+
+    rt.backend.tab_detach = Some(FakeTabDetach::TabGroup {
+        next: third.clone(),
+        moved_to: offset_frame(240, 240),
+    });
+    move_tab(&mut rt, WorkspaceId::THREE, true).unwrap();
+
+    assert_eq!(rt.workspaces.workspace_of(&source), Some(WorkspaceId::SIX));
+    assert_eq!(
+        rt.workspaces.workspace_of(&remaining),
+        Some(WorkspaceId::THREE)
+    );
+    assert_eq!(rt.workspaces.workspace_of(&third), Some(WorkspaceId::ONE));
+    assert!(rt.tab_detach.is_none());
+}
+
+#[test]
+fn a_second_move_tab_detaches_from_the_group_its_follow_switched_away_from() {
+    // #597: `move-tab 2 --follow` hides workspace 1 on the same display, so
+    // the group's next tab is parked when the second command presses on it.
+    for follow in [false, true] {
+        let remaining = window(2);
+        let third = window(3);
+        let (mut rt, source) = tabbed_runtime(Some(FakeTabDetach::Silent), Config::default());
+
+        move_tab(&mut rt, WorkspaceId::TWO, true).unwrap();
+        let source_frame = rt.backend.frames[&source];
+        rt.backend
+            .frames
+            .insert(source.clone(), offset_frame(120, 120));
+        rt.backend.open_window(&remaining, source_frame);
+        rt.cycle(outputs(), &AtomicBool::new(false)).unwrap();
+        assert_eq!(
+            rt.workspaces.active_for(&DisplaySelector::Main),
+            Some(WorkspaceId::TWO)
+        );
+        assert_eq!(
+            rt.workspaces.workspace_of(&remaining),
+            Some(WorkspaceId::ONE)
+        );
+        assert!(rt.parked.contains_key(&remaining));
+        assert_eq!(rt.backend.focused.as_ref(), Some(&source));
+
+        rt.backend.tab_detach = Some(FakeTabDetach::TabGroup {
+            next: third.clone(),
+            moved_to: offset_frame(240, 240),
+        });
+        move_tab(&mut rt, WorkspaceId::THREE, follow).unwrap();
+
+        assert_eq!(rt.workspaces.workspace_of(&source), Some(WorkspaceId::TWO));
+        assert_eq!(
+            rt.workspaces.workspace_of(&remaining),
+            Some(WorkspaceId::THREE),
+            "follow={follow}"
+        );
+        assert_eq!(rt.workspaces.workspace_of(&third), Some(WorkspaceId::ONE));
+        let (shown, focused) = if follow {
+            (WorkspaceId::THREE, &remaining)
+        } else {
+            (WorkspaceId::TWO, &source)
+        };
+        assert_eq!(
+            rt.workspaces.active_for(&DisplaySelector::Main),
+            Some(shown),
+            "follow={follow}"
+        );
+        assert_eq!(
+            rt.backend.focused.as_ref(),
+            Some(focused),
+            "follow={follow}"
+        );
+        assert!(rt.tab_detach.is_none());
+
+        // Focus follow does not chase the parked group back to workspace 1.
+        rt.cycle(outputs(), &AtomicBool::new(false)).unwrap();
+        assert_eq!(
+            rt.workspaces.active_for(&DisplaySelector::Main),
+            Some(shown),
+            "follow={follow}"
+        );
+    }
+}
+
+#[test]
+fn a_second_move_tab_without_follow_leaves_focus_on_the_followed_tab() {
+    let remaining = window(2);
+    let third = window(3);
+    let (mut rt, source) = tabbed_runtime(Some(FakeTabDetach::Silent), Config::default());
+
+    move_tab(&mut rt, WorkspaceId::SIX, true).unwrap();
+    let source_frame = rt.backend.frames[&source];
+    rt.backend
+        .frames
+        .insert(source.clone(), offset_frame(120, 120));
+    rt.backend.open_window(&remaining, source_frame);
+    rt.cycle(outputs(), &AtomicBool::new(false)).unwrap();
+    assert_eq!(rt.backend.focused.as_ref(), Some(&source));
+
+    rt.backend.tab_detach = Some(FakeTabDetach::TabGroup {
+        next: third.clone(),
+        moved_to: offset_frame(240, 240),
+    });
+    move_tab(&mut rt, WorkspaceId::THREE, false).unwrap();
+
+    assert_eq!(rt.workspaces.workspace_of(&source), Some(WorkspaceId::SIX));
+    assert_eq!(
+        rt.workspaces.workspace_of(&remaining),
+        Some(WorkspaceId::THREE)
+    );
+    assert_eq!(rt.workspaces.workspace_of(&third), Some(WorkspaceId::ONE));
+    assert_eq!(rt.backend.focused.as_ref(), Some(&source));
+    assert_eq!(
+        rt.workspaces.active_for(&DisplaySelector::Main),
+        Some(WorkspaceId::ONE)
+    );
+}
+
+/// `source` was just focused by a Spaceman command from `left` on workspace
+/// 6, but Accessibility still reports `left`.
+fn lagging_focus_runtime(
+    detach: Option<FakeTabDetach>,
+) -> (
+    WorkspaceRuntime<FakeBackend>,
+    crate::PhysicalWindowId,
+    crate::PhysicalWindowId,
+) {
+    let left = window(5);
+    let (mut rt, source) = tabbed_runtime(detach, Config::default());
+    rt.backend.open_window(&left, offset_frame(1100, 100));
+    bind(&mut rt, WorkspaceId::SIX, &left);
+    rt.backend.focused = Some(left.clone());
+    rt.cycle(outputs(), &AtomicBool::new(false)).unwrap();
+    assert!(rt.request_focus(&source, [Some(left.clone())]));
+    rt.backend.focused = Some(left.clone());
+    rt.backend.calls.clear();
+    (rt, source, left)
+}
+
+#[test]
+fn move_tab_with_a_lagging_focus_report_keeps_focus_on_the_remaining_tabs() {
+    let tab = window(2);
+    let (mut rt, source, left) = lagging_focus_runtime(Some(FakeTabDetach::NewWindow(
+        tab.clone(),
+        offset_frame(100, 100),
+    )));
+
+    move_tab(&mut rt, WorkspaceId::TWO, false).unwrap();
+
+    assert_eq!(rt.workspaces.workspace_of(&tab), Some(WorkspaceId::TWO));
+    assert_eq!(rt.workspaces.workspace_of(&source), Some(WorkspaceId::ONE));
+    assert_eq!(rt.backend.focused.as_ref(), Some(&source));
+    assert!(!focus_calls(&rt).contains(&left), "focus never goes back");
+}
+
+#[test]
+fn single_tab_move_tab_with_a_lagging_focus_report_moves_like_move() {
+    let (mut rt, source, left) = lagging_focus_runtime(None);
+
+    move_tab(&mut rt, WorkspaceId::TWO, false).unwrap();
+
+    assert_eq!(rt.workspaces.workspace_of(&source), Some(WorkspaceId::TWO));
+    assert!(rt.parked.contains_key(&source));
+    assert!(!focus_calls(&rt).contains(&left), "focus never goes back");
+    // `move` of the focused window guards it as it leaves its emptied workspace.
+    assert_eq!(rt.focus.guarded_window(), Some(&source));
+}
+
+#[test]
 fn move_tab_does_not_claim_unowned_window_when_cg_snapshot_fails() {
     let stray = window(2);
     let (mut rt, source) = tabbed_runtime(Some(FakeTabDetach::Silent), Config::default());

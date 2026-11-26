@@ -438,8 +438,12 @@ impl WorkspaceBackend for FakeBackend {
 
     fn detach_tab(&mut self, window: &crate::PhysicalWindowId) -> macos::TabDetachResult {
         self.calls.push(BackendCall::DetachTab(window.clone()));
+        // Like the app's own menu command, the press acts on the key window:
+        // pressed from any other window, it detaches nothing (#597).
+        let pressed_on_key = self.focused.as_ref() == Some(window);
         match self.tab_detach.take() {
             None => return macos::TabDetachResult::SingleTabOrUnsupported,
+            Some(_) if !pressed_on_key => {}
             Some(FakeTabDetach::NewWindow(new, frame)) => {
                 self.open_window(&new, frame);
                 self.focused = Some(new);
