@@ -68,6 +68,16 @@ fn bare_and_shift_only_keys_are_refused() {
 }
 
 #[test]
+fn keypad_keys_are_refused_rather_than_bound_to_their_main_key() {
+    let ctrl_alt = mods(true, true, false, false);
+    assert_eq!(us(K::NumpadEnter, ctrl_alt), Press::Refused(UNSUPPORTED));
+    // Even when the layout says the keypad key types `1`, it isn't the number row's `1`.
+    let typed = |key| (key == K::Numpad1).then_some('1');
+    assert_eq!(press(K::Numpad1, ctrl_alt, typed), Press::Refused(UNSUPPORTED));
+    assert_eq!(us(K::Enter, ctrl_alt), chord("ctrl+alt+return"));
+}
+
+#[test]
 fn escape_cancels_and_a_bare_delete_unbinds() {
     assert_eq!(us(K::Escape, Mods::default()), Press::Cancel);
     assert_eq!(
