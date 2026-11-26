@@ -320,6 +320,70 @@ workspace = 2",
     }
 }
 
+/// #689: a recalled window whose first park to its hidden workspace is refused keeps the
+/// placement it claimed, tile or float, and joins it once the window accepts the move.
+#[test]
+fn a_recalled_window_keeps_its_placement_across_a_refused_first_park() {
+    use crate::window_memory::{RememberedWindow, WindowMemory};
+
+    let target = WorkspaceId::new(7).unwrap();
+    let remembered = crate::Rect {
+        x: 1300,
+        y: 40,
+        width: 400,
+        height: 300,
+    };
+    for floating in [false, true] {
+        let id = window(20);
+        let backend = FakeBackend {
+            frames: [(id.clone(), frame(100))].into_iter().collect(),
+            observation: Some(observation(&id, frame(100))),
+            focused: Some(id.clone()),
+            // Like the reported app: any write that changes its x is refused.
+            refuses_position: Some(|rect: crate::Rect| rect.x != 100),
+            ..FakeBackend::default()
+        };
+        let mut rt = runtime(backend);
+        let mut memory = WindowMemory::default();
+        memory.record(
+            "com.example.Test",
+            vec![RememberedWindow {
+                workspace: target,
+                frame: remembered,
+                floating,
+                document: None,
+                title: None,
+            }],
+            1,
+        );
+        rt.restore_window_memory(memory);
+
+        let status = rt.cycle(outputs(), &AtomicBool::new(false)).unwrap();
+        assert!(status.failed > 0, "floating={floating}: the park is refused");
+        assert_eq!(rt.workspaces.workspace_of_any(&id), None, "floating={floating}");
+        assert!(!rt.parked.contains_key(&id), "floating={floating}");
+
+        rt.backend.refuses_position = None;
+        let status = rt.cycle(outputs(), &AtomicBool::new(false)).unwrap();
+        assert_eq!(status.failed, 0, "floating={floating}");
+        if floating {
+            assert_eq!(rt.workspaces.floating_workspace_of(&id), Some(target));
+            let recovery = rt.parked.get(&id).copied().expect("parked");
+            assert_eq!((recovery.x, recovery.y), (remembered.x, remembered.y));
+        } else {
+            assert_eq!(rt.workspaces.workspace_of(&id), Some(target));
+            assert!(rt.parked.contains_key(&id));
+        }
+        assert!(
+            !crate::geometry::shows_on(
+                rt.backend.frames[&id],
+                &outputs().frames().collect::<Vec<_>>(),
+            ),
+            "floating={floating}: parked off-screen"
+        );
+    }
+}
+
 /// #148: a floating window dragged onto another display parks off that
 /// display when leaving its workspace, keeping its exact recovery frame.
 #[test]

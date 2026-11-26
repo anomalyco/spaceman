@@ -99,6 +99,21 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
         for home in std::mem::take(&mut policy.float_homes) {
             if !self.place_float_home(&home, &policy.visible_workspaces, outputs) {
                 *failed += 1;
+                if home.remembered.is_some()
+                    && !policy.visible_workspaces.contains(&home.workspace)
+                {
+                    // A recalled float whose park failed is unowned again, so a later cycle
+                    // parks it with its remembered frame, not wherever it opened (#689).
+                    log_event!(
+                        "recall float {:?} -> workspace {}: park failed; retrying",
+                        home.window,
+                        home.workspace
+                    );
+                    self.workspaces.forget_floating(&home.window);
+                    policy
+                        .windows
+                        .insert(home.window.clone(), FrozenWindowAffinity::Ignored);
+                }
             }
         }
     }
