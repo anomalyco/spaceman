@@ -3,11 +3,14 @@ mod deck;
 mod omission;
 mod readback;
 mod routing;
+mod tab_handoff;
 pub(super) use deck::SetAsideTiles;
 pub(super) use omission::Omission;
 #[cfg(test)]
 pub(super) use readback::ASYNC_BOUNCE_SETTLE;
 pub(super) use readback::{APPLY_ATTEMPT_LIMIT, AppliedFrame, record_apply_attempt};
+#[cfg(test)]
+pub(super) use tab_handoff::TAB_HANDOFF_SETTLE;
 
 use affinity::{FrozenAffinityPolicy, FrozenWindowAffinity};
 
@@ -250,7 +253,7 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
         // Taken after the Accessibility snapshot so a window listed here was
         // on screen no earlier than the snapshot that may have omitted it.
         let onscreen_snapshot = self.backend.onscreen_window_frames();
-        let mut close_recheck = None;
+        let mut close_recheck = affinity_policy.handoff_recheck;
         for resolved in &visible {
             if !self.scope.manages_selector(&resolved.selector) {
                 continue;
@@ -381,6 +384,17 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
         scoped_observation.cycle = ticket.cycle;
         let settings = self.layout_settings(output);
         for app in &mut scoped_observation.applications {
+            // An app with a native tab held mid-handoff keeps its tiles and focus history
+            // until the handoff settles (#706).
+            if let crate::AppObservation::Complete { app: observed, .. } = app
+                && let Some(held) = affinity_policy.held_apps.get(&observed.id).cloned()
+            {
+                *app = crate::AppObservation::Unavailable {
+                    app: held,
+                    error: "native tab handoff settling".into(),
+                };
+                continue;
+            }
             if let crate::AppObservation::Complete {
                 app: _,
                 focused,

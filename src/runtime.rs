@@ -148,6 +148,23 @@ impl Engine {
         )
     }
 
+    /// Whether `candidate` sits at one of its app's tiles here mid native-tab handoff
+    /// ([`crate::reconcile::native_tab_handoff_pending`]).
+    pub(crate) fn native_tab_handoff_pending(
+        &self,
+        settings: &Settings,
+        candidate: &crate::ObservedWindow,
+        windows: &[crate::ObservedWindow],
+    ) -> bool {
+        crate::reconcile::native_tab_handoff_pending(
+            &self.model,
+            &self.evidence,
+            settings,
+            candidate,
+            windows,
+        )
+    }
+
     pub(crate) fn record_placement_target(&mut self, slot: crate::SlotId, frame: crate::Rect) {
         self.evidence.previous_placements.insert(slot, frame);
     }

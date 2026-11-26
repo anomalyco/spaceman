@@ -50,6 +50,8 @@ pub(super) struct WorkspaceRuntime<B = MacWorkspaceBackend> {
     /// Bound windows omitted from the AX snapshot but still listed by CG,
     /// with their settling and close-recheck state.
     pub(super) omitted_windows: HashMap<crate::PhysicalWindowId, cycle::Omission>,
+    /// Incoming native tabs held from a route mid-handoff, and since when (#706).
+    pub(super) tab_handoffs: HashMap<crate::PhysicalWindowId, Instant>,
     /// Owned windows Accessibility reports gone while the window server still
     /// lists them, and when that began.
     pub(super) inaccessible_since: HashMap<crate::PhysicalWindowId, Instant>,
@@ -386,6 +388,7 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
             apply_attempts: std::array::from_fn(|_| HashMap::new()),
             parked: parked.into(),
             omitted_windows: HashMap::new(),
+            tab_handoffs: HashMap::new(),
             inaccessible_since: HashMap::new(),
             minimum_sizes: HashMap::new(),
             unmovable_stale: super::stale_parked::UnmovableStale::default(),

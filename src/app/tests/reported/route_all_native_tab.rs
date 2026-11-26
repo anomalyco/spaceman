@@ -138,3 +138,106 @@ fn an_incoming_native_tab_keeps_its_slot_beside_an_ignored_window_of_its_app() {
     assert_eq!(runtime.workspaces.workspace_of_any(&ignored), None);
     assert_eq!(runtime.backend.frames[&ignored], frame(100));
 }
+
+/// #706: a native tab switch can land in a snapshot that doesn't yet prove the replacement:
+/// the outgoing tab still listed at the tile's frame, or focus not yet on the incoming tab.
+/// Routing that snapshot sent the tab to the rule's workspace and retired its tile. The tab
+/// is held instead, and takes its tile's slot once the evidence settles. Reported by
+/// @coygeek.
+#[test]
+fn a_native_tab_caught_mid_handoff_keeps_its_slot_under_a_route_all_rule() {
+    for outgoing_still_listed in [true, false] {
+        let (previous, replacement) = (window(10), window(11));
+        let (mut runtime, accepted) = tiled_on_one(&previous);
+        let slot = runtime
+            .workspaces
+            .engine(WorkspaceId::ONE)
+            .slot_for_window(&previous);
+
+        // Mid-handoff: both tabs listed with focus still on the outgoing one, or the
+        // outgoing one gone before focus reaches the incoming one.
+        runtime.backend.frames.insert(replacement.clone(), accepted);
+        let mut handoff = if outgoing_still_listed {
+            observation_for_windows(
+                "com.example.Test",
+                &previous,
+                &[
+                    (previous.clone(), accepted),
+                    (replacement.clone(), accepted),
+                ],
+            )
+        } else {
+            runtime.backend.frames.remove(&previous);
+            runtime.backend.focused = None;
+            observation(&replacement, accepted)
+        };
+        if !outgoing_still_listed {
+            let crate::AppObservation::Complete { focused, .. } = &mut handoff.applications[0]
+            else {
+                unreachable!();
+            };
+            *focused = None;
+        }
+        runtime.backend.observation = Some(handoff);
+        let status = runtime.cycle(outputs(), &AtomicBool::new(false)).unwrap();
+
+        assert_eq!(runtime.workspaces.workspace_of_any(&replacement), None);
+        assert_eq!(
+            runtime
+                .workspaces
+                .engine(WorkspaceId::ONE)
+                .slot_for_window(&previous),
+            slot
+        );
+        assert!(status.close_recheck.is_some());
+
+        // Settled: the outgoing tab gone and focus on the incoming one.
+        runtime.backend.advance(Duration::from_millis(100));
+        runtime.backend.frames.remove(&previous);
+        runtime.backend.focused = Some(replacement.clone());
+        runtime.backend.observation = Some(observation(&replacement, accepted));
+        runtime.cycle(outputs(), &AtomicBool::new(false)).unwrap();
+
+        assert_eq!(
+            runtime.workspaces.workspace_of(&replacement),
+            Some(WorkspaceId::ONE)
+        );
+        assert_eq!(
+            runtime
+                .workspaces
+                .engine(WorkspaceId::ONE)
+                .slot_for_window(&replacement),
+            slot
+        );
+        assert!(!runtime.parked.contains_key(&replacement));
+    }
+}
+
+/// #706: a window left at a tile's frame with its tile's window still there is only held
+/// for a bounded settle; past it, the rule routes it as the new window it is.
+#[test]
+fn a_new_window_at_a_tiles_frame_follows_the_route_all_rule_after_the_settle() {
+    let (tiled, opened) = (window(10), window(11));
+    let (mut runtime, accepted) = tiled_on_one(&tiled);
+    runtime.backend.frames.insert(opened.clone(), accepted);
+    runtime.backend.focused = Some(opened.clone());
+    runtime.backend.observation = Some(observation_for_windows(
+        "com.example.Test",
+        &opened,
+        &[(tiled.clone(), accepted), (opened.clone(), accepted)],
+    ));
+    runtime.cycle(outputs(), &AtomicBool::new(false)).unwrap();
+    assert_eq!(runtime.workspaces.workspace_of_any(&opened), None);
+
+    runtime.backend.advance(cycle::TAB_HANDOFF_SETTLE);
+    runtime.cycle(outputs(), &AtomicBool::new(false)).unwrap();
+
+    assert_eq!(
+        runtime.workspaces.workspace_of(&tiled),
+        Some(WorkspaceId::ONE)
+    );
+    assert_eq!(
+        runtime.workspaces.workspace_of(&opened),
+        Some(WorkspaceId::SIX)
+    );
+}

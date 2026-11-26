@@ -130,7 +130,9 @@ overrides the default for what it decides: `action = "tile"` tiles one of these 
   to reach it). Otherwise it opens on the workspace where it was first observed. A rule does not
   repeatedly route existing slots, including a native-tab physical replacement in any app: an
   incoming tab that takes over its tile's slot stays on that tile's workspace, even under a
-  `windows = "all"` rule.
+  `windows = "all"` rule. A window that appears exactly at one of its app's tiles mid tab switch
+  (the old tab still listed there, or focus not on it yet) waits up to a second for that switch
+  to settle before such a rule routes it as a new window.
 - `ignore` leaves the window entirely alone: never tiled, never owned by a workspace, never moved or
   parked. Use it for applications that insist on positioning their own windows. A previously managed
   window is released the next time it is observed on screen, including a window from a hidden
