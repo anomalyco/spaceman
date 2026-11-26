@@ -93,6 +93,25 @@ use worker::spawn_worker;
 pub const TICK_INTERVAL: Duration = Duration::from_millis(25);
 /// Prefix on `UiAgentSnapshot::last_error` when installing a staged update fails.
 pub const UPDATE_FAILED_PREFIX: &str = "Update failed: ";
+
+/// The menu and `ctl status` text for a cycle that left `failed` window operations failed.
+pub fn window_operations_failed_status(failed: usize) -> String {
+    format!(
+        "{failed} window operation{} failed",
+        if failed == 1 { "" } else { "s" },
+    )
+}
+
+/// Whether a `UiAgentSnapshot::last_error` is a cycle's transient window-operation failure
+/// (see [`window_operations_failed_status`]) rather than a lasting agent error.
+pub fn is_window_operations_failed_error(error: &str) -> bool {
+    error.split_once(' ').is_some_and(|(count, rest)| {
+        !count.is_empty()
+            && count.bytes().all(|byte| byte.is_ascii_digit())
+            && matches!(rest, "window operation failed" | "window operations failed")
+    })
+}
+
 /// Retile without an event this often while the user is active...
 const FALLBACK_REFRESH_INTERVAL: Duration = Duration::from_secs(1);
 /// ...and this often once nothing has happened for `RECENT_ACTIVITY`. Each

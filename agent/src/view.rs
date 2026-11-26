@@ -185,7 +185,10 @@ fn error_banner(ui: &Ui, p: Paint) -> Option<El> {
     let agent_error = ui
         .agent
         .as_ref()
-        .and_then(|agent| agent.last_error.as_deref());
+        .and_then(|agent| agent.last_error.as_deref())
+        // A cycle's window-operation failure is transient and already shown in the
+        // menu and `ctl status`; it is not a Settings error (#694).
+        .filter(|error| !spaceman::app::is_window_operations_failed_error(error));
     let copy = ui
         .error
         .as_deref()
