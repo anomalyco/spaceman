@@ -395,6 +395,9 @@ enum FinalGesture {
         window: crate::PhysicalWindowId,
         point: (i32, i32),
         bounds: Option<input::PointerBounds>,
+        /// When the main thread saw the button go down, so a Fullscreen
+        /// Layout exit the worker ran mid-press still owns the drag (#619).
+        pressed_at: Option<std::time::Instant>,
     },
     Resize(crate::PhysicalWindowId, crate::Rect),
 }
@@ -406,6 +409,7 @@ impl FinalGesture {
             window,
             point,
             bounds: None,
+            pressed_at: None,
         }
     }
 }

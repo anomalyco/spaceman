@@ -63,9 +63,10 @@ impl MainThreadAgent {
         if !self.mouse_was_down && mouse_down {
             // Core Graphics hit-testing and readback do not send synchronous
             // AX messages to another app from the main-thread input loop.
-            self.gesture_tracker.begin_at(
+            self.gesture_tracker.begin_pressed(
                 pointer.map(macos::windows_at_point).unwrap_or_default(),
                 pointer,
+                Some(Instant::now()),
             );
         } else if mouse_down
             && self.gesture_tracker.is_active()

@@ -14,6 +14,7 @@ mod dwindle_split_after_focus;
 mod edge_return_busy;
 mod float_dock_release;
 mod focus_ring_no_ax_window;
+mod fullscreen_early_toggle_drag;
 mod fullscreen_frame_move;
 mod fullscreen_near_return_drag;
 mod held_swap_numbered_move;

@@ -36,14 +36,16 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
         outputs: macos::DisplayOutputs,
         cancelled: &AtomicBool,
     ) -> Result<CycleStatus, String> {
-        self.drop_window_tracked(window, point, None, preview, outputs, cancelled)
+        self.drop_window_tracked(window, point, None, None, preview, outputs, cancelled)
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub(in crate::app) fn drop_window_tracked(
         &mut self,
         window: crate::PhysicalWindowId,
         point: (i32, i32),
         bounds: Option<PointerBounds>,
+        pressed_at: Option<Instant>,
         preview: bool,
         outputs: macos::DisplayOutputs,
         cancelled: &AtomicBool,
@@ -63,7 +65,7 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
             return Ok(self.status(0, &outputs));
         }
         let source_output = output_for(&self.workspaces, source, &outputs);
-        let started_in_fullscreen = matches!(
+        let marked_fullscreen = matches!(
             self.gesture.as_ref(),
             Some(GestureOverlay {
                 window: dragged,
@@ -74,13 +76,19 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
                 ..
             }) if *dragged == window
         );
+        // Fullscreen Layout left after the button went down, possibly before
+        // the worker saw any preview of this drag (#619).
+        let started_in_fullscreen = marked_fullscreen
+            || pressed_at
+                .zip(self.fullscreen_left_at.get(&source))
+                .is_some_and(|(pressed, left)| pressed <= *left);
         if self.workspaces.deck(source).is_monocle() || started_in_fullscreen {
             // Fullscreen Layout ignores pointer drags: remember that the drag
             // started in Fullscreen so toggling back to Split mid-drag never
             // commits an accidental drop, and on release restore the tile
             // wherever it was let go (#392).
             if preview {
-                if !started_in_fullscreen {
+                if !marked_fullscreen {
                     self.gesture = Some(GestureOverlay {
                         window,
                         workspace: source,

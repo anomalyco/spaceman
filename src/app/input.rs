@@ -1,6 +1,6 @@
 //! Pure input state: previews may be skipped, but completed gestures and key
 //! commands retain their arrival order until dispatched or explicitly cleared.
-use std::collections::VecDeque;
+use std::{collections::VecDeque, time::Instant};
 
 use super::{FinalGesture, WorkerAction};
 use crate::{PhysicalWindowId, Rect, swipe::Fingers};
@@ -171,6 +171,7 @@ struct Gesture {
     last_preview: Option<FinalGesture>,
     bounds: Option<PointerBounds>,
     start_point: Option<(i32, i32)>,
+    pressed_at: Option<Instant>,
 }
 
 struct Candidate {
@@ -194,6 +195,16 @@ impl GestureTracker {
         candidates: Vec<(PhysicalWindowId, Rect)>,
         start_point: Option<(i32, i32)>,
     ) {
+        self.begin_pressed(candidates, start_point, None);
+    }
+
+    /// [`Self::begin_at`], also recording when the button went down.
+    pub(super) fn begin_pressed(
+        &mut self,
+        candidates: Vec<(PhysicalWindowId, Rect)>,
+        start_point: Option<(i32, i32)>,
+        pressed_at: Option<Instant>,
+    ) {
         self.active = (!candidates.is_empty()).then(|| Gesture {
             candidates: candidates
                 .into_iter()
@@ -208,6 +219,7 @@ impl GestureTracker {
             last_preview: None,
             bounds: start_point.map(PointerBounds::point),
             start_point,
+            pressed_at,
         });
     }
 
@@ -266,13 +278,20 @@ impl Gesture {
             bounds.extend(point);
         }
         let bounds = self.bounds;
+        let pressed_at = self.pressed_at;
         let travel = self
             .start_point
             .zip(point)
             .map(|(start, point)| (point.0 - start.0, point.1 - start.1));
         if let Some(index) = self.chosen {
             let candidate = &mut self.candidates[index];
-            return candidate.classify(frame_of(&candidate.window)?, point, bounds, travel);
+            return candidate.classify(
+                frame_of(&candidate.window)?,
+                point,
+                bounds,
+                travel,
+                pressed_at,
+            );
         }
         // Until a preview is sent nothing has moved the candidates but the
         // user, so the first one that changed is the one being dragged.
@@ -280,7 +299,7 @@ impl Gesture {
             let Some(frame) = frame_of(&candidate.window) else {
                 continue;
             };
-            if let Some(gesture) = candidate.classify(frame, point, bounds, travel) {
+            if let Some(gesture) = candidate.classify(frame, point, bounds, travel, pressed_at) {
                 self.chosen = Some(index);
                 return Some(gesture);
             }
@@ -296,6 +315,7 @@ impl Candidate {
         point: Option<(i32, i32)>,
         bounds: Option<PointerBounds>,
         travel: Option<(i32, i32)>,
+        pressed_at: Option<Instant>,
     ) -> Option<FinalGesture> {
         // A window carried by its title bar stays a drag: an app that changes
         // its own size as it lands is not a border resize (#429).
@@ -309,6 +329,7 @@ impl Candidate {
                 window: self.window.clone(),
                 point,
                 bounds,
+                pressed_at,
             })
         } else {
             None
