@@ -216,9 +216,16 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
                     self.note_placement(&window.id, PlacementSource::Recall, placement.workspace);
                     float_home(self, placement.workspace, Some(placement.frame))
                 } else if floating {
+                    // Routed only from a managed display holding its center, like a tiled
+                    // route: a window centered between displays stays unmanaged (#730).
+                    let on_managed_display = visible.iter().any(|resolved| {
+                        self.scope.manages_selector(&resolved.selector)
+                            && resolved.screen.contains_center(window.frame)
+                    });
                     let routed = patch.home.filter(|target| {
-                        (!app_owns_window
-                            || self.config.routes_every_window(&app.bundle_id, window))
+                        on_managed_display
+                            && (!app_owns_window
+                                || self.config.routes_every_window(&app.bundle_id, window))
                             && self
                                 .scope
                                 .manages_selector(self.workspaces.assignment(*target))

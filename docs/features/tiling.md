@@ -170,7 +170,7 @@ so a full queue fails that command with `Input queue full; command was not queue
   let go a point or two from its capped frame is written back exactly (#613), a drag begun in
   Fullscreen Layout stays ignored when the mode is left right after it starts (#619), a float or new window
   over a Dock strip stays on that display (#393, #394), a new window matching a `route` rule over a
-  menu bar strip is routed, the topmost display's included (#498, #586), a lost mouse-up sample restores the previews (#395), a width cap
+  menu bar strip is routed, the topmost display's included (#498, #586), while a new floating window centered between displays is left alone (#730), a lost mouse-up sample restores the previews (#395), a width cap
   does not hide an adjacent display from directional focus and moves (#396), an emptied named
   workspace keeps its split direction across a restart (#402), absolute and keyboard resizes keep
   the 50-point floor past gaps and every known minimum (#407, #408, #409), reach an absolute width
