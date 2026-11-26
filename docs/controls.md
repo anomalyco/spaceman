@@ -297,6 +297,11 @@ touch the workspace's other splits. Neither has a default shortcut (see
 runtime geometry in the terminal until interrupted. `ctl wrong` marks the journal the moment something looks wrong and
 writes a full arrangement snapshot, so `doctor` shows what the screen held then.
 
+`ctl status` reports `mode`, `busy`, `active_workspaces`, and `last_error`. When the last completed
+cycle left window operations failed, `last_error` carries the same `N window operation(s) failed`
+text as the menu status until a clean cycle or a pause clears it. Settings does not show this
+transient failure as an error banner; it shows only lasting agent errors there.
+
 `ctl debug` excludes window titles. Its directional `targets` are the tiles `ctl focus` would focus
 from the same state, including Fullscreen Layout, a focused float, an empty workspace and a focus
 command still settling. It reports each display's Fullscreen Layout state and tiled
