@@ -441,6 +441,7 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
         self.guard_omitted_windows(
             workspace,
             &mut scoped_observation,
+            server_frames,
             onscreen_frames,
             close_recheck,
         );
