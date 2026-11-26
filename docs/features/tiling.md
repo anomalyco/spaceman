@@ -21,7 +21,8 @@ Automatic tiling                                        // tile.auto
     ├── Any app (Finder, Safari, Terminal...) -> when the evidence is unambiguous (one window out, one in, focus moved to it, at the tile's frame or, for an app that caps its window size, where the old tab was)
     │   ├── Under a route rule with windows = "all" -> the incoming tab still keeps the slot on its tile's workspace, not the rule's
     │   │   └── Caught mid-switch (old tab still listed, or focus not there yet) at the tile's frame -> held up to a second for the evidence instead of routed, then routed as a new window (#706)
-    │   └── Right after a pointer resize is released -> the incoming tab keeps the resized tile's side and width (#624)
+    │   ├── Right after a pointer resize is released -> the incoming tab keeps the resized tile's side and width (#624)
+    │   └── Old tab ordered out before the new one is on screen -> while another tab of the group is listed at the tile's corner, the tile waits up to 300 ms for it, so it still keeps side and width (#707); a close with no other window of the app at that corner does not wait
     └── Ghostty -> ambiguous evidence also holds the slot for a bounded settle
 
 Focus                                                   // tile.focus
@@ -255,11 +256,14 @@ pause, quit, or hotkey loss.
   previews never compound into intermediate swaps.
 - Some apps (many SwiftUI apps) close a window by ordering it out; the window server keeps
   listing it. When a sibling stays visible and the app had one tile on this workspace, an empty
-  Accessibility window list can confirm the close immediately. An inconclusive check gets one
-  retry after 75 ms. A surface that stays ordered out then follows the usual two-second settling
-  period. Minimizing an app's only window (Command-M) or hiding the app (Command-H) skips that
-  period: macOS confirms it, so the siblings reflow at once, and the window comes back as a
-  new tile at the end of the layout. While nothing on the display is observed (another macOS Space
+  Accessibility window list can confirm the close immediately, unless the window server still
+  lists another window of the app, held by no workspace, at the tile's top-left corner, as it
+  does a native tab group's next tab (#707). The check then waits up to 300 ms for that tab to
+  take the tile over; an older window the app keeps ordered out at that same corner delays a
+  close the same way. An inconclusive check gets one retry after 75 ms. A surface that stays
+  ordered out then follows the usual two-second settling period. Minimizing an app's only window
+  (Command-M) or hiding the app (Command-H) skips that period: macOS confirms it, so the siblings
+  reflow at once, and the window comes back as a new tile at the end of the layout. While nothing on the display is observed (another macOS Space
   is showing), tiles are kept, except a window macOS reports minimized or hidden, such as a
   workspace's only window. A window minimized while its workspace is hidden stays minimized when
   you switch back; it also comes back as a new tile.
