@@ -393,6 +393,8 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
             .filter(|window| !self.parked.contains_key(window))
             .cloned()
             .collect();
+        let fullscreen = self.workspaces.deck(workspace).is_monocle();
+        let mut released = Vec::new();
         let mut floats = Vec::new();
         for window in candidates {
             if !self.backend.confirms_set_aside(&window) {
@@ -409,6 +411,10 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
             );
             self.forget_window(workspace, &window);
             incoming.retain(|other| other != &window);
+            released.push(window);
+        }
+        if fullscreen && !released.is_empty() {
+            self.note_set_aside_tiles(workspace, released);
         }
         floats
     }

@@ -348,3 +348,228 @@ fn returning_to_a_workspace_leaves_a_window_minimized_while_away_alone() {
             .contains(&BackendCall::Focus(ordinary.clone()))
     );
 }
+
+/// Two Fullscreen Layout tiles on workspace 1, then both hidden (⌘H) or
+/// minimized (⌘M): every slot is released and the workspace is empty.
+fn fullscreen_pair_set_aside() -> (
+    WorkspaceRuntime<FakeBackend>,
+    crate::PhysicalWindowId,
+    crate::PhysicalWindowId,
+) {
+    let (mut runtime, first, second) = fullscreen_pair(Config::default());
+    let cancelled = AtomicBool::new(false);
+    runtime.backend.focused = None;
+    runtime.backend.observation = Some(apps_observation(&[]));
+    for window in [&first, &second] {
+        set_aside(&mut runtime, window);
+    }
+    runtime.cycle(studio_display(), &cancelled).unwrap();
+    for window in [&first, &second] {
+        assert_eq!(runtime.workspaces.workspace_of(window), None);
+    }
+    (runtime, first, second)
+}
+
+/// Mark `window` hidden or minimized: off the Accessibility list, ordered out
+/// in the window server, and confirmed set aside.
+fn set_aside(runtime: &mut WorkspaceRuntime<FakeBackend>, window: &crate::PhysicalWindowId) {
+    let frame = runtime.backend.frames.remove(window).unwrap();
+    runtime.backend.server_frames.insert(window.clone(), frame);
+    runtime.backend.ordered_out.insert(window.window_id);
+    runtime.backend.set_aside.insert(window.clone());
+}
+
+/// Two tiles (`com.example.First`, `com.example.Second`) on workspace 1 in
+/// Fullscreen Layout.
+fn fullscreen_pair(
+    config: Config,
+) -> (
+    WorkspaceRuntime<FakeBackend>,
+    crate::PhysicalWindowId,
+    crate::PhysicalWindowId,
+) {
+    let first = app_window(10, 1, 100);
+    let second = app_window(20, 1, 200);
+    let (left, right) = (column(0, 1280), column(1280, 1280));
+    let mut runtime = runtime_with_config(
+        FakeBackend {
+            focused: Some(second.clone()),
+            frames: [(first.clone(), left), (second.clone(), right)].into(),
+            observation: Some(apps_observation(&[
+                ("com.example.First", &first, left),
+                ("com.example.Second", &second, right),
+            ])),
+            ..FakeBackend::default()
+        },
+        config,
+    );
+    bind(&mut runtime, WorkspaceId::ONE, &first);
+    bind(&mut runtime, WorkspaceId::ONE, &second);
+    let cancelled = AtomicBool::new(false);
+    runtime.cycle(studio_display(), &cancelled).unwrap();
+    runtime
+        .toggle_fullscreen_layout(studio_display(), &cancelled)
+        .unwrap();
+    assert!(runtime.workspaces.deck(WorkspaceId::ONE).is_monocle());
+    (runtime, first, second)
+}
+
+fn bring_back(
+    runtime: &mut WorkspaceRuntime<FakeBackend>,
+    windows: &[(&str, &crate::PhysicalWindowId)],
+) {
+    let (left, right) = (column(0, 1280), column(1280, 1280));
+    let mut observed = Vec::new();
+    for (index, (bundle, window)) in windows.iter().enumerate() {
+        let frame = if index == 0 { left } else { right };
+        runtime.backend.server_frames.remove(*window);
+        runtime.backend.ordered_out.remove(&window.window_id);
+        runtime.backend.set_aside.remove(*window);
+        runtime.backend.frames.insert((*window).clone(), frame);
+        observed.push((*bundle, *window, frame));
+    }
+    runtime.backend.observation = Some(apps_observation(&observed));
+    runtime
+        .cycle(studio_display(), &AtomicBool::new(false))
+        .unwrap();
+}
+
+#[test]
+fn hiding_every_fullscreen_tile_keeps_fullscreen_layout_for_their_return() {
+    let (mut runtime, first, second) = fullscreen_pair_set_aside();
+
+    bring_back(
+        &mut runtime,
+        &[
+            ("com.example.First", &first),
+            ("com.example.Second", &second),
+        ],
+    );
+
+    assert!(runtime.workspaces.deck(WorkspaceId::ONE).is_monocle());
+    for window in [&first, &second] {
+        assert_eq!(
+            runtime.workspaces.workspace_of(window),
+            Some(WorkspaceId::ONE)
+        );
+        assert_eq!(runtime.backend.frames[window], column(0, 2560));
+    }
+}
+
+#[test]
+fn a_different_window_arriving_first_ends_the_set_aside_fullscreen_hold() {
+    let (mut runtime, first, _second) = fullscreen_pair_set_aside();
+    let other = app_window(30, 1, 300);
+
+    bring_back(&mut runtime, &[("com.example.Other", &other)]);
+    assert!(!runtime.workspaces.deck(WorkspaceId::ONE).is_monocle());
+
+    bring_back(
+        &mut runtime,
+        &[("com.example.Other", &other), ("com.example.First", &first)],
+    );
+    assert!(!runtime.workspaces.deck(WorkspaceId::ONE).is_monocle());
+}
+
+#[test]
+fn fullscreen_tiles_minimized_one_at_a_time_resume_fullscreen_layout() {
+    let (mut runtime, first, second) = fullscreen_pair(Config::default());
+    let cancelled = AtomicBool::new(false);
+    let full = column(0, 2560);
+
+    // ⌘M on `first`: `second` keeps the workspace in Fullscreen Layout.
+    set_aside(&mut runtime, &first);
+    runtime.backend.observation = Some(apps_observation(&[("com.example.Second", &second, full)]));
+    runtime.cycle(studio_display(), &cancelled).unwrap();
+    assert_eq!(runtime.workspaces.workspace_of(&first), None);
+    assert!(runtime.workspaces.deck(WorkspaceId::ONE).is_monocle());
+
+    // ⌘M on `second` empties the workspace.
+    runtime.backend.focused = None;
+    set_aside(&mut runtime, &second);
+    runtime.backend.observation = Some(apps_observation(&[]));
+    runtime.cycle(studio_display(), &cancelled).unwrap();
+    assert_eq!(runtime.workspaces.workspace_of(&second), None);
+
+    bring_back(&mut runtime, &[("com.example.First", &first)]);
+    assert!(runtime.workspaces.deck(WorkspaceId::ONE).is_monocle());
+    assert_eq!(runtime.backend.frames[&first], full);
+
+    bring_back(
+        &mut runtime,
+        &[
+            ("com.example.First", &first),
+            ("com.example.Second", &second),
+        ],
+    );
+    assert!(runtime.workspaces.deck(WorkspaceId::ONE).is_monocle());
+    for window in [&first, &second] {
+        assert_eq!(
+            runtime.workspaces.workspace_of(window),
+            Some(WorkspaceId::ONE)
+        );
+        assert_eq!(runtime.backend.frames[window], full);
+    }
+}
+
+#[test]
+fn fullscreen_tiles_minimized_while_away_resume_fullscreen_layout() {
+    let (mut runtime, first, second) = fullscreen_pair(Config::default());
+    let cancelled = AtomicBool::new(false);
+    let two = WorkspaceId::new(2).unwrap();
+    runtime.switch(two, studio_display(), &cancelled).unwrap();
+    assert!(runtime.parked.contains_key(&first));
+    assert!(runtime.parked.contains_key(&second));
+
+    // Both minimized from the Dock while workspace 1 is away.
+    for window in [&first, &second] {
+        runtime.backend.set_aside.insert(window.clone());
+        runtime.backend.ordered_out.insert(window.window_id);
+    }
+    runtime
+        .switch(WorkspaceId::ONE, studio_display(), &cancelled)
+        .unwrap();
+    for window in [&first, &second] {
+        assert_eq!(runtime.workspaces.workspace_of(window), None);
+    }
+
+    bring_back(&mut runtime, &[("com.example.First", &first)]);
+
+    assert!(runtime.workspaces.deck(WorkspaceId::ONE).is_monocle());
+    assert_eq!(runtime.backend.frames[&first], column(0, 2560));
+}
+
+#[test]
+fn a_set_aside_tile_routed_back_while_hidden_resumes_fullscreen_layout() {
+    let config = Config::parse(
+        "version = 1\n[[rules]]\nbundle_id = 'com.example.First'\naction = 'route'\nworkspace = 1",
+    )
+    .unwrap();
+    let (mut runtime, first, second) = fullscreen_pair(config);
+    let cancelled = AtomicBool::new(false);
+    runtime.backend.focused = None;
+    runtime.backend.observation = Some(apps_observation(&[]));
+    for window in [&first, &second] {
+        set_aside(&mut runtime, window);
+    }
+    runtime.cycle(studio_display(), &cancelled).unwrap();
+    let two = WorkspaceId::new(2).unwrap();
+    runtime.switch(two, studio_display(), &cancelled).unwrap();
+
+    // Restored on workspace 2's display; its route rule sends it back to
+    // workspace 1, hidden, outside reconciliation.
+    bring_back(&mut runtime, &[("com.example.First", &first)]);
+    assert_eq!(
+        runtime.workspaces.workspace_of(&first),
+        Some(WorkspaceId::ONE)
+    );
+    assert!(runtime.parked.contains_key(&first));
+
+    runtime
+        .switch(WorkspaceId::ONE, studio_display(), &cancelled)
+        .unwrap();
+    runtime.cycle(studio_display(), &cancelled).unwrap();
+
+    assert!(runtime.workspaces.deck(WorkspaceId::ONE).is_monocle());
+    assert_eq!(runtime.backend.frames[&first], column(0, 2560));
+}
