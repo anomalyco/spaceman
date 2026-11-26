@@ -78,7 +78,7 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
     }
 
     /// Whether `window` is owned by nothing, not parked, not ignored, and at `frame`.
-    fn is_unowned_tab_at(
+    pub(super) fn is_unowned_tab_at(
         &self,
         bundle_id: &str,
         window: &crate::ObservedWindow,

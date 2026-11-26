@@ -31,6 +31,7 @@ mod native_tab_switch_gap;
 mod new_window_dock_affinity;
 mod numbered_move_stale_report;
 mod parked_sibling_takes_focus;
+mod paused_tab_switch;
 mod pointer_follows_accepted_frame;
 mod pointer_resize_release_seam;
 mod reassign_hidden_float;

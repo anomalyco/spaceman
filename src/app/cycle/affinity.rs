@@ -52,6 +52,7 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
         observation: &crate::NativeObservation,
         visible: &[ResolvedWorkspace],
         server_frames: &HashMap<u32, crate::Rect>,
+        parked_before: &HashSet<crate::PhysicalWindowId>,
     ) -> Result<FrozenAffinityPolicy, String> {
         let has_floating = self.workspaces.floating_entries().next().is_some();
         if has_floating {
@@ -81,8 +82,13 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
         let mut fullscreen_hud = None;
         let mut held_apps = HashSet::new();
         let mut handoff_recheck = None;
-        // Read once, and only if a Complete snapshot omits an owned float.
+        // Read once, and only if a Complete snapshot omits an owned float or a hidden tile.
         let mut onscreen_frames = None;
+        let hidden_tabs = super::hidden_tab::HiddenTabEvidence {
+            visible,
+            server_frames,
+            parked_before,
+        };
         for application in &observation.applications {
             let crate::AppObservation::Complete {
                 app,
@@ -215,6 +221,19 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
                     handoff_recheck =
                         Some(handoff_recheck.map_or(deadline, |at: Instant| at.min(deadline)));
                     FrozenWindowAffinity::Ignored
+                } else if !floating
+                    && let Some(owner) = self.claim_hidden_tab_tile(
+                        &app.bundle_id,
+                        window,
+                        windows,
+                        &hidden_tabs,
+                        &mut onscreen_frames,
+                    )
+                {
+                    // The selected tab of a group whose tile is on a hidden workspace (#753).
+                    app_owns_window = true;
+                    app_owns_tiled = true;
+                    FrozenWindowAffinity::Owned(owner)
                 } else if !floating
                     && let Some(affinity) = {
                         let mut reserved = self.workspaces.replacement_workspaces(&window.id);
