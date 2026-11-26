@@ -95,6 +95,10 @@ pub(super) trait WorkspaceBackend {
     fn active_space_changed_at(&mut self) -> Option<Instant> {
         None
     }
+    /// Whether every display is asleep (closed lid, display sleep, background wake).
+    fn displays_asleep(&mut self) -> bool {
+        false
+    }
     /// When three or four fingers last touched the trackpad: a desktop swipe
     /// shows the arriving Space before macOS reports a change (#513).
     fn space_gesture_at(&mut self) -> Option<Instant> {
@@ -285,6 +289,10 @@ impl WorkspaceBackend for MacWorkspaceBackend {
 
     fn active_space_changed_at(&mut self) -> Option<Instant> {
         macos::last_active_space_change()
+    }
+
+    fn displays_asleep(&mut self) -> bool {
+        macos::displays_asleep()
     }
 
     fn space_gesture_at(&mut self) -> Option<Instant> {

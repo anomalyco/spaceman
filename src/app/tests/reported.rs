@@ -54,6 +54,7 @@ mod route_all_native_tab;
 mod route_float_gap;
 mod route_menu_strip;
 mod scratchpad_mark_pin;
+mod sleep_keeps_inaccessible_tile;
 mod step_dragged_pin;
 mod tall_float_round_trip;
 mod verify_drag_gap_reload;

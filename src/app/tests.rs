@@ -158,6 +158,8 @@ struct FakeBackend {
     other_button_down: bool,
     /// When macOS last changed the active Space.
     space_changed_at: Option<Instant>,
+    /// Every display is asleep (closed lid, background wake).
+    displays_asleep: bool,
     /// When three or four fingers last touched the trackpad.
     space_gesture_at: Option<Instant>,
     /// How long ago the user last typed or clicked; `None` (unknown) reads as
@@ -475,6 +477,10 @@ impl WorkspaceBackend for FakeBackend {
 
     fn active_space_changed_at(&mut self) -> Option<Instant> {
         self.space_changed_at
+    }
+
+    fn displays_asleep(&mut self) -> bool {
+        self.displays_asleep
     }
 
     fn space_gesture_at(&mut self) -> Option<Instant> {

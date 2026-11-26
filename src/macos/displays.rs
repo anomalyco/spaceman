@@ -15,6 +15,7 @@ use super::SnapshotError;
 unsafe extern "C" {
     fn CGDisplayCreateUUIDFromDisplayID(display: u32) -> *const CFUUID;
     fn CGDisplayIsBuiltin(display: u32) -> u32;
+    fn CGDisplayIsAsleep(display: u32) -> u32;
     fn CGGetOnlineDisplayList(
         max_displays: u32,
         online_displays: *mut u32,
@@ -339,6 +340,32 @@ pub fn outputs() -> Result<DisplayOutputs, SnapshotError> {
 /// collapses into one screen. Returns `None` when Core Graphics reports no online displays.
 #[must_use]
 pub fn display_topology() -> Option<DisplayTopology> {
+    let displays = online_displays()?;
+    let flags = displays.iter().map(|&display_id| {
+        // SAFETY: `CGDisplayIsBuiltin` queries Core Graphics display metadata for a display ID
+        // and returns a `boolean_t` (0 = false, non-zero = true) without taking pointers.
+        unsafe { CGDisplayIsBuiltin(display_id) != 0 }
+    });
+    Some(DisplayTopology::from_builtin_flags(flags))
+}
+
+/// Whether no online display is awake: the lid is closed with no external display, or every
+/// display sleeps (including a background "dark" wake). Accessibility can stop reaching windows
+/// then, so its failures prove nothing about them (#739).
+#[must_use]
+pub fn displays_asleep() -> bool {
+    online_displays().is_none_or(|displays| {
+        displays.iter().all(|&display_id| {
+            // SAFETY: `CGDisplayIsAsleep` queries Core Graphics display state for a display ID
+            // and returns a `boolean_t` (0 = false, non-zero = true) without taking pointers.
+            unsafe { CGDisplayIsAsleep(display_id) != 0 }
+        })
+    })
+}
+
+/// Core Graphics IDs of the online displays, including hardware mirror set members;
+/// `None` when it reports none.
+fn online_displays() -> Option<Vec<u32>> {
     let mut count: u32 = 0;
     // SAFETY: Passing a null buffer with `max_displays = 0` queries the number of online
     // displays without writing through the buffer pointer; `count` is a valid out-pointer.
@@ -355,13 +382,8 @@ pub fn display_topology() -> Option<DisplayTopology> {
     if status != 0 || filled == 0 {
         return None;
     }
-    let filled = usize::try_from(filled).ok()?.min(displays.len());
-    let flags = displays[..filled].iter().map(|&display_id| {
-        // SAFETY: `CGDisplayIsBuiltin` queries Core Graphics display metadata for a display ID
-        // and returns a `boolean_t` (0 = false, non-zero = true) without taking pointers.
-        unsafe { CGDisplayIsBuiltin(display_id) != 0 }
-    });
-    Some(DisplayTopology::from_builtin_flags(flags))
+    displays.truncate(usize::try_from(filled).ok()?);
+    Some(displays)
 }
 
 /// Each connected display's Core Graphics ID, keyed by the ID `outputs` gives it. Main thread
