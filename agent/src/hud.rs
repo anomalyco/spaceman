@@ -44,6 +44,7 @@ pub use menu::LiveHudSink;
 #[cfg(test)]
 use menu::NoopHudSink;
 pub use pill::{Icons, PILL_HEIGHT};
+pub(crate) use pill::{rgba, srgb};
 pub(crate) use stage::{HudPreview, SCENES, miniature, stage, triggers};
 
 use crate::{apps, controls::Paint};
@@ -467,24 +468,18 @@ impl HudDriver {
 impl Panels {
     /// Every app in `event`: its cached icon (when installed) and display name, looked up once.
     fn metadata_for(&mut self, event: &UiHudEvent) -> (Icons, HashMap<String, String>) {
-        let mut icons = Icons::new();
-        let mut names = HashMap::new();
-        for workspace in event.displays.iter().flat_map(|row| &row.workspaces) {
-            let tiles = workspace
-                .tiles
-                .iter()
-                .filter_map(|tile| tile.bundle.as_ref());
-            for bundle in tiles.chain(&workspace.floating) {
-                if !names.contains_key(bundle) {
-                    let app = self.apps.get(bundle);
-                    names.insert(bundle.clone(), app.name);
-                    if let Some(pixels) = app.icon {
-                        icons.insert(bundle.clone(), pixels);
-                    }
-                }
-            }
-        }
-        (icons, names)
+        let bundles = event
+            .displays
+            .iter()
+            .flat_map(|row| &row.workspaces)
+            .flat_map(|workspace| {
+                let tiles = workspace
+                    .tiles
+                    .iter()
+                    .filter_map(|tile| tile.bundle.as_ref());
+                tiles.chain(&workspace.floating)
+            });
+        self.apps.icons_and_names(bundles)
     }
 
     /// Gives each display in `rows` a panel, and hides the panels of displays it leaves out.
@@ -536,22 +531,22 @@ const fn native(id: u32) -> DisplayTarget {
 }
 
 #[cfg(target_os = "macos")]
-fn display_ids() -> std::collections::HashMap<String, u32> {
+pub(crate) fn display_ids() -> std::collections::HashMap<String, u32> {
     spaceman::macos::display_ids()
 }
 
 #[cfg(not(target_os = "macos"))]
-fn display_ids() -> std::collections::HashMap<String, u32> {
+pub(crate) fn display_ids() -> std::collections::HashMap<String, u32> {
     std::collections::HashMap::new()
 }
 
 #[cfg(target_os = "macos")]
-fn reduce_motion() -> bool {
+pub(crate) fn reduce_motion() -> bool {
     objc2_app_kit::NSWorkspace::sharedWorkspace().accessibilityDisplayShouldReduceMotion()
 }
 
 #[cfg(not(target_os = "macos"))]
-fn reduce_motion() -> bool {
+pub(crate) fn reduce_motion() -> bool {
     false
 }
 

@@ -21,6 +21,7 @@ mod playground;
 mod rules;
 mod updates;
 mod view;
+mod window_overlay;
 
 use std::sync::Arc;
 
@@ -59,6 +60,7 @@ pub struct Ui {
     bridge: Option<UiBridge>,
     window: Option<rune::AppHandle<Ui>>,
     hud_driver: Option<hud::HudDriver>,
+    window_overlay: Option<window_overlay::WindowOverlayDriver>,
     pub hud_preview: Option<hud::HudPreview>,
     frame_remembered: bool,
     pub tour: Option<onboarding::Tour>,
@@ -110,6 +112,7 @@ impl Ui {
             bridge,
             window: None,
             hud_driver: None,
+            window_overlay: None,
             hud_preview: None,
             frame_remembered: false,
             tour: None,
@@ -514,6 +517,11 @@ fn poll(ui: &mut Ui, clock: f64, tx: &mut Tx) -> bool {
     {
         driver.trigger_toast(toast);
     }
+    if let Some(overlay) = news.window_overlay
+        && let Some(driver) = &ui.window_overlay
+    {
+        driver.apply(overlay);
+    }
     if let Some(inventory) = news.inventory {
         changed |= onboarding::inventory(ui, inventory);
     }
@@ -668,6 +676,11 @@ pub(crate) fn live_app(
         .init(move || Ui::load_live(doc, bridge, initial_tour, accessibility, initial_target))
         .on_reopen(on_reopen)
         .on_open_url(on_open_url);
+    let overlay_bridge = hud_bridge.clone();
+    let send: window_overlay::CommandSink = Arc::new(move |command| {
+        overlay_bridge.send(UiAction::WindowOverlay(command));
+    });
+    let overlay = window_overlay::install(&mut app, &send);
     let hud_sink = Arc::new(hud::LiveHudSink::new(hud_bridge, app.handle()));
     let hud_driver = hud::install(
         &mut app,
@@ -678,6 +691,7 @@ pub(crate) fn live_app(
     );
     app.handle().update_if(move |ui, _| {
         ui.hud_driver = Some(hud_driver);
+        ui.window_overlay = Some(overlay);
         false
     });
     app

@@ -249,8 +249,12 @@ impl MainThreadAgent {
                         self.cancel_unavailable_exit();
                     }
                 }
-                Action::Hotkey(id) => self.hotkey_delivered(id),
+                Action::Hotkey(id) => {
+                    self.interrupt_window_overlay();
+                    self.hotkey_delivered(id);
+                }
                 Action::OptionKeyDown(key_code, modifiers) => {
+                    self.interrupt_window_overlay();
                     self.option_key_down(key_code, modifiers);
                 }
                 Action::Worker(action) => {

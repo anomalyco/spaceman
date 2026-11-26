@@ -36,6 +36,8 @@ pub(super) struct Probe {
     pub(super) menu_bar_icon: Option<MenuBarIcon>,
     /// `[labs] focus_follows_mouse` read for `config_stamp`, when that config loaded.
     pub(super) focus_follows_mouse: Option<bool>,
+    /// `[labs] window_overlay` read for `config_stamp`, when that config loaded.
+    pub(super) window_overlay: Option<bool>,
     /// `settings.pause_on_builtin_display` read for `config_stamp`, when that config loaded.
     pub(super) pause_on_builtin_display: Option<bool>,
 }
@@ -48,6 +50,7 @@ pub(super) struct ConfigRead {
     pub(super) swipe_fingers: Fingers,
     pub(super) menu_bar_icon: MenuBarIcon,
     pub(super) focus_follows_mouse: bool,
+    pub(super) window_overlay: bool,
     pub(super) pause_on_builtin_display: bool,
 }
 
@@ -59,6 +62,7 @@ impl ConfigRead {
             swipe_fingers: config.swipe_fingers(),
             menu_bar_icon: config.menu_bar_icon(),
             focus_follows_mouse: config.labs().focus_follows_mouse,
+            window_overlay: config.labs().window_overlay,
             pause_on_builtin_display: config.pause_on_builtin_display(),
         })
     }
@@ -105,6 +109,7 @@ impl ProbeState {
         let swipe_fingers = read.as_ref().map(|read| read.swipe_fingers);
         let menu_bar_icon = read.as_ref().map(|read| read.menu_bar_icon);
         let focus_follows_mouse = read.as_ref().map(|read| read.focus_follows_mouse);
+        let window_overlay = read.as_ref().map(|read| read.window_overlay);
         let pause_on_builtin_display = read.as_ref().map(|read| read.pause_on_builtin_display);
         self.config = Some((config_stamp, read));
         let login_due = forced
@@ -128,6 +133,7 @@ impl ProbeState {
             swipe_fingers,
             menu_bar_icon,
             focus_follows_mouse,
+            window_overlay,
             pause_on_builtin_display,
         })
     }
@@ -270,6 +276,7 @@ mod tests {
         assert_eq!(probe.swipe_fingers, Some(Fingers::Three));
         assert_eq!(probe.menu_bar_icon, Some(MenuBarIcon::Full));
         assert_eq!(probe.focus_follows_mouse, Some(false));
+        assert_eq!(probe.window_overlay, Some(false));
         assert_eq!(probe.pause_on_builtin_display, Some(false));
     }
 
@@ -280,6 +287,7 @@ mod tests {
             swipe_fingers: Fingers::Three,
             menu_bar_icon: MenuBarIcon::Full,
             focus_follows_mouse: false,
+            window_overlay: false,
             pause_on_builtin_display: false,
         }
     }

@@ -52,6 +52,7 @@ pub use updater::build_version;
 #[allow(unsafe_code)]
 mod url_handler;
 pub mod window_memory;
+pub mod window_overlay;
 pub mod workspace;
 
 pub use geometry::{Axis, Rect};

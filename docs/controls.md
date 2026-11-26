@@ -187,6 +187,30 @@ in `parked-windows.json`, so pausing, quitting, restarting, installing an update
 the Lab off brings it back on screen, where it tiles again. Which windows are in the scratchpad is not
 saved across agent restarts.
 
+## Window Overlay (Lab)
+
+With `[labs] window_overlay = true` (see [Configuration › Labs](configuration.md#labs)), holding
+`Option+Shift` on its own for a moment shows a card over every visible window on every display, while
+tiling is on. With another base modifier (`[shortcuts] modifier`) it is that modifier and Shift.
+
+Each card shows the window's app and buttons that act on that window, whether or not it has focus:
+
+| Button | Action |
+| --- | --- |
+| `Float` / `Tile` | Float the tile in place, or tile the float again |
+| `Pin` | Pin the window on every workspace (floating it first), or unpin it |
+| `FS` | Turn Fullscreen Layout on or off for the window's workspace, with this window in front (tiles only) |
+| `←` `↑` `↓` `→` | Swap the tile with the tile next to it on that side, as `Option+Shift+H/J/K/L` does |
+| `1`…`0`, `A`-`Z` | Send the window to that workspace; its own workspace is highlighted, and a dot marks workspaces holding windows |
+
+The cards follow each change while the keys stay held, so you can float a window and then pin it, or
+swap a tile twice. A click on a card never brings Spaceman forward, moves focus or moves the pointer;
+outside the cards, clicks reach the windows below. Letting go of either key hides the cards. Pressing
+any other key, such as `Option+Shift+1`, hides them too, and they stay hidden until the keys are let
+go, so the overlay never flashes for a shortcut. Holding the keys with a mouse button down (a drag)
+or with Command or Control also shows nothing. Cards carry the app's name and icon, never a window
+title.
+
 ## Menu
 
 The menu-bar control shows active workspace/layout glyphs and runtime errors. With
@@ -352,7 +376,7 @@ Spaceman registers the `spaceman://` URL scheme (and clickable web bounce links 
 
 - `spaceman://settings` — open Settings
 - `spaceman://settings/<pane>` — open `general`, `rules`, `workspaces`, `shortcuts`, `labs`, `layout`, `activity`, or `whats-new` (plus optional `/<focus>`); `activity` falls back to `general` while `[labs] activity` is off
-- `spaceman://labs` / `spaceman://labs/<slug>` — open Settings › Labs and highlight `<slug>`, a switch's key with `-` for `_` (`scratchpad`, `activity`, `portrait-edge-rows`, `physical-displays`, `recent-focus`, `swipe-switch`, `empty-workspace-focus`, `float-follows-display`, `workspace-steps`, `four-finger-swipe`, `single-window-height`, `route-all-windows`, `menu-bar-icon-style`, `focus-follows-mouse`)
+- `spaceman://labs` / `spaceman://labs/<slug>` — open Settings › Labs and highlight `<slug>`, a switch's key with `-` for `_` (`scratchpad`, `activity`, `portrait-edge-rows`, `physical-displays`, `recent-focus`, `swipe-switch`, `empty-workspace-focus`, `float-follows-display`, `workspace-steps`, `four-finger-swipe`, `single-window-height`, `route-all-windows`, `menu-bar-icon-style`, `focus-follows-mouse`, `window-overlay`)
 - `spaceman://features/<slug>` — open the Settings pane and highlight for a feature (e.g. `workspaces`, `rules`, `shortcuts`, `gaps`, `hud`, `menu-bar-icon`, `mouse-follows-focus`, `single-window-height`)
 
 Deep links only open Settings and highlight the requested pane or card. They never modify

@@ -28,6 +28,7 @@ fn checked(path: &str) -> bool {
         || path == "src/design_tokens.rs";
     let drawn = path.starts_with("src/onboarding")
         || path.starts_with("src/hud")
+        || path.starts_with("src/window_overlay")
         || path == "src/panes/layout/preview.rs"
         || path == "src/playground.rs";
     !test && !drawn

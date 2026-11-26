@@ -16,8 +16,8 @@ The window follows OpenCode Desktop's layout: a deep-background sidebar and a ra
 content panel. It opens at 920 × 660, resizes down to 860 × 580, and its cards stop growing at 720
 and centre in a wider panel.
 
-Three surfaces draw objects, not settings rows, and keep their own measurements: the Workspace HUD
-(`agent/src/hud/`), the setup tour (`agent/src/onboarding/`) and the Layout pane's desk miniature
+Four surfaces draw objects, not settings rows, and keep their own measurements: the Workspace HUD
+(`agent/src/hud/`), the Window overlay's cards (`agent/src/window_overlay/`), the setup tour (`agent/src/onboarding/`) and the Layout pane's desk miniature
 (`agent/src/panes/layout/preview.rs`).
 
 ## Rules
@@ -174,7 +174,7 @@ Shortcut rows show the chord the base modifier produces, never a hard-coded ⌥.
   `scripts/check` with the other tests) counts, per file under `agent/src`: spacing literals off
   the scale, `.radius(<literal >= 3>)`, `TextStyle::new(` and `.k.ty.` outside `controls`,
   `.min_h(<literal>)` outside `controls`, `.py(<literal>)` in a file of rows, and the kit's
-  `Dialog`, `Keybind` and `ShortcutRecorder`. It skips tests and the three drawn surfaces above
+  `Dialog`, `Keybind` and `ShortcutRecorder`. It skips tests and the four drawn surfaces above
   (and `playground.rs`).
 - A file may exceed zero only up to its ceiling in
   [`scripts/design-token-exceptions.txt`](../scripts/design-token-exceptions.txt), which is empty

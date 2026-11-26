@@ -58,6 +58,10 @@ pub struct LabsConfig {
     /// A tile the pointer rests on takes focus, without a click.
     #[serde(default)]
     pub focus_follows_mouse: bool,
+    /// Holding the shortcuts' base modifier and Shift (`⌥⇧` by default) shows a card over every
+    /// visible window to send it to a workspace, float, pin or swap it.
+    #[serde(default)]
+    pub window_overlay: bool,
 }
 
 impl LabsConfig {
@@ -79,6 +83,7 @@ impl LabsConfig {
             route_all_windows: enabled(LabFeature::RouteAllWindows),
             menu_bar_icon_style: enabled(LabFeature::MenuBarIconStyle),
             focus_follows_mouse: enabled(LabFeature::FocusFollowsMouse),
+            window_overlay: enabled(LabFeature::WindowOverlay),
         }
     }
 
@@ -100,6 +105,7 @@ impl LabsConfig {
             LabFeature::RouteAllWindows => self.route_all_windows,
             LabFeature::MenuBarIconStyle => self.menu_bar_icon_style,
             LabFeature::FocusFollowsMouse => self.focus_follows_mouse,
+            LabFeature::WindowOverlay => self.window_overlay,
         }
     }
 }
@@ -136,11 +142,13 @@ pub enum LabFeature {
     MenuBarIconStyle,
     /// A tile the pointer rests on takes focus, without a click.
     FocusFollowsMouse,
+    /// Hold `⌥⇧` for a card over every visible window: send, float, pin, swap.
+    WindowOverlay,
 }
 
 impl LabFeature {
     /// Every switch, in the order `[labs]` lists them.
-    pub const ALL: [Self; 14] = [
+    pub const ALL: [Self; 15] = [
         Self::Scratchpad,
         Self::Activity,
         Self::PortraitEdgeRows,
@@ -155,6 +163,7 @@ impl LabFeature {
         Self::RouteAllWindows,
         Self::MenuBarIconStyle,
         Self::FocusFollowsMouse,
+        Self::WindowOverlay,
     ];
 
     /// The `[labs]` key that turns this feature on.
@@ -175,6 +184,7 @@ impl LabFeature {
             Self::RouteAllWindows => "route_all_windows",
             Self::MenuBarIconStyle => "menu_bar_icon_style",
             Self::FocusFollowsMouse => "focus_follows_mouse",
+            Self::WindowOverlay => "window_overlay",
         }
     }
 
@@ -202,5 +212,20 @@ mod tests {
                 );
             }
         }
+    }
+
+    #[test]
+    fn window_overlay_round_trips_through_toml() {
+        let labs: LabsConfig = toml::from_str("window_overlay = true").unwrap();
+        assert!(labs.window_overlay);
+        assert!(labs.enabled(LabFeature::WindowOverlay));
+        assert_eq!(LabsConfig::from_fn(|_| false), LabsConfig::default());
+        let written = toml::to_string(&labs).unwrap();
+        assert!(written.contains("window_overlay = true"), "{written}");
+        assert_eq!(toml::from_str::<LabsConfig>(&written).unwrap(), labs);
+        assert_eq!(
+            LabFeature::parse("window_overlay"),
+            Some(LabFeature::WindowOverlay)
+        );
     }
 }

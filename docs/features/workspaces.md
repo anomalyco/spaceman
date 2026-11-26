@@ -177,6 +177,18 @@ Focus follows mouse ([labs] focus_follows_mouse, off)      // ws.focus-follows-m
 └── The warp point is skipped only until the pointer leaves it: moving away (resting elsewhere or
     not) and back to that exact point hovers again (#522; src/app/tests/focus_follows_mouse.rs)
 
+Window overlay ([labs] window_overlay, off)                 // ws.window-overlay
+├── Main thread (src/app/app_loop/window_overlay.rs, src/window_overlay.rs): the base modifier and
+│   Shift (Option+Shift) held alone for 180 ms, no button down, tiling on -> the worker reads every
+│   visible window (no AX on the main thread) and a card shows over each, on every display
+├── Any key or hotkey while held (Option+Shift+1, +H...) -> hidden, and not shown again until the
+│   keys are let go; Command, Control or a mouse button at the start -> nothing; letting go -> hidden
+├── Card (agent/src/window_overlay/): app icon and name (never a title); Float/Tile, Pin, FS (tiles);
+│   arrows to swap with a neighbouring tile; a chip per workspace that sends the window there
+├── Buttons act on the card's window, focused or not, through the focused-window commands' own code
+│   (src/app/window_overlay.rs); no activation, focus change or pointer warp; cards refresh while held
+└── Fullscreen Layout shows only the front tile's card; parked and hidden windows have none
+
 Focus follows                                              // ws.focus-follow
 ├── Focusing a window that lives on a hidden workspace (Dock, Cmd+Tab, notification)
 │   -> that workspace becomes active, with focus on that window (not its remembered tile)

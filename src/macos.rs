@@ -290,6 +290,19 @@ pub fn mouse_down() -> bool {
     CGEventSource::button_state(CGEventSourceStateID::HIDSystemState, CGMouseButton::Left)
 }
 
+/// The modifier keys held now, from the event system's state: no Accessibility, cheap enough
+/// for every main-thread tick.
+#[must_use]
+pub fn held_modifiers() -> crate::shortcuts::Modifiers {
+    let flags = CGEventSource::flags_state(CGEventSourceStateID::CombinedSessionState);
+    crate::shortcuts::Modifiers {
+        command: flags.contains(CGEventFlags::MaskCommand),
+        control: flags.contains(CGEventFlags::MaskControl),
+        option: flags.contains(CGEventFlags::MaskAlternate),
+        shift: flags.contains(CGEventFlags::MaskShift),
+    }
+}
+
 /// Whether any mouse button is held: left, right or middle. A pointer warp
 /// under a held button would yank a drag or a context menu away (#422).
 #[must_use]

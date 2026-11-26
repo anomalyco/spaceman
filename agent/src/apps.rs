@@ -35,6 +35,26 @@ impl Catalog {
         self.apps.get(bundle_id)
     }
 
+    /// Icons (for the apps installed here) and names for `bundle_ids`, each looked up once,
+    /// for an overlay's view, which can't look anything up.
+    pub fn icons_and_names<'a>(
+        &mut self,
+        bundle_ids: impl IntoIterator<Item = &'a String>,
+    ) -> (HashMap<String, Pixels>, HashMap<String, String>) {
+        let mut icons = HashMap::new();
+        let mut names = HashMap::new();
+        for bundle_id in bundle_ids {
+            if !names.contains_key(bundle_id) {
+                let app = self.get(bundle_id);
+                names.insert(bundle_id.clone(), app.name);
+                if let Some(pixels) = app.icon {
+                    icons.insert(bundle_id.clone(), pixels);
+                }
+            }
+        }
+        (icons, names)
+    }
+
     pub fn insert(&mut self, bundle_id: &str, app: App) {
         self.apps.insert(bundle_id.to_owned(), app);
     }

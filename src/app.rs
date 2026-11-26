@@ -64,6 +64,7 @@ mod space_transition;
 mod stale_parked;
 mod state_writer;
 mod switching;
+mod window_overlay;
 mod worker;
 
 pub use app_loop::{MainThreadAgent, TickOutcome};
@@ -71,7 +72,11 @@ pub use bridge::{
     HUD_MAX_DISPLAYS, HUD_MAX_FLOATING, HUD_MAX_TILES, HUD_PORTRAIT_PREVIEW_RECT, HUD_PREVIEW_RECT,
     UiAction, UiAgentSnapshot, UiBridge, UiHudDisplay, UiHudEvent, UiHudKind, UiHudLayout,
     UiHudTile, UiHudToast, UiHudWorkspace, UiLaunchAtLogin, UiNews, UiUpdateStatus,
-    hud_preview_rect,
+    UiWindowOverlayNews, hud_preview_rect,
+};
+pub use window_overlay::{
+    UiWindowOverlay, UiWindowOverlayDisplay, UiWindowOverlayWindow, UiWindowOverlayWorkspace,
+    WindowOverlayCommand,
 };
 
 pub struct HostCallbacks {
@@ -323,6 +328,8 @@ pub(crate) enum WorkerAction {
         window_id: u32,
         point: (i32, i32),
     },
+    /// The Window overlay Lab: read what it shows, or act on one of its windows.
+    WindowOverlay(WindowOverlayCommand),
 }
 
 impl WorkerAction {
@@ -368,6 +375,7 @@ impl WorkerAction {
             Self::Arrange(_) => "arrangement queued".into(),
             Self::Scratchpad(command) => format!("scratchpad {} queued", command.as_str()),
             Self::FocusHovered { .. } => "hover focus queued".into(),
+            Self::WindowOverlay(_) => "window overlay queued".into(),
         }
     }
 }
@@ -483,6 +491,7 @@ pub struct PreparedAgent {
     swipe_fingers: Fingers,
     menu_bar_icon: crate::config::MenuBarIcon,
     focus_follows_mouse: bool,
+    window_overlay: bool,
     pause_on_builtin_display: bool,
     controls: Receiver<ControlRequest>,
     control_server: control::Server,
@@ -504,6 +513,7 @@ pub fn prepare() -> Result<(PreparedAgent, UiBridge), String> {
     let swipe_fingers = config.swipe_fingers();
     let menu_bar_icon = config.menu_bar_icon();
     let focus_follows_mouse = config.labs().focus_follows_mouse;
+    let window_overlay = config.labs().window_overlay;
     let pause_on_builtin_display = config.pause_on_builtin_display();
     let shortcuts = config.shortcuts().clone();
     let mut configured_workspaces = Workspaces::default();
@@ -557,6 +567,7 @@ pub fn prepare() -> Result<(PreparedAgent, UiBridge), String> {
             swipe_fingers,
             menu_bar_icon,
             focus_follows_mouse,
+            window_overlay,
             pause_on_builtin_display,
             controls,
             control_server,
@@ -623,6 +634,7 @@ impl PreparedAgent {
                 hud: self.hud,
                 swipe_fingers: self.swipe_fingers,
                 focus_follows_mouse: self.focus_follows_mouse,
+                window_overlay: self.window_overlay,
                 pause_on_builtin_display: self.pause_on_builtin_display,
                 trusted,
                 setup_tour_open,

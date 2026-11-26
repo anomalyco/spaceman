@@ -134,6 +134,16 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
         let window = self
             .current_focus()
             .ok_or("Focused window is unavailable")?;
+        self.toggle_pin_window(window, outputs, cancelled)
+    }
+
+    /// [`Self::toggle_pin`] for `window`, focused or not (the Window overlay Lab's card).
+    pub(super) fn toggle_pin_window(
+        &mut self,
+        window: crate::PhysicalWindowId,
+        outputs: macos::DisplayOutputs,
+        cancelled: &AtomicBool,
+    ) -> Result<CycleStatus, String> {
         if self.workspaces.workspace_of_any(&window).is_none() {
             // A window observed for the first time may not be bound yet.
             self.cycle(outputs.clone(), cancelled)?;

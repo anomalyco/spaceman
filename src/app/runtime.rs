@@ -12,6 +12,8 @@ pub(super) struct CycleStatus {
     pub(super) menu: Vec<status_item::DisplayWorkspaces>,
     pub(super) failed: usize,
     pub(super) hud: Option<UiHudEvent>,
+    /// What the window overlay shows, when it asked.
+    pub(super) window_overlay: Option<UiWindowOverlay>,
 }
 
 pub(super) struct LayoutStatus {
@@ -326,6 +328,9 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
             WorkerAction::Arrange(arrangement) => self.arrange(&arrangement, outputs, cancelled),
             WorkerAction::FocusHovered { window_id, point } => {
                 self.focus_hovered(window_id, point, outputs)
+            }
+            WorkerAction::WindowOverlay(command) => {
+                self.window_overlay_command(command, outputs, cancelled)
             }
         }
     }
@@ -744,6 +749,7 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
             active,
             failed,
             hud: None,
+            window_overlay: None,
         }
     }
 
