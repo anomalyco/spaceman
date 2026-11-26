@@ -478,5 +478,8 @@ fn a_held_cross_display_drop_stays_under_the_pointer_when_its_workspace_moves() 
         .unwrap();
 
     assert_eq!(runtime.workspaces.workspace_of(&dragged), now_under);
-    assert_eq!(runtime.workspaces.workspace_of(&shown), Some(WorkspaceId::SIX));
+    assert_eq!(
+        runtime.workspaces.workspace_of(&shown),
+        Some(WorkspaceId::SIX)
+    );
 }

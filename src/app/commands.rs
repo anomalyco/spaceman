@@ -385,7 +385,8 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
         if self.workspaces.deck(workspace).is_monocle() {
             self.workspaces
                 .set_deck(workspace, crate::workspace::DeckMode::Split);
-            self.fullscreen_left_at.insert(workspace, self.backend.now());
+            self.fullscreen_left_at
+                .insert(workspace, self.backend.now());
             self.fullscreen_set_aside.remove(&workspace);
             self.focus.settle_fullscreen(workspace);
         }
@@ -408,7 +409,8 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
         let enabled = deck.is_monocle();
         self.fullscreen_set_aside.remove(&workspace);
         if !enabled {
-            self.fullscreen_left_at.insert(workspace, self.backend.now());
+            self.fullscreen_left_at
+                .insert(workspace, self.backend.now());
         }
         self.focus.settle_fullscreen(workspace);
         let mut status = self.relayout_persist(workspace, &outputs, cancelled)?;

@@ -90,7 +90,11 @@ fn early_toggle_drag(
     let from = (1280, 43);
     let mut tracker = GestureTracker::default();
     let press = |rt: &mut WorkspaceRuntime<FakeBackend>, tracker: &mut GestureTracker| {
-        tracker.begin_pressed(vec![(a1.clone(), start)], Some(from), Some(rt.backend.now()));
+        tracker.begin_pressed(
+            vec![(a1.clone(), start)],
+            Some(from),
+            Some(rt.backend.now()),
+        );
         rt.backend.mouse_down = true;
         rt.backend.advance(Duration::from_millis(50));
     };

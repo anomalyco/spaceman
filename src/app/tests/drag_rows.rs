@@ -361,11 +361,23 @@ fn a_side_band_crossing_its_menu_bar_strip_stays_unarmed() {
     };
     // Up into the menu bar strip above the band and back: never out of the side band (#612).
     let mut rt = rows_first();
-    drag(&mut rt, 20, (1420, 600), &[(1420, 700), (1420, 5)], (1420, 650));
+    drag(
+        &mut rt,
+        20,
+        (1420, 600),
+        &[(1420, 700), (1420, 5)],
+        (1420, 650),
+    );
     assert_eq!(layout(&rt), rows(20, 10));
     // The control that stays below the menu bar holds the rows too.
     let mut rt = rows_first();
-    drag(&mut rt, 20, (1420, 600), &[(1420, 700), (1420, 40)], (1420, 650));
+    drag(
+        &mut rt,
+        20,
+        (1420, 600),
+        &[(1420, 700), (1420, 40)],
+        (1420, 650),
+    );
     assert_eq!(layout(&rt), rows(20, 10));
     // Leaving the band sideways still arms it.
     let mut rt = rows_first();

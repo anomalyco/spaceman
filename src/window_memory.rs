@@ -1006,7 +1006,11 @@ mod tests {
                     cand(3, at(-1150, 100), None, Some(&quick_help)),
                 ],
             );
-            assert_eq!(assignments, vec![(1, 2), (2, 0), (3, 1)], "suffix {suffix:?}");
+            assert_eq!(
+                assignments,
+                vec![(1, 2), (2, 0), (3, 1)],
+                "suffix {suffix:?}"
+            );
         }
     }
 

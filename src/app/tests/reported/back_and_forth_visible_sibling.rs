@@ -180,10 +180,9 @@ fn settled_click_on_a_visible_sibling_keeps_focus() {
 #[test]
 fn a_pinned_sibling_on_another_display_is_reclaimed_once() {
     let displays = side_by_side();
-    let config = Config::parse(
-        "version = 1\n[[workspaces]]\nworkspace = 9\nmonitor = 'third-id'\n",
-    )
-    .unwrap();
+    let config =
+        Config::parse("version = 1\n[[workspaces]]\nworkspace = 9\nmonitor = 'third-id'\n")
+            .unwrap();
     for (pin_display, reclaimed) in [(2, 1), (0, 0)] {
         let mut rt = runtime_with_config(FakeBackend::default(), config.clone());
         bind(&mut rt, ws(1), &win(10));
@@ -205,6 +204,10 @@ fn a_pinned_sibling_on_another_display_is_reclaimed_once() {
         rt.backend.advance(Duration::from_millis(50));
         rt.reclaim_from_sibling(&win(61), &shown);
         rt.reclaim_from_sibling(&win(61), &shown);
-        assert_eq!(focus_calls(&rt, 10), reclaimed, "pin on display {pin_display}");
+        assert_eq!(
+            focus_calls(&rt, 10),
+            reclaimed,
+            "pin on display {pin_display}"
+        );
     }
 }

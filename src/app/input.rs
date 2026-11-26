@@ -190,6 +190,7 @@ impl GestureTracker {
 
     /// `candidates` are front to back, each with its frame at mouse-down, and
     /// `start_point` is the pointer location at mouse-down when known.
+    #[cfg(test)]
     pub(super) fn begin_at(
         &mut self,
         candidates: Vec<(PhysicalWindowId, Rect)>,
@@ -198,7 +199,8 @@ impl GestureTracker {
         self.begin_pressed(candidates, start_point, None);
     }
 
-    /// [`Self::begin_at`], also recording when the button went down.
+    /// `candidates` are front to back, each with its frame at mouse-down, with
+    /// optional pointer location and press timestamp.
     pub(super) fn begin_pressed(
         &mut self,
         candidates: Vec<(PhysicalWindowId, Rect)>,

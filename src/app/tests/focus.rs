@@ -397,7 +397,8 @@ fn mouse_follows_focus_display_warps_across_displays_and_skips_same_display() {
     assert_eq!(runtime.backend.focused, Some(sec_right));
     assert_eq!(warp_calls(&runtime), vec![(1250, 400)]);
 
-    // Explicit switch back to workspace 1 (main) warps to main's focused tile center.
+    // Explicit switch back to workspace 1 (main) warps to main's remembered
+    // focused tile (main_right at (750, 400), #639).
     runtime.record_focused_workspace(WorkspaceId::SIX);
     runtime
         .execute(
@@ -405,7 +406,7 @@ fn mouse_follows_focus_display_warps_across_displays_and_skips_same_display() {
             &cancelled,
         )
         .unwrap();
-    assert_eq!(warp_calls(&runtime), vec![(1250, 400), (250, 400)]);
+    assert_eq!(warp_calls(&runtime), vec![(1250, 400), (750, 400)]);
 
     // Option+Tab back to visible workspace 6 on secondary warps back to its
     // remembered focused tile (sec_right at (1750, 400), #527).
@@ -417,7 +418,7 @@ fn mouse_follows_focus_display_warps_across_displays_and_skips_same_display() {
         .unwrap();
     assert_eq!(
         warp_calls(&runtime),
-        vec![(1250, 400), (250, 400), (1750, 400)]
+        vec![(1250, 400), (750, 400), (1750, 400)]
     );
 }
 

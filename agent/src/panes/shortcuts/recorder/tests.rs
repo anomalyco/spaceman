@@ -73,7 +73,10 @@ fn keypad_keys_are_refused_rather_than_bound_to_their_main_key() {
     assert_eq!(us(K::NumpadEnter, ctrl_alt), Press::Refused(UNSUPPORTED));
     // Even when the layout says the keypad key types `1`, it isn't the number row's `1`.
     let typed = |key| (key == K::Numpad1).then_some('1');
-    assert_eq!(press(K::Numpad1, ctrl_alt, typed), Press::Refused(UNSUPPORTED));
+    assert_eq!(
+        press(K::Numpad1, ctrl_alt, typed),
+        Press::Refused(UNSUPPORTED)
+    );
     assert_eq!(us(K::Enter, ctrl_alt), chord("ctrl+alt+return"));
 }
 
@@ -221,7 +224,10 @@ fn a_refusal_stays_while_a_two_modifier_chord_is_released() {
     // Control comes up first, leaving Option alone: still a bindable hold, but no new press.
     assert!(on_input(&mut ui, &PhysicalInput::Modifiers(ALT)));
     assert_eq!(message(&ui), Some(UNSUPPORTED));
-    assert!(on_input(&mut ui, &PhysicalInput::Modifiers(Mods::default())));
+    assert!(on_input(
+        &mut ui,
+        &PhysicalInput::Modifiers(Mods::default())
+    ));
     assert_eq!(message(&ui), Some(UNSUPPORTED));
     assert_eq!(ui.shortcut_capture.listening(), Some("focus-right"));
     assert_eq!(ui.doc.source(), before);
@@ -464,7 +470,9 @@ fn a_shift_chord_bound_under_its_typed_character_is_refused() {
         }
     );
     assert_eq!(
-        ui.doc.shortcuts().binding(parse_chord("alt+shift+/").unwrap()),
+        ui.doc
+            .shortcuts()
+            .binding(parse_chord("alt+shift+/").unwrap()),
         Some(Some(&shortcuts::Command::Focus(spaceman::Direction::Left)))
     );
 }
