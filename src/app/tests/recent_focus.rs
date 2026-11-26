@@ -113,6 +113,38 @@ fn quick_presses_return_before_the_new_focus_is_reported() {
 }
 
 #[test]
+fn a_window_capped_short_of_its_tile_borders_only_what_it_reaches() {
+    let (mut runtime, [first, second, third]) = stacked_pair(true);
+    settle_on_third(&mut runtime, &third);
+
+    focus(&mut runtime, Direction::Left);
+    assert_eq!(runtime.backend.focused.as_ref(), Some(&first));
+    runtime.focus.age_request(FOCUS_SETTLE);
+
+    // macOS kept 1 to the height of 2, leaving a gap beside 3 (#648).
+    let tiles = runtime.navigation_tiles(&outputs());
+    let frame = |window: &crate::PhysicalWindowId| {
+        tiles
+            .iter()
+            .find(|tile| &tile.window == window)
+            .unwrap()
+            .frame
+    };
+    let capped = crate::Rect {
+        height: frame(&second).height,
+        ..frame(&first)
+    };
+    runtime.backend.server_frames.insert(first.clone(), capped);
+
+    assert_eq!(
+        debug_target(&mut runtime, Direction::Right),
+        Some(second.clone())
+    );
+    focus(&mut runtime, Direction::Right);
+    assert_eq!(runtime.backend.focused, Some(second));
+}
+
+#[test]
 fn with_the_lab_off_left_and_back_lands_on_the_upper_tile() {
     let (mut runtime, [first, second, third]) = stacked_pair(false);
     settle_on_third(&mut runtime, &third);

@@ -120,6 +120,73 @@ pub fn target_by_recency<'a>(
     )
 }
 
+/// The windows of `tiles` that border `focused`'s on the side pressed, the
+/// way [`target_by_recency`] picks its candidates, judged by the part of the
+/// shared edge the windows really cover: each tile, the focused one too, is
+/// trimmed to its window's `accepted` frame across the direction only, so a
+/// window macOS kept shorter (or narrower) than its tile (a size cap) does
+/// not border across the gap it leaves (#648), while one capped along the
+/// direction keeps its tile's place. A tile keeps its planned frame when its
+/// accepted one is unknown or lies outside it.
+#[must_use]
+pub fn bordering_accepted(
+    tiles: &[NavigationTile],
+    focused: &PhysicalWindowId,
+    direction: Direction,
+    accepted: impl Fn(&PhysicalWindowId) -> Option<Rect>,
+) -> Vec<PhysicalWindowId> {
+    let clipped = |tile: &NavigationTile| NavigationTile {
+        frame: accepted(&tile.window)
+            .and_then(|frame| intersection(tile.frame, frame))
+            .map_or(tile.frame, |covered| across(tile.frame, covered, direction)),
+        ..tile.clone()
+    };
+    let Some(current) = tiles.iter().find(|tile| &tile.window == focused) else {
+        return Vec::new();
+    };
+    let current = clipped(current);
+    let local = tiles
+        .iter()
+        .filter(|tile| tile.workspace == current.workspace && &tile.window != focused)
+        .map(clipped)
+        .collect::<Vec<_>>();
+    bordering(local.iter(), current.frame, direction)
+        .into_iter()
+        .map(|tile| tile.window.clone())
+        .collect()
+}
+
+/// The area two frames share, if any.
+fn intersection(a: Rect, b: Rect) -> Option<Rect> {
+    let x = a.x.max(b.x);
+    let y = a.y.max(b.y);
+    let width = (a.x + a.width).min(b.x + b.width) - x;
+    let height = (a.y + a.height).min(b.y + b.height) - y;
+    (width > 0 && height > 0).then_some(Rect {
+        x,
+        y,
+        width,
+        height,
+    })
+}
+
+/// `planned` with its span across `direction` taken from `covered` and its
+/// span along it kept.
+fn across(planned: Rect, covered: Rect, direction: Direction) -> Rect {
+    match direction {
+        Direction::Left | Direction::Right => Rect {
+            y: covered.y,
+            height: covered.height,
+            ..planned
+        },
+        Direction::Up | Direction::Down => Rect {
+            x: covered.x,
+            width: covered.width,
+            ..planned
+        },
+    }
+}
+
 /// The tile a directional key moves to when focus is on a window that isn't a
 /// tile (a floating window, dialog or popup) at `from`: its neighbor in that
 /// direction, else the nearest tile whose center lies that way, else the
@@ -723,6 +790,74 @@ mod tests {
         );
         let apart = tiles(690);
         assert_eq!(by_recency(&apart, 2, Direction::Right, &[2, 3, 4]), Some(4));
+    }
+
+    #[test]
+    fn a_window_capped_short_of_its_tile_does_not_border_across_the_gap() {
+        // As above, but the upper right window accepted 600 of its 766
+        // points, ending 100 points above the lower left tile (#648).
+        let tiles = vec![
+            sized(1, 1, 2560, -539, 720, 700),
+            sized(2, 1, 2560, 161, 720, 1830),
+            sized(3, 1, 3280, -539, 720, 766),
+            sized(4, 1, 3280, 227, 720, 1764),
+        ];
+        let window = |id: u32| {
+            tiles
+                .iter()
+                .find(|tile| tile.window.window_id == id)
+                .unwrap()
+                .window
+                .clone()
+        };
+        let capped = |window: &PhysicalWindowId| {
+            (window.window_id == 3).then_some(Rect {
+                x: 3280,
+                y: -539,
+                width: 720,
+                height: 600,
+            })
+        };
+        assert_eq!(
+            bordering_accepted(&tiles, &window(2), Direction::Right, capped),
+            vec![window(4)]
+        );
+        // Uncapped, both right tiles border it.
+        assert_eq!(
+            bordering_accepted(&tiles, &window(2), Direction::Right, |_| None),
+            vec![window(3), window(4)]
+        );
+    }
+
+    #[test]
+    fn a_window_capped_along_the_direction_still_borders() {
+        // A left column beside a full-height right tile; the upper left
+        // window accepted 500 of its 700 points of width (#648).
+        let tiles = vec![
+            sized(1, 1, 0, 0, 700, 500),
+            sized(2, 1, 0, 500, 700, 500),
+            sized(3, 1, 700, 0, 700, 1000),
+        ];
+        let window = |id: u32| {
+            tiles
+                .iter()
+                .find(|tile| tile.window.window_id == id)
+                .unwrap()
+                .window
+                .clone()
+        };
+        let narrow = |window: &PhysicalWindowId| {
+            (window.window_id == 1).then_some(Rect {
+                x: 0,
+                y: 0,
+                width: 500,
+                height: 500,
+            })
+        };
+        assert_eq!(
+            bordering_accepted(&tiles, &window(3), Direction::Left, narrow),
+            vec![window(1), window(2)]
+        );
     }
 
     #[test]
