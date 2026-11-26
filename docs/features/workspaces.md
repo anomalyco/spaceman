@@ -239,6 +239,10 @@ Pinned floats                                              // ws.pin
 ├── A pin rule added while the window is parked brings it back (matched by bundle and the full title
 │   it last showed, so an earlier title rule still wins; title rules wait until it is observed);
 │   a parked tile leaves its workspace's tiles and floats there first, owned by that workspace
+├── Rule pins are not saved; after a restart they match again, even for an app whose windows are
+│   all minimized and so never observed: such a window is matched by its app's bundle and its
+│   current title, read from the running app (an earlier title rule still wins; while its title
+│   cannot be read and a title rule could decide, it is not pinned, #697)
 └── Hand pins persist in workspace-state.json (`pinned`); pause, quit and restart restore as usual
 
 Reopened at a parking spot                                 // ws.stale-parked
@@ -544,6 +548,8 @@ on the same letter.
   app, no focused window reported), `a_pin_rule_added_while_a_note_is_parked_brings_it_back`,
   `a_pin_rule_added_while_a_tile_is_parked_floats_and_brings_it_back` (#678, its app's
   first-window route stays used),
+  `a_pin_rule_matches_a_parked_window_whose_app_was_never_observed` and
+  `a_never_observed_parked_note_keeps_an_earlier_title_rule_over_a_pin_rule` (#697),
   `a_pin_rule_reload_leaves_a_parked_note_an_earlier_title_rule_floats` (#549), and
   `ctl_pin_floats_and_pins_the_focused_window_then_unpins_where_it_is_seen`. Unit,
   `src/config.rs`: `built_in_float_defaults_apply_only_after_user_rules`,

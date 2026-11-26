@@ -90,6 +90,21 @@ impl MemoryState {
             .and_then(|identity| identity.title.as_deref())
     }
 
+    /// Record the title read for `window` from its running app when no observation in this
+    /// run has listed it; a later observation replaces it.
+    pub(super) fn note_probed_title(
+        &mut self,
+        window: &crate::PhysicalWindowId,
+        title: Option<Arc<str>>,
+    ) {
+        self.identities
+            .entry(window.clone())
+            .or_insert_with(|| WindowIdentity {
+                document: None,
+                title: title.filter(|title| !title.trim().is_empty()),
+            });
+    }
+
     pub(super) fn recalled(&self, window: &crate::PhysicalWindowId) -> Option<RecalledPlacement> {
         self.recalls
             .get(&window.app)
