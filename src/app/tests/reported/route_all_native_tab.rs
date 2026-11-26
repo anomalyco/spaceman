@@ -77,3 +77,64 @@ fn a_new_window_beside_the_tile_still_follows_the_route_all_rule() {
         Some(WorkspaceId::SIX)
     );
 }
+
+/// #598: an ignored window from the same app, left open on the tile's display, is no new
+/// window to that workspace, so the incoming tab still takes its tile's slot. Reported by
+/// @coygeek.
+#[test]
+fn an_incoming_native_tab_keeps_its_slot_beside_an_ignored_window_of_its_app() {
+    const RULES: &str = "version = 1\n[labs]\nroute_all_windows = true\n[[rules]]\nbundle_id = 'com.example.Test'\ntitle = 'Ignored'\naction = 'ignore'\n[[rules]]\nbundle_id = 'com.example.Test'\naction = 'route'\nworkspace = 6\nwindows = 'all'";
+    let (previous, replacement, ignored) = (window(10), window(11), window(12));
+    let mut backend = FakeBackend {
+        observation: Some(observation(&previous, frame(50))),
+        focused: Some(previous.clone()),
+        ..FakeBackend::default()
+    };
+    backend.frames.insert(previous.clone(), frame(50));
+    let mut runtime = runtime_with_config(backend, Config::parse(RULES).unwrap());
+    bind(&mut runtime, WorkspaceId::ONE, &previous);
+    runtime.cycle(outputs(), &AtomicBool::new(false)).unwrap();
+    let accepted = runtime.backend.frames[&previous];
+    runtime.backend.observation = Some(observation(&previous, accepted));
+    runtime.cycle(outputs(), &AtomicBool::new(false)).unwrap();
+    let slot = runtime
+        .workspaces
+        .engine(WorkspaceId::ONE)
+        .slot_for_window(&previous);
+
+    runtime.backend.frames.remove(&previous);
+    runtime.backend.frames.insert(replacement.clone(), accepted);
+    runtime.backend.frames.insert(ignored.clone(), frame(100));
+    runtime.backend.focused = Some(replacement.clone());
+    let mut tabbed = observation_for_windows(
+        "com.example.Test",
+        &replacement,
+        &[
+            (replacement.clone(), accepted),
+            (ignored.clone(), frame(100)),
+        ],
+    );
+    let crate::AppObservation::Complete { windows, .. } = &mut tabbed.applications[0] else {
+        unreachable!();
+    };
+    windows[1].title = Some("Ignored".into());
+    runtime.backend.observation = Some(tabbed);
+
+    runtime.cycle(outputs(), &AtomicBool::new(false)).unwrap();
+
+    assert_eq!(
+        runtime.workspaces.workspace_of(&replacement),
+        Some(WorkspaceId::ONE)
+    );
+    assert_eq!(
+        runtime
+            .workspaces
+            .engine(WorkspaceId::ONE)
+            .slot_for_window(&replacement),
+        slot
+    );
+    assert!(!runtime.parked.contains_key(&replacement));
+    assert_eq!(runtime.backend.frames[&replacement], accepted);
+    assert_eq!(runtime.workspaces.workspace_of_any(&ignored), None);
+    assert_eq!(runtime.backend.frames[&ignored], frame(100));
+}

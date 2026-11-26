@@ -253,6 +253,7 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
                     if !app_owns_tiled
                         || (self.config.routes_every_window(&app.bundle_id, window)
                             && !self.replaces_native_tab(
+                                &app.bundle_id,
                                 window,
                                 focused.as_ref(),
                                 windows,
@@ -290,6 +291,7 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
     /// rule's workspace (#509).
     fn replaces_native_tab(
         &self,
+        bundle_id: &str,
         window: &crate::ObservedWindow,
         focused: Option<&crate::PhysicalWindowId>,
         windows: &[crate::ObservedWindow],
@@ -304,12 +306,15 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
         else {
             return false;
         };
-        // The app's windows that workspace's reconciliation would see as new.
+        // The app's windows that workspace's reconciliation would see as new. It never sees
+        // an ignored window, so an ignored one left open on this display must not make the
+        // incoming tab look ambiguous (#598).
         let unbound: Vec<_> = windows
             .iter()
             .filter(|other| {
                 resolved.screen.contains_center(other.frame)
                     && self.workspaces.workspace_of_any(&other.id).is_none()
+                    && !self.config.patch(bundle_id, other).is_ignored()
             })
             .map(|other| other.id.clone())
             .collect();
