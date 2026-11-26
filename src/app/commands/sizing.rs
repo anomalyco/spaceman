@@ -163,7 +163,7 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
         if let Some(start) = start {
             match start {
                 Some((first, snapshot)) if *first == workspace => {
-                    engine.restore_layout(snapshot.clone());
+                    engine.restore_layout_snapshot(snapshot.clone());
                     restored = true;
                 }
                 Some(_) => return Ok(None),
