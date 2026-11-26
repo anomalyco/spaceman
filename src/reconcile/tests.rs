@@ -726,3 +726,51 @@ fn mouse_down_defers_all_model_changes() {
     assert_eq!(result.model, model);
     assert_eq!(result.decisions, vec![Decision::MouseDownDeferred]);
 }
+
+/// #706: an incoming native tab caught mid-handoff, at its tile's frame while the outgoing
+/// tab is still listed there or already gone, is pending; one opened anywhere else, or
+/// while the outgoing tab sits somewhere else, is not.
+#[test]
+fn a_native_tab_handoff_is_pending_only_at_its_tiles_frame() {
+    let tabs = app(10, 1);
+    let tile = Rect {
+        width: 620,
+        ..OUTPUT
+    };
+    let model = Model {
+        workspace: crate::model::Workspace {
+            slots: vec![Slot {
+                id: SlotId(1),
+                binding: BindingState::Bound(window(&tabs, 1, tile).id),
+            }],
+        },
+        ..Model::default()
+    };
+    let evidence = ReconciliationEvidence {
+        previous_placements: HashMap::from([(SlotId(1), tile)]),
+        ..ReconciliationEvidence::default()
+    };
+    let settings = Settings::for_output(OUTPUT);
+    let incoming = window(&tabs, 2, tile);
+    let pending = |windows: &[ObservedWindow], candidate: &ObservedWindow| {
+        native_tab_handoff_pending(&model, &evidence, &settings, candidate, windows)
+    };
+
+    assert!(pending(
+        &[window(&tabs, 1, tile), incoming.clone()],
+        &incoming
+    ));
+    assert!(pending(std::slice::from_ref(&incoming), &incoming));
+
+    let elsewhere = Rect {
+        x: 620,
+        width: 380,
+        ..OUTPUT
+    };
+    let opened = window(&tabs, 3, elsewhere);
+    assert!(!pending(&[window(&tabs, 1, tile), opened.clone()], &opened));
+    assert!(!pending(
+        &[window(&tabs, 1, elsewhere), incoming.clone()],
+        &incoming
+    ));
+}

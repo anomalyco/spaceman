@@ -39,6 +39,11 @@ pub(super) struct FrozenAffinityPolicy {
     /// A visible Fullscreen Layout workspace that gained a tiled window during
     /// affinity healing or pre-reconcile routing.
     pub(super) fullscreen_hud: Option<WorkspaceId>,
+    /// Apps with an incoming native tab held mid-handoff: every display skips them this
+    /// cycle, so neither the tile it is replacing nor its focus history changes (#706).
+    pub(super) held_apps: HashSet<crate::AppInstanceId>,
+    /// When a held handoff gives up and routes the window as new.
+    pub(super) handoff_recheck: Option<Instant>,
 }
 
 impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
@@ -74,6 +79,8 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
         let mut affinities = HashMap::new();
         let mut float_homes = Vec::new();
         let mut fullscreen_hud = None;
+        let mut held_apps = HashSet::new();
+        let mut handoff_recheck = None;
         // Read once, and only if a Complete snapshot omits an owned float.
         let mut onscreen_frames = None;
         for application in &observation.applications {
@@ -257,16 +264,28 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
                             target
                         ));
                     }
-                    if !app_owns_tiled
-                        || (self.config.routes_every_window(&app.bundle_id, window)
-                            && !self.replaces_native_tab(
-                                &app.bundle_id,
-                                window,
-                                focused.as_ref(),
-                                windows,
-                                visible,
-                            ))
+                    let routes_all = self.config.routes_every_window(&app.bundle_id, window);
+                    if app_owns_tiled
+                        && routes_all
+                        && self.replaces_native_tab(
+                            &app.bundle_id,
+                            window,
+                            focused.as_ref(),
+                            windows,
+                            visible,
+                        )
                     {
+                        FrozenWindowAffinity::CurrentDisplay
+                    } else if app_owns_tiled
+                        && routes_all
+                        && let Some(deadline) = self.hold_tab_handoff(window, windows, visible)
+                    {
+                        // Mid native-tab handoff: neither routed nor reconciled yet (#706).
+                        held_apps.insert(app.id.clone());
+                        handoff_recheck =
+                            Some(handoff_recheck.map_or(deadline, |at: Instant| at.min(deadline)));
+                        FrozenWindowAffinity::Ignored
+                    } else if !app_owns_tiled || routes_all {
                         app_owns_window = true;
                         app_owns_tiled = true;
                         FrozenWindowAffinity::ExplicitRoute(target)
@@ -284,7 +303,13 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
                 affinities.insert(window.id.clone(), affinity);
             }
         }
+        self.tab_handoffs.retain(|window, _| {
+            affinities.get(window) == Some(&FrozenWindowAffinity::Ignored)
+                && held_apps.contains(&window.app)
+        });
         Ok(FrozenAffinityPolicy {
+            held_apps,
+            handoff_recheck,
             windows: affinities,
             float_homes,
             visible_workspaces: visible.iter().map(|resolved| resolved.workspace).collect(),

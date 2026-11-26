@@ -432,6 +432,56 @@ pub fn replaces_native_tab(
     replacement_candidate(model, &stale, unbound, &context)
 }
 
+/// Whether `candidate`, a window of its app that no slot holds yet, sits where one of the
+/// app's tiles is (that tile's target or last observed frame), while the tile's window is
+/// gone from `windows` or still listed at that same frame: a native-tab switch caught
+/// mid-handoff, before the outgoing tab leaves the list or focus reaches the incoming one,
+/// so [`replaces_native_tab`] can't tell yet. Routing holds it a moment instead of sending
+/// it to a rule's workspace (#706).
+#[must_use]
+pub fn native_tab_handoff_pending(
+    model: &Model,
+    evidence: &ReconciliationEvidence,
+    settings: &Settings,
+    candidate: &crate::ObservedWindow,
+    windows: &[crate::ObservedWindow],
+) -> bool {
+    let app = &candidate.id.app;
+    let tolerance = settings.frame_tolerance;
+    let mut slots = model
+        .workspace
+        .slots
+        .iter()
+        .filter(|slot| slot.belongs_to(app));
+    if slots
+        .clone()
+        .any(|slot| matches!(slot.binding, BindingState::Unresolved { .. }))
+    {
+        return false;
+    }
+    slots.any(|slot| {
+        let Some(bound) = slot.bound_window() else {
+            return false;
+        };
+        let at_tile = [
+            evidence.previous_placements.get(&slot.id),
+            evidence.previous_frames.get(&slot.id),
+        ]
+        .into_iter()
+        .flatten()
+        .any(|known| candidate.frame.approximately_equals(*known, tolerance));
+        at_tile
+            && windows
+                .iter()
+                .find(|window| &window.id == bound)
+                .is_none_or(|window| {
+                    window
+                        .frame
+                        .approximately_equals(candidate.frame, tolerance)
+                })
+    })
+}
+
 fn replacement_candidate(
     model: &Model,
     stale: &[PhysicalWindowId],
