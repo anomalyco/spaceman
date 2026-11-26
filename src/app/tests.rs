@@ -114,6 +114,9 @@ struct FakeBackend {
     refuses_position: Option<fn(crate::Rect) -> bool>,
     /// Widths windows refuse to shrink below, clamped synchronously like AppKit.
     minimum_widths: HashMap<crate::PhysicalWindowId, i32>,
+    /// Skips managed writes to windows already within the write tolerance of
+    /// their target, as the Accessibility adapter does.
+    honors_tolerance: bool,
     /// Display frames. A write that moves a window from one of them to
     /// another has its height fit to the bottom of the display it left, as
     /// macOS does before the app sees its new screen (#428).
@@ -497,7 +500,7 @@ impl WorkspaceBackend for FakeBackend {
     fn apply_managed(
         &mut self,
         placements: &[crate::Placement],
-        _: &Settings,
+        settings: &Settings,
         cancelled: &AtomicBool,
     ) -> Vec<macos::ApplyResult> {
         placements
@@ -505,6 +508,17 @@ impl WorkspaceBackend for FakeBackend {
             .take_while(|_| !cancelled.load(Ordering::Acquire))
             .filter_map(|placement| {
                 let window = placement.window.clone()?;
+                if self.honors_tolerance
+                    && let Some(&current) = self.frames.get(&window)
+                    && current.approximately_equals(placement.frame, settings.frame_tolerance)
+                {
+                    return Some(macos::ApplyResult {
+                        actual: Some(current),
+                        window,
+                        target: placement.frame,
+                        outcome: macos::ApplyOutcome::Applied,
+                    });
+                }
                 self.calls
                     .push(BackendCall::Apply(window.clone(), placement.frame));
                 let mut outcome = self.managed_outcome.unwrap_or(macos::ApplyOutcome::Applied);

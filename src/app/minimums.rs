@@ -27,13 +27,26 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
         let mut results = results;
         let mut status = None;
         let tiles = self.workspaces.engine(workspace).bound_windows().len();
+        let was_exact = self.exact_spacing_workspaces.contains(&workspace);
+        let mut deferred = false;
         for _ in 0..learning_rounds(tiles) {
             if !self.fit_minimum_sizes(workspace, output, &results) {
                 break;
             }
+            // A refit moves seams by a point or two, so a tile an earlier
+            // round already wrote can sit inside the write tolerance of its
+            // new target while its neighbor moves: write the refit exactly so
+            // seams meet (#629).
+            self.exact_spacing_workspaces.insert(workspace);
             let (applied, next) = self.apply_layout(workspace, output, None, cancelled);
+            deferred = next
+                .iter()
+                .any(|result| matches!(result.outcome, macos::ApplyOutcome::Deferred));
             status = Some(applied);
             results = next;
+        }
+        if !was_exact && !deferred {
+            self.exact_spacing_workspaces.remove(&workspace);
         }
         status
     }

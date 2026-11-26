@@ -58,7 +58,7 @@ Size                                                    // tile.size
 │   nearest split on that axis; siblings give or take in proportion; clamped at minimums; lone tile unchanged
 ├── ctl balance          -> equalize the focused tile's immediate split (no default hotkey)
 └── Window refuses its tile size (app minimum) -> its tile grows to fit and siblings give up
-    the space; if necessary, try stacking an adjacent pair
+    the space, every moved seam written exactly (#629); if necessary, try stacking an adjacent pair
 
 Axis                                                    // tile.axis
 └── Option+/ / ctl layout -> flip the root split axis (also exits Fullscreen Layout)
@@ -165,7 +165,8 @@ pause, quit, or hotkey loss.
   give the same seams to a grow or shrink whether a sibling's minimum is known or first revealed
   by it (#607), and
   write a 1–2 point change exactly (#412), Dwindle splits the tile it shows (#410), and a retile
-  learns every minimum a row reveals (#413). `src/app/input.rs` classifies a title-bar drag whose
+  learns every minimum a row reveals (#413) and writes the refit's seams exactly, even ones that
+  moved only a point or two (#629). `src/app/input.rs` classifies a title-bar drag whose
   window changes size as it lands as a drop (#429).
 - Unit (FakeBackend), `src/app/tests/reconciliation.rs`:
   `early_open_event_rechecks_until_the_new_window_can_split_its_sibling`,

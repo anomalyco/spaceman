@@ -31,6 +31,7 @@ mod pointer_resize_release_seam;
 mod reassign_hidden_float;
 mod reconnect_carries_floats;
 mod reconnect_dual_selector;
+mod refit_writes_seams_exactly;
 mod reorder_edge_pointer;
 mod reproduce_dwindle_fitted_axis;
 mod reproduce_exact_resize_tolerance;
