@@ -199,7 +199,8 @@ Where a new window goes (first match wins)                 // ws.adoption
 │   quitting, a returning app, or a new process presenting 2+ windows at once whose memory spans
 │   2+ workspaces) -> remembered workspace, matched by frame, then size, then creation order
 │   (floating if matched by a float rule, dialog/non-resizable without a tile rule, or remembered
-│   as floating; a remembered float moves to its remembered frame on that workspace's display)
+│   as floating; a remembered float moves to its remembered position on that workspace's
+│   display, keeping the size the app reopened at)
 ├── float / pin rule, built-in float, dialog / non-resizable (no tile rule) -> floating on the
 │   active workspace under the window's center; each float belongs to its own workspace, so two
 │   Stickies notes can live on workspaces 1 and 2
