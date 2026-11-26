@@ -138,26 +138,46 @@ impl SwipeTracker {
         let swipe = if dx < 0.0 { Swipe::Left } else { Swipe::Right };
         Some((swipe, fingers))
     }
+}
 
-    /// Whether the currently tracked three- or four-finger touch has moved
-    /// horizontally past [`SPACE_SLIDE_DISTANCE`] with horizontal travel
-    /// exceeding vertical travel (`|dx| >= 0.015 && |dx| > |dy|`).
-    #[must_use]
-    pub fn is_sliding_horizontally(&self, touches: &[(f64, f64)]) -> bool {
-        let State::Tracking {
-            fingers,
-            x: start_x,
-            y: start_y,
-        } = self.state
-        else {
-            return false;
-        };
-        if Fingers::of(touches.len()) != Some(fingers) {
+/// Watches a touch for the horizontal three- or four-finger slide macOS uses to
+/// change desktops. It runs apart from [`SwipeTracker`], whose spent state (a
+/// fired swipe, a fifth contact, four fingers dropping to three) must not stop
+/// macOS's own slide from holding layout (#677): a resting thumb that lifts or
+/// a palm that brushes the trackpad mid-swipe still leaves macOS sliding.
+#[derive(Debug, Default)]
+pub struct SpaceSlide {
+    /// Finger count and centroid where the current three- or four-finger set
+    /// landed.
+    anchor: Option<(usize, f64, f64)>,
+}
+
+impl SpaceSlide {
+    /// Forgets the current touch (fingers lifted, gesture stale, pointer drag).
+    pub fn reset(&mut self) {
+        self.anchor = None;
+    }
+
+    /// Feeds one frame of touching fingers. Returns whether three or four
+    /// fingers have moved horizontally past [`SPACE_SLIDE_DISTANCE`] since that
+    /// many landed, with horizontal travel exceeding vertical travel. Any other
+    /// count forgets the anchor, and a change of count starts a new one there.
+    pub fn frame(&mut self, touches: &[(f64, f64)]) -> bool {
+        if !matches!(touches.len(), 3 | 4) {
+            self.anchor = None;
             return false;
         }
         let (x, y) = centroid(touches);
-        let (dx, dy) = ((x - start_x).abs(), (y - start_y).abs());
-        dx >= SPACE_SLIDE_DISTANCE && dx > dy
+        match self.anchor {
+            Some((count, start_x, start_y)) if count == touches.len() => {
+                let (dx, dy) = ((x - start_x).abs(), (y - start_y).abs());
+                dx >= SPACE_SLIDE_DISTANCE && dx > dy
+            }
+            _ => {
+                self.anchor = Some((touches.len(), x, y));
+                false
+            }
+        }
     }
 }
 
@@ -258,24 +278,34 @@ mod tests {
 
     #[test]
     fn horizontal_space_slide_requires_horizontal_travel_above_threshold() {
-        let mut tracker = SwipeTracker::default();
-        let origin = fingers(0.5, 0.5, 3);
-        assert_eq!(tracker.frame(0.0, &origin), None);
-        assert!(!tracker.is_sliding_horizontally(&origin));
+        let mut slide = SpaceSlide::default();
+        assert!(!slide.frame(&fingers(0.5, 0.5, 3)));
 
         // Sub-threshold horizontal jitter (stationary tap / resting palm).
-        let jitter = fingers(0.51, 0.5, 3);
-        assert_eq!(tracker.frame(0.01, &jitter), None);
-        assert!(!tracker.is_sliding_horizontally(&jitter));
+        assert!(!slide.frame(&fingers(0.51, 0.5, 3)));
 
         // Upward vertical motion (Mission Control) does not count as horizontal.
-        let upward = fingers(0.52, 0.55, 3);
-        assert_eq!(tracker.frame(0.02, &upward), None);
-        assert!(!tracker.is_sliding_horizontally(&upward));
+        assert!(!slide.frame(&fingers(0.52, 0.55, 3)));
 
         // Horizontal motion >= 0.015 exceeding vertical motion arms the slide.
-        let sliding = fingers(0.52, 0.505, 3);
-        assert_eq!(tracker.frame(0.03, &sliding), None);
-        assert!(tracker.is_sliding_horizontally(&sliding));
+        assert!(slide.frame(&fingers(0.52, 0.505, 3)));
+    }
+
+    /// #677: a resting thumb lifting (four to three) or a palm brushing the
+    /// trackpad (five contacts) spends the workspace swipe, but macOS keeps
+    /// sliding between desktops, so the slide still arms from where the new
+    /// finger set landed.
+    #[test]
+    fn space_slide_survives_finger_count_changes_that_spend_a_swipe() {
+        let mut tracker = SwipeTracker::default();
+        let mut slide = SpaceSlide::default();
+        for (at, count) in [(0.0, 4), (0.01, 3), (0.02, 5), (0.03, 3)] {
+            let touches = fingers(0.5, 0.5, count);
+            assert_eq!(tracker.frame(at, &touches), None);
+            assert!(!slide.frame(&touches));
+        }
+        let moved = fingers(0.45, 0.5, 3);
+        assert_eq!(tracker.frame(0.05, &moved), None);
+        assert!(slide.frame(&moved));
     }
 }
