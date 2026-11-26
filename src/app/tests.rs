@@ -111,6 +111,14 @@ struct FakeBackend {
     managed_outcome: Option<macos::ApplyOutcome>,
     /// Fails position writes with this outcome (an app briefly inaccessible).
     position_outcome: Option<macos::ApplyOutcome>,
+    /// Apps not answering Accessibility (a hung main thread). Like the real adapter, their
+    /// windows' reads time out, and a write is sent only on a cached handle: it reports
+    /// unavailable but lands, in order, once the app answers (`answer_again`).
+    unanswering: HashSet<AppInstanceId>,
+    /// Cached Accessibility handles, consulted only for unanswering apps.
+    handles: HashSet<crate::PhysicalWindowId>,
+    /// Writes sent to unanswering apps that have not landed yet, oldest first.
+    queued_writes: Vec<(crate::PhysicalWindowId, crate::Rect)>,
     /// Position writes macOS clamps back, leaving the window where it was.
     refuses_position: Option<fn(crate::Rect) -> bool>,
     /// Windows that refuse every parking write (an app rejecting off-screen
@@ -195,6 +203,30 @@ impl FakeBackend {
         let height = from.y + from.height - target.y;
         (!from.contains_center(target) && height > 0 && height < target.height)
             .then_some(crate::Rect { height, ..target })
+    }
+
+    /// An operation on `window` of an unanswering app failed: like the real adapter, its
+    /// app cannot list its windows either, and the cached handle survives that only as
+    /// `macos::keeps_failed_handle` says.
+    fn unanswered(&mut self, window: &crate::PhysicalWindowId) {
+        if !macos::keeps_failed_handle(macos::WindowLookup::Unanswered) {
+            self.handles.remove(window);
+        }
+    }
+
+    /// `app` answers again: the writes it was sent land in order.
+    fn answer_again(&mut self, app: &AppInstanceId) {
+        self.unanswering.remove(app);
+        let (landing, waiting) = std::mem::take(&mut self.queued_writes)
+            .into_iter()
+            .partition::<Vec<_>, _>(|(window, _)| &window.app == app);
+        self.queued_writes = waiting;
+        for (window, target) in landing {
+            if let Some(frame) = self.frames.get_mut(&window) {
+                frame.x = target.x;
+                frame.y = target.y;
+            }
+        }
     }
 
     /// A window the app opens: on screen at `frame` and in its next snapshot.
@@ -290,6 +322,10 @@ impl WorkspaceBackend for FakeBackend {
     ) -> Result<crate::Rect, macos::WindowAccessError> {
         if let Some(outcome) = self.frame_outcome {
             return Err(outcome);
+        }
+        if self.unanswering.contains(&window.app) {
+            self.unanswered(window);
+            return Err(macos::WindowAccessError::Unavailable);
         }
         self.frames
             .get(window)
@@ -389,6 +425,13 @@ impl WorkspaceBackend for FakeBackend {
     ) -> macos::ApplyOutcome {
         self.calls
             .push(BackendCall::SetPosition(window.clone(), target));
+        if self.unanswering.contains(&window.app) {
+            if self.handles.contains(window) {
+                self.queued_writes.push((window.clone(), target));
+            }
+            self.unanswered(window);
+            return macos::ApplyOutcome::Unavailable;
+        }
         if std::mem::take(&mut self.space_change_on_position) {
             self.space_changed_at = Some(self.clock.0);
         }

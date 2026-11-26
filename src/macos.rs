@@ -31,9 +31,9 @@ use crate::{
 };
 
 pub use apply::{
-    ApplyOutcome, ApplyResult, WindowAccessError, WindowRuleProbe, apply, apply_managed,
-    apply_while, focus_window, frame, raise_window, set_parked_position, set_position_only,
-    set_restore_frame, warp_pointer, window_rule_probe,
+    ApplyOutcome, ApplyResult, WindowAccessError, WindowLookup, WindowRuleProbe, apply,
+    apply_managed, apply_while, focus_window, frame, keeps_failed_handle, raise_window,
+    set_parked_position, set_position_only, set_restore_frame, warp_pointer, window_rule_probe,
 };
 pub use ax::{
     hover_window_at, onscreen_window_frames, onscreen_window_order, window_server_frame,

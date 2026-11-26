@@ -46,6 +46,7 @@ mod reproduce_resize_temporary_stack_minimum;
 mod restart_dual_selector;
 mod restored_cross_selector_history;
 mod right_button_blocks_warp;
+mod rollback_stalled_restore;
 mod route_after_manual_float;
 mod route_after_rule_float;
 mod route_all_native_tab;
