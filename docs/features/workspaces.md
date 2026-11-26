@@ -223,8 +223,8 @@ Pinned floats                                              // ws.pin
 ├── action = "pin" rule, spaceman ctl pin, or a [shortcuts.bindings] chord bound to "pin" on the focused window (floats it first; again unpins)
 ├── Never parked by a switch, a move or a display change: shows on every workspace of its display
 ├── Keeps its owning workspace for memory and the HUD; unpinning hands it to the workspace showing it
-├── A pin rule added while the float is parked brings it back (matched by bundle and the title it
-│   last showed, so an earlier title rule still wins; title rules wait until it is observed)
+├── A pin rule added while the float is parked brings it back (matched by bundle and the full title
+│   it last showed, so an earlier title rule still wins; title rules wait until it is observed)
 └── Hand pins persist in workspace-state.json (`pinned`); pause, quit and restart restore as usual
 
 Reopened at a parking spot                                 // ws.stale-parked
