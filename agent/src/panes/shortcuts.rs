@@ -366,7 +366,46 @@ fn family_rows(ui: &Ui, p: Paint, shortcuts: &Shortcuts, named: &[WorkspaceId]) 
                 ),
             }
         })
+        .chain(
+            running
+                .into_iter()
+                .flat_map(|running| running_only_rows(p, running, shortcuts, named)),
+        )
         .collect()
+}
+
+/// Workspaces the saved table has no row for (it turned the built-ins off and binds nothing to
+/// them) but the previous table still runs: shown unset, with the chord that still runs.
+fn running_only_rows(
+    p: Paint,
+    running: &Shortcuts,
+    saved: &Shortcuts,
+    named: &[WorkspaceId],
+) -> Vec<El> {
+    workspaces::running_only_rows(running, saved, named)
+        .into_iter()
+        .map(|entry| {
+            let note = format!("Still runs {}", workspace_row_caps(&entry.keys));
+            controls::setting_row(
+                p,
+                &format!("{}-row", entry.key),
+                &entry.title,
+                Some((note, p.muted())),
+                keys_face(p, &[], false),
+            )
+        })
+        .collect()
+}
+
+/// A workspace row's keys as one run of keycaps: the whole range, or its first chord.
+fn workspace_row_caps(keys: &workspaces::RowKeys) -> String {
+    match keys {
+        workspaces::RowKeys::Range(caps) => caps.concat(),
+        workspaces::RowKeys::Chords(chords) => chords
+            .first()
+            .map(|chord| chord.keycaps().concat())
+            .unwrap_or_default(),
+    }
 }
 
 fn fixed_row(p: Paint, key: &str, title: &str, caps: Vec<String>) -> El {

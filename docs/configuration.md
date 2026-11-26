@@ -380,7 +380,9 @@ seconds, without a restart. If the new table can't be registered, the previous s
 and Settings shows `Shortcuts not applied` with the reason. Settings › Shortcuts keeps listing the
 saved table. While the previous shortcuts are still registered, the pane is marked **Previous
 shortcuts still run** and each modifier, workspace, or action row whose running shortcut differs
-says so (`Still runs ⌃⌥Y`, or `Not running yet`). Once tiling is paused, or the previous shortcuts could not be registered again
+says so (`Still runs ⌃⌥Y`, or `Not running yet`). A workspace the saved table gives no shortcut
+(with `defaults = false`) but the previous one still runs gets its own row, `Not set` with the keys
+that still run (`Still runs ⌃⌥1…9, 0`). Once tiling is paused, or the previous shortcuts could not be registered again
 either, only the reason stays. Workspaces enabled by a config edit still get their shortcuts on the
 next start. The menu-bar workspace list keeps showing the built-in
 `Option`+number/letter hints next to each workspace. Settings › Workspaces names workspace 10's

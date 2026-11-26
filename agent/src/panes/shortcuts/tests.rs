@@ -53,6 +53,12 @@ fn a_rejected_table_marks_the_rows_only_while_the_previous_shortcuts_run() {
     });
     assert!(super::running_shortcuts(&ui).is_some());
     let _ = super::pane(&ui, p);
+    // The saved table turns the built-ins off, so the running workspace keys get their own rows.
+    ui.doc = Doc::parse(concat!(
+        "version = 1\n[shortcuts]\ndefaults = false\n",
+        "[shortcuts.bindings]\n\"ctrl+alt+d\" = \"switch next\"\n",
+    ));
+    let _ = super::pane(&ui, p);
     // The rollback failed too, or tiling was paused: the reason stays, nothing runs.
     for automatic in [false, true] {
         ui.agent = Some(spaceman::app::UiAgentSnapshot {

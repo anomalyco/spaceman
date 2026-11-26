@@ -48,7 +48,7 @@ rebind it (`esc` cancels, `⌫` clears it), or pick a Base modifier (`⌥`, `⌃
 every built-in shortcut at once. Changes register live, with no restart. If a saved table can't be
 registered, the pane still lists it; while the last working shortcuts stay registered it is marked
 **Previous shortcuts still run** and names each modifier, workspace, or action row's running
-shortcut where it differs.
+shortcut where it differs, including workspaces the saved table no longer binds.
 
 Named workspace shortcuts are registered only when referenced by config. If a configured letter
 overlaps a built-in shortcut, the workspace shortcut takes precedence. A `[shortcuts]` binding claims
