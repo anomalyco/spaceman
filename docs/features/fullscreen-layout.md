@@ -37,7 +37,8 @@ Mode persistence                                        // fullscreen.persist
 
 Blocked while on                                        // fullscreen.guards
 ├── Option+-/= resize, balance, Option+Shift+H/J/K/L reorder -> error "Exit Fullscreen Layout before ..."
-├── Pointer drag/resize of tiles -> ignored; on release the tile fills its own display again
+├── Pointer drag/resize of tiles -> ignored; on release the tile fills its own display again,
+│   written exactly even when let go a point or two from its frame
 └── Floating windows -> keep their own frame
 ```
 

@@ -15,6 +15,7 @@ mod edge_return_busy;
 mod float_dock_release;
 mod focus_ring_no_ax_window;
 mod fullscreen_frame_move;
+mod fullscreen_near_return_drag;
 mod held_swap_numbered_move;
 mod hud_rows_after_move;
 mod missing_drop_sample;
