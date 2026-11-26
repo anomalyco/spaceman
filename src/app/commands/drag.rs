@@ -427,9 +427,36 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
                 .engine_mut(source)
                 .commit_layout_tree(candidate);
         }
+        self.note_tab_selected_mid_drag(source, window);
         let layout = self.layout_workspace(source, source_output, cancelled);
         self.persist_workspace_state_if_changed()?;
         Ok(self.status(layout.failed, outputs))
+    }
+
+    /// A native tab selected while the button was held: the incoming tab is
+    /// where the drag left the group, and no cycle ran to see the outgoing one
+    /// there. Remember that frame as the dragged tile's last observed one, so
+    /// the next cycle hands the incoming tab the tile and its committed size
+    /// instead of a new equal split (#750).
+    fn note_tab_selected_mid_drag(
+        &mut self,
+        workspace: WorkspaceId,
+        dragged: &crate::PhysicalWindowId,
+    ) {
+        let Some(incoming) = self.backend.focused_window().filter(|focused| {
+            focused.app == dragged.app
+                && focused != dragged
+                && self.workspaces.workspace_of_any(focused).is_none()
+        }) else {
+            return;
+        };
+        let Some(frame) = self.backend.window_server_frame(&incoming) else {
+            return;
+        };
+        let engine = self.workspaces.engine_mut(workspace);
+        if let Some(slot) = engine.slot_for_window(dragged) {
+            engine.record_observed_frame(slot, frame);
+        }
     }
 
     /// Show the siblings where the saved layout puts them, a minimum-size fit
