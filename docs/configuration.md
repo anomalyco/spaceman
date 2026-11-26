@@ -116,8 +116,9 @@ overrides the default for what it decides: `action = "tile"` tiles one of these 
 - `route` assigns a newly inserted resizable logical window to workspace 1 through 10 or a configured
   named workspace A through Z. A bundle-level `route` rule (without `title` or `title_contains`)
   applies to the application's initial window while secondary windows opened later stay on the
-  active workspace, even after the initial window is floated by hand or sent to the Scratchpad (a
-  window that floats on its own, like a startup splash, does not use up the route); a
+  active workspace, even after the initial window is floated by hand, sent to the Scratchpad, or
+  floated by a rule added while it was tiled (a window that floats from the start, like a startup
+  splash, does not use up the route); a
   title-matched `route` rule routes every matching window. With the `route_all_windows` Lab on,
   `windows = "all"` makes a bundle-level `route` rule route every new window of its application
   too (see [Labs](#labs)). Movable non-resizable windows remain floating on the workspace where

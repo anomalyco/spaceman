@@ -11,7 +11,7 @@
 //! Pinned windows are floats shown on every workspace of their display: a pin (by hand, by a
 //! `pin` rule, or both) is part of a float's record, so tiling or forgetting the float drops it.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 
 use super::{PhysicalWindowId, WorkspaceId, Workspaces};
 use crate::scratchpad::{Scratchpad, ScratchpadEntry};
@@ -76,6 +76,9 @@ impl Residency {
 #[derive(Clone, Debug, Default)]
 pub(crate) struct WindowTable {
     records: BTreeMap<PhysicalWindowId, Residency>,
+    /// Floats a rule or trait made out of a tile, so they already took their app's
+    /// first-window route (#664). Dropped with the window's record; never persisted.
+    former_tiles: BTreeSet<PhysicalWindowId>,
     next_order: u64,
 }
 
@@ -90,6 +93,7 @@ impl WindowTable {
     }
 
     fn remove(&mut self, window: &PhysicalWindowId) -> Option<Residency> {
+        self.former_tiles.remove(window);
         self.records.remove(window)
     }
 
@@ -221,21 +225,35 @@ impl Workspaces {
         )
     }
 
-    /// Whether `app` already took its first-window route: it holds a tile, or a window it
-    /// floated or stashed by hand. A float its rules or traits made (a startup splash) does
-    /// not count, so it cannot use up the route for the app's main window (#252, #551).
+    /// Floats `window`, which held a tile on `workspace` until now, for `cause`, remembering
+    /// that it already took its app's first-window route. The window must hold no tile.
+    pub(crate) fn float_former_tile(
+        &mut self,
+        window: PhysicalWindowId,
+        workspace: WorkspaceId,
+        cause: FloatCause,
+    ) {
+        self.float(window.clone(), workspace, cause);
+        self.residency.former_tiles.insert(window);
+    }
+
+    /// Whether `app` already took its first-window route: it holds a tile, a window it
+    /// floated or stashed by hand, or a float a rule made out of one of its tiles. A window
+    /// that floated from the start (a startup splash) does not count, so it cannot use up
+    /// the route for the app's main window (#252, #551, #664).
     #[must_use]
     pub(crate) fn app_holds_route(&self, app: &crate::AppInstanceId) -> bool {
         self.app_owns_tiled_windows(app)
             || self.residency.records.iter().any(|(window, residency)| {
                 &window.app == app
-                    && matches!(
-                        residency,
-                        Residency::Floating {
-                            cause: FloatCause::Manual,
-                            ..
-                        } | Residency::Scratchpad { .. }
-                    )
+                    && (self.residency.former_tiles.contains(window)
+                        || matches!(
+                            residency,
+                            Residency::Floating {
+                                cause: FloatCause::Manual,
+                                ..
+                            } | Residency::Scratchpad { .. }
+                        ))
             })
     }
 
@@ -258,8 +276,12 @@ impl Workspaces {
     pub(crate) fn hand_float_to(&mut self, from: &PhysicalWindowId, to: &PhysicalWindowId) -> bool {
         match self.residency.get(from) {
             Some(residency @ Residency::Floating { .. }) => {
+                let former_tile = self.residency.former_tiles.contains(from);
                 self.forget_floating(from);
                 self.residency.set(to.clone(), residency);
+                if former_tile {
+                    self.residency.former_tiles.insert(to.clone());
+                }
                 true
             }
             _ => false,
