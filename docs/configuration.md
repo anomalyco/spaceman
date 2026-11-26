@@ -122,8 +122,12 @@ overrides the default for what it decides: `action = "tile"` tiles one of these 
   splash, does not use up the route); a
   title-matched `route` rule routes every matching window. With the `route_all_windows` Lab on,
   `windows = "all"` makes a bundle-level `route` rule route every new window of its application
-  too (see [Labs](#labs)). Movable non-resizable windows remain floating on the workspace where
-  first observed. A rule does not
+  too (see [Labs](#labs)). A dialog or movable non-resizable window always stays floating. A
+  `route` rule that applies to it (as the application's first window under a bundle-level rule, or
+  as any matching window under a title-matched rule or `windows = "all"`) opens it floating on the
+  routed workspace and parks it there when that workspace is hidden: a startup splash or an AppKit
+  Open/Save panel the app shows before any other window goes there too (show the routed workspace
+  to reach it). Otherwise it opens on the workspace where it was first observed. A rule does not
   repeatedly route existing slots, including a native-tab physical replacement in any app: an
   incoming tab that takes over its tile's slot stays on that tile's workspace, even under a
   `windows = "all"` rule.

@@ -38,7 +38,10 @@ windows exposing a cancel button (`AXCancelButton`), buttonless windows exposing
 enabled zoom button (such as settings windows and splash screens),
 accessory-application windows whose fullscreen button is disabled or absent, movable non-resizable
 windows, and windows matched by a `float` rule retain their frame but park and reveal with their
-logical workspace. A `tile` rule tiles any of them, though a window that cannot resize keeps its own
+logical workspace. Under a bundle-level `route` rule, an application's first window floats on the
+routed workspace even when it is one of these (a splash, or an Open/Save panel shown before any other
+window), and is parked there if that workspace is hidden (see
+[Configuration](configuration.md#current-schema)). A `tile` rule tiles any of them, though a window that cannot resize keeps its own
 size inside its tile. Always-on-top overlays at non-zero window layers (`kCGWindowLayer != 0`, such
 as popped-out Slack Huddles and Picture-in-Picture windows), buttonless accessory-application
 windows, utility panels, dialogs with other subroles, and applications with incomplete or unusual
