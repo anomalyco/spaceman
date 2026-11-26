@@ -510,8 +510,14 @@ fn a_rule_floated_window_dragged_to_another_display_stays_floating_on_its_new_wo
 /// summons onto its own display.
 #[test]
 fn scratchpad_toggle_summons_onto_the_display_a_focused_pin_was_dragged_to() {
-    let labs = "[labs]\nfloat_follows_display = true\nscratchpad = true\n";
-    for (case, focus, right) in [("pinned float", 10, true), ("left tile", 60, false)] {
+    let follow = "[labs]\nfloat_follows_display = true\nscratchpad = true\n";
+    // #652: with the follow Lab off, an unpinned float keeps its owner when dragged too.
+    let stay = "[labs]\nscratchpad = true\n";
+    for (case, labs, pin, focus, right) in [
+        ("pinned float", follow, true, 10, true),
+        ("left tile", follow, true, 60, false),
+        ("unpinned float, follow off", stay, false, 10, true),
+    ] {
         let mut rt = float_rig(labs, "right", FLOAT_START);
         rt.backend.focused = Some(win(11));
         act(
@@ -519,7 +525,7 @@ fn scratchpad_toggle_summons_onto_the_display_a_focused_pin_was_dragged_to() {
             WorkerAction::Scratchpad(crate::scratchpad::ScratchpadCommand::Mark),
         );
         assert!(rt.workspaces.scratchpad().contains(&win(11)), "{case}");
-        assert!(rt.workspaces.pin(win(10)));
+        assert!(!pin || rt.workspaces.pin(win(10)));
         release_float(&mut rt, FLOAT_ON_RIGHT);
         assert_eq!(rt.workspaces.floating_workspace_of(&win(10)), Some(ws(1)));
 
@@ -536,4 +542,42 @@ fn scratchpad_toggle_summons_onto_the_display_a_focused_pin_was_dragged_to() {
             rt.backend.frames[&win(11)]
         );
     }
+}
+
+/// #652 review: a shown Scratchpad window dragged to another display stays with the workspace
+/// it was summoned onto, so focusing it there and toggling hides it rather than re-summoning.
+#[test]
+fn a_shown_scratchpad_window_dragged_to_another_display_still_hides_on_toggle() {
+    let toggle = || WorkerAction::Scratchpad(crate::scratchpad::ScratchpadCommand::Toggle);
+    let mut rt = float_rig("[labs]\nscratchpad = true\n", "right", FLOAT_START);
+    rt.backend.focused = Some(win(11));
+    act(
+        &mut rt,
+        WorkerAction::Scratchpad(crate::scratchpad::ScratchpadCommand::Mark),
+    );
+    rt.backend.focused = Some(win(10));
+    rt.backend.frontmost = Some(win(10).app);
+    act(&mut rt, toggle());
+    assert!(CENTER.contains_center(rt.backend.frames[&win(11)]));
+
+    rt.backend.frames.insert(win(11), FLOAT_ON_RIGHT);
+    let point = (FLOAT_ON_RIGHT.x + 300, FLOAT_ON_RIGHT.y + 12);
+    rt.drop_window(win(11), point, false, trio(), &AtomicBool::new(false))
+        .unwrap();
+    assert!(matches!(
+        rt.workspaces.residency(&win(11)),
+        Some(crate::workspace::Residency::Scratchpad {
+            shown_on: Some(shown),
+            ..
+        }) if shown == ws(1)
+    ));
+
+    rt.backend.focused = Some(win(11));
+    rt.backend.frontmost = Some(win(11).app);
+    act(&mut rt, toggle());
+    assert!(rt.parked.contains_key(&win(11)), "hidden again");
+    assert!(matches!(
+        rt.workspaces.residency(&win(11)),
+        Some(crate::workspace::Residency::Scratchpad { shown_on: None, .. })
+    ));
 }

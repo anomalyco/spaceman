@@ -42,9 +42,10 @@ Swipe                                                      // ws.swipe
 Step to the next or previous workspace (Lab: [labs] workspace_steps)  // ws.step
 ├── ctl switch next|prev / a [shortcuts.bindings] chord (no built-in one) -> the swipe's stops
 │   (visible + occupied, in workspace order) on the focused display, stopping at either end;
-│   with no visible window focused, the display move-workspace would use. A focused pinned
-│   window counts as the display it is on, even after a drag away from its home's display
-│   and with its center in that display's menu bar strip
+│   with no visible window focused, the display move-workspace would use. A focused floating
+│   window (pinned, or kept by its workspace while Dragged Floats Follow Their Display is off)
+│   counts as the display it is on, even after a drag away from its workspace's display and
+│   with its center in that display's menu bar strip
 ├── ctl move next|prev [--follow] -> the focused window to the next/previous enabled workspace of
 │   its display, empty ones included, exactly as move <ws> [--follow]; stops at either end
 └── Lab off -> bindings skipped at registration, ctl reports "Workspace steps are off"
@@ -381,7 +382,9 @@ on the same letter.
   dragged to another display steps that display, including with its center in that display's
   menu bar strip (issue 606, `switch_next_from_a_pin_centered_in_a_menu_strip_steps_that_display`),
   and from a pin on its home's display steps that one; `move-workspace` from a dragged pin still
-  moves the pin's home workspace.
+  moves the pin's home workspace. Issue 652,
+  `switch_next_from_an_unpinned_float_dragged_right_steps_the_right_display`: the same for an
+  ordinary float that kept its workspace when dragged.
 - Unit (FakeBackend), `src/app/tests/switch_repeat.rs`: a repeat `SwitchWorkspace` walks a
   3-tile workspace A -> B -> C -> A in split and Fullscreen Layout (remembered focus and HUD
   included), warps the pointer onto each next tile under `mouse_follows_focus`, steps on inside

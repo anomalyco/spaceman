@@ -608,13 +608,16 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
         )
     }
 
-    /// The visible workspace `window` is seen on. Parked windows are off
-    /// screen (`None`). Ordinary managed windows resolve to their owning
+    /// The visible workspace `window` is seen on, as Option-Tab, back-and-forth
+    /// and departing focus count it. Parked windows are off screen (`None`).
+    /// Unpinned managed windows (floats included) resolve to their owning
     /// workspace when visible. Pinned floats show on every workspace of the
     /// display they sit on (and can be dragged across displays without changing
     /// home, #526/#556/#561), so pinned and unmanaged windows resolve by their
     /// live frame center first, falling back for pinned windows without a
-    /// readable frame to their home display's shown workspace.
+    /// readable frame to their home display's shown workspace. The focused
+    /// display for Scratchpad Toggle and Workspace Steps resolves every focused
+    /// float by its frame first (`focused_visible_workspace`, #652).
     pub(super) fn shown_workspace_for(
         &mut self,
         window: &crate::PhysicalWindowId,
@@ -634,25 +637,8 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
                 .find(|resolved| resolved.workspace == workspace)
                 .cloned();
         }
-        if let Some(frame) = self
-            .backend
-            .window_server_frame(window)
-            .or_else(|| self.backend.frame(window).ok())
-        {
-            if let Some(resolved) = visible
-                .iter()
-                .find(|resolved| resolved.output.contains_center(frame))
-            {
-                return Some(resolved.clone());
-            }
-            // A center in a display's menu bar or Dock strip is on that display, though
-            // outside its usable frame (#606).
-            if let Some(resolved) = visible
-                .iter()
-                .find(|resolved| resolved.screen.contains_center(frame))
-            {
-                return Some(resolved.clone());
-            }
+        if let Some(resolved) = self.visible_workspace_under(window, visible) {
+            return Some(resolved);
         }
         if pinned && let Some(home) = owner {
             let display_id = outputs
