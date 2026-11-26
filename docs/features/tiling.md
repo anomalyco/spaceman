@@ -24,7 +24,8 @@ Automatic tiling                                        // tile.auto
     │   ├── A snapshot mid-switch with no focused window -> the app's last focused tab still counts as the outgoing one, so the incoming tab keeps the slot (#718)
     │   ├── Right after a pointer resize is released -> the incoming tab keeps the resized tile's side and width (#624)
     │   └── Old tab ordered out before the new one is on screen -> while another tab of the group is listed at the tile's corner, the tile waits up to 300 ms for it, so it still keeps side and width (#707), also when the new tab is on screen but not yet listed by Accessibility (#719); a close with no other window of the app at that corner does not wait
-    └── Ghostty -> ambiguous evidence also holds the slot for a bounded settle
+    ├── Ghostty -> ambiguous evidence also holds the slot for a bounded settle
+    └── In a floating tab group -> the incoming tab, the one new window of the app where the outgoing tab was, takes its float (workspace, manual or automatic, pin), so the group stays floating where it was and parks with its workspace; caught mid-switch with the old tab still listed at that frame, it waits up to a second before it is adopted as a new window (#747)
 
 Focus                                                   // tile.focus
 ├── Option+H/J/K/L / ctl focus <dir> -> nearest tile in that direction, crossing displays
@@ -218,6 +219,9 @@ so a full queue fails that command with `Input queue full; command was not queue
   its explicit zeros, and restore the file.
 - `src/reconcile/tests.rs` `finder_tab_replacement_keeps_its_slot_and_place_in_the_row`: a
   non-Ghostty tab change keeps the tile's slot and order.
+- `src/app/tests/reported/float_native_tab.rs`: the incoming tab of a floated group keeps the
+  float, also when it is listed beside the outgoing tab first, and a window that only shares a
+  float's frame is adopted after the wait (#747).
 - Fixture replay: `cargo run -- replay fixtures/ghostty-tab-replacement.json` (reconciliation of a
   native-tab replacement, without the runtime).
 - Live harness (not run): `scripts/live-ghostty-tabs.sh` for native-tab slot preservation.

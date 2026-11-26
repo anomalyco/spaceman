@@ -1,5 +1,6 @@
 mod affinity;
 mod deck;
+mod float_tab;
 mod omission;
 mod readback;
 mod routing;

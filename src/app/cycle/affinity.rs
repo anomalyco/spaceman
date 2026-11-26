@@ -105,6 +105,14 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
                         // Minimized (⌘M) or its app hidden (⌘H): set aside, not closed. It
                         // keeps its float, so restoring it brings it back floating (#699).
                         self.omitted_windows.remove(&window);
+                    } else if self.hand_float_to_incoming_tab(
+                        &app.bundle_id,
+                        &window,
+                        windows,
+                        server_frames,
+                    ) {
+                        // The tab group now shows another tab, which keeps the float (#747).
+                        self.omitted_windows.remove(&window);
                     } else if !self.omitted_float_is_settling(&window, &mut onscreen_frames) {
                         log_event!("forget floating {:?}: not observed and not parked", window);
                         self.workspaces.forget_floating(&window);
@@ -196,6 +204,15 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
                         app_owns_tiled = true;
                         FrozenWindowAffinity::DetachedTab(*target)
                     }
+                } else if let Some(deadline) =
+                    self.hold_float_tab_handoff(&app.bundle_id, window, windows)
+                {
+                    // Opened over its app's float that is still listed: a native tab
+                    // mid-handoff, held until the outgoing tab hands its float over (#747).
+                    held_apps.insert(app.id.clone());
+                    handoff_recheck =
+                        Some(handoff_recheck.map_or(deadline, |at: Instant| at.min(deadline)));
+                    FrozenWindowAffinity::Ignored
                 } else if !floating
                     && let Some(affinity) = {
                         let mut reserved = self.workspaces.replacement_workspaces(&window.id);
