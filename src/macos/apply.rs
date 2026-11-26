@@ -671,28 +671,63 @@ impl Drop for WindowAnimationGuard<'_> {
     }
 }
 
+/// How resolving a window afresh through its app's `AXWindows` went, after an
+/// operation on its cached handle failed.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum WindowLookup {
+    /// The app did not answer (busy or hung); nothing shows the handle is stale.
+    Unanswered,
+    /// The app is gone, relaunched, or no longer lists the window.
+    Missing,
+    /// The app listed the window, so its fresh handle replaces the cached one.
+    Found,
+}
+
+/// Whether a cached handle whose operation failed stays cached after `lookup`.
+/// A handle can go stale while the window lives on (an app rebuilds its
+/// accessibility tree), so it is dropped once the app answers. An app that does
+/// not answer keeps it: writes sent on it still land, in order, when the app
+/// resumes, and without it no later write (a rolled-back switch's park, #722)
+/// could reach the app at all until it answers again.
+#[must_use]
+pub fn keeps_failed_handle(lookup: WindowLookup) -> bool {
+    lookup == WindowLookup::Unanswered
+}
+
 fn with_managed_window_result<T>(
     id: &PhysicalWindowId,
     mut operation: impl FnMut(&AXUIElement) -> Result<T, WindowAccessError>,
 ) -> Result<T, WindowAccessError> {
-    if let Some(window) = MANAGED_WINDOWS.with(|windows| windows.borrow().get(id).cloned()) {
-        match operation(&window) {
-            Ok(value) => return Ok(value),
-            // A cached handle can go stale while the window lives on (an app
-            // rebuilds its accessibility tree); resolve it afresh once before
-            // reporting the window gone.
-            Err(_) => evict_managed_window(id),
-        }
+    let cached = MANAGED_WINDOWS.with(|windows| windows.borrow().get(id).cloned());
+    if let Some(window) = &cached
+        && let Ok(value) = operation(window)
+    {
+        return Ok(value);
     }
+    // Resolve the window afresh once before reporting it unavailable or gone.
+    let (lookup, result) = resolve_managed_window(id, &mut operation);
+    if cached.is_some() && !keeps_failed_handle(lookup) && result.is_err() {
+        evict_managed_window(id);
+    }
+    result
+}
+
+fn resolve_managed_window<T>(
+    id: &PhysicalWindowId,
+    operation: &mut impl FnMut(&AXUIElement) -> Result<T, WindowAccessError>,
+) -> (WindowLookup, Result<T, WindowAccessError>) {
     if !process_incarnation_matches(&id.app) {
         evict_managed_app(&id.app);
-        return Err(WindowAccessError::Gone);
+        return (WindowLookup::Missing, Err(WindowAccessError::Gone));
     }
     let app = application_element(id.app.pid);
-    let windows = attribute::<CFArray>(&app, "AXWindows").map_err(|error| match error {
-        AXError::InvalidUIElement => WindowAccessError::Gone,
-        _ => WindowAccessError::Unavailable,
-    })?;
+    let windows = match attribute::<CFArray>(&app, "AXWindows") {
+        Ok(windows) => windows,
+        Err(AXError::InvalidUIElement) => {
+            return (WindowLookup::Missing, Err(WindowAccessError::Gone));
+        }
+        Err(_) => return (WindowLookup::Unanswered, Err(WindowAccessError::Unavailable)),
+    };
     for window in cf_array_items::<AXUIElement>(&windows) {
         set_ax_timeout(window);
         if physical_window_id(&id.app, window).as_ref() == Some(id) {
@@ -700,10 +735,10 @@ fn with_managed_window_result<T>(
             if result.is_ok() {
                 cache_managed_window(id, window);
             }
-            return result;
+            return (WindowLookup::Found, result);
         }
     }
-    Err(WindowAccessError::Gone)
+    (WindowLookup::Missing, Err(WindowAccessError::Gone))
 }
 
 /// Reads `AXMinimized` from the cached handle only, with a short timeout, so
@@ -769,10 +804,21 @@ mod tests {
     use objc2_core_foundation::CFString;
 
     use super::{
-        FRONTMOST_POLL, FRONTMOST_REASSERTS, WindowAccessError, arrived_short, confirm_frontmost,
-        focus_sequence, interpret_ax_title, keep_cached_window, warp_sequence, write_frame,
+        FRONTMOST_POLL, FRONTMOST_REASSERTS, WindowAccessError, WindowLookup, arrived_short,
+        confirm_frontmost, focus_sequence, interpret_ax_title, keep_cached_window,
+        keeps_failed_handle, warp_sequence, write_frame,
     };
     use crate::{AppInstanceId, PhysicalWindowId, Rect, Settings};
+
+    /// #722: a busy app keeps its window's handle, so a park written after a
+    /// timed-out restore is still sent and lands behind it; once the app
+    /// answers, a failed handle is dropped as before.
+    #[test]
+    fn a_failed_handle_is_kept_only_while_its_app_does_not_answer() {
+        assert!(keeps_failed_handle(WindowLookup::Unanswered));
+        assert!(!keeps_failed_handle(WindowLookup::Missing));
+        assert!(!keeps_failed_handle(WindowLookup::Found));
+    }
 
     #[test]
     fn a_window_from_another_display_that_lands_short_is_sized_again() {

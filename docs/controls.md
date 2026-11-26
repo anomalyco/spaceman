@@ -136,8 +136,9 @@ synchronous Accessibility requests on the main thread.
 
 A workspace switch reveals incoming parked windows before hiding outgoing windows. If restoration
 cannot be confirmed by the window server within the bounded reveal wait, the switch is rolled back:
-the outgoing workspace stays active and pending incoming reveals are re-parked. Retry once the slow
-application is responsive. Successful Accessibility writes alone do not confirm arrival.
+the outgoing workspace stays active and pending incoming reveals are re-parked. A window whose app
+was not responding stays hidden when that app recovers. Retry once the slow application is
+responsive. Successful Accessibility writes alone do not confirm arrival.
 
 ## Send Tab to Workspace
 

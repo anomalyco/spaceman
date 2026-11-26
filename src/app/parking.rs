@@ -457,6 +457,36 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
             })
     }
 
+    /// Write a parked window's off-screen position from its recovery frame
+    /// alone, without first reading it (its app may not be answering). A
+    /// rolled-back switch uses it to supersede a restore the app has not yet
+    /// applied: the write goes out on the window's cached handle, which an
+    /// unanswering app keeps (`macos::keeps_failed_handle`).
+    pub(super) fn park_from_recovery(
+        &mut self,
+        window: &crate::PhysicalWindowId,
+        output: crate::Rect,
+        outputs: &macos::DisplayOutputs,
+    ) -> macos::ApplyOutcome {
+        let Some(original) = self.parked.get(window).copied() else {
+            return macos::ApplyOutcome::Applied;
+        };
+        if self.stays_on_screen(window) {
+            return macos::ApplyOutcome::Applied;
+        }
+        let displays = outputs.frames().collect::<Vec<_>>();
+        let park_output = Self::display_for_frame(original, &displays).unwrap_or(output);
+        let target = crate::geometry::parked_frame_clear_of(
+            park_output,
+            &displays,
+            &outputs.screens(),
+            original,
+        );
+        let outcome = self.backend.set_parked_position(window, target);
+        log_event!("park from recovery: {:?} from {:?} ({:?})", window, original, outcome);
+        outcome
+    }
+
     pub(super) fn park_window(
         &mut self,
         window: &crate::PhysicalWindowId,
