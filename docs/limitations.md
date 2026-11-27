@@ -31,10 +31,12 @@ Spaceman is an experimental public preview, not a broadly qualified release.
   resting fingers do not. A Space change made from the keyboard (Control+arrow) is held only from
   when macOS reports it. A move, focus, resize, layout, float or pin shortcut, or the matching
   `spaceman ctl` command (`move`, `focus`, `move-direction`, `resize`, `balance`, `layout`, ...),
-  sent during that 0.7 s waits for it to end and then acts on the arriving desktop's windows
-  (#770). One sent between Control+arrow and the macOS report is not held and still acts on the
-  desktop being left. Accessibility cannot reach a parked window on a Space that isn't showing,
-  so pausing or quitting there waits, with its recovery entry kept, until that Space is shown.
+  sent during that 0.7 s, or within about 1.5 s after three or four fingers slide sideways on the
+  trackpad (whether or not macOS reports a change), waits for it to end and then acts on the
+  arriving desktop's windows (#770, #777). One sent between Control+arrow and the macOS report is
+  not held and still acts on the desktop being left.
+  Accessibility cannot reach a parked window on a Space that isn't showing, so pausing or quitting
+  there waits, with its recovery entry kept, until that Space is shown.
 - Hidden workspaces' windows are parked just past a display's bottom corner. With Mission Control's
   **Group windows by application** off (the macOS default), Mission Control lays windows out by
   position, so parked windows can shrink every thumbnail in the overview (#555). Turn it on in
