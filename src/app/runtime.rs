@@ -61,6 +61,9 @@ pub(super) struct WorkspaceRuntime<B = MacWorkspaceBackend> {
     pub(super) inaccessible_since: HashMap<crate::PhysicalWindowId, Instant>,
     /// Smallest width and height each window has refused to shrink below.
     pub(super) minimum_sizes: HashMap<crate::PhysicalWindowId, (i32, i32)>,
+    /// Where each window last floated, for Toggle Float to restore instead of
+    /// lifting it again. In memory only: a closed window is pruned.
+    pub(super) float_frames: HashMap<crate::PhysicalWindowId, crate::Rect>,
     /// Windows stale-parked recovery could not move, and when to try them again.
     pub(super) unmovable_stale: super::stale_parked::UnmovableStale,
     pub(super) config: Config,
@@ -399,6 +402,7 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
             departed_tiles: HashMap::new(),
             inaccessible_since: HashMap::new(),
             minimum_sizes: HashMap::new(),
+            float_frames: HashMap::new(),
             unmovable_stale: super::stale_parked::UnmovableStale::default(),
             config,
             focus: super::focus::FocusTracker::with_fullscreen_restore(fullscreen_restore),
@@ -699,6 +703,7 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
         self.parked.forget_heals(window);
         self.inaccessible_since.remove(window);
         self.minimum_sizes.remove(window);
+        self.float_frames.remove(window);
     }
 
     pub(super) fn status(&self, failed: usize, outputs: &macos::DisplayOutputs) -> CycleStatus {

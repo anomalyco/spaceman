@@ -80,6 +80,16 @@ pub(super) trait WorkspaceBackend {
     ) -> macos::ApplyOutcome {
         self.set_position(window, target)
     }
+    /// Move a floating `window` to `target`, size included, as
+    /// [`macos::set_restore_frame`] does for a parked one. Apps may clamp the
+    /// size; the position confirms the write.
+    fn set_float_frame(
+        &mut self,
+        window: &crate::PhysicalWindowId,
+        target: crate::Rect,
+    ) -> macos::ApplyOutcome {
+        self.set_restore_frame(window, target)
+    }
     /// Move `window` to a parked position; see [`macos::set_parked_position`].
     fn set_parked_position(
         &mut self,

@@ -42,6 +42,63 @@ impl Rect {
     }
 }
 
+/// How much of a display's usable area a first floating window takes, per axis.
+const FLOAT_LIFT_PERCENT: (i64, i64) = (72, 78);
+/// The largest first float, so an ultrawide or 5K display still shows a card.
+pub const FLOAT_LIFT_MAX: (i32, i32) = (1280, 860);
+
+/// A first float's frame in `area`: 72% × 78% of it, capped at
+/// [`FLOAT_LIFT_MAX`] and never wider or taller than the `tiled` frame it
+/// leaves (a narrow column stays narrow), centered.
+#[must_use]
+pub fn centered_float(area: Rect, tiled: Rect) -> Rect {
+    let size = Rect {
+        width: percent(area.width, FLOAT_LIFT_PERCENT.0)
+            .min(FLOAT_LIFT_MAX.0)
+            .min(tiled.width)
+            .max(1),
+        height: percent(area.height, FLOAT_LIFT_PERCENT.1)
+            .min(FLOAT_LIFT_MAX.1)
+            .min(tiled.height)
+            .max(1),
+        ..area
+    };
+    centered(size, area)
+}
+
+/// `frame` moved and shrunk just enough to sit inside `area`: a remembered
+/// float frame restored onto a display that changed.
+#[must_use]
+pub fn clamp_to(frame: Rect, area: Rect) -> Rect {
+    let width = frame.width.min(area.width).max(1);
+    let height = frame.height.min(area.height).max(1);
+    Rect {
+        x: frame.x.clamp(area.x, area.x + (area.width - width).max(0)),
+        y: frame
+            .y
+            .clamp(area.y, area.y + (area.height - height).max(0)),
+        width,
+        height,
+    }
+}
+
+/// `size` centered on `area`, rounded to whole points and kept inside it.
+fn centered(size: Rect, area: Rect) -> Rect {
+    let width = size.width.min(area.width);
+    let height = size.height.min(area.height);
+    Rect {
+        x: area.x + (area.width - width) / 2,
+        y: area.y + (area.height - height) / 2,
+        width,
+        height,
+    }
+}
+
+/// `value` × `percent`/100, rounded to the nearest point.
+const fn percent(value: i32, percent: i64) -> i32 {
+    ((value as i64 * percent + 50) / 100) as i32
+}
+
 /// Width and height of the intersection of two rectangles; not positive when disjoint.
 fn overlap(a: Rect, b: Rect) -> (i64, i64) {
     let width = (i64::from(a.x) + i64::from(a.width)).min(i64::from(b.x) + i64::from(b.width))

@@ -274,8 +274,21 @@ Settings › Rules                                           // ws.rules-pane
     rule of its own, and for any a rule tiles. Its menu: `Float` (no rule), `Tile`
     (action = "tile"), `Pin on all workspaces` (action = "pin", which moves it to `Floating`)
 
+Toggle Float                                               // ws.float
+├── Option+Shift+Space / ctl float / the Window overlay's Float -> a tile leaves its workspace's
+│   tiles, keeps focus, and the remaining windows re-fill its space
+├── A first float lifts the window to a card centered on its display's usable work area: 72% × 78%
+│   of it, capped at 1280 × 860 points, and never wider or taller than the tile it leaves (a narrow
+│   column keeps its width, a short row its height)
+├── A window that floated before returns to the frame it last floated at, recorded when float or pin
+│   tiled it again; on a display whose work area changed it is clamped onto that display. The frames
+│   live in memory only, and a closed window's is dropped
+├── An app that clamps its own size (a minimum, an aspect ratio, an open sheet) keeps the position
+│   it accepted and stays floating
+└── Another press, ctl float, or the overlay's Float tiles it again in stable order
+
 Pinned floats                                              // ws.pin
-├── action = "pin" rule, spaceman ctl pin, or a [shortcuts.bindings] chord bound to "pin" on the focused window (floats it first; again unpins)
+├── action = "pin" rule, spaceman ctl pin, or a [shortcuts.bindings] chord bound to "pin" on the focused window (floats it first, with Toggle Float's lift; again unpins)
 ├── Never parked by a switch, a move or a display change: shows on every workspace of its display
 ├── Left on a macOS desktop that isn't shown, it stays pinned (or a hand float stays floating) even
 │   when its app has a window on the desktop shown, and comes back that way (#768)
@@ -468,6 +481,13 @@ on the same letter.
   not unavailable, so it never rolls back a switch (issue 726, `src/macos/apply/frame.rs`);
   focusing raises the window before bringing its app forward, and either `AXFrontmost` or AppKit
   activation brings the app forward (issue 92).
+- Unit (FakeBackend), `src/app/tests/float.rs`:
+  `a_first_float_lifts_a_full_screen_tile_to_a_centered_card` (72% × 78% of a 1000 × 800 work
+  area), `a_first_float_keeps_a_narrow_tiles_width_and_centers_it`,
+  `floating_again_restores_the_frame_it_last_floated_at` (also clamped onto a display that
+  shrank), `an_ultrawide_first_float_stays_within_the_card_cap` (1280 × 860) and
+  `closing_a_float_forgets_its_remembered_frame`; `toggling_a_tiled_window_floats_it_and_retiles_the_rest`
+  now expects the lift, and a pin of a tiled window floats it the same way.
 - Unit (FakeBackend), `src/app/tests/focus.rs`:
   `a_workspace_switch_that_cannot_focus_keeps_the_focus_restore_pending`,
   `a_workspace_switch_that_focuses_settles_the_focus_restore`,
