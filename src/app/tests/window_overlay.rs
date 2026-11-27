@@ -68,10 +68,16 @@ fn the_snapshot_lists_each_visible_window_title_free_with_its_swaps() {
         .map(|entry| entry.workspace)
         .collect();
     assert_eq!(listed, WorkspaceId::numbered().collect::<Vec<_>>());
-    let one = main.workspaces[0];
-    assert!(one.occupied && one.on_this_display);
-    let six = main.workspaces[5];
-    assert!(!six.occupied && !six.on_this_display);
+    let one = &main.workspaces[0];
+    assert!(one.occupied() && one.on_this_display);
+    assert_eq!(one.windows, 2);
+    // Two windows of one app name it once.
+    assert_eq!(one.apps, vec!["com.example.Test".to_owned()]);
+    let six = &main.workspaces[5];
+    assert!(!six.occupied() && !six.on_this_display);
+    assert!(six.apps.is_empty());
+    // The card of the window with keyboard focus says so, and only that one.
+    assert!(left.focused && !right.focused);
     // Nothing a window shows but its app: the debug form carries no title field at all.
     assert!(!format!("{overlay:?}").contains("title"));
 }
@@ -146,6 +152,10 @@ fn sending_an_unfocused_window_moves_it_without_moving_focus_or_the_pointer() {
             .all(|card| card.window != window(20)),
         "a window sent to a hidden workspace leaves the overlay"
     );
+    // The chips say where it went: one window left here, one now there.
+    let chips = &overlay.displays[0].workspaces;
+    assert_eq!((chips[0].windows, chips[1].windows), (1, 1));
+    assert_eq!(chips[1].apps, vec!["com.example.Test".to_owned()]);
     assert!(
         !runtime
             .backend

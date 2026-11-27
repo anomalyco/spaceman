@@ -189,6 +189,8 @@ cargo run --locked -p spaceman-agent -- --list-scenes
 # One scene, headless:
 cargo run --locked -p spaceman-agent -- --size 920x660 --scene hud-customize --snap /tmp/hud.png
 cargo run --locked -p spaceman-agent -- --scene general --theme light --snap /tmp/general-light.png
+# The window overlay over a mock desktop of light and dark windows (the `overlay*` scenes):
+cargo run --locked -p spaceman-agent -- --size 1440x900 --scene overlay-send --snap /tmp/overlay.png
 # Several scenes, sizes and themes into one folder (<scene>-<width>[-light].png):
 OUT=captures/after SIZES="860x580 920x660 1200x840" THEMES="dark light" \
   scripts/snap-set.sh general hud-customize layout rules workspaces shortcuts activity
