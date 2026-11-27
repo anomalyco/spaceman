@@ -15,7 +15,7 @@ use objc2_core_graphics::{
 };
 use objc2_foundation::{NSString, NSUserDefaults};
 
-use crate::swipe::{Fingers, SpaceSlide, Swipe, SwipeTracker};
+use crate::swipe::{Fingers, SpaceSlide, Swipe, SwipeTracker, TouchFilter, TouchReport};
 
 /// A gap this long between gesture frames means the lift was missed (matches
 /// `crate::swipe::SwipeTracker`).
@@ -34,6 +34,7 @@ const SPACE_GESTURE_REFRESH_SECONDS: f64 = 0.5;
 /// trackpad.
 #[derive(Debug, Default)]
 struct SwipeGate {
+    touches: TouchFilter,
     tracker: SwipeTracker,
     space_slide: SpaceSlide,
     touching: bool,
@@ -46,6 +47,7 @@ struct SwipeGate {
 
 impl SwipeGate {
     fn reset(&mut self) {
+        self.touches.reset();
         self.tracker = SwipeTracker::default();
         self.touching = false;
         self.suppressed = false;
@@ -65,6 +67,32 @@ impl SwipeGate {
             self.space_gesture_note_due = false;
             self.tracker = SwipeTracker::default();
         }
+    }
+
+    /// Feeds one gesture event as AppKit reported it. Empty and partial
+    /// reports made while the fingers stay down are skipped (#781). While
+    /// macOS may be sliding between desktops, a skipped report still refreshes
+    /// the Space-gesture hold, as it did when it was read as a lift.
+    fn report(
+        &mut self,
+        at: f64,
+        report: TouchReport<'_>,
+        pointer_down: bool,
+    ) -> Option<(Swipe, Fingers)> {
+        let Some(accepted) = self.touches.report(at, report) else {
+            // Keep the stale timers in step: a skipped report is not a gap.
+            self.last_frame = Some(at);
+            self.tracker.hold(at);
+            if self.sliding_spaces {
+                self.space_gesture_note_due = true;
+            }
+            return None;
+        };
+        if accepted.restart {
+            // The old fingers' lift was missed: end that gesture first.
+            self.frame(at, &[], pointer_down);
+        }
+        self.frame(at, &accepted.touches, pointer_down)
     }
 
     fn frame(
@@ -274,23 +302,34 @@ unsafe extern "C-unwind" fn tap_callback(
         let Some(ns_event) = NSEvent::eventWithCGEvent(cg_event) else {
             return;
         };
-        let touches: Vec<_> = ns_event
-            .allTouches()
-            .iter()
-            .filter(|touch| touch.phase().intersects(NSTouchPhase::Touching))
-            .map(|touch| {
+        let mut touching = Vec::new();
+        let mut began = 0;
+        let mut lifted = false;
+        for touch in ns_event.allTouches().iter() {
+            let phase = touch.phase();
+            if phase.intersects(NSTouchPhase::Ended | NSTouchPhase::Cancelled) {
+                lifted = true;
+            } else if phase.intersects(NSTouchPhase::Touching) {
+                if phase.intersects(NSTouchPhase::Began) {
+                    began += 1;
+                }
                 let point = touch.normalizedPosition();
-                (point.x, point.y)
-            })
-            .collect();
+                touching.push((point.x, point.y));
+            }
+        }
         let live_button_down = pointer_button_down();
-        if touches.is_empty() && !live_button_down {
+        if touching.is_empty() && !live_button_down {
             // Self-heal in case a LeftMouseUp was missed outside the tap.
             context.left_button_down.set(false);
         }
         let button_down = context.left_button_down.get() || live_button_down;
         let mut gate = context.gate.borrow_mut();
-        let swipe = gate.frame(ns_event.timestamp(), &touches, button_down);
+        let report = TouchReport {
+            touching: &touching,
+            began,
+            lifted,
+        };
+        let swipe = gate.report(ns_event.timestamp(), report, button_down);
         let note_space_gesture = gate.take_space_gesture_note();
         drop(gate);
         if note_space_gesture {
@@ -490,6 +529,30 @@ mod tests {
         assert!(gate.take_space_gesture_note());
 
         gate.frame(0.03, &[], false);
+        assert!(gate.take_space_gesture_note());
+    }
+
+    fn touching(touches: &[(f64, f64)], began: usize) -> TouchReport<'_> {
+        TouchReport {
+            touching: touches,
+            began,
+            lifted: false,
+        }
+    }
+
+    /// #781: an empty report mid-swipe is not a lift, but it keeps a desktop
+    /// slide's hold fresh the way the lift it used to be read as did.
+    #[test]
+    fn an_empty_report_mid_slide_refreshes_the_space_hold_without_lifting() {
+        let mut gate = SwipeGate::default();
+        let landed = fingers(0.3, 0.5, 3);
+        assert_eq!(gate.report(0.0, touching(&landed, 3), false), None);
+        let moved = fingers(0.33, 0.5, 3);
+        assert_eq!(gate.report(0.01, touching(&moved, 0), false), None);
+        assert!(gate.take_space_gesture_note());
+
+        assert_eq!(gate.report(0.02, touching(&[], 0), false), None);
+        assert!(gate.may_slide_spaces());
         assert!(gate.take_space_gesture_note());
     }
 }

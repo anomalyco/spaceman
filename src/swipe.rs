@@ -13,6 +13,10 @@ const DOMINANCE: f64 = 2.0;
 pub const SPACE_SLIDE_DISTANCE: f64 = 0.015;
 /// A gap this long between frames means the swipe's end was missed.
 const STALE_SECONDS: f64 = 0.5;
+/// How long reports with fewer contacts than the gesture had (or none), and no
+/// contact ending, are taken as partial reports and skipped before the lower
+/// count is believed (a lift whose end event was lost).
+const PARTIAL_HOLD_SECONDS: f64 = 0.15;
 
 fn centroid(touches: &[(f64, f64)]) -> (f64, f64) {
     let count = touches.len() as f64;
@@ -85,6 +89,12 @@ pub struct SwipeTracker {
 }
 
 impl SwipeTracker {
+    /// Notes an event at `at` whose touches were skipped as a partial report,
+    /// so the gap before the next frame is not mistaken for a missed lift.
+    pub fn hold(&mut self, at: f64) {
+        self.last_frame = Some(at);
+    }
+
     /// `at` is the frame's timestamp in seconds; `touches` are the fingers on the
     /// trackpad, each `(x, y)` from 0 to 1. Three fingers joined by a fourth
     /// start over as a four-finger swipe; four dropping to three never fires.
@@ -178,6 +188,77 @@ impl SpaceSlide {
                 false
             }
         }
+    }
+}
+
+/// One trackpad gesture event, as AppKit reports its touches.
+#[derive(Clone, Copy, Debug)]
+pub struct TouchReport<'a> {
+    /// Positions of the contacts the event reports as touching.
+    pub touching: &'a [(f64, f64)],
+    /// How many of those contacts just began.
+    pub began: usize,
+    /// Whether the event reports any contact ending or being cancelled.
+    pub lifted: bool,
+}
+
+/// A report the gesture should act on.
+#[derive(Clone, Debug, PartialEq)]
+pub struct AcceptedTouches {
+    /// The fingers on the trackpad were replaced by freshly landed ones without
+    /// the old ones' lift being reported: end the old gesture first.
+    pub restart: bool,
+    pub touches: Vec<(f64, f64)>,
+}
+
+/// Turns AppKit's gesture events into the frames [`SwipeTracker`] and
+/// [`SpaceSlide`] read (#781). Mid-swipe, macOS sends events with no touching
+/// contacts, or only some of them, while the fingers stay down. Taking those as
+/// lifts restarted the swipe from wherever the fingers were next, so it rarely
+/// travelled far enough to switch. A reported end lifts a contact at once; an
+/// empty or short report is skipped until it persists for
+/// `PARTIAL_HOLD_SECONDS`, so a lift whose end was lost still frees the next
+/// swipe. Fingers that all just landed while others were thought down also mean
+/// the old lift was missed.
+#[derive(Debug, Default)]
+pub struct TouchFilter {
+    /// Contacts in the last accepted report.
+    count: usize,
+    /// When reports started showing fewer contacts with none ending.
+    short_since: Option<f64>,
+    last_report: Option<f64>,
+}
+
+impl TouchFilter {
+    /// Forgets the current touch.
+    pub fn reset(&mut self) {
+        *self = Self::default();
+    }
+
+    /// Returns the touches to act on, or `None` to skip a partial report.
+    pub fn report(&mut self, at: f64, report: TouchReport<'_>) -> Option<AcceptedTouches> {
+        if self
+            .last_report
+            .is_some_and(|last| at - last > STALE_SECONDS)
+        {
+            self.count = 0;
+            self.short_since = None;
+        }
+        self.last_report = Some(at);
+        let count = report.touching.len();
+        let restart = self.count > 0 && count > 0 && report.began == count;
+        if !(restart || report.lifted || count >= self.count) {
+            let since = *self.short_since.get_or_insert(at);
+            if at - since < PARTIAL_HOLD_SECONDS {
+                return None;
+            }
+        }
+        self.count = count;
+        self.short_since = None;
+        Some(AcceptedTouches {
+            restart,
+            touches: report.touching.to_vec(),
+        })
     }
 }
 
@@ -307,5 +388,192 @@ mod tests {
         let moved = fingers(0.45, 0.5, 3);
         assert_eq!(tracker.frame(0.05, &moved), None);
         assert!(slide.frame(&moved));
+    }
+
+    /// Feeds one gesture event through the filter to the tracker, ending the
+    /// old gesture first when the filter says the fingers were replaced.
+    fn feed(
+        filter: &mut TouchFilter,
+        tracker: &mut SwipeTracker,
+        at: f64,
+        touching: &[(f64, f64)],
+        began: usize,
+        lifted: bool,
+    ) -> Option<(Swipe, Fingers)> {
+        let accepted = filter.report(
+            at,
+            TouchReport {
+                touching,
+                began,
+                lifted,
+            },
+        )?;
+        if accepted.restart {
+            assert_eq!(tracker.frame(at, &[]), None);
+        }
+        tracker.frame(at, &accepted.touches)
+    }
+
+    /// Three fingers land at `from_x` and slide to `to_x` in 0.02 steps,
+    /// 10 ms apart, with complete reports.
+    fn filtered_sweep(
+        filter: &mut TouchFilter,
+        tracker: &mut SwipeTracker,
+        start: f64,
+        from_x: f64,
+        to_x: f64,
+        landing: bool,
+    ) -> Vec<(Swipe, Fingers)> {
+        (0..=10)
+            .filter_map(|step| {
+                let x = from_x + (to_x - from_x) * f64::from(step) / 10.0;
+                let began = if step == 0 && landing { 3 } else { 0 };
+                feed(
+                    filter,
+                    tracker,
+                    start + f64::from(step) * 0.01,
+                    &fingers(x, 0.5, 3),
+                    began,
+                    false,
+                )
+            })
+            .collect()
+    }
+
+    fn lift(filter: &mut TouchFilter, tracker: &mut SwipeTracker, at: f64) {
+        assert_eq!(feed(filter, tracker, at, &[], 0, true), None);
+    }
+
+    /// #781: macOS reports no touching contacts, or only some, between complete
+    /// reports while the fingers stay down. Those must not restart the swipe.
+    #[test]
+    fn empty_and_partial_reports_mid_swipe_keep_its_origin() {
+        let reports: Vec<_> = (1..=20)
+            .map(|step| {
+                let x = 0.6 - f64::from(step) * 0.01;
+                match step % 3 {
+                    0 => Vec::new(),
+                    1 => fingers(x, 0.5, 2),
+                    _ => fingers(x, 0.5, 3),
+                }
+            })
+            .collect();
+
+        let mut filter = TouchFilter::default();
+        let mut tracker = SwipeTracker::default();
+        let mut swipes: Vec<_> = feed(
+            &mut filter,
+            &mut tracker,
+            0.0,
+            &fingers(0.6, 0.5, 3),
+            3,
+            false,
+        )
+        .into_iter()
+        .collect();
+        for (step, touches) in (1..).zip(&reports) {
+            let at = f64::from(step) * 0.01;
+            swipes.extend(feed(&mut filter, &mut tracker, at, touches, 0, false));
+        }
+        assert_eq!(swipes, [(Swipe::Left, Fingers::Three)]);
+
+        // Read as lifts, the same reports restart the swipe on every complete
+        // one and it never travels far enough.
+        let mut raw = SwipeTracker::default();
+        assert_eq!(raw.frame(0.0, &fingers(0.6, 0.5, 3)), None);
+        for (step, touches) in (1..).zip(&reports) {
+            assert_eq!(raw.frame(f64::from(step) * 0.01, touches), None);
+        }
+    }
+
+    #[test]
+    fn fresh_fingers_after_a_missed_lift_start_a_new_swipe() {
+        let mut filter = TouchFilter::default();
+        let mut tracker = SwipeTracker::default();
+        assert_eq!(
+            filtered_sweep(&mut filter, &mut tracker, 0.0, 0.6, 0.4, true),
+            [(Swipe::Left, Fingers::Three)]
+        );
+        // The lift was never reported; three fingers land again 50 ms later.
+        assert_eq!(
+            filtered_sweep(&mut filter, &mut tracker, 0.15, 0.4, 0.6, true),
+            [(Swipe::Right, Fingers::Three)]
+        );
+    }
+
+    #[test]
+    fn the_same_fingers_resuming_after_a_pause_switch_once_until_they_lift() {
+        let mut filter = TouchFilter::default();
+        let mut tracker = SwipeTracker::default();
+        assert_eq!(
+            filtered_sweep(&mut filter, &mut tracker, 0.0, 0.6, 0.4, true),
+            [(Swipe::Left, Fingers::Three)]
+        );
+        // A short pause, then the same fingers slide on: still one switch.
+        assert!(filtered_sweep(&mut filter, &mut tracker, 0.4, 0.4, 0.2, false).is_empty());
+        lift(&mut filter, &mut tracker, 0.55);
+        assert_eq!(
+            filtered_sweep(&mut filter, &mut tracker, 0.65, 0.6, 0.4, true),
+            [(Swipe::Left, Fingers::Three)]
+        );
+    }
+
+    #[test]
+    fn fewer_contacts_are_believed_once_they_persist() {
+        let mut filter = TouchFilter::default();
+        fn report(touching: &[(f64, f64)]) -> TouchReport<'_> {
+            TouchReport {
+                touching,
+                began: 0,
+                lifted: false,
+            }
+        }
+        let three = fingers(0.5, 0.5, 3);
+        let two = fingers(0.5, 0.5, 2);
+        assert!(filter.report(0.0, report(&three)).is_some());
+        assert_eq!(filter.report(0.01, report(&two)), None);
+        assert_eq!(filter.report(0.1, report(&two)), None);
+        assert_eq!(
+            filter.report(0.17, report(&two)),
+            Some(AcceptedTouches {
+                restart: false,
+                touches: two.clone(),
+            })
+        );
+        // A brief empty report does not lift; a reported end does.
+        assert_eq!(filter.report(0.2, report(&[])), None);
+        assert!(
+            filter
+                .report(
+                    0.21,
+                    TouchReport {
+                        touching: &[],
+                        began: 0,
+                        lifted: true,
+                    },
+                )
+                .is_some_and(|accepted| accepted.touches.is_empty())
+        );
+    }
+
+    /// A lift whose end was lost, followed by a landing whose start was lost
+    /// too, must not swallow the next quick swipe: empty reports that persist
+    /// count as the lift.
+    #[test]
+    fn persistent_empty_reports_count_as_the_missed_lift() {
+        let mut filter = TouchFilter::default();
+        let mut tracker = SwipeTracker::default();
+        assert_eq!(
+            filtered_sweep(&mut filter, &mut tracker, 0.0, 0.6, 0.4, true),
+            [(Swipe::Left, Fingers::Three)]
+        );
+        for step in 1..=20 {
+            let at = 0.1 + f64::from(step) * 0.01;
+            assert_eq!(feed(&mut filter, &mut tracker, at, &[], 0, false), None);
+        }
+        assert_eq!(
+            filtered_sweep(&mut filter, &mut tracker, 0.32, 0.4, 0.6, false),
+            [(Swipe::Right, Fingers::Three)]
+        );
     }
 }

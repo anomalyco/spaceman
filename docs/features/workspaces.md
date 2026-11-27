@@ -39,6 +39,8 @@ Swipe                                                      // ws.swipe
 │   right -> next, left -> previous. Read on every swipe
 ├── Suppressed while a pointer button is down or a window drag is active (including macOS
 │   Accessibility "Three Finger Drag")
+├── An empty or partial trackpad report mid-swipe (fingers still down) no longer restarts the
+│   swipe; only a reported lift, fresh fingers landing, or such reports lasting 0.15 s end it
 ├── Labs › Swipe switch on ([labs] swipe_switch) + [settings] trackpad_swipe = false (Settings ›
 │   Shortcuts › Swipe to switch workspace) -> swipes never switch; macOS keeps the gesture. Reloads
 │   live. With the Lab off, trackpad_swipe is ignored and the Shortcuts row stays fixed
@@ -554,7 +556,14 @@ on the same letter.
   app order). The AppKit rows themselves (icons, tooltip of app names) are not covered.
 - Unit: `swipes_step_through_the_occupied_workspaces_of_the_display_under_the_pointer`
   (`src/app/tests/switching.rs`), the recognizer in `src/swipe.rs` (fires once per swipe; ignores
-  short, vertical and five-finger swipes; reports three or four fingers), pointer-button / three-finger-drag suppression in
+  short, vertical and five-finger swipes; reports three or four fingers), its touch-report filter
+  in `src/swipe.rs` (issue 781: `empty_and_partial_reports_mid_swipe_keep_its_origin`,
+  `fresh_fingers_after_a_missed_lift_start_a_new_swipe`,
+  `the_same_fingers_resuming_after_a_pause_switch_once_until_they_lift`,
+  `fewer_contacts_are_believed_once_they_persist`,
+  `persistent_empty_reports_count_as_the_missed_lift`) and
+  `an_empty_report_mid_slide_refreshes_the_space_hold_without_lifting` (`src/macos/swipes.rs`),
+  pointer-button / three-finger-drag suppression in
   `src/macos/swipes.rs` and `src/app/input.rs` (issue 151), the Lab-gated off switch in
   `trackpad_swipe_off_stops_swipes_only_with_its_lab_on_and_reloads_live`
   (`src/app/tests/workspace_order.rs`, issue 333), the four-finger Lab in
