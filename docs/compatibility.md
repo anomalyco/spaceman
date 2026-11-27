@@ -4,6 +4,11 @@ Spaceman is macOS-only. The app plist declares macOS 14.0 as its minimum, but th
 newer macOS releases, and supported CPU architectures have not yet been validated on clean machines.
 Treat compatibility as experimental rather than guaranteed.
 
+AppKit calls must exist on macOS 14. The menu bar's workspace rows build their app icons from the
+attachment attribute directly rather than with `+attributedStringWithAttachment:attributes:`, which
+is macOS 15+ and stopped the agent on macOS 14.5 the first time an occupied workspace was listed
+(#779).
+
 The source build requires:
 
 - Xcode command-line tools with `codesign` and `security`;
