@@ -42,8 +42,9 @@ Focus                                                   // tile.focus
 │   ├── Option+Shift+` / ctl focus prev -> the same ring, backward
 │   ├── From a pin whose home is hidden -> the ring of the workspace its display shows, entered
 │   │   at its first window (prev: its last); the pin's home stays hidden (#592)
-│   └── Within ~0.7 s after macOS reports a desktop change -> waits for the layout hold, retiles,
-│       then cycles the arriving desktop's windows (#770)
+│   └── Within ~0.7 s after macOS reports a desktop change, or ~1.5 s after three or four fingers
+│       slide sideways on the trackpad and lift (before macOS reports it) -> waits for the layout
+│       hold, retiles, then cycles the arriving desktop's windows (#770, #777)
 ├── For 250 ms after a focus command, a report of a window it left (or of no window at all) still
 │   counts as its target: quick presses, numbered moves, Option+Tab, Dwindle's next split and focus
 │   follow all start from the window just focused

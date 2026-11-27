@@ -120,6 +120,9 @@ Move window without switching                              // ws.move-window
 ├── Within ~0.7 s after macOS reports a desktop change -> waits for the layout hold, retiles, then
 │   moves the focused window of the arriving desktop (#770); the same wait covers focus, resize,
 │   layout, float and pin commands
+├── After three or four fingers slide sideways on the trackpad (until ~1.5 s after they lift),
+│   even before macOS reports the change -> waits the same way, then moves the arriving desktop's
+│   focused window (#777)
 ├── Target on screen on another display -> tiled there (a floating window is carried over, same
 │   size and relative place); focus follows it and Option+Tab goes back
 ├── Target hidden on another display -> parked off the edge of the display it is on; its recovery
@@ -691,7 +694,11 @@ on the same letter.
   without the trackpad reporting the arriving desktop's windows before the change.
 - Unit, `src/app/input.rs`: `focused_commands_wait_out_a_reported_space_change` (#770): move,
   focus-cycle and directional-focus commands queued within the hold after a reported Space change
-  wait until it settles; without a report they don't, and switches, swipes and retiles never wait.
+  wait until it settles; with neither a report nor a recent swipe touch they don't, and switches,
+  swipes and retiles never wait.
+  `focused_commands_wait_out_a_desktop_swipe_before_its_report` (#777): a move queued after a
+  three- or four-finger touch and before any report waits until ~1.5 s after the touch, a report
+  that follows extends the wait to 0.7 s after it, and a switch is not held.
   The main loop's wait-then-retile-then-run sequencing (`src/app/app_loop/automatic.rs`) is not
   covered.
 - Unit (FakeBackend), `src/app/tests/state_machine.rs`: a seeded, virtual-time run of 3,000 random

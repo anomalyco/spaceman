@@ -107,12 +107,17 @@ impl MainThreadAgent {
         self.tick_hover(mouse_down || self.mouse_was_down);
         self.mouse_was_down = mouse_down;
         let held = self.pending_inputs.front().and_then(|input| {
-            held_by_space_change(input, macos::last_active_space_change(), Instant::now())
+            held_by_space_change(
+                input,
+                macos::last_active_space_change(),
+                macos::last_space_gesture(),
+                Instant::now(),
+            )
         });
         if held.is_some() {
             // A command on the focused window waits out the Space slide's
-            // layout hold, then runs after a retile binds the arriving
-            // desktop's windows (#770).
+            // layout hold, or a desktop swipe's before macOS reports it, then
+            // runs after a retile binds the arriving desktop's windows (#770, #777).
             self.retile_before_input = true;
         } else if self.retile_before_input && !self.worker.is_busy() {
             self.cancelled.store(false, Ordering::Release);
