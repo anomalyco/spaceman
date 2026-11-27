@@ -62,6 +62,8 @@ pub struct Ui {
     hud_driver: Option<hud::HudDriver>,
     window_overlay: Option<window_overlay::WindowOverlayDriver>,
     pub hud_preview: Option<hud::HudPreview>,
+    /// The window overlay's Playground stage.
+    pub overlay_preview: Option<window_overlay::OverlayPreview>,
     frame_remembered: bool,
     pub tour: Option<onboarding::Tour>,
     pub drag: Option<map::Drag>,
@@ -114,6 +116,7 @@ impl Ui {
             hud_driver: None,
             window_overlay: None,
             hud_preview: None,
+            overlay_preview: None,
             frame_remembered: false,
             tour: None,
             drag: None,
@@ -205,6 +208,7 @@ impl Ui {
     pub fn open_target(&mut self, target: spaceman::deep_link::OpenTarget) {
         onboarding::dismiss(self);
         self.hud_preview = None;
+        self.overlay_preview = None;
         let pane = match target.pane {
             Some(deep_pane) => match Pane::from_deep_link(deep_pane) {
                 Some(pane) if pane.visible(self.doc.labs()) => pane,
@@ -490,7 +494,11 @@ fn poll(ui: &mut Ui, clock: f64, tx: &mut Tx) -> bool {
     changed |= panes::workspaces::poll_displays(ui, clock);
     changed |= map::poll_default_floats(ui, clock);
     changed |= ui.activity.poll(
-        ui.pane == Pane::Activity && ui.tour.is_none() && ui.hud_preview.is_none(),
+        ui.pane == Pane::Activity
+            && ui.tour.is_none()
+            && ui.hud_preview.is_none()
+            && ui.overlay_preview.is_none()
+            && ui.overlay_preview.is_none(),
         ui.fixture,
     );
     let Some(bridge) = ui.bridge.clone() else {

@@ -1,331 +1,464 @@
-//! One window's card: its app, mode pills, swap arrows, then a chip for each workspace it can
-//! be sent to. Dark frosted capsule styling, matching the Workspace HUD.
+//! One window's card, top to bottom: what it is (the app, never a title, and where it lives),
+//! where it can go (a chip per workspace), and how it sits (Float, Pin, Fullscreen, and an
+//! arrow toward each neighbouring tile it can swap with). The line under the app's name says
+//! where the window is, and while the pointer is on a control, what a click would do.
 
-use rune::{Cursor, El, Spring, SpringPair, TextStyle, Transition, col, el, row, text};
+use rune::{El, SpringPair, TextStyle, Transition, col, el, row, text};
 use spaceman::{
-    Direction, WorkspaceId,
+    Direction,
     app::{UiWindowOverlayDisplay, UiWindowOverlayWindow, WindowOverlayCommand},
 };
 
-use super::{OverlayState, place};
-use crate::{
-    controls::Paint,
-    hud::{Icons, rgba, srgb},
-};
+use super::{Control, Wiring, chips, glyphs, look, place};
+use crate::hud::Icons;
 
-/// Cards spring in from .96 and leave the same way, 100 ms each; a card that moves (a swap)
-/// springs to its new place.
-const PRESENCE: Spring = Spring::new(0.10, 0.0);
-const MOVE: Spring = Spring::new(0.12, 0.0);
-const REST_SCALE: f32 = 0.96;
-
-const PAD: f32 = 10.0;
+const ICON: f32 = 28.0;
+const ICON_GAP: f32 = 10.0;
+const HEADER_H: f32 = 32.0;
+const NAME_H: f32 = 16.0;
+const STATUS_H: f32 = 14.0;
+/// The focus dot after the app's name.
+const FOCUS_DOT: f32 = 6.0;
+/// Room the header's text always has, so the status line can say what a click would do.
+const HEADER_TEXT: (f32, f32) = (176.0, 118.0);
+/// An app icon in the status line: the apps a workspace already holds.
+const STATUS_ICON: f32 = 12.0;
+const STATUS_GAP: f32 = 4.0;
+/// At most this many of them.
+const STATUS_APPS: usize = 4;
+/// Header to chips, and chips to the buttons.
+const HEADER_GAP: f32 = 10.0;
 const ROW_GAP: f32 = 8.0;
-const RADIUS: f32 = 12.0;
-const ICON: f32 = 16.0;
-const TOP_H: f32 = 22.0;
-const NAME_MAX: f32 = 120.0;
-const PILL_H: f32 = 20.0;
-const PILL_PX: f32 = 7.0;
-const GAP: f32 = 4.0;
-const ARROW: f32 = 20.0;
-const CHIP: f32 = 22.0;
-/// Chips per row before they wrap.
-const CHIPS_PER_ROW: usize = 10;
+const ACTION_H: f32 = 28.0;
+const ACTION_GAP: f32 = 4.0;
+/// A labelled button: 8, glyph, 6, label, 10. The glyph's side is trimmed, as its box
+/// carries its own air.
+const ACTION_PAD: (f32, f32, f32) = (8.0, 6.0, 10.0);
+/// Between the mode buttons and the swap arrows, at least.
+const SWAP_GAP: f32 = 12.0;
 
-fn name_style() -> TextStyle {
-    TextStyle::new(12.0, 600.0).lh(16.0)
+/// How a card is drawn for its window.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Plan {
+    /// The window is too narrow for the full card: chips wrap at five and buttons lose
+    /// their labels.
+    pub compact: bool,
+    pub size: (f32, f32),
 }
 
-fn pill_style() -> TextStyle {
-    TextStyle::new(11.0, 600.0).lh(14.0)
-}
-
-/// Tabular figures, so every chip's digit sits the same.
-fn chip_style() -> TextStyle {
-    TextStyle {
-        features: "'tnum' 1",
-        ..TextStyle::new(12.0, 600.0).lh(16.0)
-    }
-}
-
-/// The mode pills: `Float` (`Tile` for a float), `Pin`, and for a tile `FS`.
-fn pills(window: &UiWindowOverlayWindow) -> Vec<&'static str> {
-    if window.floating {
-        vec!["Tile", "Pin"]
-    } else {
-        vec!["Float", "Pin", "FS"]
-    }
-}
-
-fn pill_width(label: &str) -> f32 {
-    (rune::text::advance(label, pill_style()) + 2.0 * PILL_PX).ceil()
-}
-
-/// The card's size: its top row or its chip rows, whichever is wider.
+/// The card for `window`: the full one when the window is wide enough to hold it.
 #[must_use]
-pub fn card_size(window: &UiWindowOverlayWindow, name: &str, workspaces: usize) -> (f32, f32) {
-    let name_w = rune::text::advance(name, name_style()).ceil().min(NAME_MAX);
-    let pills: f32 = pills(window)
-        .iter()
-        .map(|label| pill_width(label) + GAP)
-        .sum();
-    let arrows = if window.swaps.is_empty() {
-        0.0
+pub fn plan(window: &UiWindowOverlayWindow, display: &UiWindowOverlayDisplay) -> Plan {
+    let full = size(window, display, false);
+    let compact = (window.frame.width as f32) < full.0 + 2.0 * place::CARD_GAP;
+    Plan {
+        compact,
+        size: if compact {
+            size(window, display, true)
+        } else {
+            full
+        },
+    }
+}
+
+/// The mode buttons a window gets: a float has no Fullscreen Layout to join.
+fn modes(window: &UiWindowOverlayWindow) -> &'static [Control] {
+    if window.floating {
+        &[Control::Float, Control::Pin]
     } else {
-        2.0 * GAP + window.swaps.len() as f32 * (ARROW + GAP)
-    };
-    let top = ICON + 6.0 + name_w + 12.0 + pills + arrows;
-    let per_row = workspaces.clamp(1, CHIPS_PER_ROW);
-    let chips = per_row as f32 * CHIP + (per_row - 1) as f32 * GAP;
-    let rows = workspaces.div_ceil(CHIPS_PER_ROW).max(1);
-    let chips_h = rows as f32 * CHIP + (rows - 1) as f32 * GAP;
+        &[Control::Float, Control::Pin, Control::Fullscreen]
+    }
+}
+
+const fn label(control: Control) -> &'static str {
+    match control {
+        Control::Float => "Float",
+        Control::Pin => "Pin",
+        Control::Fullscreen => "Fullscreen",
+        Control::Swap(_) | Control::Send(_) => "",
+    }
+}
+
+fn action_width(control: Control, compact: bool) -> f32 {
+    if compact || label(control).is_empty() {
+        return ACTION_H;
+    }
+    let label = rune::text::advance(label(control), look::label_style());
+    (ACTION_PAD.0 + glyphs::SIZE + ACTION_PAD.1 + label + ACTION_PAD.2).ceil()
+}
+
+fn run(widths: impl Iterator<Item = f32>) -> f32 {
+    let (count, sum) = widths.fold((0, 0.0), |(count, sum), width| (count + 1, sum + width));
+    sum + (count as f32 - 1.0).max(0.0) * ACTION_GAP
+}
+
+fn actions_width(window: &UiWindowOverlayWindow, compact: bool) -> f32 {
+    let modes = run(modes(window)
+        .iter()
+        .map(|control| action_width(*control, compact)));
+    if window.swaps.is_empty() {
+        modes
+    } else {
+        modes + SWAP_GAP + run(window.swaps.iter().map(|_| ACTION_H))
+    }
+}
+
+/// The card's size: its widest row and the card's inset, and its three rows.
+#[must_use]
+pub fn size(
+    window: &UiWindowOverlayWindow,
+    display: &UiWindowOverlayDisplay,
+    compact: bool,
+) -> (f32, f32) {
+    let chips = chips::size(&display.workspaces, chips::per_row(compact));
+    let header = ICON
+        + ICON_GAP
+        + if compact {
+            HEADER_TEXT.1
+        } else {
+            HEADER_TEXT.0
+        };
+    let inner = chips.0.max(actions_width(window, compact)).max(header);
     (
-        (top.max(chips) + 2.0 * PAD).ceil(),
-        2.0 * PAD + TOP_H + ROW_GAP + chips_h,
+        (inner + 2.0 * look::PAD).ceil(),
+        2.0 * look::PAD + HEADER_H + HEADER_GAP + chips.1 + ROW_GAP + ACTION_H,
     )
 }
 
-/// `window`'s card on `display`'s overlay, placed over the window.
-pub fn card(
+/// What the line under the app's name says.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct Status {
+    /// What it always says in full.
+    pub text: String,
+    /// What it adds while there is room, each after a dot.
+    pub notes: Vec<&'static str>,
+    /// Apps to show after the text while there is room, by bundle ID: what a workspace
+    /// already holds.
+    pub apps: Vec<String>,
+    /// It says what a click would do, not where the window is.
+    pub preview: bool,
+}
+
+/// Where `window` is, or with the pointer on `control`, what a click there would do.
+#[must_use]
+pub fn status(
     window: &UiWindowOverlayWindow,
     display: &UiWindowOverlayDisplay,
-    name: &str,
-    icons: &Icons,
-    p: Paint,
-    still: bool,
-) -> El {
-    let size = card_size(window, name, display.workspaces.len());
-    let (x, y) = place::card_origin(window.frame, display.screen, size);
-    let springs = SpringPair::new(PRESENCE, PRESENCE);
-    let presence = if still {
+    control: Option<Control>,
+) -> Status {
+    let preview = |text: &str| Status {
+        text: text.to_owned(),
+        notes: Vec::new(),
+        apps: Vec::new(),
+        preview: true,
+    };
+    match control {
+        None => Status {
+            text: if window.pinned {
+                "On every workspace".to_owned()
+            } else {
+                format!("Workspace {}", window.workspace)
+            },
+            notes: Vec::new(),
+            apps: Vec::new(),
+            preview: false,
+        },
+        Some(Control::Float) if window.floating => preview("Tile it again"),
+        Some(Control::Float) => preview("Float above the tiles"),
+        Some(Control::Pin) if window.pinned => preview("Unpin from every workspace"),
+        Some(Control::Pin) => preview("Pin to every workspace"),
+        Some(Control::Fullscreen) if display.fullscreen => preview("Show every tile again"),
+        Some(Control::Fullscreen) => preview("Show one window at a time"),
+        Some(Control::Swap(side)) => preview(match side {
+            Direction::Left => "Swap with the tile on the left",
+            Direction::Right => "Swap with the tile on the right",
+            Direction::Up => "Swap with the tile above",
+            Direction::Down => "Swap with the tile below",
+        }),
+        Some(Control::Send(workspace)) => {
+            let entry = display
+                .workspaces
+                .iter()
+                .find(|entry| entry.workspace == workspace);
+            let mut notes = Vec::new();
+            if entry.is_some_and(|entry| !entry.on_this_display) {
+                notes.push("other display");
+            }
+            if entry.is_none_or(|entry| !entry.occupied()) {
+                notes.push("empty");
+            }
+            Status {
+                text: format!("Send to {workspace}"),
+                notes,
+                apps: entry.map(|entry| entry.apps.clone()).unwrap_or_default(),
+                preview: true,
+            }
+        }
+    }
+}
+
+/// What a card needs beside its window.
+#[derive(Clone, Copy)]
+pub struct Parts<'a> {
+    pub display: &'a UiWindowOverlayDisplay,
+    /// The app's name.
+    pub name: &'a str,
+    pub icons: &'a Icons,
+    /// The control of this card the pointer is on.
+    pub hot: Option<Control>,
+    pub plan: Plan,
+    pub origin: (f32, f32),
+    /// Reduce Motion: the card fades where it rests.
+    pub still: bool,
+    pub wiring: Wiring,
+}
+
+/// `window`'s card.
+pub fn card(window: &UiWindowOverlayWindow, parts: Parts<'_>) -> El {
+    let Parts {
+        display,
+        plan,
+        wiring,
+        ..
+    } = parts;
+    let springs = SpringPair::new(look::ENTER, look::EXIT);
+    let presence = if parts.still {
         Transition::opacity().springs(springs)
     } else {
-        Transition::scale(REST_SCALE).springs(springs)
+        Transition::scale(look::REST_SCALE).springs(springs)
     };
-    let mut card = col()
+    let inner = plan.size.0 - 2.0 * look::PAD;
+    let card = col()
         .key(format!(
             "card-{}-{}",
             window.window.app.pid, window.window.window_id
         ))
-        .absolute(x, y)
-        .w(size.0)
-        .h(size.1)
-        .padding(PAD)
-        .gap(ROW_GAP)
-        .radius(RADIUS)
-        .fill(srgb(0x161618))
-        .border(p.hair, srgb(0x303036))
-        .motion(MOVE)
+        .role("group")
+        .label(parts.name.to_owned())
+        .absolute(parts.origin.0, parts.origin.1)
+        .w(plan.size.0)
+        .h(plan.size.1)
+        .padding(look::PAD)
+        .motion(look::TRAVEL)
         .transition(presence)
-        .hit()
-        .child(top_row(window, display.fullscreen, name, icons, p))
-        .child(chips(window, display));
-    for shadow in &p.k.elevation.overlay {
-        card = card.box_shadow(*shadow);
-    }
-    card
+        .child(header(window, &parts, inner))
+        .child(chips::chips(window, display, plan.compact, parts.hot, wiring).mt(HEADER_GAP))
+        .child(actions(window, &parts).mt(ROW_GAP));
+    wiring.card(look::glass(card, wiring.hair), &window.window)
 }
 
-fn top_row(
-    window: &UiWindowOverlayWindow,
-    fullscreen: bool,
-    name: &str,
-    icons: &Icons,
-    p: Paint,
-) -> El {
-    let target = window.window.clone();
-    let mut row = row()
-        .key("top")
-        .h(TOP_H)
-        .w_full()
-        .gap(6.0)
+fn header(window: &UiWindowOverlayWindow, parts: &Parts<'_>, inner: f32) -> El {
+    let text_w = inner - ICON - ICON_GAP;
+    let dot = if window.focused { FOCUS_DOT + 6.0 } else { 0.0 };
+    let mut name = row().key("name").h(NAME_H).gap(6.0).center_y().child(
+        text(parts.name.to_owned())
+            .key("app")
+            .font(look::name_style())
+            .color(look::text())
+            .max_w(text_w - dot)
+            .truncate_fade(),
+    );
+    if window.focused {
+        name = name.child(
+            el().key("focused")
+                .role("img")
+                .label("Has keyboard focus")
+                .size(FOCUS_DOT, FOCUS_DOT)
+                .radius(FOCUS_DOT / 2.0)
+                .fill(look::accent()),
+        );
+    }
+    row()
+        .key("header")
+        .h(HEADER_H)
+        .gap(ICON_GAP)
         .center_y()
-        .child(app_icon(icons, window.bundle_id.as_deref(), name))
-        .child(
-            text(name.to_owned())
-                .key("name")
-                .font(name_style())
-                .color(rgba(0xffffff, 0.92))
-                .max_w(NAME_MAX)
-                .truncate(),
-        )
-        .child(el().key("spacer").grow(1.0));
-    let pills = pills(window).into_iter().map(|label| {
-        let (on, command) = match label {
-            "Pin" => (
-                window.pinned,
-                WindowOverlayCommand::TogglePin(target.clone()),
-            ),
-            "FS" => (
-                fullscreen,
-                WindowOverlayCommand::ToggleFullscreen(target.clone()),
-            ),
-            _ => (false, WindowOverlayCommand::ToggleFloat(target.clone())),
-        };
-        pill(label, on, p, command)
-    });
-    row = row.child(row_of("pills").children(pills));
-    if !window.swaps.is_empty() {
-        let arrows = window.swaps.iter().map(|side| arrow(&target, *side));
-        row = row
-            .child(
-                el().key("divider")
-                    .size(p.hair.max(1.0), 14.0)
-                    .fill(rgba(0xffffff, 0.12)),
-            )
-            .child(row_of("swaps").children(arrows));
+        .child(app_icon(
+            parts.icons,
+            window.bundle_id.as_deref(),
+            parts.name,
+            ICON,
+        ))
+        .child(col().key("id").w(text_w).child(name).child(status_line(
+            &status(window, parts.display, parts.hot),
+            text_w,
+            parts.icons,
+        )))
+}
+
+/// What the status line shows in `width`: its text whole, then each note that still fits,
+/// then as many of its apps as the room left holds. A narrow card says less, never half of it.
+fn fit(status: &Status, width: f32) -> (String, usize) {
+    let advance = |says: &str| rune::text::advance(says, look::status_style());
+    let mut says = status.text.clone();
+    for note in &status.notes {
+        let longer = format!("{says} · {note}");
+        if advance(&longer) <= width {
+            says = longer;
+        }
     }
-    row
+    let room = (width - advance(&says)) / (STATUS_ICON + STATUS_GAP);
+    let apps = (room.max(0.0) as usize).min(STATUS_APPS);
+    (says, apps.min(status.apps.len()))
 }
 
-fn row_of(key: &'static str) -> El {
-    row().key(key).gap(GAP).center_y()
+/// The status line: each thing it says cross-fades with the next, in place, so nothing moves.
+fn status_line(status: &Status, width: f32, icons: &Icons) -> El {
+    let (says, apps) = fit(status, width);
+    let ink = if status.preview {
+        look::text()
+    } else {
+        look::quiet()
+    };
+    let mut line = row()
+        .key(format!("says-{says}-{}", status.apps.join(",")))
+        .absolute(0.0, 0.0)
+        .h(STATUS_H)
+        .gap(STATUS_GAP)
+        .center_y()
+        .transition(Transition::opacity().springs(look::STATUS))
+        .child(
+            text(says)
+                .key("text")
+                .font(look::status_style())
+                .color(ink)
+                .max_w(width)
+                .truncate_fade(),
+        );
+    for bundle in status.apps.iter().take(apps) {
+        line = line.child(app_icon(
+            icons,
+            Some(bundle),
+            &crate::apps::fallback_name(bundle),
+            STATUS_ICON,
+        ));
+    }
+    el().key("status").w(width).h(STATUS_H).child(line)
 }
 
-fn app_icon(icons: &Icons, bundle: Option<&str>, name: &str) -> El {
-    let base = el().key("icon").size(ICON, ICON);
+/// An app's icon at `size`, or its initial in a rounded square when it has none here.
+fn app_icon(icons: &Icons, bundle: Option<&str>, name: &str, size: f32) -> El {
+    let base = el()
+        .key(format!("icon-{}", bundle.unwrap_or_default()))
+        .size(size, size)
+        .a11y_hidden();
     match bundle.and_then(|bundle| icons.get(bundle)) {
         Some(pixels) => base.pixels(pixels),
         None => base
-            .radius(ICON * 0.25)
-            .fill(rgba(0xffffff, 0.16))
+            .radius(size * 0.25)
+            .fill(look::white(0.14))
             .center()
             .child(
                 text(name.chars().next().map(String::from).unwrap_or_default())
-                    .font(TextStyle::new(10.0, 600.0))
-                    .color(rgba(0xffffff, 0.7)),
+                    .font(TextStyle::new((size * 0.5).max(7.0), 600.0))
+                    .color(look::quiet()),
             ),
     }
 }
 
-/// A button that sends `command` for this card's window.
-fn button(key: impl Into<String>, label: String, command: WindowOverlayCommand) -> El {
-    el().key(key.into())
-        .role("button")
-        .label(label)
-        .cursor(Cursor::Pointer)
-        .hover(rgba(0xffffff, 0.08))
-        .press(rgba(0xffffff, 0.14))
-        .on_press_tx(move |state: &mut OverlayState, _| state.send(command.clone()))
-}
-
-fn pill(label: &'static str, on: bool, p: Paint, command: WindowOverlayCommand) -> El {
-    let (fill, border, ink) = if on {
-        (p.accent(), p.accent(), rgba(0xffffff, 1.0))
-    } else {
-        (
-            rgba(0xffffff, 0.06),
-            rgba(0xffffff, 0.10),
-            rgba(0xffffff, 0.86),
-        )
-    };
-    button(label, label.to_owned(), command)
-        .w(pill_width(label))
-        .h(PILL_H)
-        .radius(PILL_H / 2.0)
-        .fill(fill)
-        .border(p.hair, border)
-        .center()
-        .child(text(label).font(pill_style()).color(ink))
-}
-
-fn arrow(window: &spaceman::PhysicalWindowId, side: Direction) -> El {
-    let glyph = match side {
-        Direction::Left => "←",
-        Direction::Down => "↓",
-        Direction::Up => "↑",
-        Direction::Right => "→",
-    };
-    button(
-        format!("swap-{side}"),
-        format!("Swap {side}"),
-        WindowOverlayCommand::Swap(window.clone(), side),
-    )
-    .size(ARROW, ARROW)
-    .radius(6.0)
-    .fill(rgba(0xffffff, 0.06))
-    .center()
-    .child(
-        text(glyph)
-            .font(TextStyle::new(12.0, 600.0))
-            .color(rgba(0xffffff, 0.86)),
-    )
-}
-
-fn chips(window: &UiWindowOverlayWindow, display: &UiWindowOverlayDisplay) -> El {
-    let rows = display
-        .workspaces
-        .chunks(CHIPS_PER_ROW)
-        .enumerate()
-        .map(|(index, chunk)| {
-            row()
-                .key(format!("chips-{index}"))
-                .gap(GAP)
-                .children(chunk.iter().map(|entry| {
-                    chip(
-                        &window.window,
-                        entry.workspace,
-                        entry.workspace == window.workspace,
-                        entry.occupied,
-                        entry.on_this_display,
-                    )
-                }))
-        });
-    col().key("chips").gap(GAP).children(rows)
-}
-
-fn chip(
-    window: &spaceman::PhysicalWindowId,
-    workspace: WorkspaceId,
-    current: bool,
-    occupied: bool,
-    here: bool,
-) -> El {
-    let label = workspace.to_string();
-    let base = if current {
-        el().key(format!("ws-{workspace}"))
-            .role("button")
-            .label(format!("On workspace {workspace}"))
-            .fill(rgba(0xffffff, 0.18))
-            .border(1.0, rgba(0xffffff, 0.24))
-    } else {
-        button(
-            format!("ws-{workspace}"),
-            format!("Send to workspace {workspace}"),
-            WindowOverlayCommand::MoveTo {
-                window: window.clone(),
-                workspace,
-            },
-        )
-        .fill(rgba(0xffffff, 0.05))
-    };
-    let ink = match (current, here) {
-        (true, _) => rgba(0xffffff, 1.0),
-        (false, true) => rgba(0xffffff, 0.78),
-        (false, false) => rgba(0xffffff, 0.45),
-    };
-    let mut chip = base
-        .size(CHIP, CHIP)
-        .radius(6.0)
-        .center()
-        .child(text(label).font(chip_style()).color(ink));
-    if occupied {
-        chip = chip.child(
-            el().key("dot")
-                .absolute((CHIP - 3.0) / 2.0, CHIP - 5.0)
-                .size(3.0, 3.0)
-                .radius(1.5)
-                .fill(rgba(0xffffff, if current { 0.85 } else { 0.5 })),
-        );
+/// The mode buttons, then the swap arrows at the row's far end.
+fn actions(window: &UiWindowOverlayWindow, parts: &Parts<'_>) -> El {
+    let target = &window.window;
+    let mut line = row().key("actions").h(ACTION_H).gap(ACTION_GAP).center_y();
+    for control in modes(window) {
+        let (on, command, hint) = match control {
+            Control::Float => (
+                window.floating,
+                WindowOverlayCommand::ToggleFloat(target.clone()),
+                if window.floating { "Tile" } else { "Float" },
+            ),
+            Control::Pin => (
+                window.pinned,
+                WindowOverlayCommand::TogglePin(target.clone()),
+                if window.pinned { "Unpin" } else { "Pin" },
+            ),
+            _ => (
+                parts.display.fullscreen,
+                WindowOverlayCommand::ToggleFullscreen(target.clone()),
+                "Fullscreen Layout",
+            ),
+        };
+        line = line.child(action(window, parts, *control, on, hint, command));
     }
-    chip
+    if !window.swaps.is_empty() {
+        line = line.child(el().key("gap").grow(1.0).min_w(SWAP_GAP - 2.0 * ACTION_GAP));
+        for side in &window.swaps {
+            let command = WindowOverlayCommand::Swap(target.clone(), *side);
+            let hint = match side {
+                Direction::Left => "Swap left",
+                Direction::Right => "Swap right",
+                Direction::Up => "Swap up",
+                Direction::Down => "Swap down",
+            };
+            line = line.child(action(
+                window,
+                parts,
+                Control::Swap(*side),
+                false,
+                hint,
+                command,
+            ));
+        }
+    }
+    line
+}
+
+/// One button: its glyph, and on a full card a mode's label. `on` lights it amber.
+fn action(
+    window: &UiWindowOverlayWindow,
+    parts: &Parts<'_>,
+    control: Control,
+    on: bool,
+    hint: &'static str,
+    command: WindowOverlayCommand,
+) -> El {
+    let hot = parts.hot == Some(control);
+    let (fill, rim, ink) = look::control(on, hot);
+    let glyph = match control {
+        Control::Float => glyphs::float(ink, look::faint()),
+        Control::Pin => glyphs::pin(ink),
+        Control::Fullscreen => glyphs::fullscreen(ink),
+        Control::Swap(side) => glyphs::arrow(side, ink),
+        Control::Send(_) => el(),
+    };
+    let key = match control {
+        Control::Swap(side) => format!("swap-{side}"),
+        other => label(other).to_lowercase(),
+    };
+    let mut button = row()
+        .key(key)
+        .role("button")
+        .label(hint)
+        .h(ACTION_H)
+        .w(action_width(control, parts.plan.compact))
+        .radius(look::CONTROL_RADIUS)
+        .fill(fill)
+        .border(parts.wiring.hair, rim)
+        .center_y();
+    button = if parts.plan.compact || label(control).is_empty() {
+        button.center().child(glyph)
+    } else {
+        button
+            .pl(ACTION_PAD.0)
+            .pr(ACTION_PAD.2)
+            .gap(ACTION_PAD.1)
+            .child(glyph)
+            .child(
+                text(label(control))
+                    .key("label")
+                    .font(look::label_style())
+                    .color(ink),
+            )
+    };
+    parts
+        .wiring
+        .control(button, &window.window, control, command)
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use spaceman::{PhysicalWindowId, Rect};
+    use spaceman::{PhysicalWindowId, Rect, WorkspaceId, app::UiWindowOverlayWorkspace};
 
     fn window(floating: bool, swaps: Vec<Direction>) -> UiWindowOverlayWindow {
         UiWindowOverlayWindow {
@@ -346,30 +479,180 @@ mod tests {
             workspace: WorkspaceId::ONE,
             floating,
             pinned: false,
+            focused: false,
             swaps,
         }
     }
 
+    /// A display listing the first `workspaces` workspaces (1-10, then A-Z): 2 holds two apps,
+    /// and 6 onward are on another display.
+    fn display(workspaces: usize) -> UiWindowOverlayDisplay {
+        let named = ('A'..='Z').filter_map(|letter| WorkspaceId::named(letter).ok());
+        UiWindowOverlayDisplay {
+            id: "main".into(),
+            screen: Rect {
+                x: 0,
+                y: 0,
+                width: 1600,
+                height: 1000,
+            },
+            workspace: WorkspaceId::ONE,
+            fullscreen: false,
+            workspaces: WorkspaceId::numbered()
+                .chain(named)
+                .take(workspaces)
+                .zip(1..)
+                .map(|(workspace, number)| UiWindowOverlayWorkspace {
+                    workspace,
+                    windows: usize::from(number == 2) * 2,
+                    apps: if number == 2 {
+                        vec!["com.example.Mail".into(), "com.example.Chat".into()]
+                    } else {
+                        Vec::new()
+                    },
+                    on_this_display: number <= 5,
+                })
+                .collect(),
+            windows: Vec::new(),
+        }
+    }
+
     #[test]
-    fn a_float_offers_tile_and_pin_and_a_tile_adds_fullscreen() {
-        assert_eq!(pills(&window(true, Vec::new())), vec!["Tile", "Pin"]);
+    fn a_float_offers_float_and_pin_and_a_tile_adds_fullscreen() {
         assert_eq!(
-            pills(&window(false, Vec::new())),
-            vec!["Float", "Pin", "FS"]
+            modes(&window(true, Vec::new())),
+            [Control::Float, Control::Pin]
+        );
+        assert_eq!(
+            modes(&window(false, Vec::new())),
+            [Control::Float, Control::Pin, Control::Fullscreen]
         );
     }
 
     #[test]
-    fn chips_wrap_past_ten_and_the_card_grows_to_hold_them() {
-        let tile = window(false, vec![Direction::Right]);
-        let (ten_w, ten_h) = card_size(&tile, "Editor", 10);
-        let (more_w, more_h) = card_size(&tile, "Editor", 14);
-        assert_eq!(ten_w, more_w, "a second row, not a wider card");
-        assert_eq!(more_h - ten_h, CHIP + GAP);
-        let (three_w, _) = card_size(&tile, "Editor", 3);
-        assert!(three_w < ten_w);
-        // Swap arrows widen the top row.
-        let (no_swaps, _) = card_size(&window(false, Vec::new()), "Editor", 3);
-        assert!(no_swaps < three_w);
+    fn the_card_is_as_wide_as_its_widest_row_and_three_rows_tall() {
+        let tile = window(false, vec![Direction::Left, Direction::Right]);
+        let ten = size(&tile, &display(10), false);
+        let chips = chips::size(&display(10).workspaces, 10);
+        assert_eq!(ten.0, (chips.0 + 2.0 * look::PAD).ceil());
+        assert_eq!(
+            ten.1,
+            2.0 * look::PAD + HEADER_H + HEADER_GAP + chips::CHIP + ROW_GAP + ACTION_H
+        );
+        // A second row of chips makes it taller, not wider.
+        let more = size(&tile, &display(14), false);
+        assert_eq!(more.0, ten.0);
+        assert_eq!(more.1 - ten.1, chips::CHIP + chips::GAP);
+        // With few workspaces the buttons set the width, and swap arrows widen them.
+        let few = size(&tile, &display(3), false);
+        assert_eq!(
+            few.0,
+            (actions_width(&tile, false) + 2.0 * look::PAD).ceil()
+        );
+        assert!(size(&window(false, Vec::new()), &display(3), false).0 < few.0);
+    }
+
+    #[test]
+    fn a_window_narrower_than_its_card_gets_the_compact_one() {
+        let display = display(10);
+        let wide = window(false, vec![Direction::Right]);
+        assert!(!plan(&wide, &display).compact);
+        let mut narrow = wide.clone();
+        narrow.frame.width = 300;
+        let compact = plan(&narrow, &display);
+        assert!(compact.compact);
+        assert!(compact.size.0 < plan(&wide, &display).size.0);
+        // Five chips a row: a second row, and buttons without their labels.
+        assert_eq!(
+            compact.size.1 - plan(&wide, &display).size.1,
+            chips::CHIP + chips::GAP
+        );
+        assert_eq!(action_width(Control::Fullscreen, true), ACTION_H);
+        assert!(action_width(Control::Fullscreen, false) > ACTION_H);
+    }
+
+    #[test]
+    fn the_status_line_says_where_the_window_is_then_what_a_click_would_do() {
+        let display = display(10);
+        let tile = window(false, vec![Direction::Left]);
+        let rest = status(&tile, &display, None);
+        assert_eq!((rest.text.as_str(), rest.preview), ("Workspace 1", false));
+        let mut pinned = window(true, Vec::new());
+        pinned.pinned = true;
+        assert_eq!(status(&pinned, &display, None).text, "On every workspace");
+
+        let text = |window: &UiWindowOverlayWindow, control| {
+            let status = status(window, &display, Some(control));
+            assert!(status.preview);
+            status.text
+        };
+        assert_eq!(text(&tile, Control::Float), "Float above the tiles");
+        assert_eq!(
+            text(&window(true, Vec::new()), Control::Float),
+            "Tile it again"
+        );
+        assert_eq!(text(&tile, Control::Pin), "Pin to every workspace");
+        assert_eq!(text(&pinned, Control::Pin), "Unpin from every workspace");
+        assert_eq!(
+            text(&tile, Control::Fullscreen),
+            "Show one window at a time"
+        );
+        assert_eq!(
+            text(&tile, Control::Swap(Direction::Left)),
+            "Swap with the tile on the left"
+        );
+
+        // An occupied workspace names its apps (as icons); an empty one says so; one on
+        // another display says that first.
+        let two = WorkspaceId::new(2).unwrap();
+        let send = status(&tile, &display, Some(Control::Send(two)));
+        assert_eq!(send.text, "Send to 2");
+        assert!(send.notes.is_empty());
+        assert_eq!(send.apps, ["com.example.Mail", "com.example.Chat"]);
+        let three = status(
+            &tile,
+            &display,
+            Some(Control::Send(WorkspaceId::new(3).unwrap())),
+        );
+        assert_eq!(
+            (three.text.as_str(), &three.notes[..]),
+            ("Send to 3", &["empty"][..])
+        );
+        let seven = status(
+            &tile,
+            &display,
+            Some(Control::Send(WorkspaceId::new(7).unwrap())),
+        );
+        assert_eq!(seven.notes, ["other display", "empty"]);
+        assert!(seven.apps.is_empty());
+    }
+
+    #[test]
+    fn a_narrow_status_line_keeps_its_text_whole_and_drops_notes_then_apps() {
+        let status = Status {
+            text: "Send to 6".to_owned(),
+            notes: vec!["other display", "empty"],
+            apps: (0..6)
+                .map(|index| format!("com.example.App{index}"))
+                .collect(),
+            preview: true,
+        };
+        // Room for everything: both notes, and no more apps than the line ever shows.
+        assert_eq!(
+            fit(&status, 600.0),
+            ("Send to 6 · other display · empty".to_owned(), STATUS_APPS)
+        );
+        // Room for the text and the short note: the long one goes, and the apps with it.
+        let short = rune::text::advance("Send to 6 · empty", look::status_style());
+        assert_eq!(
+            fit(&status, short + 1.0),
+            ("Send to 6 · empty".to_owned(), 0)
+        );
+        // Room for the text and two icons.
+        let text = rune::text::advance("Send to 6", look::status_style());
+        let two = text + 2.0 * (STATUS_ICON + STATUS_GAP) + 1.0;
+        assert_eq!(fit(&status, two), ("Send to 6".to_owned(), 2));
+        // No room at all: the text still, to fade at the card's edge.
+        assert_eq!(fit(&status, 10.0), ("Send to 6".to_owned(), 0));
     }
 }

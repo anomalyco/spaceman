@@ -496,10 +496,10 @@ two work together without feeding each other. That holds only until the pointer 
 move it away, coming back to that spot is a hover like any other. In Settings it is
 `Labs › Windows › Focus follows mouse`.
 
-`window_overlay = true` shows a card over every visible window while you hold `Option+Shift` alone
-(the `[shortcuts] modifier` and Shift): buttons to float or tile it, pin it, turn its workspace's
-Fullscreen Layout on or off, swap it with a neighbouring tile, or send it to any workspace, all
-without focusing it (see [Controls › Window Overlay](controls.md#window-overlay-lab)). It applies
+`window_overlay = true` outlines every visible window and shows a card on each while you hold
+`Option+Shift` alone (the `[shortcuts] modifier` and Shift): chips to send it to any workspace, and
+buttons to float or tile it, pin it, turn its workspace's Fullscreen Layout on or off, or swap it
+with a neighbouring tile, all without focusing it (see [Controls › Window Overlay](controls.md#window-overlay-lab)). It applies
 live. In Settings it is `Labs › Windows › Window overlay`.
 
 `swipe_switch = true` makes Spaceman read `settings.trackpad_swipe` and turns the fixed three-finger

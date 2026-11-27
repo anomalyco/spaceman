@@ -1,12 +1,14 @@
 //! `[labs] window_overlay`, the worker's half: what the overlay shows over each visible window,
 //! and its buttons, which act on that window whether or not it has focus. Title-free: bundle
-//! IDs, frames and workspaces only.
+//! IDs, frames, workspaces and window counts only.
 
 use super::{commands::CommandOrigin, *};
 use crate::navigation;
 
 /// The most windows one display's overlay carries.
 const MAX_WINDOWS: usize = 32;
+/// The most apps a workspace names for a card's "send to" preview.
+const MAX_WORKSPACE_APPS: usize = 4;
 /// The sides a tile can swap toward, in the order a card shows them: ← ↑ ↓ →.
 const SWAP_SIDES: [Direction; 4] = [
     Direction::Left,
@@ -58,13 +60,24 @@ pub struct UiWindowOverlayDisplay {
     pub windows: Vec<UiWindowOverlayWindow>,
 }
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub struct UiWindowOverlayWorkspace {
     pub workspace: WorkspaceId,
-    /// It holds windows.
-    pub occupied: bool,
+    /// How many windows it holds, tiles and floats.
+    pub windows: usize,
+    /// The apps on it by bundle ID, once each, tiles first, at most four: what a window sent
+    /// there would join. Never a title.
+    pub apps: Vec<String>,
     /// It is assigned to this display.
     pub on_this_display: bool,
+}
+
+impl UiWindowOverlayWorkspace {
+    /// It holds windows.
+    #[must_use]
+    pub const fn occupied(&self) -> bool {
+        self.windows > 0
+    }
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -78,6 +91,8 @@ pub struct UiWindowOverlayWindow {
     pub workspace: WorkspaceId,
     pub floating: bool,
     pub pinned: bool,
+    /// It has keyboard focus.
+    pub focused: bool,
     /// The sides with a neighbouring tile to swap with, in the order a card shows them:
     /// left, up, down, right.
     pub swaps: Vec<Direction>,
@@ -132,11 +147,14 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
         let visible = self.visible_workspaces(outputs);
         let tiles = self.navigation_tiles_for(&visible);
         let frames = self.backend.window_server_frames().unwrap_or_default();
+        let focused = self.backend.focused_window();
         let displays = visible
             .iter()
             .filter(|resolved| self.scope.manages_selector(&resolved.selector))
             .take(HUD_MAX_DISPLAYS)
-            .map(|resolved| self.window_overlay_display(resolved, &tiles, &frames, outputs))
+            .map(|resolved| {
+                self.window_overlay_display(resolved, &tiles, &frames, focused.as_ref(), outputs)
+            })
             .collect();
         UiWindowOverlay { displays }
     }
@@ -146,6 +164,7 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
         resolved: &ResolvedWorkspace,
         tiles: &[NavigationTile],
         frames: &HashMap<u32, crate::Rect>,
+        focused: Option<&crate::PhysicalWindowId>,
         outputs: &macos::DisplayOutputs,
     ) -> UiWindowOverlayDisplay {
         let workspace = resolved.workspace;
@@ -169,6 +188,7 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
                 workspace: owner,
                 floating,
                 pinned: self.workspaces.is_pinned(window),
+                focused: focused == Some(window),
                 swaps: Vec::new(),
             };
         let mut windows: Vec<UiWindowOverlayWindow> = local
@@ -215,11 +235,21 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
                         .scope
                         .manages_selector(self.workspaces.assignment(*listed))
             })
-            .map(|listed| UiWindowOverlayWorkspace {
-                workspace: listed,
-                occupied: !self.workspaces.windows(listed).is_empty(),
-                on_this_display: outputs.resolve(self.workspaces.assignment(listed)).id
-                    == resolved.display_id,
+            .map(|listed| {
+                let held = self.workspaces.windows(listed);
+                let mut apps: Vec<String> = Vec::new();
+                for bundle in held.iter().filter_map(|window| self.bundle_id(&window.app)) {
+                    if apps.len() < MAX_WORKSPACE_APPS && !apps.iter().any(|app| app == bundle) {
+                        apps.push(bundle.to_owned());
+                    }
+                }
+                UiWindowOverlayWorkspace {
+                    workspace: listed,
+                    windows: held.len(),
+                    apps,
+                    on_this_display: outputs.resolve(self.workspaces.assignment(listed)).id
+                        == resolved.display_id,
+                }
             })
             .collect();
         UiWindowOverlayDisplay {

@@ -9,7 +9,9 @@ use spaceman::{
     app::{UiAgentSnapshot, UiLaunchAtLogin, UiUpdateStatus},
 };
 
-use crate::{Pane, Ui, activity, controls::WINDOW, hud, map, onboarding, panes, rules::Doc};
+use crate::{
+    Pane, Ui, activity, controls::WINDOW, hud, map, onboarding, panes, rules::Doc, window_overlay,
+};
 
 pub(crate) type Scene = (&'static str, fn(&mut Ui));
 
@@ -19,6 +21,7 @@ const SCENE_GROUPS: &[&[Scene]] = &[
     map::SCENES,
     activity::SCENES,
     hud::SCENES,
+    window_overlay::SCENES,
 ];
 
 pub fn attach(app: App<Ui>) -> App<Ui> {
@@ -87,6 +90,7 @@ pub(crate) fn reset_fixture(ui: &mut Ui, pane: Pane) {
     ui.tour = None;
     ui.sheet = None;
     ui.hud_preview = None;
+    ui.overlay_preview = None;
     ui.spacing_draft = None;
     ui.per_edge = None;
     ui.displays = panes::workspaces::fixture_pair();
@@ -123,6 +127,9 @@ fn group(ui: &Ui) -> (usize, &'static str) {
     }
     if ui.hud_preview.is_some() {
         return (Pane::ALL.len() + 1, "HUD");
+    }
+    if ui.overlay_preview.is_some() {
+        return (Pane::ALL.len() + 2, "Window overlay");
     }
     let rank = Pane::ALL
         .iter()
@@ -189,6 +196,12 @@ mod tests {
             "HUD/hud-empty",
             "HUD/hud-fullscreen",
             "HUD/hud-many",
+            "Window overlay/overlay",
+            "Window overlay/overlay-send",
+            "Window overlay/overlay-other-display",
+            "Window overlay/overlay-swap",
+            "Window overlay/overlay-columns",
+            "Window overlay/overlay-fullscreen",
         ] {
             assert!(
                 grouped.contains(&expected),

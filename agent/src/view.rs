@@ -6,7 +6,7 @@ use rune::{Anim, Cx, El, ScrollSpec, Tx, col, el, icon, row, text};
 use crate::{
     Pane, Ui,
     controls::{self, METRICS, Paint, WINDOW},
-    hud, onboarding, panes,
+    hud, onboarding, panes, window_overlay,
 };
 
 /// The traffic lights sit over the sidebar, so the navigation starts below them.
@@ -55,6 +55,13 @@ pub fn view(ui: &Ui, cx: &mut Cx<Ui>) -> El {
     }
     if let Some(hud_preview) = &ui.hud_preview {
         layer.push(hud::stage(hud_preview, p, cx.is_reduced_motion()));
+    }
+    if let Some(preview) = &ui.overlay_preview {
+        layer.push(window_overlay::stage(
+            preview,
+            p.hair,
+            cx.is_reduced_motion(),
+        ));
     }
     rune_kit::root(window, layer)
 }
