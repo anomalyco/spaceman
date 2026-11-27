@@ -121,6 +121,7 @@ pub fn apply_managed(
                 break;
             }
             if !process_incarnation_matches(&app_id) {
+                evict_placed_windows(&placements, &indices);
                 fill_missing_results(&placements, &indices, &mut results, ApplyOutcome::Gone);
                 continue;
             }
@@ -128,6 +129,7 @@ pub fn apply_managed(
             let windows = match attribute::<CFArray>(&app, "AXWindows") {
                 Ok(windows) => windows,
                 Err(AXError::InvalidUIElement) => {
+                    evict_placed_windows(&placements, &indices);
                     fill_missing_results(&placements, &indices, &mut results, ApplyOutcome::Gone);
                     continue;
                 }
@@ -182,6 +184,11 @@ pub fn apply_managed(
                     break;
                 }
             }
+            // `AXWindows` lists only the showing desktop's windows, so a window
+            // missing from it may live on another macOS desktop. Its cached
+            // handle still reaches it: a rolled-back switch parks it again
+            // through that handle (#775). A truly closed window's handle is
+            // dropped the next time an operation on it fails.
             fill_missing_results(
                 &placements,
                 &pending.into_values().flatten().collect::<Vec<_>>(),
@@ -212,6 +219,13 @@ pub(super) fn group_placements_by_app(
     groups
 }
 
+/// Drop the cached handles of windows whose app is gone or relaunched.
+fn evict_placed_windows(placements: &[(&PhysicalWindowId, Rect)], indices: &[usize]) {
+    for index in indices {
+        evict_managed_window(placements[*index].0);
+    }
+}
+
 fn fill_missing_results(
     placements: &[(&PhysicalWindowId, Rect)],
     indices: &[usize],
@@ -220,9 +234,6 @@ fn fill_missing_results(
 ) {
     for index in indices {
         let (window, target) = placements[*index];
-        if matches!(outcome, ApplyOutcome::Gone) {
-            evict_managed_window(window);
-        }
         results[*index] = Some(ApplyResult {
             window: window.clone(),
             target,

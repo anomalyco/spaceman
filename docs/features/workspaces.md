@@ -14,7 +14,9 @@ Switch workspace                                           // ws.switch
 │   ├── A fixed-size window under a `tile` rule -> moved to its tile's corner at its own size;
 │   │   the layout still counts as done, so the switch completes
 │   └── Reveal not confirmed by the window server in time -> switch rolled back, old workspace stays
-│       (a window whose app was not responding stays hidden when that app recovers)
+│       (a window whose app was not responding stays hidden when that app recovers); the same
+│       when a window sits on a macOS desktop that is not showing and cannot be laid out: it
+│       goes back to its parking spot there (#775)
 ├── Focus -> last-focused tile of the incoming workspace, keyboard focus included
 │   (that window raised and made main, then its app brought forward with `AXFrontmost`), unless
 │   one of its windows already has focus (e.g. focus follow): that window keeps it. If the app
