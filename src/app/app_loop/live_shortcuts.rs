@@ -125,9 +125,28 @@ fn restore_active<H, P>(
 }
 
 impl MainThreadAgent {
+    /// Keeps the active Option-click event tap installed only while automatic tiling
+    /// is running, the setting is on, and Spaceman is not exiting.
+    pub(super) fn sync_option_click_guard(&mut self) {
+        let want = self.automatic && self.option_click_keep_visible && self.exit_intent.is_none();
+        match (want, self.option_click_guard.is_some()) {
+            (true, false) => match macos::OptionClickGuard::install() {
+                Ok(guard) => self.option_click_guard = Some(guard),
+                Err(error) => log_event!("option-click guard unavailable: {error}"),
+            },
+            (false, true) => {
+                self.option_click_guard = None;
+            }
+            _ => {}
+        }
+    }
+
     /// Applies a `[shortcuts]` table read from `config.toml`, on a Settings save or a hand edit.
     /// A table that can't be registered leaves the previous hotkeys working and says why.
     pub fn apply_shortcuts(&mut self, shortcuts: Shortcuts) {
+        self.option_click_keep_visible = shortcuts.option_click_keep_visible;
+        self.shortcuts.option_click_keep_visible = shortcuts.option_click_keep_visible;
+        self.sync_option_click_guard();
         let installed = self.hotkeys.is_some();
         let held = self.hotkey_hold.is_held();
         match shortcut_change(&self.shortcuts, &shortcuts, installed, held) {

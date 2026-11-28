@@ -77,6 +77,7 @@ impl MainThreadAgent {
         }
         self.listen_for_input();
         self.automatic = true;
+        self.sync_option_click_guard();
         self.cancelled.store(false, Ordering::Release);
         self.events.invalidate();
         self.ui_dirty = true;

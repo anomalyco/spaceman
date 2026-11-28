@@ -149,6 +149,8 @@ pub(crate) struct ShortcutsDoc {
     pub defaults: Option<bool>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub modifier: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub option_click_keep_visible: Option<bool>,
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub bindings: BTreeMap<String, String>,
 }

@@ -669,3 +669,24 @@ fn removing_a_key_or_entry_keeps_the_comment_a_blank_line_sets_off_from_it() {
         }
     }
 }
+
+#[test]
+fn config_commands_preserve_shortcuts_option_click_keep_visible() {
+    let temp = TempConfig::new("option-click-keep-visible");
+    temp.write("version = 1\n\n[shortcuts]\noption_click_keep_visible = false\n");
+    let show = temp.run(&["config", "show", "--json"]);
+    assert_eq!(show.exit_code, 0, "{:?}", show.stderr);
+    let parsed_json: Value = serde_json::from_str(show.stdout.as_deref().unwrap()).unwrap();
+    assert_eq!(parsed_json["shortcuts"]["option_click_keep_visible"], false);
+
+    let set = temp.run(&["config", "set", "hud", "false"]);
+    assert_eq!(set.exit_code, 0, "{:?}", set.stderr);
+    let saved = temp.read();
+    assert!(
+        saved.contains("option_click_keep_visible = false"),
+        "{saved}"
+    );
+    let parsed = Config::parse(&saved).unwrap();
+    assert!(!parsed.hud());
+    assert!(!parsed.shortcuts().option_click_keep_visible);
+}

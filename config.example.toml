@@ -117,6 +117,7 @@ monitor = "main"
 #
 # [shortcuts]
 # defaults = true
+# option_click_keep_visible = true
 #
 # [shortcuts.bindings]
 # "alt+shift+ctrl+left" = "focus left"

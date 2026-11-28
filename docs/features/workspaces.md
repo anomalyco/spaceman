@@ -611,7 +611,10 @@ on the same letter.
   the main-thread drop of the other finger count in
   `only_swipes_with_the_configured_finger_count_are_admitted`, `src/app/input.rs`)
   and the Shortcuts row in
-  `agent/src/panes/shortcuts/tests.rs`, and visible stranded-window recovery
+  `agent/src/panes/shortcuts/tests.rs` (along with `option_click_keep_visible` in
+  `src/option_click.rs`, `src/macos/option_click.rs`, `src/macos/displays.rs`,
+  `src/shortcuts.rs`, `agent/src/rules/shortcuts/tests.rs`, and
+  `src/cli/tests/regressions.rs`), and visible stranded-window recovery
   after display disconnect in `src/app/tests/display_disconnect.rs` (issue 150), which leaves
   a float restoring from the Dock at its own frame
   (`a_float_restoring_from_the_dock_is_not_moved_as_stranded` in

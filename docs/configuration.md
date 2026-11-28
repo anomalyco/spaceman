@@ -310,6 +310,7 @@ to a command in `spaceman ctl` syntax:
 [shortcuts]
 defaults = true                       # optional (default: true); false registers only these bindings
 modifier = "alt"                      # optional (default: "alt"); every built-in shortcut holds it
+option_click_keep_visible = true      # optional (default: true); Option-clicking another app won't hide the current one
 
 [shortcuts.bindings]
 "alt+left" = "move-direction left"     # replaces macOS's Option+arrow word jump everywhere
@@ -325,6 +326,12 @@ modifier = "alt"                      # optional (default: "alt"); every built-i
 `Control+Option+3` and Move to workspace 3 `Control+Option+Shift+3`. It takes the same modifier names
 as a chord, needs `alt`, `cmd`, or `ctrl`, and can't include `shift`, which the built-in Move
 shortcuts add. Bindings are exact chords and don't follow it.
+
+`option_click_keep_visible` (default `true`, **Settings › Shortcuts › Modifier › Keep app visible on
+Option-click**) stops macOS from hiding the current app on Option-click (and from hiding all other
+apps on Option+Command-click) when clicking another app's window while tiling is enabled. It strips
+only `Option` from cross-app normal/floating window clicks and leaves in-app Option-clicks, menu bar
+items, open menus, the Dock, Control Center, and desktop clicks untouched. Changes apply live.
 
 A chord is one or more modifiers and one key, joined by `+`, in any order and case:
 
