@@ -31,9 +31,13 @@ Quit with an update ready                                  // recover.update
 └── Only after restoration fully succeeds -> signature re-checked, bundles swapped, no relaunch
 
 Install & restart (development updater)                    // recover.dev-update
+├── scripts/install-app.sh --wait-idle waits until idle AND the screen is unlocked with displays awake
 ├── scripts/install-app.sh waits up to 60 s for parked-window restoration and exit
+├── spaceman-agent cancels a pending ctl restart after 45 s if parked windows cannot finish
+│   restoring (e.g. screen locked), logs why, and resumes normal operation (re-entering automatic
+│   tiling if it was automatic) instead of quitting later when Accessibility returns
 └── Timeout -> installation aborted, old bundle kept; a background watcher waits up to 5 min and
-    reopens it if the old process exits, resuming tiling if it was automatic before the restart
+    reopens it if an older build or TERM fallback exits, resuming tiling if it was automatic
 
 Crash or hard kill                                         // recover.crash
 ├── Next launch, valid state   -> parked windows reveal as their workspaces become visible
@@ -91,11 +95,16 @@ See [Recovery](../recovery.md) for the safe manual procedure; never delete `park
 
 ## Existing Checks
 
-- Installer, `scripts/tests/install_app.py` (also in `scripts/check`): a 25 s restore completes
-  installation; exits after the 60 s timeout reopen the old bundle and restore automatic mode
-  (without resuming a previously paused app), and the watcher stops without reopening if the old
-  process never exits within its 5 min window. Virtual clock and mocked native commands; no
-  desktop windows or installed app are touched.
+- Installer, `scripts/tests/install_app.py` (also in `scripts/check`): `--wait-idle` waits while
+  the screen is locked and waits for fresh idle after unlock before sending `ctl restart`; a 25 s
+  restore completes installation; exits after the 60 s timeout reopen the old bundle and restore
+  automatic mode (without resuming a previously paused app), and the watcher stops without reopening
+  if the old process never exits within its 5 min window. Virtual clock and mocked native commands;
+  no desktop windows or installed app are touched.
+- Unit, `src/app/app_loop/restart.rs` and `src/app/tests/dispatch.rs`: `ctl restart` cancels
+  restoration after its 45 s deadline (both while waiting to retry and while a restore is in flight)
+  and resumes automatic tiling (or stays paused when started paused), without cancelling `Quit`,
+  `Terminate`, or `Update`.
 
 - Unit, `src/status_item.rs`, `src/macos/displays.rs`, `src/app/app_loop/builtin_display.rs`, `src/cli/tests/builtin_display.rs`, `agent/src/hud/tests.rs`, `agent/src/panes/general.rs`:
   dimmed paused menu bar glyph and full-brightness restoration on resume; `CGDisplayIsBuiltin`

@@ -11,6 +11,7 @@ mod hotkey_health;
 mod hover;
 mod live_shortcuts;
 mod probe;
+mod restart;
 mod setup;
 mod status_text;
 mod window_overlay;
@@ -100,6 +101,7 @@ pub struct MainThreadAgent {
     last_accessibility_poll: Instant,
     return_from_settings: permission_guide::ReturnFromSettings,
     exit_intent: Option<ExitIntent>,
+    pending_restart: Option<restart::PendingRestart>,
     next_restore_retry: Option<Instant>,
     active_workspaces: Vec<WorkspaceId>,
     last_error: Option<String>,
@@ -228,6 +230,7 @@ impl MainThreadAgent {
             last_accessibility_poll: initial_refresh,
             return_from_settings: permission_guide::ReturnFromSettings::default(),
             exit_intent: None,
+            pending_restart: None,
             next_restore_retry: None,
             active_workspaces: init.scope.initial_workspaces().to_vec(),
             last_error: hotkey_error,
@@ -298,6 +301,7 @@ impl MainThreadAgent {
     }
 
     pub fn tick(&mut self) -> TickOutcome {
+        self.check_restart_deadline(Instant::now());
         loop {
             let mut result = match self.results.try_recv() {
                 Ok(result) => result,
@@ -311,6 +315,8 @@ impl MainThreadAgent {
                     status_item::set_automatic(false);
                     self.automatic = false;
                     self.worker.reset_disconnected();
+                    self.pending_restart = None;
+                    self.pending_automatic_start = false;
                     self.next_restore_retry = None;
                     self.ui_dirty = true;
                     if self.exit_intent.is_some() {
@@ -398,6 +404,9 @@ impl MainThreadAgent {
                     {
                         self.ui_dirty = true;
                     }
+                }
+                WorkerResult::Restored { .. } if self.worker.is_cancelling_restore() => {
+                    self.finish_cancelled_restore();
                 }
                 // Every parked window is back on screen: only now may the
                 // bundle be swapped and Spaceman relaunch into it.
@@ -527,6 +536,8 @@ impl MainThreadAgent {
     }
 
     fn cancel_unavailable_exit(&mut self) {
+        self.pending_restart = None;
+        self.resume_after_update = false;
         if self.exit_intent.take() == Some(ExitIntent::Terminate) {
             termination::cancel_pending();
         }

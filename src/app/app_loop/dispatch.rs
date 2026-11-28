@@ -54,6 +54,10 @@ pub(in crate::app) enum WorkerLifecycle {
     /// A restoration is owed and nothing is in flight: the next
     /// [`WorkerDispatch::start_pending_restore`] sends it.
     RestorePending(RestoreKind),
+    /// A restoration is still in flight on the worker thread after its caller
+    /// cancelled it (such as a timed-out `ctl restart`). When its result
+    /// arrives it returns to `Idle` without scheduling another retry.
+    CancellingRestore,
 }
 
 pub(in crate::app) struct WorkerDispatch {
@@ -86,8 +90,14 @@ impl WorkerDispatch {
     pub(in crate::app) const fn is_busy(&self) -> bool {
         matches!(
             self.lifecycle,
-            WorkerLifecycle::Running { .. } | WorkerLifecycle::Restoring { .. }
+            WorkerLifecycle::Running { .. }
+                | WorkerLifecycle::Restoring { .. }
+                | WorkerLifecycle::CancellingRestore
         )
+    }
+
+    pub(in crate::app) const fn is_cancelling_restore(&self) -> bool {
+        matches!(self.lifecycle, WorkerLifecycle::CancellingRestore)
     }
 
     pub(in crate::app) const fn is_interruptible_busy(&self) -> bool {
@@ -146,7 +156,8 @@ impl WorkerDispatch {
                 interruptible,
                 then,
             },
-            restoring @ WorkerLifecycle::Restoring { .. } => restoring,
+            restoring
+            @ (WorkerLifecycle::Restoring { .. } | WorkerLifecycle::CancellingRestore) => restoring,
             WorkerLifecycle::RestoreRetryDue(kind) => WorkerLifecycle::Running {
                 interruptible,
                 then: AfterCommand::RetryRestore(kind),
@@ -185,6 +196,7 @@ impl WorkerDispatch {
                 ..
             } => kind,
             WorkerLifecycle::Idle
+            | WorkerLifecycle::CancellingRestore
             | WorkerLifecycle::Running {
                 then: AfterCommand::Nothing,
                 ..
@@ -248,6 +260,12 @@ impl WorkerDispatch {
             WorkerLifecycle::RestoreRetryDue(owed) | WorkerLifecycle::RestorePending(owed) => {
                 self.send_restore_of(owed.and(kind));
             }
+            WorkerLifecycle::CancellingRestore => {
+                self.lifecycle = WorkerLifecycle::Restoring {
+                    kind,
+                    again: Some(kind),
+                };
+            }
         }
     }
 
@@ -299,11 +317,31 @@ impl WorkerDispatch {
                 then: AfterCommand::StartRestore(kind),
                 ..
             } => WorkerLifecycle::RestorePending(kind),
+            WorkerLifecycle::CancellingRestore => WorkerLifecycle::Idle,
             WorkerLifecycle::Idle
             | WorkerLifecycle::Running {
                 then: AfterCommand::Nothing,
                 ..
             } => WorkerLifecycle::RestoreRetryDue(RestoreKind::Restore),
+        };
+    }
+
+    /// Cancels an active or owed restoration (for example, when a `ctl restart`
+    /// deadline expires). If a restoration is currently executing on the worker
+    /// thread, keeps `is_busy()` true in [`WorkerLifecycle::CancellingRestore`]
+    /// until its result arrives so the next command never races behind it.
+    pub(in crate::app) fn cancel_restore(&mut self) {
+        self.lifecycle = match self.lifecycle {
+            WorkerLifecycle::Idle
+            | WorkerLifecycle::RestoreRetryDue(_)
+            | WorkerLifecycle::RestorePending(_) => WorkerLifecycle::Idle,
+            WorkerLifecycle::Running { interruptible, .. } => WorkerLifecycle::Running {
+                interruptible,
+                then: AfterCommand::Nothing,
+            },
+            WorkerLifecycle::Restoring { .. } | WorkerLifecycle::CancellingRestore => {
+                WorkerLifecycle::CancellingRestore
+            }
         };
     }
 

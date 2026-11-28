@@ -235,7 +235,10 @@ impl MainThreadAgent {
                         _ => ExitIntent::Quit,
                     };
                     permission_guide::close();
-                    self.resume_after_update = intent == ExitIntent::Update && self.automatic;
+                    let was_automatic = self.automatic;
+                    self.resume_after_update = intent == ExitIntent::Update && was_automatic;
+                    self.pending_restart = (intent == ExitIntent::Restart)
+                        .then(|| restart::PendingRestart::new(Instant::now(), was_automatic));
                     self.exit_intent = Some(intent);
                     self.stop_automatic_and_restore(RestoreKind::Restore);
                     if self.worker.is_busy() {
@@ -273,10 +276,11 @@ impl MainThreadAgent {
             }
         }
         if self.exit_intent.is_none()
-            && std::mem::take(&mut self.pending_automatic_start)
+            && self.pending_automatic_start
             && !self.automatic
             && !self.worker.is_restoring_or_pending()
         {
+            self.pending_automatic_start = false;
             self.start_automatic(false);
         }
     }
