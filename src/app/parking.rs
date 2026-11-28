@@ -68,7 +68,8 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
             return None;
         }
         if self.returned_by_space_slide(&window.id) {
-            // macOS put it back while leaving the app's fullscreen Space (#489);
+            // macOS put it back while leaving the app's fullscreen Space (#489),
+            // or the app did while its native fullscreen window has focus (#795);
             // parking pushes it back off-screen.
             return None;
         }

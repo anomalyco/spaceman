@@ -4,7 +4,8 @@
 //! background cycles wait for the slide to settle instead of laying out a mix
 //! of both Spaces (#334) or rolling back a focus follow and re-homing the
 //! window it revealed (#329), and a parked window macOS puts back on screen
-//! when an app leaves its fullscreen Space is parked again, not re-homed (#489).
+//! when an app leaves its fullscreen Space is parked again, not re-homed (#489),
+//! as is one an app with a native fullscreen window focused moves on screen (#795).
 
 use super::focus::FAILED_FOLLOW_RETRY_WINDOW;
 use super::*;
@@ -49,11 +50,23 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
     }
 
     /// Whether a parked window of the frontmost app that is back on screen was
-    /// put there by macOS rather than summoned by the user. Leaving an app's
-    /// native fullscreen Space moves its other windows back to their last
+    /// put there by macOS or the app rather than summoned by the user. Leaving an
+    /// app's native fullscreen Space moves its other windows back to their last
     /// on-screen frames (#489); the window the user lands on is the focused one.
+    /// An app whose focused window is in native fullscreen (often on another
+    /// display, with no Space slide at all) moves its other windows on screen
+    /// when it is activated; the user is in the fullscreen window, not
+    /// summoning those (#795). While a window is still entering fullscreen this
+    /// holds only once macOS already reports it as fullscreen.
     pub(super) fn returned_by_space_slide(&mut self, window: &crate::PhysicalWindowId) -> bool {
-        self.space_slide_just_settled() && self.backend.focused_window().as_ref() != Some(window)
+        let focused = self.backend.focused_window();
+        if focused.as_ref() == Some(window) {
+            return false;
+        }
+        self.space_slide_just_settled()
+            || focused.is_some_and(|focused| {
+                focused.app == window.app && self.backend.confirms_native_fullscreen(&focused)
+            })
     }
 
     /// The status of a background cycle held back by a Space slide. Nothing

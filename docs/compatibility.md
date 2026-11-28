@@ -60,6 +60,10 @@ off screen with its recovery frame intact, even in the first moments after it wa
 application unhidden in the background). The same holds for a frontmost application's other
 windows that macOS moves back on screen as it slides out of that application's native fullscreen
 Space: for about two seconds after the slide settles, only the focused window counts as summoned.
+Likewise, while an application's focused window is in native fullscreen (for example on another
+display), only that window counts as summoned: the other windows the application moves on screen
+when it is activated are pushed back to their own workspaces with their recovery frames intact
+(a window still entering native fullscreen counts only once macOS reports it as fullscreen).
 If an application undoes several re-parks in a row, the
 reappearance is honored after all and the window is re-homed. A window whose reappearance is honored
 twice within five minutes becomes parking-exempt for the rest of the session: it remains owned and
