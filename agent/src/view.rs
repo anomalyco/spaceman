@@ -99,12 +99,12 @@ fn nav_slot(p: Paint, pane: Pane, on: bool) -> El {
         .key(format!("{}-slot", pane.key()))
         .py(NAV_ROW_GAP / 2.0)
         .hover_group()
-        .on_drag(move |ui: &mut Ui, d: &mut rune::Drag, _: &mut Tx| {
+        .on_drag(move |ui: &mut Ui, d: &mut rune::Drag, tx: &mut Tx| {
             if d.phase == rune::Phase::Down {
-                ui.select_pane(pane);
+                ui.switch_pane(pane, tx);
             }
         })
-        .on_press(move |ui: &mut Ui| ui.select_pane(pane))
+        .on_press_tx(move |ui: &mut Ui, tx: &mut Tx| ui.switch_pane(pane, tx))
         .child(nav_item(p, pane, on))
 }
 
@@ -120,7 +120,7 @@ fn nav_item(p: Paint, pane: Pane, on: bool) -> El {
         .center_y()
         .radius(p.k.radius.sm)
         .press(c.pressed)
-        .on_press(move |ui: &mut Ui| ui.select_pane(pane))
+        .on_press_tx(move |ui: &mut Ui, tx: &mut Tx| ui.switch_pane(pane, tx))
         .child(
             el().key("hover")
                 .pin(Some(0.0), Some(0.0), Some(0.0), Some(0.0))
@@ -239,6 +239,9 @@ pub fn scroll_body(key: &str, content: El) -> El {
         .shrink()
         .min_h(0.0)
         .mt(REST_TOP - top)
+        // Panes swap; they never dissolve into each other. `Ui::switch_pane` also lands the
+        // new pane's own controls in one frame.
+        .transition(rune::Transition::none())
         .clip_fade(0.0, top, 0.0, bottom)
         .scroll(ScrollSpec {
             stick_bottom: false,

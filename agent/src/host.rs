@@ -215,7 +215,9 @@ fn start_main_thread() {
             Ok(())
         }),
         open_target: Box::new(move |target| {
-            target_window.update_if(move |ui, _| {
+            target_window.update_if(move |ui, tx| {
+                // A pane change lands in one frame (`Ui::switch_pane`).
+                tx.instant();
                 ui.open_target(target);
                 true
             });

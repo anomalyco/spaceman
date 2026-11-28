@@ -392,8 +392,8 @@ pub fn hud_sheet(
             "Each display's capsule lists the workspaces assigned to it".to_owned(),
             p.muted(),
         )),
-        controls::quiet_button(p, "hud-workspaces", "Workspaces", |ui: &mut Ui, _| {
-            ui.select_pane(Pane::Workspaces);
+        controls::quiet_button(p, "hud-workspaces", "Workspaces", |ui: &mut Ui, tx| {
+            ui.switch_pane(Pane::Workspaces, tx);
         }),
     );
     let panel = controls::modal_panel(
