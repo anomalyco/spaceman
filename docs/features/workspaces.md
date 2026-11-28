@@ -207,7 +207,10 @@ Window overlay ([labs] window_overlay, off)                 // ws.window-overlay
 │   than the full card gets the compact one (chips wrap at five, icon-only buttons)
 ├── Buttons act on the card's window, focused or not, through the focused-window commands' own code
 │   (src/app/window_overlay.rs); no activation, focus change or pointer warp; cards refresh while held
-└── Fullscreen Layout shows only the front tile's card; parked and hidden windows have none
+└── Fullscreen Layout shows only the front tile's card. Every card requires fresh on-screen
+    WindowServer bounds intersecting its display beyond the parking strip; hidden, minimized,
+    dismissed panels (even with a live AXWindow), missing and zero-size windows have none.
+    Covered by src/app/tests/window_overlay.rs
 
 Focus follows                                              // ws.focus-follow
 ├── Focusing a window that lives on a hidden workspace (Dock, Cmd+Tab, notification)

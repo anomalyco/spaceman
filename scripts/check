@@ -10,6 +10,7 @@ step fmt; cargo fmt --all -- --check
 step file size; scripts/file-size.sh
 step folder shape; scripts/folder-shape.sh
 step release metadata; scripts/validate-release.sh --metadata-only
+step installer; python3 scripts/tests/install_app.py
 step clippy; cargo clippy --locked --workspace --all-targets -- -D warnings
 step test; cargo test --locked --workspace --all-targets
 step audit

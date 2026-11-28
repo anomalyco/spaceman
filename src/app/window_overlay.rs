@@ -146,7 +146,9 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
     pub(super) fn window_overlay(&mut self, outputs: &macos::DisplayOutputs) -> UiWindowOverlay {
         let visible = self.visible_workspaces(outputs);
         let tiles = self.navigation_tiles_for(&visible);
-        let frames = self.backend.window_server_frames().unwrap_or_default();
+        // The full CG list retains bounds for hidden apps and ordered-out panels whose
+        // AXWindow still exists. Only fresh on-screen evidence can produce a card.
+        let frames = self.backend.onscreen_window_frames().unwrap_or_default();
         let focused = self.backend.focused_window();
         let displays = visible
             .iter()
@@ -169,17 +171,32 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
     ) -> UiWindowOverlayDisplay {
         let workspace = resolved.workspace;
         let fullscreen = self.workspaces.deck(workspace).is_monocle();
+        let visible_frame = |window: &crate::PhysicalWindowId| {
+            frames
+                .get(&window.window_id)
+                .copied()
+                .filter(|frame| crate::geometry::shows_on(*frame, &[resolved.screen]))
+        };
         let local: Vec<NavigationTile> = tiles
             .iter()
             .filter(|tile| tile.workspace == workspace)
             .cloned()
             .collect();
-        // Fullscreen Layout stacks every tile in one place: only the one in front shows.
+        // Fullscreen Layout stacks every tile in one place: only the visible one in front shows.
         let front = self
             .workspaces
             .preferred_focus(workspace)
-            .filter(|front| local.iter().any(|tile| &tile.window == front))
-            .or_else(|| local.first().map(|tile| tile.window.clone()));
+            .filter(|front| {
+                local
+                    .iter()
+                    .any(|tile| &tile.window == front && visible_frame(&tile.window).is_some())
+            })
+            .or_else(|| {
+                local
+                    .iter()
+                    .find(|tile| visible_frame(&tile.window).is_some())
+                    .map(|tile| tile.window.clone())
+            });
         let entry =
             |window: &crate::PhysicalWindowId, frame, owner, floating| UiWindowOverlayWindow {
                 window: window.clone(),
@@ -194,33 +211,35 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
         let mut windows: Vec<UiWindowOverlayWindow> = local
             .iter()
             .filter(|tile| !fullscreen || front.as_ref() == Some(&tile.window))
-            .map(|tile| {
-                let frame = frames
-                    .get(&tile.window.window_id)
-                    .copied()
-                    .unwrap_or(tile.frame);
-                let mut card = entry(&tile.window, frame, workspace, false);
+            .filter_map(|tile| {
+                let mut card = entry(&tile.window, visible_frame(&tile.window)?, workspace, false);
                 if !fullscreen {
                     card.swaps = SWAP_SIDES
                         .into_iter()
                         .filter(|side| navigation::target(&local, &tile.window, *side).is_some())
                         .collect();
                 }
-                card
+                Some(card)
             })
             .collect();
-        // Floats it owns and pins from anywhere, where they are on this display now: a parked
-        // or hidden one is off screen.
+        // Floats it owns and pins from anywhere, with on-screen evidence on this display.
+        // A pinned window straddling two displays gets one card, on the display holding its center.
+        let owned_by_other_display = |frame: crate::Rect| {
+            !resolved.screen.contains_center(frame)
+                && outputs.displays().iter().any(|display| {
+                    display.id != resolved.display_id && display.frame.contains_center(frame)
+                })
+        };
         let mut floats: Vec<_> = self
             .workspaces
             .floating_entries()
             .filter(|(window, owner)| *owner == workspace || self.workspaces.is_pinned(window))
             .filter_map(|(window, owner)| {
-                let frame = *frames.get(&window.window_id)?;
-                resolved
-                    .screen
-                    .contains_center(frame)
-                    .then(|| entry(window, frame, owner, true))
+                let frame = visible_frame(window)?;
+                if self.workspaces.is_pinned(window) && owned_by_other_display(frame) {
+                    return None;
+                }
+                Some(entry(window, frame, owner, true))
             })
             .collect();
         floats.sort_by(|a, b| a.window.cmp(&b.window));
