@@ -245,8 +245,9 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
         }
         let observation = self
             .backend
-            .snapshot(0, &outputs)
-            .map_err(|error| format!("Observation error: {error}"))?;
+            .snapshot_unless_cancelled(0, &outputs, cancelled)
+            .map_err(|error| format!("Observation error: {error}"))?
+            .ok_or("workspace operation cancelled")?;
         let mut affinity_policy =
             self.freeze_window_affinities(&observation, &visible, server_frames, &parked_before)?;
         self.route_before_reconcile(

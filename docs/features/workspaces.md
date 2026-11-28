@@ -319,8 +319,10 @@ Reopened at a parking spot                                 // ws.stale-parked
 ├── Always-on-top windows stay where they are: Spaceman ignores them, so it never moves one there
 ├── A window an `ignore` rule matches, by app or title, stays where it opened; it is judged once
 │   and not read again until its frame or the displays change
-└── One whose title a rule needs but Accessibility cannot resolve yet waits, retried with the
-    same backoff as a window that cannot move
+├── One whose title a rule needs but Accessibility cannot resolve yet waits, retried with the
+│   same backoff as a window that cannot move
+└── One that cannot move is retried every 32 s at most while it stays put; only its first
+    attempt (and a later success) goes in agent.log
 
 Displays                                                    // ws.displays
 ├── Default: 1-5 main, 6-10 secondary; [[workspaces]] monitor = main | secondary | UUID | name

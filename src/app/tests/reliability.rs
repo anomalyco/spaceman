@@ -324,3 +324,57 @@ fn switch_keeps_outgoing_visible_when_incoming_reveal_never_arrives() {
     );
     assert!(!runtime.parked.contains_key(&incoming));
 }
+
+#[test]
+fn a_cycle_cancelled_while_reading_apps_writes_nothing() {
+    // A shortcut pressed while a background retile reads every app's windows
+    // cancels it. It returns before laying anything out, rather than holding the
+    // shortcut until each unresponsive app's reads time out.
+    let left = window(10);
+    let right = window(20);
+    let cancelled = Arc::new(AtomicBool::new(false));
+    let mut backend = FakeBackend {
+        observation: Some(observation_for_windows(
+            "com.example.Test",
+            &left,
+            &[(left.clone(), frame(50)), (right.clone(), frame(60))],
+        )),
+        cancel_on_snapshot: Some(Arc::clone(&cancelled)),
+        ..FakeBackend::default()
+    };
+    backend.frames.insert(left.clone(), frame(50));
+    backend.frames.insert(right.clone(), frame(60));
+    let mut runtime = runtime(backend);
+
+    let error = runtime.cycle(outputs(), &cancelled).err().unwrap();
+    assert!(error.ends_with("cancelled"), "{error}");
+    assert_eq!(runtime.backend.snapshot_count, 1);
+    assert!(
+        !runtime
+            .backend
+            .calls
+            .iter()
+            .any(|call| matches!(call, BackendCall::Apply(..))),
+        "{:?}",
+        runtime.backend.calls
+    );
+    assert_eq!(runtime.workspaces.workspace_of(&left), None);
+
+    // The next cycle, uncancelled, tiles both windows.
+    runtime.cycle(outputs(), &AtomicBool::new(false)).unwrap();
+    assert_eq!(
+        runtime.workspaces.workspace_of(&left),
+        Some(WorkspaceId::ONE)
+    );
+    assert_eq!(
+        runtime.workspaces.workspace_of(&right),
+        Some(WorkspaceId::ONE)
+    );
+    assert!(
+        runtime
+            .backend
+            .calls
+            .iter()
+            .any(|call| matches!(call, BackendCall::Apply(..)))
+    );
+}

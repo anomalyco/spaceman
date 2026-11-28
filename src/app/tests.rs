@@ -140,6 +140,8 @@ struct FakeBackend {
     /// Raised by the next position write: an activation cancelling the worker
     /// in the middle of a switch.
     cancel_on_position: Option<Arc<AtomicBool>>,
+    /// Raised by the next snapshot: input cancelling a cycle still reading apps.
+    cancel_on_snapshot: Option<Arc<AtomicBool>>,
     server_snapshot_unavailable: bool,
     running_apps: Option<HashSet<AppInstanceId>>,
     snapshot_count: usize,
@@ -287,6 +289,9 @@ impl WorkspaceBackend for FakeBackend {
         outputs: &macos::DisplayOutputs,
     ) -> Result<crate::NativeObservation, String> {
         self.snapshot_count += 1;
+        if let Some(cancelled) = self.cancel_on_snapshot.take() {
+            cancelled.store(true, Ordering::Release);
+        }
         let mut observation = self.observation.clone().ok_or("missing fake observation")?;
         observation.cycle = cycle;
         for app in &mut observation.applications {

@@ -190,21 +190,31 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
                 ..frame
             };
             *offset += RESCUE_CASCADE;
-            log_event!(
-                "recover stale parked window: {:?} from {:?} to {:?}",
-                window,
-                frame,
-                target
-            );
+            // A window Accessibility never reaches is retried every 32 seconds for as long as it
+            // stays put (once 2,488 lines in 12 hours): only its first attempt is logged.
+            let retrying = self.unmovable_stale.windows.contains_key(&id);
+            if !retrying {
+                log_event!(
+                    "recover stale parked window: {:?} from {:?} to {:?}",
+                    window,
+                    frame,
+                    target
+                );
+            }
             let outcome = self.backend.set_position(&window, target);
             if matches!(outcome, macos::ApplyOutcome::Applied) {
+                if retrying {
+                    log_event!("recovered stale parked window {:?} on a retry", window);
+                }
                 self.unmovable_stale.succeeded(id);
             } else {
-                log_event!(
-                    "stale parked recovery incomplete for {:?}: {:?}",
-                    window,
-                    outcome
-                );
+                if !retrying {
+                    log_event!(
+                        "stale parked recovery incomplete for {:?}: {:?}; retrying quietly",
+                        window,
+                        outcome
+                    );
+                }
                 self.unmovable_stale.failed(id, frame, now);
             }
         }

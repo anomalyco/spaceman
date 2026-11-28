@@ -7,6 +7,9 @@ navigate, reorder, nest, resize, and balance them from the keyboard or the point
 
 ```ts
 Automatic tiling                                        // tile.auto
+├── A shortcut, `ctl` command, hover focus or finished drag queued while a background retile runs
+│   -> stops that retile, between apps while it reads them, so input never waits out every
+│   unresponsive app's Accessibility timeouts; a switch, move or restoration in flight still finishes
 ├── New managed window -> follows settings.layout ("dwindle" default, or "columns")
 │   ├── dwindle -> splits the focused (or last) tile along its longer side (landscape: 1 | (2 / (3 | 4)); portrait: 1 / (2 | (3 / 4)))
 │   ├── columns -> joins the last focused tile’s split as a sibling, or the root without a surviving focus
@@ -104,6 +107,10 @@ so a full queue fails that command with `Input queue full; command was not queue
 
 ## Existing Checks
 
+- Unit, `src/app/tests/dispatch.rs`: `queued_input_cancels_only_background_work_in_flight`
+  (retiles and drag previews yield to queued input; switches, restorations and the retile before
+  held Space-slide input do not); `src/app/tests/reliability.rs`:
+  `a_cycle_cancelled_while_reading_apps_writes_nothing`.
 - Unit (FakeBackend), `src/app/tests/layout.rs`: `focus_navigation_follows_linear_tile_order`,
   `focus_navigation_crosses_to_the_adjacent_display`,
   `workspace_focus_cycle_wraps_through_tile_order_in_every_layout`,
