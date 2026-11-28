@@ -24,6 +24,18 @@ pub(super) trait WorkspaceBackend {
         cycle: u64,
         outputs: &macos::DisplayOutputs,
     ) -> Result<crate::NativeObservation, String>;
+    /// [`Self::snapshot`] for a cycle `cancelled` may stop: `Ok(None)` once it is
+    /// raised. Under load each app's Accessibility reads can wait out their
+    /// timeouts, so newer input must not wait for every app to be read.
+    fn snapshot_unless_cancelled(
+        &mut self,
+        cycle: u64,
+        outputs: &macos::DisplayOutputs,
+        cancelled: &AtomicBool,
+    ) -> Result<Option<crate::NativeObservation>, String> {
+        let observation = self.snapshot(cycle, outputs)?;
+        Ok((!cancelled.load(Ordering::Acquire)).then_some(observation))
+    }
     fn is_process_running(&mut self, app: &AppInstanceId) -> bool;
     /// True only when a visible app successfully reports an empty AXWindows list.
     fn confirms_no_windows(&mut self, app: &AppInstanceId) -> bool;
@@ -217,6 +229,22 @@ impl WorkspaceBackend for MacWorkspaceBackend {
         outputs: &macos::DisplayOutputs,
     ) -> Result<crate::NativeObservation, String> {
         macos::snapshot_in_outputs(cycle, outputs).map_err(|error| error.to_string())
+    }
+
+    fn snapshot_unless_cancelled(
+        &mut self,
+        cycle: u64,
+        outputs: &macos::DisplayOutputs,
+        cancelled: &AtomicBool,
+    ) -> Result<Option<crate::NativeObservation>, String> {
+        // Checked before each app, so a cancelled cycle waits for one app's reads at most.
+        match macos::snapshot_in_outputs_while(cycle, outputs, || {
+            !cancelled.load(Ordering::Acquire)
+        }) {
+            Ok(observation) => Ok(Some(observation)),
+            Err(macos::SnapshotError::Cancelled) => Ok(None),
+            Err(error) => Err(error.to_string()),
+        }
     }
 
     fn confirms_no_windows(&mut self, app: &AppInstanceId) -> bool {

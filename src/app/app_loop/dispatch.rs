@@ -1,4 +1,7 @@
-use std::sync::mpsc::Sender;
+use std::sync::{
+    atomic::{AtomicBool, Ordering},
+    mpsc::Sender,
+};
 
 use crate::app::{WorkerCommand, macos, status_item};
 
@@ -108,6 +111,19 @@ impl WorkerDispatch {
                 ..
             }
         )
+    }
+
+    /// Input just queued stops a background cycle or preview in flight, as an
+    /// activation or a finished drag does, so a cycle stalled on unresponsive
+    /// apps never holds a shortcut for its whole run. Explicit commands still
+    /// finish. The retile that binds a Space slide's arriving windows before
+    /// held input (#770) is the one interruptible command that starts with input
+    /// already queued (`queued_before`): newer input leaves it be, or the held
+    /// input would run against unbound windows.
+    pub(in crate::app) fn preempt_for_input(&self, queued_before: bool, cancelled: &AtomicBool) {
+        if self.is_interruptible_busy() && !queued_before {
+            cancelled.store(true, Ordering::Release);
+        }
     }
 
     /// A restoration is running or waiting for its retry.

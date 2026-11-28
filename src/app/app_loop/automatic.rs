@@ -84,9 +84,6 @@ impl MainThreadAgent {
                 |window| frames.as_ref()?.get(&window.window_id).copied(),
                 pointer,
             ) {
-                if self.worker.is_interruptible_busy() {
-                    self.cancelled.store(true, Ordering::Release);
-                }
                 self.queue_worker_input(QueuedInput::Gesture(gesture));
             }
             self.events.invalidate();

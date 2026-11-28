@@ -610,11 +610,17 @@ impl MainThreadAgent {
         }
         self.last_activity = Instant::now();
         self.ui_dirty = true;
+        let queued_before = !self.pending_inputs.is_empty();
         let admitted = self.pending_inputs.push(input);
-        if let Err(error) = admitted {
-            log_event!("{error}");
-            self.last_error = Some(error.into());
-            status_item::set_status(error);
+        match admitted {
+            Ok(()) => self
+                .worker
+                .preempt_for_input(queued_before, &self.cancelled),
+            Err(error) => {
+                log_event!("{error}");
+                self.last_error = Some(error.into());
+                status_item::set_status(error);
+            }
         }
         admitted
     }

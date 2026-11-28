@@ -383,6 +383,44 @@ fn switch_two() -> WorkerCommand {
     WorkerCommand::Action(WorkerAction::SwitchWorkspace(WorkspaceId::TWO), outputs())
 }
 
+#[test]
+fn queued_input_cancels_only_background_work_in_flight() {
+    let (mut dispatch, _receiver) = lifecycle_rig();
+    let cancelled = AtomicBool::new(false);
+    let preempts = |dispatch: &WorkerDispatch, queued_before| {
+        cancelled.store(false, Ordering::Release);
+        dispatch.preempt_for_input(queued_before, &cancelled);
+        cancelled.load(Ordering::Acquire)
+    };
+
+    // Nothing in flight: nothing to cancel.
+    assert!(!preempts(&dispatch, false));
+
+    // A shortcut pressed during a background retile stops it rather than
+    // waiting out its Accessibility reads.
+    assert!(dispatch.send(retile()));
+    assert!(preempts(&dispatch, false));
+    // The retile that binds a Space slide's windows before held input runs
+    // with that input queued; newer input leaves it be (#770).
+    assert!(!preempts(&dispatch, true));
+    dispatch.finish_command();
+
+    // A drag preview yields too.
+    let preview = WorkerCommand::Gesture(FinalGesture::drop(window(10), (50, 50)), true, outputs());
+    assert!(dispatch.send(preview));
+    assert!(preempts(&dispatch, false));
+    dispatch.finish_command();
+
+    // An explicit command, such as a workspace switch, always finishes.
+    assert!(dispatch.send(switch_two()));
+    assert!(!preempts(&dispatch, false));
+    dispatch.finish_command();
+
+    // So does a restoration.
+    assert!(dispatch.send_restore());
+    assert!(!preempts(&dispatch, false));
+}
+
 /// Every transition of the worker lifecycle, from every state it can leave.
 #[test]
 fn worker_lifecycle_transitions_cover_every_legal_state() {

@@ -75,6 +75,8 @@ pub enum SnapshotError {
     MainScreenUnavailable,
     WindowListUnavailable,
     TargetWindowUnavailable,
+    /// The caller stopped the snapshot before every app was read.
+    Cancelled,
 }
 
 impl std::fmt::Display for SnapshotError {
@@ -91,6 +93,7 @@ impl std::fmt::Display for SnapshotError {
             Self::TargetWindowUnavailable => {
                 formatter.write_str("the target window is unavailable on attached displays")
             }
+            Self::Cancelled => formatter.write_str("snapshot cancelled"),
         }
     }
 }
@@ -125,6 +128,17 @@ pub fn snapshot_in_outputs(
     snapshot_in_output(cycle, outputs.screen_union()).map(|(observation, _)| observation)
 }
 
+/// [`snapshot_in_outputs`], asking `keep_going` before reading each app and
+/// returning [`SnapshotError::Cancelled`] once it says no.
+pub fn snapshot_in_outputs_while(
+    cycle: u64,
+    outputs: &DisplayOutputs,
+    keep_going: impl Fn() -> bool,
+) -> Result<NativeObservation, SnapshotError> {
+    snapshot_in_output_while(cycle, outputs.screen_union(), keep_going)
+        .map(|(observation, _)| observation)
+}
+
 pub fn snapshot_for_window(
     cycle: u64,
     window_id: u32,
@@ -156,6 +170,14 @@ pub fn snapshot_in_output(
     cycle: u64,
     output: Rect,
 ) -> Result<(NativeObservation, Settings), SnapshotError> {
+    snapshot_in_output_while(cycle, output, || true)
+}
+
+fn snapshot_in_output_while(
+    cycle: u64,
+    output: Rect,
+    keep_going: impl Fn() -> bool,
+) -> Result<(NativeObservation, Settings), SnapshotError> {
     autoreleasepool(|_| {
         if !accessibility_trusted() {
             return Err(SnapshotError::AccessibilityPermissionRequired);
@@ -165,15 +187,25 @@ pub fn snapshot_in_output(
         let running = NSWorkspace::sharedWorkspace().runningApplications();
         let screen_locked = is_screen_locked();
         let mut observed_pids = HashSet::new();
-        let mut applications: Vec<_> = (0..running.count())
-            .filter_map(|index| {
-                let application = running.objectAtIndex(index);
-                let pid = application.processIdentifier();
-                let windows = onscreen.get(&pid)?;
-                observed_pids.insert(pid);
-                observe_application(&application, pid, windows, output, screen_locked)
-            })
-            .collect();
+        let mut applications = Vec::new();
+        for index in 0..running.count() {
+            let application = running.objectAtIndex(index);
+            let pid = application.processIdentifier();
+            let Some(windows) = onscreen.get(&pid) else {
+                continue;
+            };
+            if !keep_going() {
+                return Err(SnapshotError::Cancelled);
+            }
+            observed_pids.insert(pid);
+            applications.extend(observe_application(
+                &application,
+                pid,
+                windows,
+                output,
+                screen_locked,
+            ));
+        }
         let mut extra_pids: Vec<_> = onscreen
             .keys()
             .copied()
@@ -181,6 +213,9 @@ pub fn snapshot_in_output(
             .collect();
         extra_pids.sort_unstable();
         for pid in extra_pids {
+            if !keep_going() {
+                return Err(SnapshotError::Cancelled);
+            }
             if let Some(application) =
                 NSRunningApplication::runningApplicationWithProcessIdentifier(pid)
                 && let Some(windows) = onscreen.get(&pid)
