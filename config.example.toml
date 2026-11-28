@@ -159,9 +159,9 @@ monitor = "main"
 # its picker to Settings › General.
 # focus_follows_mouse = true focuses the tile the pointer comes to rest on,
 # without a click; floats, the Scratchpad and the menu bar are never hovered.
-# window_overlay = true shows a card over every visible window while Option+Shift
-# is held on its own: float, pin, Fullscreen Layout, swap and send-to-workspace
-# buttons that act on that window without focusing it.
+# window_overlay = true dims the window under the pointer while Option+Shift is
+# held on its own and shows a card on it: float, pin, Fullscreen Layout, swap and
+# send-to-workspace buttons that act on that window without focusing it.
 #
 # [labs]
 # scratchpad = false

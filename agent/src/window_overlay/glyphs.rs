@@ -73,6 +73,14 @@ pub fn fullscreen(ink: Color) -> El {
     glyph("fullscreen", shape)
 }
 
+/// Plus: the next empty workspace.
+pub fn plus(ink: Color) -> El {
+    let shape = Shape::new()
+        .line([7.0, 3.2], [7.0, 10.8], LINE, LineCap::Round, ink)
+        .line([3.2, 7.0], [10.8, 7.0], LINE, LineCap::Round, ink);
+    glyph("plus", shape)
+}
+
 /// An arrow toward `side`: the neighbour a swap trades places with.
 pub fn arrow(side: Direction, ink: Color) -> El {
     // Drawn pointing left, then turned.

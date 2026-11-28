@@ -1,7 +1,7 @@
 //! `[labs] window_overlay`: holding the shortcuts' base modifier and Shift (`⌥⇧` by default)
-//! shows a card over every visible window. Pure and cross-platform: the main thread samples the
-//! modifier flags and mouse buttons each tick (no Accessibility), and reports key presses and
-//! hotkeys as interruptions.
+//! dims the window under the pointer and shows its card. Pure and cross-platform: the main
+//! thread samples the modifier flags and mouse buttons each tick (no Accessibility), and
+//! reports key presses and hotkeys as interruptions.
 //!
 //! | Since the chord went down, alone | What happens                                         |
 //! | -------------------------------- | ---------------------------------------------------- |

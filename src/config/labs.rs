@@ -58,8 +58,8 @@ pub struct LabsConfig {
     /// A tile the pointer rests on takes focus, without a click.
     #[serde(default)]
     pub focus_follows_mouse: bool,
-    /// Holding the shortcuts' base modifier and Shift (`⌥⇧` by default) shows a card over every
-    /// visible window to send it to a workspace, float, pin or swap it.
+    /// Holding the shortcuts' base modifier and Shift (`⌥⇧` by default) shows a card on the
+    /// window under the pointer to send it to a workspace, float, pin or swap it.
     #[serde(default)]
     pub window_overlay: bool,
 }
@@ -142,7 +142,7 @@ pub enum LabFeature {
     MenuBarIconStyle,
     /// A tile the pointer rests on takes focus, without a click.
     FocusFollowsMouse,
-    /// Hold `⌥⇧` for a card over every visible window: send, float, pin, swap.
+    /// Hold `⌥⇧` for a card on the window under the pointer: send, float, pin, swap.
     WindowOverlay,
 }
 

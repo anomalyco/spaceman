@@ -197,11 +197,13 @@ mod tests {
             "HUD/hud-fullscreen",
             "HUD/hud-many",
             "Window overlay/overlay",
+            "Window overlay/overlay-hover",
             "Window overlay/overlay-send",
             "Window overlay/overlay-other-display",
             "Window overlay/overlay-swap",
             "Window overlay/overlay-columns",
             "Window overlay/overlay-fullscreen",
+            "Window overlay/overlay-pinned",
         ] {
             assert!(
                 grouped.contains(&expected),

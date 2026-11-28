@@ -439,7 +439,7 @@ single_window_height = false          # optional (default: false); reads setting
 route_all_windows = false             # optional (default: false); reads a route rule's windows = "all"
 menu_bar_icon_style = false           # optional (default: false); reads settings.menu_bar_icon
 focus_follows_mouse = false           # optional (default: false); the tile the pointer rests on takes focus
-window_overlay = false                # optional (default: false); hold Option+Shift for per-window cards
+window_overlay = false                # optional (default: false); hold Option+Shift for a card on the pointed window
 ```
 
 `scratchpad = true` enables the Scratchpad (see [Controls › Scratchpad](controls.md#scratchpad-lab)) and
@@ -496,8 +496,8 @@ two work together without feeding each other. That holds only until the pointer 
 move it away, coming back to that spot is a hover like any other. In Settings it is
 `Labs › Windows › Focus follows mouse`.
 
-`window_overlay = true` outlines every visible window and shows a card on each while you hold
-`Option+Shift` alone (the `[shortcuts] modifier` and Shift): chips to send it to any workspace, and
+`window_overlay = true` dims the window under the pointer and shows a card on it while you hold
+`Option+Shift` alone (the `[shortcuts] modifier` and Shift): chips to send it to a workspace, and
 buttons to float or tile it, pin it, turn its workspace's Fullscreen Layout on or off, or swap it
 with a neighbouring tile, all without focusing it (see [Controls › Window Overlay](controls.md#window-overlay-lab)). It applies
 live. In Settings it is `Labs › Windows › Window overlay`.
