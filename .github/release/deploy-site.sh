@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # deploy-site.sh <dev|production> <dir>: deploys the site Worker from a
-# verified artifact (<dir>, holding worker.ts and dist/ from Deploy's build
+# verified artifact (<dir>, holding worker.js and dist/ from Deploy's build
 # job) with the wrangler CLI pinned in wrangler/package-lock.json, which the
 # workflow installs (npm ci --ignore-scripts) before the token is in reach.
 #
@@ -34,18 +34,18 @@ esac
 src=$(cd "$2" && pwd)
 release=$(cd "$(dirname "$0")" && pwd)
 
-# Only worker.ts and dist/ (plus SHA256SUMS from upload); nothing else is
+# Only worker.js and dist/ (plus SHA256SUMS from upload); nothing else is
 # accepted or copied to where wrangler runs.
 unexpected=$(cd "$src" && find . ! -type d ! -type f -o -type f ! -path ./SHA256SUMS \
-  ! -path ./worker.ts \
+  ! -path ./worker.js \
   ! -path './dist/*')
 [ -z "$unexpected" ] || die "Unexpected files in the site artifact: $unexpected"
-[ -f "$src/worker.ts" ] || die "Missing worker.ts in the site artifact"
+[ -f "$src/worker.js" ] || die "Missing worker.js in the site artifact"
 [ -f "$src/dist/index.html" ] || die "Missing dist/index.html in the site artifact"
 
 work=$(mktemp -d)
 trap 'rm -rf "$work"' EXIT
-cp "$src/worker.ts" "$work/worker.ts"
+cp "$src/worker.js" "$work/worker.js"
 cp -R "$src/dist" "$work/dist"
 
 jq -n \
@@ -55,7 +55,7 @@ jq -n \
   '{
     name: $name,
     account_id: $account_id,
-    main: "./worker.ts",
+    main: "./worker.js",
     compatibility_date: "2026-08-05",
     compatibility_flags: ["global_fetch_strictly_public"],
     workers_dev: false,
