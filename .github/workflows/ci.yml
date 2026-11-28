@@ -17,8 +17,11 @@ concurrency:
 jobs:
   macos:
     name: macOS checks
-    # macOS minutes bill at 10x, so run this only for releases or on demand.
-    if: startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch'
+    # macOS minutes bill at 10x, so run on releases, dispatch, and bot/agent PRs (which lack a macOS Rust toolchain).
+    if: >-
+      startsWith(github.ref, 'refs/tags/v') ||
+      github.event_name == 'workflow_dispatch' ||
+      (github.event_name == 'pull_request' && (github.actor == 'opencodejr[bot]' || startsWith(github.head_ref, 'agent/')))
     runs-on: macos-14
     timeout-minutes: 30
     steps:
