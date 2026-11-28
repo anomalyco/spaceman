@@ -574,6 +574,17 @@ on the same letter.
   `re_parking_a_grown_window_hides_all_of_it`,
   `switching_away_parks_a_window_that_overflows_the_display_edge`,
   `laying_out_a_parked_window_retires_its_stale_recovery_frame`.
+- Unit (FakeBackend), `src/app/tests/space_transitions.rs`: an app's windows parked on other
+  workspaces that come back on screen without the user summoning them are re-parked with their
+  recovery frames kept, not re-homed. Leaving the app's native fullscreen Space (browser video)
+  makes macOS return them; right after the slide only the focused window counts as summoned
+  (#489, `leaving_native_fullscreen_re_parks_the_apps_windows_from_other_workspaces`). While the
+  app's focused window is in native fullscreen (for example on another display, with no Space
+  transition), the app moves them back itself when it is activated; only the focused window counts
+  as summoned (#795, `an_app_focused_in_native_fullscreen_re_parks_its_other_windows`). With
+  neither, a frontmost app's window back on screen is still re-homed
+  (`a_frontmost_apps_window_back_on_screen_without_a_slide_is_still_re_homed`). Not covered: an
+  app entering native fullscreen before macOS reports the window as fullscreen.
 - Unit, `agent/src/panes/workspaces.rs`: the display picker with two displays (Main | Secondary
   kept, section captions name the real displays, a saved Secondary or Main UUID says no default
   note), three displays (two identically named externals told apart as `Studio Display 1` and

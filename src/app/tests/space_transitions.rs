@@ -633,6 +633,32 @@ fn a_frontmost_apps_window_back_on_screen_without_a_slide_is_still_re_homed() {
     assert!(!runtime.parked.contains_key(&other));
 }
 
+/// #795: a browser whose focused window is in native fullscreen (on another
+/// display, with no Space slide) moves its parked windows back on screen when
+/// it is activated. The user is in the fullscreen window, so they are re-parked
+/// on their own workspace with their recovery frames kept.
+#[test]
+fn an_app_focused_in_native_fullscreen_re_parks_its_other_windows() {
+    let (mut runtime, shown, other) = fullscreen_exit_runtime(false);
+    runtime.backend.native_fullscreen.insert(shown);
+    runtime.cycle(outputs(), &AtomicBool::new(false)).unwrap();
+
+    assert_eq!(
+        runtime.workspaces.workspace_of(&other),
+        Some(WorkspaceId::new(2).unwrap())
+    );
+    // The recovery frame is kept and the window was written back off screen in
+    // this same cycle, with no heal counted toward a parking exemption.
+    assert_eq!(runtime.parked.get(&other), Some(&frame(400)));
+    assert!(runtime.backend.parked_writes.contains(&other));
+    assert!(
+        !outputs()
+            .union()
+            .contains_center(runtime.backend.frames[&other])
+    );
+    assert!(!runtime.parked.is_exempt(&other));
+}
+
 #[test]
 fn space_slide_just_settled_honors_space_gesture_timestamp() {
     let (mut runtime, _, other) = fullscreen_exit_runtime(false);
