@@ -183,6 +183,15 @@ impl Ui {
         self.tour = Some(onboarding::Tour::manual(self));
     }
 
+    /// A pane change the user asked for (a sidebar click, a `⌘` digit, a link to another pane).
+    /// It lands in one frame: the old pane is gone and the new one is drawn whole and settled,
+    /// with no cross-dissolve and none of its controls' entrances (keycaps rolling in,
+    /// segmented controls and rows fading up). Changes made inside a pane keep their motion.
+    pub fn switch_pane(&mut self, pane: Pane, tx: &mut Tx) {
+        tx.instant();
+        self.select_pane(pane);
+    }
+
     pub fn select_pane(&mut self, pane: Pane) {
         self.pane = pane;
         self.menu = None;
@@ -542,7 +551,7 @@ fn poll(ui: &mut Ui, clock: f64, tx: &mut Tx) -> bool {
     changed
 }
 
-fn on_key(ui: &mut Ui, event: &KeyEvent, _tx: &mut Tx) -> bool {
+fn on_key(ui: &mut Ui, event: &KeyEvent, tx: &mut Tx) -> bool {
     if event.key == rune::Key::Escape {
         if ui.sheet.is_some() && ui.tour.is_none() {
             ui.close_sheet();
@@ -572,7 +581,7 @@ fn on_key(ui: &mut Ui, event: &KeyEvent, _tx: &mut Tx) -> bool {
         && let rune::Key::Command(digit) = event.key
         && let Some(pane) = Pane::from_shortcut(digit, ui.doc.labs())
     {
-        ui.select_pane(pane);
+        ui.switch_pane(pane, tx);
         return true;
     }
     false
@@ -600,9 +609,10 @@ fn on_reopen(ui: &mut Ui, _has_visible_windows: bool, _tx: &mut Tx) -> bool {
 }
 
 #[cfg(target_os = "macos")]
-fn on_open_url(ui: &mut Ui, link: &str, _tx: &mut Tx) {
+fn on_open_url(ui: &mut Ui, link: &str, tx: &mut Tx) {
     match spaceman::deep_link::parse_url(link) {
         Ok(parsed) => {
+            tx.instant();
             ui.open_target(parsed.resolve());
             if let Some(window) = &ui.window {
                 host::bring_window_forward(window);
