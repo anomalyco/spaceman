@@ -44,8 +44,12 @@ full-screen applications" off in Trackpad settings so only Spaceman moves.
 Every shortcut above can be rebound, unbound, or replaced in the config file's `[shortcuts]` table;
 see [Configuration › Shortcuts](configuration.md#shortcuts). The table lists the built-in defaults.
 Settings › Shortcuts shows each shortcut's current chord: click its keys and press a new chord to
-rebind it (`esc` cancels, `⌫` clears it), or pick a Base modifier (`⌥`, `⌃⌥`, or `⌃⌥⌘`) to move
-every built-in shortcut at once. Changes register live, with no restart. If a saved table can't be
+rebind it (`esc` cancels, `⌫` clears it), pick a Base modifier (`⌥`, `⌃⌥`, or `⌃⌥⌘`) to move
+every built-in shortcut at once, or toggle **Keep app visible on Option-click** (on by default,
+`[shortcuts] option_click_keep_visible`) so clicking another app's window while holding `⌥` focuses
+it without hiding the current app (or hiding other apps on `⌥⌘`-click) while leaving in-app
+Option-clicks, menu bar items, open menus, the Dock, Control Center, and desktop clicks untouched.
+Changes register live, with no restart. If a saved table can't be
 registered, the pane still lists it; while the last working shortcuts stay registered it is marked
 **Previous shortcuts still run** and names each modifier, workspace, or action row's running
 shortcut where it differs, including workspaces the saved table no longer binds.

@@ -9,7 +9,8 @@ use objc2_core_foundation::{
 };
 use objc2_core_graphics::{
     CGRectMakeWithDictionaryRepresentation, CGWindowID, CGWindowListCopyWindowInfo,
-    CGWindowListOption, kCGWindowBounds, kCGWindowLayer, kCGWindowNumber, kCGWindowOwnerPID,
+    CGWindowListOption, kCGWindowAlpha, kCGWindowBounds, kCGWindowLayer, kCGWindowNumber,
+    kCGWindowOwnerName, kCGWindowOwnerPID,
 };
 
 use crate::{AppInstanceId, PhysicalWindowId, Rect};
@@ -254,7 +255,7 @@ fn window_server_identity(entry: &CFDictionary) -> Option<(i32, u32, i64)> {
 }
 
 /// Any on-screen window's owner, ID and layer, menus and the menu bar included.
-fn window_server_entry(entry: &CFDictionary) -> Option<(i32, u32, i64)> {
+pub(super) fn window_server_entry(entry: &CFDictionary) -> Option<(i32, u32, i64)> {
     // SAFETY: CoreGraphics window-info keys are process-lifetime static `CFString`s.
     let layer = dictionary_number(entry, unsafe { kCGWindowLayer })?;
     // SAFETY: CoreGraphics window-info keys are process-lifetime static `CFString`s.
@@ -266,7 +267,7 @@ fn window_server_entry(entry: &CFDictionary) -> Option<(i32, u32, i64)> {
     Some((pid, id, layer))
 }
 
-fn window_server_bounds(entry: &CFDictionary) -> Option<Rect> {
+pub(super) fn window_server_bounds(entry: &CFDictionary) -> Option<Rect> {
     // SAFETY: `kCGWindowBounds` is a process-lifetime static `CFString`.
     let bounds = dictionary_value::<CFDictionary>(entry, unsafe { kCGWindowBounds })?;
     let mut frame = CGRect::ZERO;
@@ -289,6 +290,18 @@ fn dictionary_value<'a, T: ConcreteType>(
     let raw = unsafe { dictionary.value((key as *const CFString).cast::<c_void>()) };
     // SAFETY: `raw` is either null or a Core Foundation object owned by `dictionary`.
     unsafe { raw.cast::<CFType>().as_ref() }?.downcast_ref::<T>()
+}
+
+pub(super) fn window_server_alpha(entry: &CFDictionary) -> f64 {
+    // SAFETY: `kCGWindowAlpha` is a process-lifetime static `CFString`.
+    dictionary_value::<CFNumber>(entry, unsafe { kCGWindowAlpha })
+        .and_then(CFNumber::as_f64)
+        .unwrap_or(1.0)
+}
+
+pub(super) fn window_server_owner_name(entry: &CFDictionary) -> Option<String> {
+    // SAFETY: `kCGWindowOwnerName` is a process-lifetime static `CFString`.
+    dictionary_value::<CFString>(entry, unsafe { kCGWindowOwnerName }).map(ToString::to_string)
 }
 
 fn dictionary_number(dictionary: &CFDictionary, key: &CFString) -> Option<i64> {

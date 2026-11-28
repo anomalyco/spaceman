@@ -145,6 +145,20 @@ fn modifier_rows(ui: &Ui, p: Paint, shortcuts: &Shortcuts) -> Vec<El> {
             row().key("none"),
         ));
     }
+    let keep_visible = shortcuts.option_click_keep_visible;
+    let keep_visible_description = if keep_visible {
+        "Clicking another app with ⌥ focuses it without hiding the current app"
+    } else {
+        "Clicking another app with ⌥ hides the current app"
+    };
+    rows.push(controls::toggle_row(
+        p,
+        "option-click-keep-visible",
+        "Keep app visible on Option-click",
+        Some((keep_visible_description.into(), p.muted())),
+        keep_visible,
+        move |ui| set_option_click_keep_visible(ui, !keep_visible),
+    ));
     if ui.doc.has_custom_shortcuts() {
         rows.push(controls::setting_row(
             p,
@@ -323,6 +337,10 @@ pub(crate) fn set_modifier(ui: &mut Ui, modifier: Modifiers) {
     recorder::cancel(ui);
     ui.shortcut_capture = Capture::Idle;
     recorder::edit_shortcuts(ui, |doc| doc.set_shortcut_modifier(modifier));
+}
+
+fn set_option_click_keep_visible(ui: &mut Ui, enabled: bool) {
+    recorder::edit_shortcuts(ui, |doc| doc.set_option_click_keep_visible(enabled));
 }
 
 fn reset(ui: &mut Ui) {

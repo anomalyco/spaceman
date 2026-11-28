@@ -27,6 +27,7 @@ pub mod motion;
 pub mod navigation;
 pub mod observation;
 pub mod onboarding_plan;
+pub mod option_click;
 #[cfg(target_os = "macos")]
 #[allow(unsafe_code)]
 pub mod permission_guide;

@@ -132,6 +132,10 @@ pub struct MainThreadAgent {
     swipes: Option<macos::SwipeMonitor>,
     /// Option key presses, to notice hotkeys macOS stopped delivering.
     keys: Option<macos::KeyMonitor>,
+    /// `[shortcuts] option_click_keep_visible`: strip Option from cross-app clicks.
+    option_click_keep_visible: bool,
+    /// Active event tap keeping the current app visible on cross-app Option-clicks.
+    option_click_guard: Option<macos::OptionClickGuard>,
     updater: crate::updater::Updater,
     /// The updater revision last shown.
     update_revision: u64,
@@ -194,6 +198,7 @@ impl MainThreadAgent {
         }
 
         let initial_refresh = Instant::now() - FALLBACK_REFRESH_INTERVAL;
+        let option_click_keep_visible = init.shortcuts.option_click_keep_visible;
         let mut agent = Self {
             actions: init.actions,
             actions_sender: init.actions_sender,
@@ -255,6 +260,8 @@ impl MainThreadAgent {
             activation_refresh_at: None,
             swipes: None,
             keys: None,
+            option_click_keep_visible,
+            option_click_guard: None,
             updater: crate::updater::Updater::start(),
             update_revision: 0,
             resume_after_update: false,
@@ -264,6 +271,7 @@ impl MainThreadAgent {
         status_item::set_update(agent.updater.status().ready_version());
         if automatic {
             agent.listen_for_input();
+            agent.sync_option_click_guard();
         } else if start_auto_paused {
             log_event!("auto-paused tiling at startup: built-in display only");
             agent
@@ -314,6 +322,7 @@ impl MainThreadAgent {
                     self.builtin_display.clear_auto_pause();
                     status_item::set_automatic(false);
                     self.automatic = false;
+                    self.sync_option_click_guard();
                     self.worker.reset_disconnected();
                     self.pending_restart = None;
                     self.pending_automatic_start = false;
@@ -521,6 +530,7 @@ impl MainThreadAgent {
     fn stop_automatic_and_restore(&mut self, kind: RestoreKind) {
         clear_window_operations_failed_error(&mut self.last_error);
         self.automatic = false;
+        self.sync_option_click_guard();
         self.pending_automatic_start = false;
         self.builtin_display.clear_auto_pause();
         self.cancelled.store(true, Ordering::Release);

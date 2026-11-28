@@ -17,6 +17,9 @@ pub struct Shortcuts {
     /// The modifiers every built-in shortcut holds (`modifier`, Option by default). The
     /// built-in Move shortcuts add Shift to it.
     pub modifier: Modifiers,
+    /// Keep the current application visible when Option-clicking another app's window
+    /// (`option_click_keep_visible`, true by default).
+    pub option_click_keep_visible: bool,
     /// User bindings in chord order. Each claims its chord before any built-in shortcut.
     pub bindings: Vec<Binding>,
     /// Register the Scratchpad Lab's shortcuts. Set from `[labs] scratchpad`, not this table.
@@ -31,6 +34,7 @@ impl Default for Shortcuts {
         Self {
             defaults: true,
             modifier: Modifiers::OPTION,
+            option_click_keep_visible: true,
             bindings: Vec::new(),
             scratchpad: false,
             workspace_steps: false,
@@ -40,7 +44,9 @@ impl Default for Shortcuts {
 
 impl Shortcuts {
     /// Whether `other` registers different hotkeys: the same chords and commands spelled
-    /// another way (`alt+h` or `option+H`) or in another order are no change.
+    /// another way (`alt+h` or `option+H`), in another order, or changing
+    /// `option_click_keep_visible` (which applies live without re-registering Carbon
+    /// hotkeys) are no change.
     #[must_use]
     pub fn differs_from(&self, other: &Self) -> bool {
         fn meaning(shortcuts: &Shortcuts) -> Vec<(Chord, Option<String>)> {
@@ -314,6 +320,8 @@ pub(crate) struct RawShortcuts {
     defaults: bool,
     #[serde(default)]
     modifier: Option<String>,
+    #[serde(default = "default_true")]
+    option_click_keep_visible: bool,
     #[serde(default)]
     bindings: BTreeMap<String, String>,
 }
@@ -327,6 +335,7 @@ impl Default for RawShortcuts {
         Self {
             defaults: true,
             modifier: None,
+            option_click_keep_visible: true,
             bindings: BTreeMap::new(),
         }
     }
@@ -366,6 +375,7 @@ impl RawShortcuts {
         Ok(Shortcuts {
             defaults: self.defaults,
             modifier,
+            option_click_keep_visible: self.option_click_keep_visible,
             bindings,
             scratchpad: false,
             workspace_steps: false,
@@ -881,6 +891,24 @@ mod tests {
             ..base.clone()
         };
         assert!(base.differs_from(&scratchpad));
+        let keep_visible_off = Shortcuts {
+            option_click_keep_visible: false,
+            ..base.clone()
+        };
+        assert!(!base.differs_from(&keep_visible_off));
+    }
+
+    #[test]
+    fn option_click_keep_visible_defaults_true_and_parses_explicit_bool() {
+        let parse = |source: &str| {
+            let raw: RawShortcuts = toml::from_str(source).unwrap();
+            raw.parse().unwrap()
+        };
+        assert!(Shortcuts::default().option_click_keep_visible);
+        assert!(parse("").option_click_keep_visible);
+        assert!(parse("option_click_keep_visible = true").option_click_keep_visible);
+        assert!(!parse("option_click_keep_visible = false").option_click_keep_visible);
+        assert!(toml::from_str::<RawShortcuts>(r#"option_click_keep_visible = "no""#).is_err());
     }
 
     #[test]

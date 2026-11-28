@@ -87,3 +87,42 @@ fn a_row_names_the_chord_that_still_runs() {
     let float = super::catalog::find("float").unwrap();
     assert!(super::running_note(&running, &saved, &[], float).is_some());
 }
+
+#[test]
+fn option_click_keep_visible_toggle_round_trips_and_draws_both_states() {
+    let p = Paint::new(true, 2.0);
+    let mut ui = crate::playground::blank_fixture();
+    assert!(ui.doc.shortcuts().option_click_keep_visible);
+    let _ = super::pane(&ui, p);
+
+    super::set_option_click_keep_visible(&mut ui, false);
+    assert!(!ui.doc.shortcuts().option_click_keep_visible);
+    assert!(
+        ui.doc
+            .source()
+            .contains("option_click_keep_visible = false"),
+        "{}",
+        ui.doc.source()
+    );
+    assert!(
+        !Config::parse(&ui.doc.source())
+            .unwrap()
+            .shortcuts()
+            .option_click_keep_visible
+    );
+    let _ = super::pane(&ui, p);
+
+    super::set_option_click_keep_visible(&mut ui, true);
+    assert!(ui.doc.shortcuts().option_click_keep_visible);
+    assert!(
+        !ui.doc.source().contains("option_click_keep_visible"),
+        "{}",
+        ui.doc.source()
+    );
+    assert!(
+        Config::parse(&ui.doc.source())
+            .unwrap()
+            .shortcuts()
+            .option_click_keep_visible
+    );
+}

@@ -166,6 +166,18 @@ impl Doc {
         self.tidy_shortcuts();
     }
 
+    /// Sets `[shortcuts] option_click_keep_visible`. `true` is the default and
+    /// leaves the file (along with an emptied `[shortcuts]` table).
+    pub fn set_option_click_keep_visible(&mut self, enabled: bool) {
+        if enabled {
+            self.remove_key_in_table(&["shortcuts"], "option_click_keep_visible");
+            self.tidy_shortcuts();
+        } else {
+            let table = self.shortcuts_table_mut();
+            super::set_table_item(table, "option_click_keep_visible", value(false));
+        }
+    }
+
     /// Back to the built-in shortcuts: `[shortcuts]` leaves the file.
     pub fn reset_shortcuts(&mut self) {
         self.remove_table("shortcuts");

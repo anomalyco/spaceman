@@ -5,6 +5,7 @@ mod display_link;
 mod displays;
 mod events;
 mod keys;
+mod option_click;
 mod presenter;
 mod spaces;
 mod swipes;
@@ -46,6 +47,7 @@ pub use displays::{
 };
 pub use events::WindowEventMonitor;
 pub use keys::{KeyMonitor, key_press};
+pub use option_click::OptionClickGuard;
 pub use presenter::{
     AppSink, AxBackend, EnhancedUi, InteractivePresenter, PresenterBackend, PresenterStats,
     WriteOutcome,

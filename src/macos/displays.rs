@@ -222,6 +222,29 @@ impl DisplayOutputs {
             .unwrap_or_else(|| self.frames().collect())
     }
 
+    /// Each display's top menu-bar strip, derived from the gap between its full
+    /// physical bounds and its visible frame. Empty when full bounds were not
+    /// provided or when a display hides its menu bar.
+    #[must_use]
+    pub fn menu_bar_strips(&self) -> Vec<Rect> {
+        let Some(bounds) = &self.bounds else {
+            return Vec::new();
+        };
+        self.displays
+            .iter()
+            .zip(bounds.iter())
+            .filter_map(|(display, full)| {
+                let height = display.frame.y - full.y;
+                (height > 0).then_some(Rect {
+                    x: full.x,
+                    y: full.y,
+                    width: full.width,
+                    height,
+                })
+            })
+            .collect()
+    }
+
     #[must_use]
     pub fn union(&self) -> Rect {
         self.frames().fold(self.main().frame, union_rect)
@@ -789,5 +812,84 @@ mod tests {
         let empty = DisplayTopology::from_builtin_flags([]);
         assert!(!empty.is_builtin_only());
         assert!(!empty.has_external());
+    }
+
+    #[test]
+    fn menu_bar_strips_match_notched_and_standard_displays_and_skip_hidden_bars() {
+        let outputs = DisplayOutputs::with_bounds(
+            vec![
+                DisplayOutput {
+                    id: "main".into(),
+                    name: "Built-in".into(),
+                    frame: Rect {
+                        x: 0,
+                        y: 37,
+                        width: 1728,
+                        height: 1080,
+                    },
+                    is_main: true,
+                },
+                DisplayOutput {
+                    id: "ext".into(),
+                    name: "Studio".into(),
+                    frame: Rect {
+                        x: 1728,
+                        y: 25,
+                        width: 2560,
+                        height: 1415,
+                    },
+                    is_main: false,
+                },
+                DisplayOutput {
+                    id: "hidden".into(),
+                    name: "AutoHide".into(),
+                    frame: Rect {
+                        x: -1440,
+                        y: 0,
+                        width: 1440,
+                        height: 900,
+                    },
+                    is_main: false,
+                },
+            ],
+            vec![
+                Rect {
+                    x: 0,
+                    y: 0,
+                    width: 1728,
+                    height: 1117,
+                },
+                Rect {
+                    x: 1728,
+                    y: 0,
+                    width: 2560,
+                    height: 1440,
+                },
+                Rect {
+                    x: -1440,
+                    y: 0,
+                    width: 1440,
+                    height: 900,
+                },
+            ],
+        )
+        .unwrap();
+        assert_eq!(
+            outputs.menu_bar_strips(),
+            vec![
+                Rect {
+                    x: 0,
+                    y: 0,
+                    width: 1728,
+                    height: 37,
+                },
+                Rect {
+                    x: 1728,
+                    y: 0,
+                    width: 2560,
+                    height: 25,
+                },
+            ]
+        );
     }
 }

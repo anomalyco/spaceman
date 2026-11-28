@@ -465,3 +465,34 @@ fn choosing_option_or_resetting_shortcuts_preserves_detached_modifier_comment() 
             .contains("# Base modifier note.")
     );
 }
+
+#[test]
+fn option_click_keep_visible_round_trips_and_omits_true_default() {
+    let mut doc = Doc::parse("version = 1\n");
+    assert!(doc.shortcuts().option_click_keep_visible);
+    assert!(!doc.has_custom_shortcuts());
+
+    doc.set_option_click_keep_visible(false);
+    let doc = saved(&doc);
+    assert!(!doc.shortcuts().option_click_keep_visible);
+    assert!(doc.has_custom_shortcuts());
+    assert!(
+        doc.source().contains("option_click_keep_visible = false"),
+        "{}",
+        doc.source()
+    );
+
+    let mut doc = doc;
+    doc.set_option_click_keep_visible(true);
+    let doc = saved(&doc);
+    assert!(doc.shortcuts().option_click_keep_visible);
+    assert!(!doc.has_custom_shortcuts());
+    assert_eq!(doc.source(), "version = 1\n");
+
+    // Resetting shortcuts restores the default too.
+    let mut doc = Doc::parse("version = 1\n[shortcuts]\noption_click_keep_visible = false\n");
+    doc.reset_shortcuts();
+    let doc = saved(&doc);
+    assert!(doc.shortcuts().option_click_keep_visible);
+    assert_eq!(doc.source(), "version = 1\n");
+}
