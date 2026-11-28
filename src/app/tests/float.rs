@@ -50,17 +50,238 @@ fn toggling_a_tiled_window_floats_it_and_retiles_the_rest() {
         runtime.workspaces.engine(WorkspaceId::ONE).bound_windows(),
         vec![window(20)]
     );
-    // The remaining tile fills the freed space, and the floating window keeps
-    // the exact frame it had so nothing jumps under the pointer.
+    // The remaining tile fills the freed space, and the float lifts to the
+    // centered card a first float gets.
     assert_eq!(runtime.backend.frames[&window(20)], outputs().main().frame);
-    assert_eq!(runtime.backend.frames[&floated], original);
+    let lifted = crate::geometry::centered_float(outputs().main().frame, original);
+    assert_eq!(runtime.backend.frames[&floated], lifted);
+    assert_ne!(lifted, original);
     assert!(
-        !applied_to(&runtime, &floated),
-        "floating must not write the window's frame"
+        runtime.backend.calls.iter().any(
+            |call| matches!(call, BackendCall::SetPosition(window, target) if window == &floated && *target == lifted)
+        ),
+        "floating writes the lifted frame"
     );
     assert!(
         runtime.backend.workspace_state.is_some(),
         "floating ownership is persisted with the workspace"
+    );
+}
+
+/// One window tiled full-screen on the main display, focused.
+fn one_tiled_window(outputs: &macos::DisplayOutputs) -> WorkspaceRuntime<FakeBackend> {
+    let tiled = window(10);
+    let backend = FakeBackend {
+        frames: HashMap::from([(tiled.clone(), frame(50))]),
+        focused: Some(tiled.clone()),
+        frontmost: Some(tiled.app.clone()),
+        observation: Some(observation(&tiled, frame(50))),
+        ..FakeBackend::default()
+    };
+    let mut runtime = runtime(backend);
+    bind(&mut runtime, WorkspaceId::ONE, &tiled);
+    runtime
+        .cycle(outputs.clone(), &AtomicBool::new(false))
+        .unwrap();
+    assert_eq!(runtime.backend.frames[&tiled], outputs.main().frame);
+    runtime
+}
+
+fn positioned_to(
+    runtime: &WorkspaceRuntime<FakeBackend>,
+    window: &crate::PhysicalWindowId,
+) -> crate::Rect {
+    runtime
+        .backend
+        .calls
+        .iter()
+        .rev()
+        .find_map(|call| match call {
+            BackendCall::SetPosition(written, target) if written == window => Some(*target),
+            _ => None,
+        })
+        .expect("the window was written")
+}
+
+#[test]
+fn a_first_float_lifts_a_full_screen_tile_to_a_centered_card() {
+    let mut runtime = one_tiled_window(&outputs());
+    let tiled = window(10);
+
+    runtime
+        .toggle_float(outputs(), &AtomicBool::new(false))
+        .unwrap();
+
+    // 72% × 78% of the 1000 × 800 work area, centered on it.
+    let card = crate::Rect {
+        x: 140,
+        y: 88,
+        width: 720,
+        height: 624,
+    };
+    assert_eq!(runtime.backend.frames[&tiled], card);
+    assert_eq!(positioned_to(&runtime, &tiled), card);
+    assert_eq!(
+        runtime.workspaces.floating_workspace_of(&tiled),
+        Some(WorkspaceId::ONE)
+    );
+}
+
+#[test]
+fn a_first_float_keeps_a_narrow_tiles_width_and_centers_it() {
+    let mut runtime = two_tiled_windows();
+    let narrow = window(10);
+    // A narrow column: 300 points of a 1000-point display.
+    runtime.backend.frames.insert(
+        narrow.clone(),
+        crate::Rect {
+            x: 0,
+            y: 0,
+            width: 300,
+            height: 800,
+        },
+    );
+
+    runtime
+        .toggle_float(outputs(), &AtomicBool::new(false))
+        .unwrap();
+
+    // Never wider than the tile; the height still takes the lift.
+    assert_eq!(
+        runtime.backend.frames[&narrow],
+        crate::Rect {
+            x: 350,
+            y: 88,
+            width: 300,
+            height: 624,
+        }
+    );
+}
+
+#[test]
+fn floating_again_restores_the_frame_it_last_floated_at() {
+    let mut runtime = two_tiled_windows();
+    let floated = window(10);
+    let cancelled = AtomicBool::new(false);
+    runtime.toggle_float(outputs(), &cancelled).unwrap();
+
+    // The user moves and resizes the float, then tiles it again.
+    let moved = crate::Rect {
+        x: 600,
+        y: 500,
+        width: 340,
+        height: 280,
+    };
+    runtime.backend.frames.insert(floated.clone(), moved);
+    runtime.toggle_float(outputs(), &cancelled).unwrap();
+    assert_eq!(
+        runtime.workspaces.workspace_of(&floated),
+        Some(WorkspaceId::ONE)
+    );
+
+    runtime.toggle_float(outputs(), &cancelled).unwrap();
+    assert_eq!(
+        runtime.workspaces.floating_workspace_of(&floated),
+        Some(WorkspaceId::ONE)
+    );
+    assert_eq!(
+        runtime.backend.frames[&floated], moved,
+        "a second float returns to where it last floated"
+    );
+
+    // The same float tiled on the big display, then floated on a display that
+    // shrank: the remembered frame is clamped into its work area.
+    runtime.toggle_float(outputs(), &cancelled).unwrap();
+    let small = macos::DisplayOutputs::new(vec![
+        macos::DisplayOutput {
+            id: "main-id".into(),
+            name: "Main".into(),
+            frame: crate::Rect {
+                width: 600,
+                height: 500,
+                ..crate::Rect::default()
+            },
+            is_main: true,
+        },
+        macos::DisplayOutput {
+            id: "secondary-id".into(),
+            name: "Secondary".into(),
+            frame: crate::Rect {
+                x: 1000,
+                width: 1000,
+                height: 800,
+                ..crate::Rect::default()
+            },
+            is_main: false,
+        },
+    ])
+    .unwrap();
+    runtime.toggle_float(small, &cancelled).unwrap();
+
+    assert_eq!(
+        runtime.backend.frames[&floated],
+        crate::Rect {
+            x: 260,
+            y: 220,
+            width: 340,
+            height: 280,
+        }
+    );
+}
+
+#[test]
+fn an_ultrawide_first_float_stays_within_the_card_cap() {
+    let wide = macos::DisplayOutputs::new(vec![macos::DisplayOutput {
+        id: "main-id".into(),
+        name: "Main".into(),
+        frame: crate::Rect {
+            width: 5120,
+            height: 1440,
+            ..crate::Rect::default()
+        },
+        is_main: true,
+    }])
+    .unwrap();
+    let mut runtime = one_tiled_window(&wide);
+    let tiled = window(10);
+
+    runtime.toggle_float(wide, &AtomicBool::new(false)).unwrap();
+
+    // 72% × 78% would be 3686 × 1123; the card cap holds it at 1280 × 860.
+    assert_eq!(
+        runtime.backend.frames[&tiled],
+        crate::Rect {
+            x: 1920,
+            y: 290,
+            width: 1280,
+            height: 860,
+        }
+    );
+}
+
+#[test]
+fn closing_a_float_forgets_its_remembered_frame() {
+    let mut runtime = two_tiled_windows();
+    let floated = window(10);
+    let cancelled = AtomicBool::new(false);
+    runtime.toggle_float(outputs(), &cancelled).unwrap();
+    assert!(runtime.float_frames.contains_key(&floated));
+
+    // The app closes it: the observation and the window server both drop it.
+    runtime.backend.frames.remove(&floated);
+    runtime.backend.observation = Some(observation_for_windows(
+        "com.example.Test",
+        &window(20),
+        &[(window(20), frame(500))],
+    ));
+    runtime.cycle(outputs(), &cancelled).unwrap();
+    runtime.backend.advance(OMISSION_SETTLE * 5);
+    runtime.cycle(outputs(), &cancelled).unwrap();
+
+    assert_eq!(runtime.workspaces.floating_workspace_of(&floated), None);
+    assert!(
+        !runtime.float_frames.contains_key(&floated),
+        "a closed float leaves no remembered frame behind"
     );
 }
 

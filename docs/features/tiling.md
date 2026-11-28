@@ -307,7 +307,9 @@ so a full queue fails that command with `Input queue full; command was not queue
   cancel-button or buttonless default-button dialogs, dialogs with a close button but
   neither a fullscreen button nor an enabled zoom button, or non-resizable windows) are owned by a
   workspace (and can be moved between workspaces)
-  but are never tiled or resized. A window that already holds a tile keeps it while it temporarily
+  but are never tiled or resized after they float. A manual first float lifts the window to a
+  centered card (see `workspaces.md#ws.float`); a rule-floated or non-resizable window opens where
+  it is. A window that already holds a tile keeps it while it temporarily
   reports non-resizable (such as while showing a window-modal close or save sheet); only a `float`
   rule or Toggle Float releases a tile.
 - New windows open on the active workspace of the display under the window's center unless matched by

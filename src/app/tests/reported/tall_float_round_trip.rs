@@ -53,12 +53,14 @@ monitor = 'third-id'",
         bind(&mut rt, six, &floating);
         run(&mut rt, &outputs, WorkerAction::SwitchWorkspace(six));
         run(&mut rt, &outputs, WorkerAction::ToggleFloat);
+        let floated = rt.backend.frames[&floating];
         run(
             &mut rt,
             &outputs,
             WorkerAction::MoveWorkspaceToDisplay(DisplayTarget::Next),
         );
-        assert_eq!(rt.backend.frames[&floating].x, 2000);
+        // The float keeps its place on the display it joins.
+        assert_eq!(rt.backend.frames[&floating].x, floated.x + 1000);
         run(
             &mut rt,
             &outputs,
@@ -68,6 +70,6 @@ monitor = 'third-id'",
         assert_eq!(rt.workspaces.floating_workspace_of(&floating), Some(six));
         let actual = rt.backend.frames[&floating];
         println!("target height={target_height}: after returning {actual:?}");
-        assert_eq!(actual.x, 1000);
+        assert_eq!(actual.x, floated.x);
     }
 }

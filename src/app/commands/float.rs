@@ -17,9 +17,12 @@ const STAYS_FLOATING: &str = concat!(
 impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
     /// Float the focused window above its workspace's tiles, or tile it again.
     ///
-    /// Floating is workspace ownership, not a rule: the window keeps its exact
-    /// frame, follows its workspace across switches, parks and restores with
-    /// it, and reconciliation leaves it alone until the user toggles it back.
+    /// Floating is workspace ownership, not a rule: a first float lifts the window
+    /// to a centered card over its display ([`crate::geometry::centered_float`]),
+    /// a later one restores where it last floated
+    /// ([`crate::geometry::clamp_to`]), and either way it follows its workspace
+    /// across switches, parks and restores with it, and reconciliation leaves it
+    /// alone until the user toggles it back.
     pub(in crate::app) fn toggle_float(
         &mut self,
         outputs: macos::DisplayOutputs,
@@ -67,14 +70,52 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
         outputs: macos::DisplayOutputs,
         cancelled: &AtomicBool,
     ) -> Result<CycleStatus, String> {
+        let settings = self.layout_settings(output_for(&self.workspaces, workspace, &outputs));
+        let target = self.float_target(&window, settings.usable());
         // Detach from the tiles first so the remaining windows re-fill its
-        // space on the very next layout. Focus and frame stay where they are.
-        let canvas = self
-            .layout_settings(output_for(&self.workspaces, workspace, &outputs))
-            .canvas();
-        self.forget_window_on(workspace, &window, canvas);
-        self.workspaces.float(window, workspace, FloatCause::Manual);
-        self.relayout_persist(workspace, &outputs, cancelled)
+        // space on the very next layout.
+        self.forget_window_on(workspace, &window, settings.canvas());
+        self.workspaces
+            .float(window.clone(), workspace, FloatCause::Manual);
+        let status = self.relayout_persist(workspace, &outputs, cancelled)?;
+        if let Some(target) = target {
+            // An app may refuse the size (a minimum, an aspect ratio, a sheet): its
+            // position still lands, so an unconfirmed frame is no reason to stop
+            // floating. Remember the float we asked for; the next toggle keeps it.
+            let _: macos::ApplyOutcome = self.backend.set_float_frame(&window, target);
+            self.float_frames.insert(window, target);
+        }
+        Ok(status)
+    }
+
+    /// Drop remembered float frames no workspace, parked record or omission
+    /// still knows: a float forgotten by reconciliation never passes through
+    /// [`Self::forget_window_on`].
+    pub(in crate::app) fn prune_float_frames(&mut self) {
+        self.float_frames.retain(|window, _| {
+            self.workspaces.workspace_of_any(window).is_some()
+                || self.parked.contains_key(window)
+                || self.omitted_windows.contains_key(window)
+        });
+    }
+
+    /// Where `window` floats on `area`: where it last floated (clamped onto the
+    /// display it is shown on now), or a first float's centered lift over the
+    /// frame it holds as a tile.
+    fn float_target(
+        &mut self,
+        window: &crate::PhysicalWindowId,
+        area: crate::Rect,
+    ) -> Option<crate::Rect> {
+        if let Some(remembered) = self.float_frames.get(window).copied() {
+            return Some(crate::geometry::clamp_to(remembered, area));
+        }
+        let tiled = self
+            .backend
+            .frame(window)
+            .ok()
+            .or_else(|| self.backend.window_server_frame(window))?;
+        Some(crate::geometry::centered_float(area, tiled))
     }
 
     fn tile_window(
@@ -130,6 +171,13 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
         outputs: &macos::DisplayOutputs,
         cancelled: &AtomicBool,
     ) -> Result<CycleStatus, String> {
+        // Remember where the float sat, so the next Toggle Float restores it
+        // instead of lifting it centered again.
+        if self.workspaces.floating_workspace_of(&window).is_some()
+            && let Some(frame) = self.backend.frame(&window).ok()
+        {
+            self.float_frames.insert(window.clone(), frame);
+        }
         let output = output_for(&self.workspaces, workspace, outputs);
         let canvas = self.layout_settings(output).canvas();
         let anchor = self.workspaces.engine(workspace).insertion_focus();

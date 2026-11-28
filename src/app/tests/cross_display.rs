@@ -604,6 +604,9 @@ fn moving_floating_window_back_before_cross_display_park_settles_restores_on_mai
         rt.workspaces.floating_workspace_of(&w),
         Some(WorkspaceId::ONE)
     );
+    let floated = rt.backend.frames[&w];
+    let lifted = crate::geometry::centered_float(outputs().main().frame, frame(50));
+    assert_eq!(floated, lifted, "a first float lifts to its centered card");
     rt.backend.frozen_server_frames = true;
 
     // Move to hidden workspace 7 on Secondary while park stays in flight.
@@ -612,7 +615,13 @@ fn moving_floating_window_back_before_cross_display_park_settles_restores_on_mai
         WorkerAction::MoveApp("com.example.Test".into(), WorkspaceId::new(7).unwrap()),
     );
     let park = rt.backend.frames[&w];
-    assert_eq!(rt.parked[&w], frame(1050));
+    assert_eq!(
+        rt.parked[&w],
+        crate::Rect {
+            x: lifted.x + 1000,
+            ..lifted
+        }
+    );
     rt.backend.frames.insert(w.clone(), frame(50));
     rt.backend.focused = None;
 
@@ -622,7 +631,7 @@ fn moving_floating_window_back_before_cross_display_park_settles_restores_on_mai
         WorkerAction::MoveApp("com.example.Test".into(), WorkspaceId::ONE),
     );
     let newer = rt.backend.frames[&w];
-    assert_eq!(newer, frame(50));
+    assert_eq!(newer, lifted);
 
     // Delayed park lands first, then the newer restore supersedes it on Main.
     rt.backend.frozen_server_frames = false;
@@ -639,8 +648,8 @@ fn moving_floating_window_back_before_cross_display_park_settles_restores_on_mai
         Some(WorkspaceId::ONE)
     );
     assert!(!rt.parked.contains_key(&w));
-    assert_eq!(rt.backend.server_frames[&w], frame(50));
-    assert_eq!(rt.backend.frames[&w], frame(50));
+    assert_eq!(rt.backend.server_frames[&w], lifted);
+    assert_eq!(rt.backend.frames[&w], lifted);
 }
 
 #[test]

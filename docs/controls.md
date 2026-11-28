@@ -83,10 +83,15 @@ the resulting normal layout. Keyboard resize (including `resize width|height`), 
 reordering require leaving Fullscreen Layout first. Pointer dragging and resizing are ignored while the mode is active. Floating windows are
 not expanded. Removing or moving away the workspace's final tiled window exits Fullscreen Layout.
 
-`Option+Shift+Space` floats the focused window: it leaves the tiles, keeps its exact frame and
-focus, and the remaining tiles re-fill the space it held. Floating is per window and follows that
-window's workspace, so it parks and restores with a switch, survives an agent restart, and comes
-back floating after the window is minimized or its app hidden; it clears when the window closes.
+`Option+Shift+Space` floats the focused window: it leaves the tiles, keeps focus, and the
+remaining tiles re-fill the space it held. A first float lifts it to a card centered on the
+display's work area, at 72% of its width and 78% of its height, capped at 1280 × 860 points, and
+never wider or taller than the tile it left (a narrow column stays narrow). A window that floated
+before returns to the frame it last floated at, moved onto the display if its work area changed. An
+app that clamps its own size keeps the position it accepted and stays floating. Floating is per
+window and follows that window's workspace, so it parks and restores with a switch, survives an
+agent restart, and comes back floating after the window is minimized or its app hidden; it clears
+when the window closes.
 In a native tab group, selecting another tab keeps the group floating where it was.
 A floating window moves, resizes, and moves between workspaces like any other window. Dragging a
 floating window to another display leaves it with its workspace unless
