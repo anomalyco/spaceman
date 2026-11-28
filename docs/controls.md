@@ -196,34 +196,42 @@ saved across agent restarts.
 
 With `[labs] window_overlay = true` (see [Configuration › Labs](configuration.md#labs)), holding
 `Option+Shift` on its own for a moment (150 ms, or 320 ms within two seconds of a key press or
-shortcut) outlines every visible window on every display and shows a card on each, while tiling is
-on. With another base modifier (`[shortcuts] modifier`) it is that modifier and Shift.
+shortcut) dims one window and shows a card on it, while tiling is on. With another base modifier
+(`[shortcuts] modifier`) it is that modifier and Shift.
 
-Each window gets a thin outline just inside its edge: amber on the window with keyboard focus,
-brighter on the window under the pointer, dashed on a floating window. Its card sits on the part of
-the window you can see, never on another card, and shows the window's app with an amber dot when it
-has keyboard focus. The line under the app's name says where the window is (`Workspace 2`, or
-`On every workspace` when pinned) and, with the pointer on a control, what a click there would do.
-The controls act on that window, whether or not it has focus:
+The window is the one under the pointer. With the pointer on no window, such as the wallpaper or
+the menu bar, it is the window with keyboard focus. Every other window stays as it is: nothing is
+outlined, and no other window gets a card. Moving the pointer onto another window moves the dim and
+the card to it. While the pointer is on the card, or a press that began on the card is still held,
+the card keeps its window.
+
+The dim is a dark wash over the window, out to its rounded corners, that stops where a floating
+window covers it. The card sits on the part of the window you can see, whole inside the display,
+and shows the window's app. With the pointer on a control, a hint beside the app's name says what a
+click there would do (`Send to 2` with the icons of the apps already there, `Pin to every
+workspace`); otherwise the card says nothing more. The controls act on that window, whether or not
+it has focus:
 
 | Control | Action |
 | --- | --- |
-| `1`…`0`, `A`-`Z` | Send the window to that workspace. Its own workspace is the bright chip; dots under a number count that workspace's windows, up to three; empty workspaces are dim; a thin rule separates the workspaces showing on other displays. With the pointer on a chip, the line under the app's name names the workspace, with the icons of the apps already there, `empty`, or `other display` |
-| `Float` | Float the tile in place, or tile the float again (lit while the window floats) |
-| `Pin` | Pin the window on every workspace (floating it first), or unpin it (lit while pinned) |
-| `Fullscreen` | Turn Fullscreen Layout on or off for the window's workspace, with this window in front (tiles only; lit while on) |
+| `1`…`0`, `A`-`Z` | Send the window to that workspace. Only the workspaces worth sending to get a chip: the one each display shows, every workspace that holds windows, and the window's own, which is the bright chip |
+| `+` | Send the window to this display's next empty workspace |
+| `Display 2` | The label on another display's workspaces, which sit in a group of their own. Displays are numbered as in Settings › Workspaces: `1` is the main display, `2` the secondary, then any others left to right |
+| Float | Float the tile in place, or tile the float again (bright while the window floats) |
+| Pin | Pin the window on every workspace (floating it first), or unpin it (bright while pinned) |
+| Fullscreen | Turn Fullscreen Layout on or off for the window's workspace, with this window in front (tiles only; bright while on) |
 | `←` `↑` `↓` `→` | Swap the tile with the tile next to it on that side, as `Option+Shift+H/J/K/L` does |
 
-A window too narrow for the full card gets a compact one: its workspace chips wrap at five and its
-buttons show their icons only.
+Float, Pin and Fullscreen are icon buttons. On a window narrower than the card's row of controls,
+the row wraps onto more lines.
 
-The cards and outlines follow each change while the keys stay held, so you can float a window and
-then pin it, or swap a tile twice. A click on a card never brings Spaceman forward, moves focus or
-moves the pointer; outside the cards, clicks reach the windows below. Letting go of either key hides
-the overlay. Pressing any other key, such as `Option+Shift+1`, hides it too, and it stays hidden
-until the keys are let go, so the overlay never flashes for a shortcut. Holding the keys with a mouse
-button down (a drag) or with Command or Control also shows nothing. Cards carry the app's name and
-icon, never a window title. With Reduce Motion on, the overlay fades in place.
+The card and the dim follow each change while the keys stay held, so you can float a window and
+then pin it. A click on the card never brings Spaceman forward, moves focus or moves the pointer;
+outside the card, clicks reach the windows below. Letting go of either key hides the overlay.
+Pressing any other key, such as `Option+Shift+1`, hides it too, and it stays hidden until the keys
+are let go, so the overlay never flashes for a shortcut. Holding the keys with a mouse button down
+(a drag) or with Command or Control also shows nothing. The card carries the app's name and icon,
+never a window title. With Reduce Motion on, the overlay fades in place.
 
 ## Menu
 

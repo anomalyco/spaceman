@@ -54,7 +54,7 @@ const GROUPS: [(&str, &str, &[Lab]); 4] = [
             (
                 LabFeature::WindowOverlay,
                 "Window overlay",
-                "Hold ⌥⇧ for move, float, pin and swap controls on every window",
+                "Hold ⌥⇧ to move, float, pin or swap the window under the pointer",
             ),
         ],
     ),

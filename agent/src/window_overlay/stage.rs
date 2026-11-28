@@ -1,5 +1,5 @@
 //! The window overlay in the Playground and in headless snaps: a mock desktop of light and
-//! dark windows under the real outlines and cards, so their look can be judged on both without
+//! dark windows under the real dim and card, so their look can be judged on both without
 //! holding a chord over a real desktop. Drawn only: nothing here presses or hovers.
 
 use std::collections::HashMap;
@@ -10,7 +10,7 @@ use spaceman::{
     app::{UiWindowOverlayDisplay, UiWindowOverlayWindow, UiWindowOverlayWorkspace},
 };
 
-use super::{Control, Hover, Scene, Wiring, layers, look};
+use super::{Control, Hover, Scene, Wiring, dim, layers, look};
 use crate::{
     Pane, Ui, apps,
     hud::Icons,
@@ -75,8 +75,8 @@ fn window(window_id: u32, bundle: &str, frame: (i32, i32, i32, i32)) -> UiWindow
     }
 }
 
-/// Ten workspaces, the first five on this display: 1 is the windows shown, 2, 3 and 6 hold
-/// other apps, the rest are empty.
+/// Ten workspaces, the first five on this display: 1 is the windows shown, 2 and 3 hold other
+/// apps and 4 is the next empty one. Display 2 shows 6 and holds 8; the rest are empty.
 fn workspaces(shown: &[UiWindowOverlayWindow]) -> Vec<UiWindowOverlayWorkspace> {
     WorkspaceId::numbered()
         .zip(1..)
@@ -90,6 +90,7 @@ fn workspaces(shown: &[UiWindowOverlayWindow]) -> Vec<UiWindowOverlayWorkspace> 
                 2 => vec![MAIL, MESSAGES],
                 3 => vec![MUSIC],
                 6 => vec![PREVIEW, MAIL, MESSAGES, MUSIC],
+                8 => vec![NOTES],
                 _ => Vec::new(),
             };
             UiWindowOverlayWorkspace {
@@ -97,6 +98,8 @@ fn workspaces(shown: &[UiWindowOverlayWindow]) -> Vec<UiWindowOverlayWorkspace> 
                 windows: if number == 6 { 5 } else { apps.len() },
                 apps: apps.into_iter().map(str::to_owned).collect(),
                 on_this_display: number <= 5,
+                display: if number <= 5 { 1 } else { 2 },
+                visible: number == 1 || number == 6,
             }
         })
         .collect()
@@ -172,7 +175,8 @@ fn columns() -> OverlayPreview {
 }
 
 /// Fullscreen Layout's one tile under a pinned float, with two floats stacked in one place.
-fn fullscreen() -> OverlayPreview {
+/// `hover` picks the window: the tile's dim is cut round all three floats.
+fn fullscreen(hover: Hover) -> OverlayPreview {
     let top = MENU_BAR + GAP;
     let mut safari = window(
         1,
@@ -187,11 +191,7 @@ fn fullscreen() -> OverlayPreview {
     first.floating = true;
     let mut second = window(4, NOTES, (200, 450, 400, 320));
     second.floating = true;
-    let mut preview = OverlayPreview::new(
-        vec![safari, music, first, second],
-        &[1, 4],
-        Hover::on_window(&id(2)),
-    );
+    let mut preview = OverlayPreview::new(vec![safari, music, first, second], &[1, 4], hover);
     preview.display.fullscreen = true;
     preview
 }
@@ -213,6 +213,7 @@ pub fn stage(preview: &OverlayPreview, hair: f32, reduce_motion: bool) -> El {
         icons: &preview.icons,
         names: &preview.names,
         hover: &preview.hover,
+        elsewhere: false,
         still: reduce_motion,
         wiring: Wiring { hair, live: false },
     }))
@@ -276,9 +277,8 @@ fn mock_window(window: &UiWindowOverlayWindow, light: bool, hair: f32) -> El {
         .key(format!("window-{}", window.window.window_id))
         .absolute(frame.x as f32, frame.y as f32)
         .size(frame.width as f32, frame.height as f32)
-        .radius(14.0)
-        .continuous_corners()
-        .clip_rounded(14.0)
+        .radius(dim::RADIUS)
+        .clip_rounded(dim::RADIUS)
         .fill(fill)
         .border(hair, rim)
         .shadow(
@@ -297,7 +297,12 @@ fn scene(ui: &mut Ui, preview: OverlayPreview) {
 }
 
 pub(crate) const SCENES: &[PlaygroundScene] = &[
+    // The pointer on no window: the focused one, a dark terminal, has the dim and the card.
     ("overlay", |ui| scene(ui, desk(Hover::default()))),
+    // On a light window, off its card.
+    ("overlay-hover", |ui| {
+        scene(ui, desk(Hover::on_window(&id(2))));
+    }),
     ("overlay-send", |ui| {
         let two = WorkspaceId::new(2).unwrap_or(WorkspaceId::ONE);
         scene(ui, desk(Hover::on_control(&id(2), Control::Send(two))));
@@ -311,5 +316,11 @@ pub(crate) const SCENES: &[PlaygroundScene] = &[
         scene(ui, desk(Hover::on_control(&id(1), swap)));
     }),
     ("overlay-columns", |ui| scene(ui, columns())),
-    ("overlay-fullscreen", |ui| scene(ui, fullscreen())),
+    // The tile under three floats, then the pinned float over it.
+    ("overlay-fullscreen", |ui| {
+        scene(ui, fullscreen(Hover::on_window(&id(1))));
+    }),
+    ("overlay-pinned", |ui| {
+        scene(ui, fullscreen(Hover::on_control(&id(2), Control::Pin)));
+    }),
 ];

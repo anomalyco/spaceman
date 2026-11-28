@@ -191,26 +191,33 @@ Window overlay ([labs] window_overlay, off)                 // ws.window-overlay
 ├── Main thread (src/app/app_loop/window_overlay.rs, src/window_overlay.rs): the base modifier and
 │   Shift (Option+Shift) held alone for 150 ms (320 ms within 2 s of a key or hotkey), no button
 │   down, tiling on -> the worker reads every visible window 60 ms into the hold (no AX on the main
-│   thread) and an outline and a card show on each, on every display, when the hold completes
+│   thread) and one window is dimmed and gets a card when the hold completes
 ├── Any key or hotkey while held (Option+Shift+1, +H...) -> hidden, and not shown again until the
 │   keys are let go; Command, Control or a mouse button at the start -> nothing; letting go -> hidden
-├── Outline (agent/src/window_overlay/frame.rs): just inside each window; amber on the focused
-│   window, brighter under the pointer, dashed on a float, cut where a float covers it; never
-│   takes the pointer
-├── Card (agent/src/window_overlay/card.rs, chips.rs): app icon and name (never a title) with a
-│   focus dot; a status line (Workspace N / On every workspace, or what the hovered control would
-│   do, with the destination's app icons); a chip per workspace that sends the window there
-│   (current bright, occupied with up to three dots, empty dim, other displays after a rule);
-│   Float, Pin, Fullscreen (tiles), lit while on; arrows to swap with a neighbouring tile
+├── One window (agent/src/window_overlay.rs): the window under the pointer (the frontmost whose
+│   frame holds it, or the one whose card it is on, also while a press begun on the card is
+│   held), else the window with keyboard focus; with the pointer on a window of another display,
+│   only that display shows a card. As the overlay shows, the pointer's place is read once, so
+│   the first frame is already on that window. No other window gets a card or any mark
+├── Dim (agent/src/window_overlay/dim.rs): an obsidian wash at 34% over that window, to its
+│   12 pt corners, cut round every float in front of it; no outline, no accent colour; never
+│   takes the pointer. Moving to another window fades one out and the other in, in place
+├── Card (agent/src/window_overlay/card.rs, chips.rs), two rows: app icon and name (never a
+│   title) with a hint beside it only while the pointer is on a control (what a click would do,
+│   with the destination's app icons); then chips for the workspace each display shows, every
+│   occupied workspace and the window's own (bright), a + for this display's next empty one,
+│   another display's in their own track labelled Display N (1 main, 2 secondary, then left to
+│   right); icon buttons Float, Pin, Fullscreen (tiles), bright while on; arrows to swap with a
+│   neighbouring tile. A window narrower than the second row wraps it onto more lines
 ├── Placement (agent/src/window_overlay/place.rs): centred on the largest part of the window that
-│   no float in front covers, whole inside the display, never on another card; a window narrower
-│   than the full card gets the compact one (chips wrap at five, icon-only buttons)
+│   no float in front covers, whole inside the display
 ├── Buttons act on the card's window, focused or not, through the focused-window commands' own code
-│   (src/app/window_overlay.rs); no activation, focus change or pointer warp; cards refresh while held
-└── Fullscreen Layout shows only the front tile's card. Every card requires fresh on-screen
-    WindowServer bounds intersecting its display beyond the parking strip; hidden, minimized,
-    dismissed panels (even with a live AXWindow), missing and zero-size windows have none.
-    Covered by src/app/tests/window_overlay.rs
+│   (src/app/window_overlay.rs); no activation, focus change or pointer warp; the card refreshes
+│   while held
+└── Fullscreen Layout offers only the front tile. A window can be the one only with fresh
+    on-screen WindowServer bounds intersecting its display beyond the parking strip; hidden,
+    minimized, dismissed panels (even with a live AXWindow), missing and zero-size windows never
+    are. Covered by src/app/tests/window_overlay.rs
 
 Focus follows                                              // ws.focus-follow
 ├── Focusing a window that lives on a hidden workspace (Dock, Cmd+Tab, notification)

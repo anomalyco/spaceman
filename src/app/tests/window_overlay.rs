@@ -70,11 +70,16 @@ fn the_snapshot_lists_each_visible_window_title_free_with_its_swaps() {
     assert_eq!(listed, WorkspaceId::numbered().collect::<Vec<_>>());
     let one = &main.workspaces[0];
     assert!(one.occupied() && one.on_this_display);
+    // Workspace 1 is the one the main display (display 1) shows.
+    assert_eq!((one.display, one.visible), (1, true));
+    assert!(!main.workspaces[1].visible);
     assert_eq!(one.windows, 2);
     // Two windows of one app name it once.
     assert_eq!(one.apps, vec!["com.example.Test".to_owned()]);
     let six = &main.workspaces[5];
     assert!(!six.occupied() && !six.on_this_display);
+    // The secondary display is display 2, and shows workspace 6.
+    assert_eq!((six.display, six.visible), (2, true));
     assert!(six.apps.is_empty());
     // The card of the window with keyboard focus says so, and only that one.
     assert!(left.focused && !right.focused);

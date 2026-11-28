@@ -70,6 +70,11 @@ pub struct UiWindowOverlayWorkspace {
     pub apps: Vec<String>,
     /// It is assigned to this display.
     pub on_this_display: bool,
+    /// Its display's number, as Settings counts them: 1 the main display, 2 the secondary, then
+    /// every further display left to right.
+    pub display: usize,
+    /// Its display shows it now.
+    pub visible: bool,
 }
 
 impl UiWindowOverlayWorkspace {
@@ -96,6 +101,23 @@ pub struct UiWindowOverlayWindow {
     /// The sides with a neighbouring tile to swap with, in the order a card shows them:
     /// left, up, down, right.
     pub swaps: Vec<Direction>,
+}
+
+/// Each display's number by its ID: 1 the main display, 2 the secondary, then every further
+/// display left to right, as Settings › Workspaces counts them.
+fn display_numbers(outputs: &macos::DisplayOutputs) -> HashMap<&str, usize> {
+    let main = outputs.main().id.as_str();
+    let secondary = outputs.secondary().map(|display| display.id.as_str());
+    let rest = outputs
+        .ordered()
+        .into_iter()
+        .map(|display| display.id.as_str())
+        .filter(|id| *id != main && Some(*id) != secondary);
+    std::iter::once(main)
+        .chain(secondary)
+        .chain(rest)
+        .zip(1..)
+        .collect()
 }
 
 impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
@@ -155,7 +177,8 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
             .filter(|resolved| self.scope.manages_selector(&resolved.selector))
             .take(HUD_MAX_DISPLAYS)
             .map(|resolved| {
-                self.window_overlay_display(resolved, &tiles, &frames, focused.as_ref(), outputs)
+                let focused = focused.as_ref();
+                self.window_overlay_display(resolved, &visible, &tiles, &frames, focused, outputs)
             })
             .collect();
         UiWindowOverlay { displays }
@@ -164,6 +187,7 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
     fn window_overlay_display(
         &self,
         resolved: &ResolvedWorkspace,
+        visible: &[ResolvedWorkspace],
         tiles: &[NavigationTile],
         frames: &HashMap<u32, crate::Rect>,
         focused: Option<&crate::PhysicalWindowId>,
@@ -245,6 +269,7 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
         floats.sort_by(|a, b| a.window.cmp(&b.window));
         windows.extend(floats);
         windows.truncate(MAX_WINDOWS);
+        let numbers = display_numbers(outputs);
         let workspaces = self
             .config
             .ordered_workspaces()
@@ -262,12 +287,14 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
                         apps.push(bundle.to_owned());
                     }
                 }
+                let display = outputs.resolve(self.workspaces.assignment(listed));
                 UiWindowOverlayWorkspace {
                     workspace: listed,
                     windows: held.len(),
                     apps,
-                    on_this_display: outputs.resolve(self.workspaces.assignment(listed)).id
-                        == resolved.display_id,
+                    on_this_display: display.id == resolved.display_id,
+                    display: numbers.get(display.id.as_str()).copied().unwrap_or(1),
+                    visible: visible.iter().any(|shown| shown.workspace == listed),
                 }
             })
             .collect();
