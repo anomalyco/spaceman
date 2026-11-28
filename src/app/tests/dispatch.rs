@@ -538,6 +538,20 @@ fn worker_lifecycle_transitions_cover_every_legal_state() {
         }
     );
 
+    // Cancelling an in-flight restoration waits for its result without retrying,
+    // while cancelling a pending/retry-due restoration returns to Idle immediately.
+    dispatch.cancel_restore();
+    assert_eq!(dispatch.lifecycle(), CancellingRestore);
+    assert!(dispatch.is_busy() && dispatch.is_cancelling_restore());
+    assert!(!dispatch.is_restoring() && dispatch.is_restoring_or_pending());
+    dispatch.finish_restore();
+    assert_eq!(dispatch.lifecycle(), Idle);
+
+    dispatch.request_restore(Restore);
+    dispatch.defer_restore_retry();
+    dispatch.cancel_restore();
+    assert_eq!(dispatch.lifecycle(), Idle);
+
     dispatch.reset_disconnected();
     assert_eq!(dispatch.lifecycle(), Idle);
 
@@ -620,6 +634,7 @@ fn worker_lifecycle_queries_match_each_state() {
         ),
         (RestoreRetryDue(Restore), false, false, true, true),
         (RestorePending(Undo), false, false, false, true),
+        (CancellingRestore, true, false, false, true),
     ];
     for (state, busy, interruptible, restoring, owed) in cases {
         let (mut dispatch, _receiver) = lifecycle_rig();
@@ -673,6 +688,10 @@ fn drive_to(dispatch: &mut WorkerDispatch, state: WorkerLifecycle) {
             assert!(dispatch.send(retile()));
             dispatch.request_restore(kind);
             dispatch.finish_command();
+        }
+        CancellingRestore => {
+            dispatch.request_restore(RestoreKind::Restore);
+            dispatch.cancel_restore();
         }
     }
 }

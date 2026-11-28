@@ -3,8 +3,9 @@ set -eu
 
 # Usage: scripts/install-app.sh [--bundle PATH] [--wait-idle SECS]
 #   --bundle     install an already built Spaceman.app instead of building one
-#   --wait-idle  hold the restart until the keyboard and mouse have been idle for SECS seconds,
-#                because restarting restores and re-tiles every window
+#   --wait-idle  hold the restart until the keyboard and mouse have been idle for SECS seconds
+#                and the screen is unlocked with displays awake, because restarting restores
+#                and re-tiles every window
 root=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
 source_bundle=
 wait_idle=
@@ -98,8 +99,98 @@ if paths_overlap "$source_real" "$legacy_real"; then
 fi
 
 if [ -n "$wait_idle" ]; then
-  idle_seconds() { ioreg -c IOHIDSystem | awk '/HIDIdleTime/ { print int($NF / 1000000000); exit }'; }
-  while [ "$(idle_seconds)" -lt "$wait_idle" ]; do sleep 5; done
+  idle_seconds() {
+    _is_secs=$(ioreg -c IOHIDSystem 2>/dev/null | awk '/HIDIdleTime/ { print int($NF / 1000000000); exit }')
+    printf '%s\n' "${_is_secs:-0}"
+  }
+  # Returns 0 when the macOS session screen is locked, switched off console, or
+  # displays are asleep. Accessibility refuses window operations while locked,
+  # so --wait-idle must never trigger ctl restart until unlocked and awake.
+  # Injectable via SPACEMAN_INSTALL_SCREEN_LOCKED_CMD (exit 0 = locked/asleep)
+  # for scripts/tests/install_app.py.
+  screen_unavailable() {
+    if [ -n "${SPACEMAN_INSTALL_SCREEN_LOCKED_CMD:-}" ]; then
+      sh -c "$SPACEMAN_INSTALL_SCREEN_LOCKED_CMD"
+      return $?
+    fi
+    if command -v python3 >/dev/null 2>&1; then
+      _su_rc=0
+      python3 -c '
+import ctypes, sys
+try:
+    cg = ctypes.CDLL("/System/Library/Frameworks/CoreGraphics.framework/CoreGraphics")
+    cf = ctypes.CDLL("/System/Library/Frameworks/CoreFoundation.framework/CoreFoundation")
+    cg.CGMainDisplayID.restype = ctypes.c_uint32
+    cg.CGDisplayIsAsleep.argtypes = [ctypes.c_uint32]
+    cg.CGDisplayIsAsleep.restype = ctypes.c_uint32
+    cg.CGSessionCopyCurrentDictionary.restype = ctypes.c_void_p
+    cf.CFStringCreateWithCString.argtypes = [ctypes.c_void_p, ctypes.c_char_p, ctypes.c_uint32]
+    cf.CFStringCreateWithCString.restype = ctypes.c_void_p
+    cf.CFDictionaryGetValue.argtypes = [ctypes.c_void_p, ctypes.c_void_p]
+    cf.CFDictionaryGetValue.restype = ctypes.c_void_p
+    cf.CFBooleanGetValue.argtypes = [ctypes.c_void_p]
+    cf.CFBooleanGetValue.restype = ctypes.c_ubyte
+    cf.CFGetTypeID.argtypes = [ctypes.c_void_p]
+    cf.CFGetTypeID.restype = ctypes.c_ulong
+    cf.CFBooleanGetTypeID.restype = ctypes.c_ulong
+    cf.CFNumberGetTypeID.restype = ctypes.c_ulong
+    cf.CFNumberGetValue.argtypes = [ctypes.c_void_p, ctypes.c_int, ctypes.c_void_p]
+    cf.CFNumberGetValue.restype = ctypes.c_ubyte
+    cf.CFRelease.argtypes = [ctypes.c_void_p]
+
+    def cf_bool(dictionary, key):
+        cf_key = cf.CFStringCreateWithCString(None, key, 0x08000100)
+        if not cf_key:
+            return None
+        try:
+            value = cf.CFDictionaryGetValue(dictionary, cf_key)
+            if not value:
+                return None
+            type_id = cf.CFGetTypeID(value)
+            if type_id == cf.CFBooleanGetTypeID():
+                return bool(cf.CFBooleanGetValue(value))
+            if type_id == cf.CFNumberGetTypeID():
+                number = ctypes.c_int32(0)
+                if cf.CFNumberGetValue(value, 3, ctypes.byref(number)):
+                    return bool(number.value)
+            return None
+        finally:
+            cf.CFRelease(cf_key)
+
+    session = cg.CGSessionCopyCurrentDictionary()
+    if not session:
+        sys.exit(2)
+    try:
+        locked = cf_bool(session, b"CGSSessionScreenIsLocked") is True
+        on_console = cf_bool(session, b"kCGSSessionOnConsoleKey")
+    finally:
+        cf.CFRelease(session)
+    if locked or on_console is False:
+        sys.exit(0)
+    main_display = cg.CGMainDisplayID()
+    if main_display and cg.CGDisplayIsAsleep(main_display):
+        sys.exit(0)
+    sys.exit(1)
+except Exception:
+    sys.exit(2)
+' >/dev/null 2>&1 || _su_rc=$?
+      case "$_su_rc" in
+        0) return 0 ;;
+        1) return 1 ;;
+      esac
+    fi
+    if command -v ioreg >/dev/null 2>&1; then
+      if ioreg -n Root -d1 2>/dev/null | grep -q '"CGSSessionScreenIsLocked"=Yes'; then
+        return 0
+      fi
+      _su_power=$(ioreg -n IODisplayWrangler 2>/dev/null | awk -F'"CurrentPowerState"=' 'NF > 1 { sub(/[^0-9].*/, "", $2); print $2; exit }')
+      if [ -n "$_su_power" ] && [ "$_su_power" -lt 4 ]; then
+        return 0
+      fi
+    fi
+    return 1
+  }
+  while [ "$(idle_seconds)" -lt "$wait_idle" ] || screen_unavailable; do sleep 5; done
 fi
 
 mkdir -p "$install_root"
@@ -121,9 +212,9 @@ for _ in $(seq 1 300); do
 done
 if pgrep -x spaceman-agent >/dev/null 2>&1; then
   echo "Spaceman did not finish restoring windows; installation aborted" >&2
-  # A restart request cannot be cancelled: the old process may still exit after we
-  # return failure. Leave the installed bundle intact and reopen it if those exact
-  # processes finish within the next 5 minutes (bounded so a permanently stuck
+  # Older builds (without a restart deadline) or a SIGTERM fallback may still exit
+  # after we return failure. Leave the installed bundle intact and reopen it if those
+  # exact processes finish within the next 5 minutes (bounded so a permanently stuck
   # process won't later reopen after an intentional quit). Detach stdio and ignore
   # HUP so an updater exiting does not lose the recovery.
   (
