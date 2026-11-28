@@ -208,3 +208,146 @@ fn fullscreen_layout_from_a_card_puts_that_window_in_front_and_shows_only_it() {
     );
     assert!(main.windows[0].swaps.is_empty());
 }
+
+#[test]
+fn hidden_minimized_and_dismissed_windows_have_no_cards_even_with_live_ax_frames() {
+    for floating in [false, true] {
+        let mut runtime = two_tiles();
+        if floating {
+            run(&mut runtime, WindowOverlayCommand::ToggleFloat(window(20)));
+        }
+        // A dismissed accessory panel can retain both its AXWindow and its old CG bounds.
+        // Cmd+H and minimize likewise remove it only from CG's on-screen list.
+        runtime.backend.ordered_out.insert(20);
+        assert!(runtime.backend.window_server_frame(&window(20)).is_some());
+        assert!(runtime.backend.frame(&window(20)).is_ok());
+        let overlay = run(&mut runtime, WindowOverlayCommand::Snapshot);
+        assert_eq!(overlay.displays[0].windows.len(), 1, "floating={floating}");
+        assert_eq!(overlay.displays[0].windows[0].window, window(10));
+    }
+}
+
+#[test]
+fn missing_window_server_evidence_never_falls_back_to_a_layout_frame() {
+    for floating in [false, true] {
+        for unavailable in [false, true] {
+            let mut runtime = two_tiles();
+            if floating {
+                run(&mut runtime, WindowOverlayCommand::ToggleFloat(window(20)));
+            }
+            runtime.backend.frames.remove(&window(20));
+            runtime.backend.server_frames.remove(&window(20));
+            runtime.backend.server_snapshot_unavailable = unavailable;
+            let overlay = run(&mut runtime, WindowOverlayCommand::Snapshot);
+            assert!(overlay.displays.iter().all(|display| {
+                display
+                    .windows
+                    .iter()
+                    .all(|card| card.window != window(20) && !unavailable)
+            }));
+        }
+    }
+}
+
+#[test]
+fn off_display_empty_and_parking_strip_frames_have_no_cards() {
+    let screen = outputs().main().frame;
+    let invalid = [
+        crate::Rect {
+            x: -10000,
+            ..frame(0)
+        },
+        crate::Rect {
+            width: 0,
+            ..frame(50)
+        },
+        crate::Rect {
+            height: 0,
+            ..frame(50)
+        },
+        crate::Rect {
+            width: -10,
+            ..frame(50)
+        },
+        crate::Rect {
+            x: screen.x + screen.width - 1,
+            ..frame(0)
+        },
+        outputs().displays()[1].frame,
+    ];
+    for floating in [false, true] {
+        for frame in invalid {
+            let mut runtime = two_tiles();
+            if floating {
+                run(&mut runtime, WindowOverlayCommand::ToggleFloat(window(20)));
+            }
+            runtime.backend.server_frames.insert(window(20), frame);
+            let overlay = run(&mut runtime, WindowOverlayCommand::Snapshot);
+            assert!(
+                overlay.displays[0]
+                    .windows
+                    .iter()
+                    .all(|card| card.window != window(20)),
+                "floating={floating}, frame={frame:?}"
+            );
+        }
+    }
+}
+
+#[test]
+fn a_visible_float_with_its_center_off_display_still_has_a_card() {
+    let mut runtime = two_tiles();
+    run(&mut runtime, WindowOverlayCommand::ToggleFloat(window(20)));
+    let frame = crate::Rect {
+        x: -300,
+        y: 100,
+        width: 400,
+        height: 300,
+    };
+    runtime.backend.server_frames.insert(window(20), frame);
+    // AX observations may omit a window temporarily; fresh CG visibility is sufficient.
+    runtime.backend.observation = None;
+    let overlay = run(&mut runtime, WindowOverlayCommand::Snapshot);
+    assert_eq!(card(&overlay, 20).frame, frame);
+}
+
+#[test]
+fn fullscreen_layout_skips_an_ordered_out_front_tile_for_the_visible_one() {
+    let mut runtime = two_tiles();
+    run(
+        &mut runtime,
+        WindowOverlayCommand::ToggleFullscreen(window(20)),
+    );
+    runtime.backend.ordered_out.insert(20);
+
+    let overlay = run(&mut runtime, WindowOverlayCommand::Snapshot);
+    let shown: Vec<_> = overlay.displays[0]
+        .windows
+        .iter()
+        .map(|card| card.window.clone())
+        .collect();
+    assert_eq!(shown, vec![window(10)]);
+}
+
+#[test]
+fn a_pinned_float_straddling_two_displays_gets_one_card_where_its_center_sits() {
+    let mut runtime = two_tiles();
+    run(&mut runtime, WindowOverlayCommand::TogglePin(window(20)));
+    // Center is at x=1050 (secondary display: 1000..2000), while 150px overlaps main (0..1000).
+    let straddling = crate::Rect {
+        x: 850,
+        y: 100,
+        width: 400,
+        height: 300,
+    };
+    runtime.backend.server_frames.insert(window(20), straddling);
+
+    let overlay = run(&mut runtime, WindowOverlayCommand::Snapshot);
+    let cards: Vec<_> = overlay
+        .displays
+        .iter()
+        .filter(|display| display.windows.iter().any(|card| card.window == window(20)))
+        .map(|display| display.id.as_str())
+        .collect();
+    assert_eq!(cards, vec!["secondary-id"]);
+}

@@ -17,6 +17,10 @@ built bundle once the keyboard and mouse have been idle; the updater
 (`scripts/spaceman-updater`, set up with `scripts/install-updater`) uses it to keep the installed
 app on `dev`.
 
+Installation waits up to 60 seconds for restoration. If it times out, the update aborts and keeps
+the installed bundle. A background recovery watcher waits up to 5 minutes for the old process to
+exit and reopens that bundle if it does, resuming tiling if it was automatic before the restart.
+
 ## Verify
 
 ```sh

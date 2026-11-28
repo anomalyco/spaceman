@@ -61,6 +61,30 @@ legacy_bundle="$install_root/Pane.app"
 cli_root="$HOME/.local/bin"
 was_automatic=false
 
+open_installed() {
+  opened=false
+  open_error=
+  for _ in $(seq 1 10); do
+    if open_error=$(open "$installed_bundle" 2>&1 >/dev/null); then
+      opened=true
+      break
+    fi
+    sleep 0.2
+  done
+  if ! $opened; then
+    echo "failed to open $installed_bundle${open_error:+: $open_error}" >&2
+    return 1
+  fi
+  if $was_automatic; then
+    for _ in $(seq 1 75); do
+      if "$installed_bundle/Contents/MacOS/spaceman" ctl resume >/dev/null 2>&1; then
+        break
+      fi
+      sleep 0.2
+    done
+  fi
+}
+
 source_real=$(resolve_path "$source_bundle")
 installed_real=$(resolve_path "$installed_bundle")
 legacy_real=$(resolve_path "$legacy_bundle")
@@ -79,7 +103,8 @@ if [ -n "$wait_idle" ]; then
 fi
 
 mkdir -p "$install_root"
-if pgrep -x spaceman-agent >/dev/null 2>&1; then
+restoring_pids=$(pgrep -x spaceman-agent || true)
+if [ -n "$restoring_pids" ]; then
   status=$("$source_bundle/Contents/MacOS/spaceman" ctl status 2>/dev/null || SPACEMAN_APPLICATION_SUPPORT="$HOME/Library/Application Support/Pane" "$source_bundle/Contents/MacOS/spaceman" ctl status 2>/dev/null || true)
   case "$status" in
     *'"mode":"automatic"'*) was_automatic=true ;;
@@ -89,12 +114,40 @@ if pgrep -x spaceman-agent >/dev/null 2>&1; then
     pkill -TERM -x spaceman-agent
   fi
 fi
-for _ in $(seq 1 75); do
+# Several parked windows can take longer than 15 seconds to restore through AX.
+for _ in $(seq 1 300); do
   pgrep -x spaceman-agent >/dev/null 2>&1 || break
   sleep 0.2
 done
 if pgrep -x spaceman-agent >/dev/null 2>&1; then
   echo "Spaceman did not finish restoring windows; installation aborted" >&2
+  # A restart request cannot be cancelled: the old process may still exit after we
+  # return failure. Leave the installed bundle intact and reopen it if those exact
+  # processes finish within the next 5 minutes (bounded so a permanently stuck
+  # process won't later reopen after an intentional quit). Detach stdio and ignore
+  # HUP so an updater exiting does not lose the recovery.
+  (
+    trap '' HUP
+    exited=false
+    for _ in $(seq 1 1500); do
+      still_running=false
+      for pid in $restoring_pids; do
+        if kill -0 "$pid" 2>/dev/null; then
+          still_running=true
+          break
+        fi
+      done
+      if ! $still_running; then
+        exited=true
+        break
+      fi
+      sleep 0.2
+    done
+    # Another installer or the user may already have relaunched it.
+    if $exited && [ -d "$installed_bundle" ] && ! pgrep -x spaceman-agent >/dev/null 2>&1; then
+      open_installed
+    fi
+  ) </dev/null >/dev/null 2>&1 &
   exit 1
 fi
 rm -rf "$installed_bundle" "$install_root/Pane.app"
@@ -103,26 +156,6 @@ codesign --verify --deep --strict "$installed_bundle"
 mkdir -p "$cli_root"
 rm -f "$cli_root/pane"
 ln -sf "$installed_bundle/Contents/MacOS/spaceman" "$cli_root/spaceman"
-opened=false
-open_error=
-for _ in $(seq 1 10); do
-  if open_error=$(open "$installed_bundle" 2>&1 >/dev/null); then
-    opened=true
-    break
-  fi
-  sleep 0.2
-done
-if ! $opened; then
-  echo "installed $installed_bundle, but failed to open it${open_error:+: $open_error}" >&2
-  exit 1
-fi
-if $was_automatic; then
-  for _ in $(seq 1 75); do
-    if "$installed_bundle/Contents/MacOS/spaceman" ctl resume >/dev/null 2>&1; then
-      break
-    fi
-    sleep 0.2
-  done
-fi
+open_installed
 
 printf '%s\n' "$installed_bundle"

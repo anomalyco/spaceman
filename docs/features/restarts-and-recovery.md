@@ -30,6 +30,11 @@ Quit with an update ready                                  // recover.update
 ├── Same exit as quit: every parked window restored
 └── Only after restoration fully succeeds -> signature re-checked, bundles swapped, no relaunch
 
+Install & restart (development updater)                    // recover.dev-update
+├── scripts/install-app.sh waits up to 60 s for parked-window restoration and exit
+└── Timeout -> installation aborted, old bundle kept; a background watcher waits up to 5 min and
+    reopens it if the old process exits, resuming tiling if it was automatic before the restart
+
 Crash or hard kill                                         // recover.crash
 ├── Next launch, valid state   -> parked windows reveal as their workspaces become visible
 ├── Next launch, invalid/missing state -> every parked window restored first
@@ -85,6 +90,12 @@ Files:    ~/Library/Application Support/Spaceman/
 See [Recovery](../recovery.md) for the safe manual procedure; never delete `parked-windows.json` first.
 
 ## Existing Checks
+
+- Installer, `scripts/tests/install_app.py` (also in `scripts/check`): a 25 s restore completes
+  installation; exits after the 60 s timeout reopen the old bundle and restore automatic mode
+  (without resuming a previously paused app), and the watcher stops without reopening if the old
+  process never exits within its 5 min window. Virtual clock and mocked native commands; no
+  desktop windows or installed app are touched.
 
 - Unit, `src/status_item.rs`, `src/macos/displays.rs`, `src/app/app_loop/builtin_display.rs`, `src/cli/tests/builtin_display.rs`, `agent/src/hud/tests.rs`, `agent/src/panes/general.rs`:
   dimmed paused menu bar glyph and full-brightness restoration on resume; `CGDisplayIsBuiltin`
